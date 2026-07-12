@@ -54,4 +54,26 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-member-access': 'error',
     },
   },
+
+  // 📝 Relaxed rules for test files
+  {
+    files: ['**/__tests__/**/*.ts', '**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-type-assertion': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@eslint-community/eslint-comments/require-description': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-invalid-void-type': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@eslint-community/eslint-comments/no-unlimited-disable': 'off',
+      '@eslint-community/eslint-comments/disable-enable-pair': 'off',
+    },
+  },
 )
