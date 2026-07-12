@@ -1,84 +1,44 @@
 ```
 restale-kit/
-├── package.json
-├── pnpm-workspace.yaml
-├── tsconfig.base.json
-│
-├── packages/
-│   │
-│   ├── core/
-│   │   ├── src/
-│   │   │   ├── types.ts
-│   │   │   ├── framing.ts
-│   │   │   ├── channel.ts
-│   │   │   └── index.ts
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   ├── client-core/
-│   │   ├── src/
-│   │   │   ├── types.ts
-│   │   │   ├── backoff.ts
-│   │   │   ├── client.ts
-│   │   │   └── index.ts
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   ├── node/
-│   │   ├── src/
-│   │   │   ├── attach.ts
-│   │   │   └── index.ts
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   ├── fetch/
-│   │   ├── src/
-│   │   │   ├── response.ts
-│   │   │   └── index.ts
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   ├── react/
-│   │   ├── src/
-│   │   │   ├── useReStale.ts
-│   │   │   └── index.ts
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   └── tanstack-query/
-│       ├── src/
-│       │   ├── adapter.ts
-│       │   └── index.ts
-│       ├── package.json
-│       └── tsconfig.json
-│
-├── examples/
-│   ├── express/
-│   │   ├── server.ts
-│   │   └── package.json
-│   ├── hono/
-│   │   ├── server.ts
-│   │   └── package.json
-│   └── react-app/
-│       ├── src/
-│       │   ├── App.tsx
-│       │   └── main.tsx
-│       └── package.json
-│
-└── docs/
-    ├── contract.md
-    └── adding-adapters.md
+├── package.json          # single package with "exports" map
+├── tsconfig.json
+├── src/
+│   ├── core/             # wire protocol types + server-side SSE channel
+│   │   ├── types.ts
+│   │   ├── framing.ts
+│   │   ├── channel.ts
+│   │   └── index.ts
+│   ├── client-core/      # connection state machine, reconnect, event emitting
+│   │   ├── types.ts
+│   │   ├── validation.ts
+│   │   ├── backoff.ts
+│   │   ├── client.ts
+│   │   └── index.ts
+│   ├── node/             # Node http transport
+│   │   ├── attach.ts
+│   │   └── index.ts
+│   ├── fetch/            # Fetch API transport
+│   │   ├── response.ts
+│   │   └── index.ts
+│   ├── react/            # useReStale hook
+│   │   ├── useReStale.ts
+│   │   └── index.ts
+│   └── tanstack-query/   # TanStack Query adapter
+│       ├── adapter.ts
+│       └── index.ts
 ```
 
-**Package names become:**
+Single publishable package with subpath exports — not a monorepo. One `package.json`, one version,
+one `npm publish`.
 
-| Package | Name |
+**Subpath exports:**
+
+| Import path | Subpath |
 |---|---|
-| `core` | `restale-kit` |
-| `client-core` | `restale-kit/client-core` |
-| `node` | `restale-kit/node` |
-| `fetch` | `restale-kit/fetch` |
-| `react` | `restale-kit/react` |
-| `tanstack-query` | `restale-kit/tanstack-query` |
+| `restale-kit` | `./src/core/` |
+| `restale-kit/client-core` | `./src/client-core/` |
+| `restale-kit/node` | `./src/node/` |
+| `restale-kit/fetch` | `./src/fetch/` |
+| `restale-kit/react` | `./src/react/` |
+| `restale-kit/tanstack-query` | `./src/tanstack-query/` |
 
-The hook rename from `useSSEInvalidator` → `useReStale` fits the package name and is the one public API surface that changes for end users.

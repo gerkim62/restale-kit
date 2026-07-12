@@ -7,57 +7,103 @@ Based on the contract, here's the complete usage from both ends.
 ### Express
 ```ts
 import express from 'express'
+import { ChannelClosedError } from 'restale-kit'
+import type { SSEChannel } from 'restale-kit'
 import { attachSSE } from 'restale-kit/node'
 
 const app = express()
-const channels = new Set()
+
+interface ClientMeta {
+  userId: string
+}
+
+const channels = new Map<SSEChannel, ClientMeta>()
 
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
-  channels.add(channel)
-  channel.stream // already piped by attachSSE
+  channels.set(channel, { userId: req.user.id })
 
-  req.on('close', () => channels.delete(channel))
+  req.on('close', () => {
+    channel.notifyClosed()
+    channels.delete(channel)
+  })
 })
 
-// Somewhere else in your app — after a DB write, a webhook, etc.
-function notifyTodosChanged() {
-  for (const channel of channels) {
-    channel.invalidate({ key: ['todos'] })
+// Broadcast helpers — userland, not part of the library.
+
+function broadcastAll(signal: Parameters<SSEChannel['invalidate']>[0]) {
+  for (const [channel] of channels) {
+    try {
+      channel.invalidate(signal)
+    } catch (e) {
+      if (e instanceof ChannelClosedError) channels.delete(channel)
+      else throw e
+    }
   }
 }
 
-function notifyEverything() {
-  for (const channel of channels) {
-    channel.invalidate({ key: [] }) // [] = invalidate all
+function broadcastWhere(
+  signal: Parameters<SSEChannel['invalidate']>[0],
+  matchFn: (meta: ClientMeta) => boolean
+) {
+  for (const [channel, meta] of channels) {
+    if (!matchFn(meta)) continue
+    try {
+      channel.invalidate(signal)
+    } catch (e) {
+      if (e instanceof ChannelClosedError) channels.delete(channel)
+      else throw e
+    }
   }
+}
+
+// After a DB write, a webhook, etc.
+
+function notifyTodosChanged() {
+  broadcastAll({ key: ['todos'] })
+}
+
+function notifyUserTodosChanged(userId: string) {
+  broadcastWhere(
+    { key: ['todos', { userId }], exact: true },
+    (meta) => meta.userId === userId
+  )
+}
+
+function notifyEverything() {
+  broadcastAll({ key: [] }) // [] = invalidate all
 }
 ```
 
 ### Hono (or Bun / Deno / edge)
 ```ts
 import { Hono } from 'hono'
+import { ChannelClosedError } from 'restale-kit'
+import type { SSEChannel } from 'restale-kit'
 import { toSSEResponse } from 'restale-kit/fetch'
 
 const app = new Hono()
-const channels = new Set()
+
+interface ClientMeta {
+  userId: string
+}
+
+const channels = new Map<SSEChannel, ClientMeta>()
 
 app.get('/sse', (c) => {
   const { response, channel } = toSSEResponse(c.req.raw)
-  channels.add(channel)
+  channels.set(channel, { userId: c.get('userId') })
 
   // cleanup when client disconnects
-  c.req.raw.signal.addEventListener('abort', () => channels.delete(channel))
+  c.req.raw.signal.addEventListener('abort', () => {
+    channel.notifyClosed()
+    channels.delete(channel)
+  })
 
   return response // hand it back to Hono — this is the inverted flow
 })
 
-// Same invalidation call from anywhere in your app
-function notifyUserChanged(userId: number) {
-  for (const channel of channels) {
-    channel.invalidate({ key: ['user', { userId }], exact: true })
-  }
-}
+// Same broadcastAll / broadcastWhere helpers as the Express example above.
 ```
 
 ### Fastify (special case)
@@ -70,7 +116,7 @@ const app = Fastify()
 app.get('/sse', (request, reply) => {
   reply.hijack() // required — stops Fastify sending its own response
   const channel = attachSSE(request.raw, reply.raw)
-  // same channels Set pattern as Express
+  // same Map + cleanup pattern as Express
 })
 ```
 
@@ -82,19 +128,28 @@ channel.invalidate([
 ])
 ```
 
+### Using the `refetch` and `remove` actions
+```ts
+// Force immediate refetch — don't just mark stale, refetch now
+channel.invalidate({ key: ['dashboard'], action: 'refetch' })
+
+// Purge from cache entirely — e.g. after a user deletes their account
+channel.invalidate({ key: ['user', { userId: '123' }], exact: true, action: 'remove' })
+```
+
 ---
 
 ## Client Side (React + TanStack Query)
 
 ```tsx
-import { useSSEInvalidator } from 'restale-kit/react'
+import { useReStale } from 'restale-kit/react'
 import { tanstackAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 function App() {
   const queryClient = useQueryClient()
 
-  const { connection, reconnect, close } = useSSEInvalidator('/sse', {
+  const { connection, reconnect, close } = useReStale('/sse', {
     onInvalidate: tanstackAdapter(queryClient),
   })
 
@@ -111,7 +166,7 @@ That's the minimal wiring. Everything else — fetching, caching, UI — is your
 ```tsx
 function SSEStatus() {
   const queryClient = useQueryClient()
-  const { connection, reconnect } = useSSEInvalidator('/sse', {
+  const { connection, reconnect } = useReStale('/sse', {
     onInvalidate: tanstackAdapter(queryClient),
     autoReconnect: true,
     reconnect: { baseDelayMs: 1000, maxDelayMs: 30000, jitter: true },
@@ -132,7 +187,7 @@ function SSEStatus() {
 ```tsx
 const { user } = useAuth()
 
-useSSEInvalidator('/sse', {
+useReStale('/sse', {
   disabled: !user,  // won't connect until user is present
   onInvalidate: tanstackAdapter(queryClient),
 })
@@ -175,7 +230,7 @@ Your server logic
       │  SSE wire (text/event-stream)
 
 restale-kit/react
-  └─ useSSEInvalidator                  ← connects, reconnects, unmounts cleanly
+  └─ useReStale                         ← connects, reconnects, unmounts cleanly
       └─ onInvalidate(signal)           ← fires on every received event
 
 restale-kit/tanstack-query
