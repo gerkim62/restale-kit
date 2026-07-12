@@ -78,7 +78,7 @@ function useReStale(url: string, opts: UseReStaleOptions = {}): UseReStaleResult
   const listenersRef = useRef(new Set<() => void>())
   const esRef = useRef<EventSource | null>(null)
   const attemptRef = useRef(0)
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const eventCountRef = useRef(0)
   const onInvalidateRef = useRef(onInvalidate)
   onInvalidateRef.current = onInvalidate

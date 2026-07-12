@@ -11,6 +11,9 @@
     "dev:client": "pnpm --filter restale-kit-example-client run dev",
     "dev:server": "pnpm --filter restale-kit-example-server run dev"
   },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
