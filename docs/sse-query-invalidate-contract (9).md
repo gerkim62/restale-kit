@@ -21,17 +21,17 @@ or specced now.
 ## Package structure
 
 ```
-@sse-query-invalidate/core           # wire protocol types + server-side SSE channel
-@sse-query-invalidate/client-core    # connection state machine, reconnect, event emitting
-@sse-query-invalidate/node           # Node http.IncomingMessage/ServerResponse transport (covers Express, Fastify)
-@sse-query-invalidate/fetch          # WHATWG Request/Response transport (covers Hono, Bun, Deno, Workers, edge)
-@sse-query-invalidate/react          # useSSEInvalidator hook
-@sse-query-invalidate/tanstack-query # translates the wire signal into queryClient calls
+restale-kit/core           # wire protocol types + server-side SSE channel
+restale-kit/client-core    # connection state machine, reconnect, event emitting
+restale-kit/node           # Node http.IncomingMessage/ServerResponse transport (covers Express, Fastify)
+restale-kit/fetch          # WHATWG Request/Response transport (covers Hono, Bun, Deno, Workers, edge)
+restale-kit/react          # useSSEInvalidator hook
+restale-kit/tanstack-query # translates the wire signal into queryClient calls
 ```
 
-Express and Fastify both sit on Node's `http` module, so both use `@sse-query-invalidate/node`
+Express and Fastify both sit on Node's `http` module, so both use `restale-kit/node`
 directly (Fastify needs `reply.hijack()` first — see below). Hono, Bun, Deno, and edge runtimes
-speak `Request`/`Response`, so all of them use `@sse-query-invalidate/fetch`. No per-framework
+speak `Request`/`Response`, so all of them use `restale-kit/fetch`. No per-framework
 server packages exist.
 
 ---
@@ -86,7 +86,7 @@ idle connections. Interval configurable, default 30s.
 
 ## Server side
 
-### `@sse-query-invalidate/core`
+### `restale-kit/core`
 
 Runtime-agnostic. Produces a standard `ReadableStream<Uint8Array>` rather than writing into a
 Node-specific response object — this is what lets the Fetch-API transport exist without forking the
@@ -106,7 +106,7 @@ function createSSEChannel(options?: { keepaliveIntervalMs?: number }): SSEChanne
 `core` handles SSE framing and keepalives. It does not detect disconnects or set response headers —
 that's the transport adapter's job.
 
-### `@sse-query-invalidate/node`
+### `restale-kit/node`
 
 ```ts
 function attachSSE(req: IncomingMessage, res: ServerResponse, options?): SSEChannel
@@ -119,7 +119,7 @@ Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
 sends its own response on top of the streamed one and throws.
 
-### `@sse-query-invalidate/fetch`
+### `restale-kit/fetch`
 
 ```ts
 function toSSEResponse(request: Request, options?): { response: Response; channel: SSEChannel }
@@ -144,7 +144,7 @@ Auth, per-user scoping, and event filtering are out of scope — left to the use
 
 ## Client side
 
-### `@sse-query-invalidate/client-core`
+### `restale-kit/client-core`
 
 No UI framework, no cache library dependency.
 
@@ -182,7 +182,7 @@ instead, so a malformed server payload can't throw uncaught inside consuming cod
 `connect()`'s internal promise is backed by one-shot `open`/`error` listeners, removed on `close()`
 so a pending promise never resolves against a torn-down connection.
 
-### `@sse-query-invalidate/react`
+### `restale-kit/react`
 
 ```ts
 interface SSEQueryInvalidatorOptions extends ClientOptions {
@@ -203,7 +203,7 @@ Wraps `SSEInvalidatorClient` in a `useSyncExternalStore` subscription. Opens on 
 `disabled`. Closes with reason `'unmount'` on unmount. Knows nothing about queries or caches — it
 only forwards `invalidate` events to `onInvalidate`.
 
-### `@sse-query-invalidate/tanstack-query`
+### `restale-kit/tanstack-query`
 
 The one worked adapter, and the pattern to copy for any other cache library later:
 
@@ -223,8 +223,8 @@ function tanstackAdapter(queryClient: QueryClient) {
 Usage:
 
 ```ts
-import { useSSEInvalidator } from '@sse-query-invalidate/react'
-import { tanstackAdapter } from '@sse-query-invalidate/tanstack-query'
+import { useSSEInvalidator } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 const queryClient = useQueryClient()
