@@ -48,6 +48,7 @@ class MockRedisClient implements RedisClient {
 // Mock Ably channel implementing AblyChannel structurally
 class MockAblyChannel implements AblyChannel {
   publishedEvents: Array<{ name: string; data: unknown }> = []
+  listeners: Record<string, Array<(stateChange: any) => void>> = {}
 
   publish(name: string, data: unknown): unknown {
     this.publishedEvents.push({ name, data })
@@ -60,6 +61,25 @@ class MockAblyChannel implements AblyChannel {
 
   unsubscribe(listener: (message: { data: any }) => void): unknown {
     return Promise.resolve()
+  }
+
+  on(event: string, listener: (stateChange: any) => void): void {
+    if (!this.listeners[event]) this.listeners[event] = []
+    this.listeners[event].push(listener)
+  }
+
+  off(event: string, listener: (stateChange: any) => void): void {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(l => l !== listener)
+    }
+  }
+
+  emit(event: string, stateChange: any): void {
+    if (this.listeners[event]) {
+      for (const l of this.listeners[event]) {
+        l(stateChange)
+      }
+    }
   }
 }
 
@@ -212,6 +232,40 @@ void test('Ably PubSub Adapter', async (t) => {
     await nativeAdapter.publish('topic-y', { key: ['1'] })
     assert.strictEqual(nativeChannel.publishedEvents.length, 1)
     assert.deepStrictEqual(nativeChannel.publishedEvents[0].data, { key: ['1'] }) // Raw payload
+  })
+
+  await t.test('routing of channel failed/update errors and off cleanup', async () => {
+    const channel = new MockAblyChannel()
+    const client = new MockAblyClient({ echoMessages: true }, channel)
+    const adapter = ablyPubSubAdapter(client)
+
+    let errorReceived: unknown = null
+    adapter.onError!((err) => {
+      errorReceived = err
+    })
+
+    const unsub = await adapter.subscribe('topic-err', () => {})
+
+    // 1. Emit a 'failed' event
+    channel.emit('failed', { reason: new Error('Ably Channel Attachment Failed') })
+    assert.ok(errorReceived)
+    assert.strictEqual((errorReceived as Error).message, 'Ably Channel Attachment Failed')
+
+    // Reset
+    errorReceived = null
+
+    // 2. Emit an 'update' event with error
+    channel.emit('update', { reason: new Error('Ably Channel Update Error') })
+    assert.ok(errorReceived)
+    assert.strictEqual((errorReceived as Error).message, 'Ably Channel Update Error')
+
+    // Reset
+    errorReceived = null
+
+    // 3. Unsubscribe and check listener cleanup
+    await unsub()
+    channel.emit('failed', { reason: new Error('Should not be routed') })
+    assert.strictEqual(errorReceived, null)
   })
 })
 

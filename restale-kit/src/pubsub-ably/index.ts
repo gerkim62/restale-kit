@@ -9,6 +9,8 @@ export interface AblyChannel {
   publish(name: string, data: unknown): unknown
   subscribe(listener: (message: { data: unknown }) => void): unknown
   unsubscribe(listener: (message: { data: unknown }) => void): unknown
+  on?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
+  off?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
 }
 
 /**
@@ -104,10 +106,25 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
         }
       }
 
+      let stateListener: ((stateChange: { reason?: unknown }) => void) | undefined
+      if (typeof channel.on === 'function') {
+        stateListener = (stateChange: { reason?: unknown }) => {
+          if (stateChange.reason) {
+            errorHandler(stateChange.reason)
+          }
+        }
+        channel.on('failed', stateListener)
+        channel.on('update', stateListener)
+      }
+
       await channel.subscribe(listener)
 
       return async () => {
         try {
+          if (stateListener && typeof channel.off === 'function') {
+            channel.off('failed', stateListener)
+            channel.off('update', stateListener)
+          }
           await channel.unsubscribe(listener)
         } catch (err) {
           errorHandler(err)

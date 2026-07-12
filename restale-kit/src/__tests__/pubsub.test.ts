@@ -253,4 +253,99 @@ void test('PubSub Adapter Core Integration', async (t) => {
 
     assert.strictEqual(resubscribeCalled, true)
   })
+
+  await t.test('re-registration stale membership reconciliation', async () => {
+    let subscribeCalls: string[] = []
+    let unsubscribeCalls: string[] = []
+
+    const mockPubSub: PubSubAdapter = {
+      publish: () => Promise.resolve(),
+      subscribe: (topic) => {
+        subscribeCalls.push(topic)
+        return Promise.resolve(() => {
+          unsubscribeCalls.push(topic)
+        })
+      }
+    }
+
+    const group = new SSEChannelGroup({ pubsub: mockPubSub })
+    const ch = createSSEChannel()
+
+    // Register with topic-a and topic-b
+    group.register(ch, {}, { topics: ['topic-a', 'topic-b'] })
+    await new Promise(resolve => setTimeout(resolve, 15))
+
+    assert.deepStrictEqual(subscribeCalls.sort(), ['topic-a', 'topic-b'])
+    assert.deepStrictEqual(unsubscribeCalls, [])
+
+    // Re-register with topic-b and topic-c (topic-a dropped, topic-b kept, topic-c added)
+    subscribeCalls = []
+    unsubscribeCalls = []
+    group.register(ch, {}, { topics: ['topic-b', 'topic-c'] })
+    await new Promise(resolve => setTimeout(resolve, 15))
+
+    // topic-a should be unsubscribed, topic-c should be subscribed, topic-b should not change!
+    assert.deepStrictEqual(subscribeCalls, ['topic-c'])
+    assert.deepStrictEqual(unsubscribeCalls, ['topic-a'])
+
+    // Deregister the channel completely
+    subscribeCalls = []
+    unsubscribeCalls = []
+    group.deregister(ch)
+    await new Promise(resolve => setTimeout(resolve, 15))
+
+    // Should unsubscribe from topic-b and topic-c
+    assert.deepStrictEqual(unsubscribeCalls.sort(), ['topic-b', 'topic-c'])
+  })
+
+  await t.test('bounded retry and backoff on failed subscribe', async () => {
+    let attempts = 0
+    const mockPubSub: PubSubAdapter = {
+      publish: () => Promise.resolve(),
+      subscribe: (topic) => {
+        attempts++
+        if (attempts < 3) {
+          return Promise.reject(new Error('Transient connection error'))
+        }
+        return Promise.resolve(() => {})
+      }
+    }
+
+    const group = new SSEChannelGroup({ pubsub: mockPubSub })
+    const ch = createSSEChannel()
+
+    group.register(ch, {}, { topics: ['topic-retry'] })
+    
+    // Wait for the retry loop to run (attempts should eventually succeed: 1st fails, sleep 100ms, 2nd fails, sleep 200ms, 3rd succeeds)
+    await new Promise(resolve => setTimeout(resolve, 450))
+
+    assert.strictEqual(attempts, 3) // First 2 failed, 3rd succeeded
+  })
+
+  await t.test('retry loop aborts when channels are deregistered', async () => {
+    let attempts = 0
+    const mockPubSub: PubSubAdapter = {
+      publish: () => Promise.resolve(),
+      subscribe: (topic) => {
+        attempts++
+        return Promise.reject(new Error('Transient connection error'))
+      }
+    }
+
+    const group = new SSEChannelGroup({ pubsub: mockPubSub })
+    const ch = createSSEChannel()
+
+    group.register(ch, {}, { topics: ['topic-abort'] })
+    
+    // Allow the first attempt to fail and sleep to begin (100ms)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    
+    // Deregister the channel
+    group.deregister(ch)
+    
+    // Wait some time to ensure no more attempts are made
+    await new Promise(resolve => setTimeout(resolve, 350))
+
+    assert.strictEqual(attempts, 1) // Only 1 attempt was made before aborting
+  })
 })

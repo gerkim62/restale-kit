@@ -31,7 +31,7 @@ export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSign
   subscribe(
     topic: string,
     onMessage: (signal: TSignal | TSignal[]) => void
-  ): Promise<() => void> | (() => void) // returns/resolves an unsubscribe fn
+  ): Promise<() => void | Promise<void>>
 
   onError?(handler: (error: unknown) => void): void
 }
@@ -100,7 +100,7 @@ export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSign
 
 ## Adapter packages (subpath exports, each importing only its own broker's client lib)
 
-```
+```text
 restale-kit/pubsub-redis    # wraps a user-supplied ioredis (or compatible) client
 restale-kit/pubsub-ably     # wraps a user-supplied Ably client
 restale-kit/pubsub-pusher   # wraps a user-supplied Pusher client

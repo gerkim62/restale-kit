@@ -71,20 +71,46 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
             this.isSubscribed = true
             return
           }
-          try {
-            const unsub = await pubsub.subscribe(this.topic, this.onMessage)
-            this.unsubscribeFn = unsub
-            // If they registered and immediately deregistered while subscribe was in flight
+          let attempts = 0
+          const maxAttempts = 5
+          let delay = 100
+
+          const sleep = (ms: number) => {
+            const start = Date.now()
+            return new Promise<void>((resolve) => {
+              const interval = setInterval(() => {
+                if (Date.now() - start >= ms || this.channels.size === 0) {
+                  clearInterval(interval)
+                  resolve()
+                }
+              }, 50)
+            })
+          }
+
+          for (;;) {
             if (this.channels.size === 0) {
-              this.unsubscribeFn = undefined
               this.isSubscribed = false
-              if (typeof unsub === 'function') {
+              return
+            }
+            try {
+              const unsub = await pubsub.subscribe(this.topic, this.onMessage)
+              this.unsubscribeFn = unsub
+              if (this.channels.size === 0) {
+                this.unsubscribeFn = undefined
+                this.isSubscribed = false
                 await unsub()
               }
+              break
+            } catch (err) {
+              attempts++
+              if (attempts >= maxAttempts || this.channels.size === 0) {
+                this.isSubscribed = false
+                console.error(`[ERROR][TopicManager.subscribe] Failed to subscribe to topic "${this.topic}" after ${attempts.toString()} attempts:`, err)
+                break
+              }
+              await sleep(delay)
+              delay = Math.min(delay * 2, 2000)
             }
-          } catch (err) {
-            this.isSubscribed = false
-            console.error(`[ERROR][TopicManager.subscribe] Failed to subscribe to topic "${this.topic}":`, err)
           }
         })
         .catch((err: unknown) => {
@@ -184,6 +210,22 @@ export class SSEChannelGroup<
     const topicsList = options?.topics || []
     const topicsSet = new Set(topicsList)
 
+    const existingEntry = this.channels.get(channel)
+    if (existingEntry) {
+      // Find topics that were dropped
+      for (const oldTopic of existingEntry.topics) {
+        if (!topicsSet.has(oldTopic)) {
+          const topicManager = this.topics.get(oldTopic)
+          if (topicManager) {
+            topicManager.remove(channel)
+            if (topicManager.size === 0) {
+              this.topics.delete(oldTopic)
+            }
+          }
+        }
+      }
+    }
+
     this.channels.set(channel, { meta, topics: topicsSet })
 
     for (const topic of topicsSet) {
@@ -202,7 +244,9 @@ export class SSEChannelGroup<
         })
         this.topics.set(topic, topicManager)
       }
-      topicManager.add(channel)
+      if (!existingEntry || !existingEntry.topics.has(topic)) {
+        topicManager.add(channel)
+      }
     }
   }
 
