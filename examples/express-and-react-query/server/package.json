@@ -7,7 +7,7 @@
     "build:copy-static": "shx mkdir -p dist/public dist/views && shx cp -r src/public/* dist/public && shx cp -r src/views/* dist/views",
     "build:make-db": "shx mkdir -p dist/repos/common && shx touch dist/repos/common/database.json && echo \"{}\" > dist/repos/common/database.json",
     "clean-install": "rm -rf ./node_modules && rm -r package-lock.json && npm i",
-    "dev:basic": "cross-env DOTENV_CONFIG_PATH=./config/.env.development node --loader ts-node/esm --experimental-specifier-resolution=node ./src/main.ts",
+    "dev:basic": "cross-env DOTENV_CONFIG_PATH=./config/.env.development tsx ./src/main.ts",
     "dev:watch": "nodemon --exec \"npm run dev:basic\" --watch ./src --ext .ts",
     "dev": "npm run dev:watch",
     "lint": "eslint .",
@@ -44,6 +44,7 @@
     "restale-kit-example-shared": "workspace:*"
   },
   "devDependencies": {
+    "tsx": "^4.23.0",
     "tsconfig-paths": "^4.2.0",
     "@types/node": "^22.0.0",
     "@types/cors": "^2.8.17",
