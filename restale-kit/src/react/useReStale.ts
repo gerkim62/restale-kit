@@ -11,7 +11,7 @@ export interface UseReStaleOptions<TSignal extends InvalidateSignal = Invalidate
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
   /** Called on every received invalidation event. Typed by schema if provided. */
-  onInvalidate?: (signal: TSignal | TSignal[]) => void
+  onInvalidate: (signal: TSignal | TSignal[]) => void
 }
 
 /**
@@ -38,19 +38,19 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  */
 export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   url: string,
-  opts?: UseReStaleOptions<TSignal>
+  opts: UseReStaleOptions<TSignal>
 ): UseReStaleResult {
-  const disabled = opts?.disabled ?? false
-  const onInvalidateRef = useRef(opts?.onInvalidate)
-  onInvalidateRef.current = opts?.onInvalidate
+  const disabled = opts.disabled ?? false
+  const onInvalidateRef = useRef(opts.onInvalidate)
+  onInvalidateRef.current = opts.onInvalidate
 
   // Stable client reference — only recreated when url changes
   const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
   if (!clientRef.current || clientRef.current['url'] !== url) {
     clientRef.current = new SSEInvalidatorClient<TSignal>(url, {
-      autoReconnect: opts?.autoReconnect,
-      reconnect: opts?.reconnect,
-      signalSchema: opts?.signalSchema,
+      autoReconnect: opts.autoReconnect,
+      reconnect: opts.reconnect,
+      signalSchema: opts.signalSchema,
     })
   }
 
@@ -76,7 +76,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   // Wire up onInvalidate
   useEffect(() => {
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['invalidate']) => {
-      onInvalidateRef.current?.(event.detail)
+      onInvalidateRef.current(event.detail)
     }
 
     client.addEventListener('invalidate', handler)

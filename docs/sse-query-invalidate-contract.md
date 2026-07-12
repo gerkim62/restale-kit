@@ -530,7 +530,7 @@ narrow the type further (e.g., constrain `key` to specific shapes).
 interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
   extends ClientOptions<TSignal> {
   disabled?: boolean
-  onInvalidate?: (signal: TSignal | TSignal[]) => void   // ← typed by schema
+  onInvalidate: (signal: TSignal | TSignal[]) => void   // ← typed by schema
 }
 
 interface UseReStaleResult {
@@ -541,7 +541,7 @@ interface UseReStaleResult {
 
 function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   url: string,
-  opts?: UseReStaleOptions<TSignal>
+  opts: UseReStaleOptions<TSignal>
 ): UseReStaleResult
 ```
 
