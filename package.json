@@ -8,10 +8,19 @@
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm --filter restale-kit run build",
+    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/client/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/server/tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "validate": "pnpm run typecheck && pnpm run lint",
     "dev:client": "pnpm --filter restale-kit-example-client run dev",
     "dev:server": "pnpm --filter restale-kit-example-server run dev"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@7.0.2",
+    "typescript-eslint": "^8.63.0"
   }
 }

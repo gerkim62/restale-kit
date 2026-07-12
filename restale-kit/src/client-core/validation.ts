@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '../core/types.js'
+import type { InvalidateSignal, JSONValue } from '../core/types.js'
 
 /**
  * Validates an incoming SSE payload against the built-in structural rules.
@@ -37,36 +37,71 @@ export function validatePayload(data: string): InvalidateSignal | InvalidateSign
   return validateSingleSignal(parsed)
 }
 
-const VALID_ACTIONS = new Set(['invalidate', 'refetch', 'remove'])
+type ValidAction = InvalidateSignal['action']
+
+/** Type predicate: value is one of the three valid action strings. */
+function isValidAction(value: unknown): value is ValidAction {
+  return value === 'invalidate' || value === 'refetch' || value === 'remove'
+}
+
+/** Type guard: value is a non-null plain object (not an array). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Type guard: value is a JSONValue.
+ * JSON.parse output always satisfies this, but we verify to satisfy the type system.
+ */
+function isJSONValue(value: unknown): value is JSONValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return true
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJSONValue)
+  }
+  if (typeof value === 'object') {
+    return Object.values(value).every(isJSONValue)
+  }
+  return false
+}
 
 function validateSingleSignal(value: unknown): InvalidateSignal {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('Each signal must be a plain object')
   }
 
-  const obj = value as Record<string, unknown>
-
-  // Step 3: Must have a `key` property that is an Array
-  if (!('key' in obj) || !Array.isArray(obj.key)) {
-    throw new Error('Signal must have a "key" property that is an array')
+  // Step 3: Must have a `key` property that is an Array of JSONValues
+  if (!('key' in value) || !Array.isArray(value.key) || !value.key.every(isJSONValue)) {
+    throw new Error('Signal must have a "key" property that is an array of JSON-serialisable values')
   }
+  const key: JSONValue[] = value.key
 
   // Step 4: If `exact` is present, it must be boolean
-  if ('exact' in obj && typeof obj.exact !== 'boolean') {
+  if ('exact' in value && typeof value.exact !== 'boolean') {
     throw new Error('Signal "exact" field must be a boolean')
   }
 
   // Step 5: If `action` is present, it must be one of the valid values
-  if ('action' in obj && !VALID_ACTIONS.has(obj.action as string)) {
+  if ('action' in value && !isValidAction(value.action)) {
+    const actionStr = typeof value.action === 'string' ? value.action : JSON.stringify(value.action)
     throw new Error(
-      `Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${String(obj.action)}'`
+      `Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${actionStr}'`
     )
   }
 
   // Step 6: Extra unknown fields are ignored — forward-compatible
-  return {
-    key: obj.key,
-    ...(obj.exact !== undefined && { exact: obj.exact as boolean }),
-    ...(obj.action !== undefined && { action: obj.action as InvalidateSignal['action'] }),
+  const signal: InvalidateSignal = { key }
+  if (typeof value.exact === 'boolean') {
+    signal.exact = value.exact
   }
+  if (isValidAction(value.action)) {
+    signal.action = value.action
+  }
+  return signal
 }

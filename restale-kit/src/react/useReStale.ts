@@ -1,7 +1,7 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
 import type { InvalidateSignal } from '../core/types.js'
 import { SSEInvalidatorClient } from '../client-core/client.js'
-import type { ConnectionStatus, ClientOptions } from '../client-core/types.js'
+import type { ConnectionStatus, ClientOptions, SSEInvalidatorClientEventMap } from '../client-core/types.js'
 
 /**
  * Options for `useReStale`, extending `ClientOptions` with React-specific fields.
@@ -59,7 +59,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   // useSyncExternalStore subscription
   const subscribe = useCallback(
     (callback: () => void) => {
-      const handler = () => callback()
+      const handler = () => { callback() }
       client.addEventListener('statuschange', handler)
       return () => {
         client.removeEventListener('statuschange', handler)
@@ -75,9 +75,8 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   // Wire up onInvalidate
   useEffect(() => {
-    const handler = (event: Event) => {
-      const ce = event as CustomEvent<TSignal | TSignal[]>
-      onInvalidateRef.current?.(ce.detail)
+    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['invalidate']) => {
+      onInvalidateRef.current?.(event.detail)
     }
 
     client.addEventListener('invalidate', handler)
@@ -90,7 +89,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   useEffect(() => {
     if (disabled) return
 
-    client.connect()
+    void client.connect()
 
     return () => {
       client.close()
@@ -98,7 +97,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   }, [client, disabled])
 
   const reconnect = useCallback(() => client.connect(), [client])
-  const close = useCallback(() => client.close(), [client])
+  const close = useCallback(() => { client.close() }, [client])
 
   return { connection, reconnect, close }
 }

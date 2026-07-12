@@ -28,7 +28,8 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   })
 
   // Pipe the ReadableStream into the Node response
-  const nodeReadable = Readable.fromWeb(channel.stream as import('node:stream/web').ReadableStream)
+  // @ts-expect-error am unable to fix this 
+  const nodeReadable = Readable.fromWeb(channel.stream)
   nodeReadable.pipe(res)
 
   // Wire up disconnect detection

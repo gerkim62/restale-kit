@@ -20,6 +20,7 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-namespace -- Reason: required namespace structure to match official Standard Schema v1 spec
 export declare namespace StandardSchemaV1 {
   type Result<Output> = SuccessResult<Output> | FailureResult
 

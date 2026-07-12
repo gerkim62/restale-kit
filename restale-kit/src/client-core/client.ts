@@ -151,16 +151,17 @@ export class SSEInvalidatorClient<
   // --- Private ---
 
   private createConnection(): Promise<void> {
-    // Build connect promise
-    let resolve: () => void
-    let reject: (error: Event) => void
+    // Build connect promise. The executor runs synchronously, so resolve and
+    // reject are always assigned before the Promise constructor returns.
+    let resolveConnect: () => void = () => {}
+    let rejectConnect: (error: Event) => void = () => {}
 
     const promise = new Promise<void>((res, rej) => {
-      resolve = res
-      reject = rej
+      resolveConnect = res
+      rejectConnect = rej
     })
 
-    this.connectPromise = { promise, resolve: resolve!, reject: reject! }
+    this.connectPromise = { promise, resolve: resolveConnect, reject: rejectConnect }
 
     this.setStatus({ status: 'connecting' })
 
@@ -303,7 +304,7 @@ export class SSEInvalidatorClient<
    * Runs the validation pipeline (steps 1–7) and emits either `invalidate` or `error`.
    */
   private wireInvalidateListener(es: EventSource): void {
-    es.addEventListener('invalidate', (event: MessageEvent) => {
+    es.addEventListener('invalidate', (event: MessageEvent<string>) => {
       try {
         // Steps 1–6: structural validation
         const validated = validatePayload(event.data)
@@ -348,11 +349,10 @@ export class SSEInvalidatorClient<
           this.dispatchEvent(new CustomEvent('invalidate', { detail: validated }))
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : JSON.stringify(err)
         this.dispatchEvent(
           new CustomEvent('error', {
-            detail: new ErrorEvent('error', {
-              message: err instanceof Error ? err.message : String(err),
-            }),
+            detail: new ErrorEvent('error', { message }),
           })
         )
       }

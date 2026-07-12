@@ -28,11 +28,11 @@ export function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSig
           queryClient.removeQueries(filters)
           break
         case 'refetch':
-          queryClient.refetchQueries(filters)
+          void queryClient.refetchQueries(filters)
           break
         case 'invalidate':
         default:
-          queryClient.invalidateQueries(filters)
+          void queryClient.invalidateQueries(filters)
           break
       }
     }
