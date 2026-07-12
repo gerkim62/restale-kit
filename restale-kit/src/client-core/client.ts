@@ -255,7 +255,7 @@ export class SSEInvalidatorClient<
           "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
           "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
           ...(issues ? ["\n  schemaIssues:", JSON.stringify(issues, null, 2)] : []),
-          "\n  error:", error.message + (error.stack ? "\n" + error.stack : "")
+          "\n  error:", error.stack || error.message
         )
         const message = error.message
         this.dispatchEvent(
