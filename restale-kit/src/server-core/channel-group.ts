@@ -1,7 +1,7 @@
 import type { InvalidateSignal } from '../shared/types.js'
 import { type StandardSchemaV1, validateStandardSchema } from '../shared/standard-schema.js'
 import type { SSEChannel } from './channel.js'
-import { ChannelClosedError } from '../shared/errors.js'
+import { ChannelClosedError, SchemaValidationError } from '../shared/errors.js'
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting.
@@ -69,6 +69,16 @@ export class SSEChannelGroup<
         if (error instanceof ChannelClosedError) {
           this.channels.delete(channel)
         } else {
+          const err = error instanceof Error ? error : new Error(String(error))
+          const issues = error instanceof SchemaValidationError ? error.issues : undefined
+          // The invalidate signal(s) that failed validation or routing during group broadcast
+          console.error(
+            "[ERROR][SSEChannelGroup.broadcast] Failed to invalidate channel",
+            "\n  metadata:", JSON.stringify(meta, null, 2).slice(0, 500),
+            "\n  signal:", JSON.stringify(signal, null, 2).slice(0, 500),
+            issues ? "\n  schemaIssues: " + JSON.stringify(issues, null, 2) : "",
+            "\n  error:", err.stack || err.message
+          )
           errors.push(error)
         }
       }

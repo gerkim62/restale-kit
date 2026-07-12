@@ -82,8 +82,13 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     clearInterval(keepaliveTimer)
     try {
       controller.close()
-    } catch {
-      // Controller may already be closed if stream was cancelled
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      // The stream controller closed status during cleanup
+      console.warn(
+        "[WARN][closeInternal] Controller close threw an expected error (likely already closed)",
+        "\n  error:", error.stack || error.message
+      )
     }
   }
 

@@ -7,6 +7,7 @@ import type {
 } from './types.js'
 import { validatePayload } from './validation.js'
 import { calculateBackoff } from './backoff.js'
+import { SchemaValidationError } from '../shared/errors.js'
 
 const DEFAULT_AUTO_RECONNECT = true
 const DEFAULT_MAX_RETRIES = Infinity
@@ -221,9 +222,10 @@ export class SSEInvalidatorClient<
    */
   private wireInvalidateListener(es: EventSource): void {
     es.addEventListener('invalidate', (event: MessageEvent<string>) => {
+      let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
         // Steps 1–6: structural validation
-        const validated = validatePayload(event.data)
+        validated = validatePayload(event.data)
 
         // Step 7: optional schema validation
         if (this.signalSchema) {
@@ -243,7 +245,19 @@ export class SSEInvalidatorClient<
           this.dispatchEvent(new CustomEvent('invalidate', { detail: validated }))
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : JSON.stringify(err)
+        const error = err instanceof Error ? err : new Error(String(err))
+        const issues = err instanceof SchemaValidationError ? err.issues : undefined
+        // The raw incoming event payload that failed validation or processing
+        console.error(
+          "[ERROR][wireInvalidateListener] Failed to process invalidate event",
+          "\n  url:", this.url,
+          "\n  attempt:", this.attempt,
+          "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
+          "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
+          ...(issues ? ["\n  schemaIssues:", JSON.stringify(issues, null, 2)] : []),
+          "\n  error:", error.message + (error.stack ? "\n" + error.stack : "")
+        )
+        const message = error.message
         this.dispatchEvent(
           new CustomEvent('error', {
             detail: new ErrorEvent('error', { message }),

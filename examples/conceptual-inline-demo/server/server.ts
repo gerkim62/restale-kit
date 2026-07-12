@@ -38,7 +38,14 @@ function broadcast(signal: { key: unknown[]; exact?: boolean; action?: string } 
   for (const res of channels) {
     try {
       res.write(frame)
-    } catch {
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      // The express.Response socket write failure when a client is disconnected
+      console.warn(
+        "[WARN][broadcast] Failed to write frame to client channel, marking for cleanup",
+        "\n  frame:", frame.slice(0, 500),
+        "\n  error:", error.stack || error.message
+      )
       dead.push(res)
     }
   }

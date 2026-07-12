@@ -18,8 +18,15 @@ export function validatePayload(data: string): InvalidateSignal | InvalidateSign
   let parsed: unknown
   try {
     parsed = JSON.parse(data)
-  } catch {
-    throw new Error('Failed to parse SSE payload as JSON')
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err))
+    // The raw string payload from the SSE connection that failed JSON parsing
+    console.error(
+      "[ERROR][validatePayload] Failed to parse SSE payload as JSON",
+      "\n  rawData:", data.slice(0, 500),
+      "\n  error:", error.stack || error.message
+    )
+    throw new Error(`Failed to parse SSE payload as JSON: ${error.message}`, { cause: err })
   }
 
   // Step 2: Must be a plain object or array of plain objects

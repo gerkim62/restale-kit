@@ -121,13 +121,21 @@ function useReStale(url: string, opts: UseReStaleOptions = {}): UseReStaleResult
     }
 
     es.addEventListener('invalidate', (e) => {
+      const rawData = (e as MessageEvent).data
       try {
-        const data = JSON.parse((e as MessageEvent).data)
+        const data = JSON.parse(rawData)
         eventCountRef.current++
         notify()
         onInvalidateRef.current?.(data)
-      } catch {
-        // Malformed payload — spec says emit error, simplified here
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err))
+        // The raw SSE event data that failed structure/JSON parsing or validation callback execution
+        console.error(
+          "[ERROR][useReStale.onInvalidate] Failed to parse or handle SSE invalidate payload",
+          "\n  url:", url,
+          "\n  rawData:", rawData.slice(0, 500),
+          "\n  error:", error.stack || error.message
+        )
       }
     })
   }, [url, autoReconnect, baseDelayMs, maxDelayMs, jitter, setStatus, notify])
