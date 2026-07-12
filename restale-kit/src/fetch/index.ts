@@ -1,1 +1,1 @@
-export function toSSEResponse() {}
+export { toSSEResponse } from './response.js'

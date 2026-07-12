@@ -1,1 +1,1 @@
-export function attachSSE() {}
+export { attachSSE } from './attach.js'

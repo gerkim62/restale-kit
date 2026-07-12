@@ -1,1 +1,1 @@
-export function tanstackAdapter() {}
+export { tanstackAdapter } from './adapter.js'
