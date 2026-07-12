@@ -1,6 +1,6 @@
-import type { InvalidateSignal, ChannelState } from './types.js'
-import { type StandardSchemaV1, validateStandardSchema } from './standard-schema.js'
-import { ChannelClosedError } from './errors.js'
+import type { InvalidateSignal, ChannelState } from '../shared/types.js'
+import { type StandardSchemaV1, validateStandardSchema } from '../shared/standard-schema.js'
+import { ChannelClosedError } from '../shared/errors.js'
 import { formatInvalidateFrame, formatKeepalive } from './framing.js'
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 30_000

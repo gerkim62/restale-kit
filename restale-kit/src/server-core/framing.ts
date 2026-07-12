@@ -1,4 +1,4 @@
-import type { SSEInvalidateEvent } from './types.js'
+import type { SSEInvalidateEvent } from '../shared/types.js'
 
 const encoder = new TextEncoder()
 

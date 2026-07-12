@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '../core/types.js'
+import type { InvalidateSignal } from '../shared/types.js'
 import type { QueryClient } from '@tanstack/react-query'
 
 /**

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal } from '../core/types.js'
+import type { InvalidateSignal } from '../shared/types.js'
 import { SSEInvalidatorClient } from '../client-core/client.js'
 import type { ConnectionStatus, ClientOptions, SSEInvalidatorClientEventMap } from '../client-core/types.js'
 

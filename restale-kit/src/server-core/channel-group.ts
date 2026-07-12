@@ -1,7 +1,7 @@
-import type { InvalidateSignal } from './types.js'
-import { type StandardSchemaV1, validateStandardSchema } from './standard-schema.js'
+import type { InvalidateSignal } from '../shared/types.js'
+import { type StandardSchemaV1, validateStandardSchema } from '../shared/standard-schema.js'
 import type { SSEChannel } from './channel.js'
-import { ChannelClosedError } from './errors.js'
+import { ChannelClosedError } from '../shared/errors.js'
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting.

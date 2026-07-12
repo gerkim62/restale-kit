@@ -1,5 +1,5 @@
-import type { InvalidateSignal } from '../core/types.js'
-import type { StandardSchemaV1 } from '../core/standard-schema.js'
+import type { InvalidateSignal } from '../shared/types.js'
+import type { StandardSchemaV1 } from '../shared/standard-schema.js'
 
 /**
  * Discriminated union representing the SSE client's connection state.

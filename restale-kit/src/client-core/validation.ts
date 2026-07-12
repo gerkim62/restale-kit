@@ -1,4 +1,4 @@
-import type { InvalidateSignal, JSONValue } from '../core/types.js'
+import type { InvalidateSignal, JSONValue } from '../shared/types.js'
 
 /**
  * Validates an incoming SSE payload against the built-in structural rules.

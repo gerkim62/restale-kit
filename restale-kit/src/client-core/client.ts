@@ -1,5 +1,5 @@
-import type { InvalidateSignal } from '../core/types.js'
-import { type StandardSchemaV1, validateStandardSchema } from '../core/standard-schema.js'
+import type { InvalidateSignal } from '../shared/types.js'
+import { type StandardSchemaV1, validateStandardSchema } from '../shared/standard-schema.js'
 import type {
   ConnectionStatus,
   ClientOptions,
