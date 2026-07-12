@@ -296,7 +296,54 @@ class SchemaValidationError extends Error {
 Thrown by `invalidate()` when a signal fails schema validation. Contains both a formatted
 `message` string and the original `issues` array for programmatic access.
 
-Both error classes are exported from `restale-kit` (core).
+#### `SSEChannelGroup`
+
+```ts
+class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta = unknown> {
+  constructor(options?: {
+    metaSchema?: StandardSchemaV1<unknown, TMeta>
+  })
+
+  /** Number of active channels in the group */
+  readonly size: number
+
+  /**
+   * Registers a channel with its associated metadata.
+   * If metaSchema was provided, validates metadata synchronously.
+   * Throws SchemaValidationError if validation fails or is asynchronous.
+   */
+  register(channel: SSEChannel<TSignal>, meta: TMeta): void
+
+  /** Deregisters a channel from the group */
+  deregister(channel: SSEChannel<TSignal>): void
+
+  /**
+   * Broadcasts to channels matching the predicate.
+   * If a channel throws ChannelClosedError, it is automatically deregistered.
+   * Any other errors (including SchemaValidationError) propagate immediately.
+   */
+  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void
+
+  /**
+   * Explicitly broadcasts to ALL channels in the group.
+   * If a channel throws ChannelClosedError, it is automatically deregistered.
+   * Any other errors propagate immediately.
+   */
+  broadcastToAll(signal: TSignal | TSignal[]): void
+}
+```
+
+This class acts as a native connection manager in `core`. Callers are encouraged to use `broadcast()`
+with a predicate to narrow invalidations. To send to all channels unconditionally, the caller must
+opt in explicitly via `broadcastToAll()`.
+
+When a `metaSchema` is provided in the constructor, `register()` validates the `meta` object using
+`metaSchema['~standard'].validate(meta)` before adding the channel. If validation fails, it throws a
+`SchemaValidationError` containing the issues. If validation returns a `Promise`, it throws a
+`SchemaValidationError` with the message `"async schemas are not supported"` since registration is
+synchronous.
+
+All error classes and `SSEChannelGroup` are exported from `restale-kit` (core).
 
 #### Backpressure
 
@@ -537,7 +584,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` (core) | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `ChannelState`, `ChannelClosedError`, `SchemaValidationError`, `InvalidateSignal`, `SSEInvalidateEvent`, `JSONValue` |
+| `restale-kit` (core) | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `ChannelState`, `ChannelClosedError`, `SchemaValidationError`, `InvalidateSignal`, `SSEInvalidateEvent`, `JSONValue` |
 | `restale-kit/client-core` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `InvalidateSignal` (re-export from core) |
 | `restale-kit/node` | `attachSSE` |
 | `restale-kit/fetch` | `toSSEResponse` |
@@ -555,135 +602,83 @@ Users import schema constructors from their own library (Zod, Valibot, ArkType, 
 
 ## Multi-channel broadcasting
 
-The library does not provide a `ChannelGroup` or `broadcast()` helper — that is userland code.
+The library provides `SSEChannelGroup` to manage client connections on the server side. It manages
+registering and deregistering channels, automatically cleans up closed connections during
+transmissions, and encourages/compels callers to scope their invalidations.
 
-### Broadcast contract
-
-The canonical userland broadcast signature is:
-
-```ts
-function broadcast<TSignal extends InvalidateSignal = InvalidateSignal>(
-  channels: Map<SSEChannel<TSignal>, unknown>,
-  signal: TSignal | TSignal[],
-  matchFn?: (meta: unknown) => boolean
-): void
-```
-
-**Rules the implementation must follow:**
-
-1. If `matchFn` is provided, call it with the per-channel metadata before calling
-   `channel.invalidate()`. Only channels for which `matchFn(meta)` returns `true` receive the
-   signal.
-2. If `matchFn` is omitted or `undefined`, send to all channels (unconditional broadcast).
-3. If `channel.invalidate()` throws `ChannelClosedError`, remove that channel from the
-   collection and continue to the next channel. Never let one closed channel abort the broadcast.
-4. Any other error from `channel.invalidate()` (including `SchemaValidationError`) is re-thrown immediately.
-5. The broadcast must be **synchronous** — all `invalidate()` calls happen in the same
-   microtask; no awaiting between channels.
-
-### Recommended data structure: `Map<SSEChannel<TSignal>, Meta>`
-
-A plain `Set<SSEChannel>` is sufficient for unconditional broadcasting, but selective broadcasting
-requires the caller to correlate channels with identity metadata (user ID, session ID, tenant, etc.).
-The recommended structure is a `Map` from channel to a metadata object chosen by the application:
+### The Broadcasting API
 
 ```ts
-import { z } from 'zod'
-import { attachSSE } from 'restale-kit/node'
-import type { SSEChannel } from 'restale-kit'
-
+// Application defines its own metadata shape
 interface ClientMeta {
   userId: string
   roles: string[]
 }
 
-const channels = new Map<SSEChannel, ClientMeta>()
+import { attachSSE } from 'restale-kit/node'
+import { SSEChannelGroup } from 'restale-kit'
 
-// On connection:
-const channel = attachSSE(req, res)
-channels.set(channel, { userId: req.user.id, roles: req.user.roles })
+// Create a group typed with your metadata
+const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
-// On disconnect (transport adapter calls channel.notifyClosed(); clean up Map too):
-req.on('close', () => {
-  channel.notifyClosed()
-  channels.delete(channel)
+app.get('/sse', (req, res) => {
+  const channel = attachSSE(req, res)
+  
+  // Register the channel in the group
+  group.register(channel, { userId: req.user.id, roles: req.user.roles })
+
+  // Clean up when the client disconnects
+  req.on('close', () => {
+    channel.notifyClosed()
+    group.deregister(channel)
+  })
 })
 ```
 
-### Broadcast helpers (userland)
+### Scoped broadcast (Preferred)
 
-The two patterns callers will write, shown in full so implementations are unambiguous:
-
-**Unconditional broadcast** — every connected client receives the signal:
-
-```ts
-function broadcastAll<TSignal extends InvalidateSignal>(
-  channels: Map<SSEChannel<TSignal>, unknown>,
-  signal: TSignal | TSignal[]
-): void {
-  for (const [channel] of channels) {
-    try {
-      channel.invalidate(signal)
-    } catch (e) {
-      if (e instanceof ChannelClosedError) channels.delete(channel)
-      else throw e
-    }
-  }
-}
-
-// Usage:
-broadcastAll(channels, { key: ['todos'] })
-```
-
-**Selective broadcast** — only clients whose metadata satisfies the predicate receive the signal:
+To prevent accidental data leakage, callers should utilize `group.broadcast()`. It requires
+a predicate function to specify exactly which channels receive the signals.
 
 ```ts
-function broadcastWhere<TSignal extends InvalidateSignal, Meta>(
-  channels: Map<SSEChannel<TSignal>, Meta>,
-  signal: TSignal | TSignal[],
-  matchFn: (meta: Meta) => boolean
-): void {
-  for (const [channel, meta] of channels) {
-    if (!matchFn(meta)) continue
-    try {
-      channel.invalidate(signal)
-    } catch (e) {
-      if (e instanceof ChannelClosedError) channels.delete(channel)
-      else throw e
-    }
-  }
-}
-
-// Usage — only invalidate todos for user 123:
-broadcastWhere(
-  channels,
+// Only invalidate todos for user 123
+group.broadcast(
   { key: ['todos', { userId: '123' }], exact: true },
   (meta) => meta.userId === '123'
 )
 
-// Usage — invalidate all data for admin users:
-broadcastWhere(
-  channels,
+// Invalidate all admin data for admin users
+group.broadcast(
   { key: ['admin-data'] },
   (meta) => meta.roles.includes('admin')
 )
+```
+
+### Unconditional broadcast (Explicit opt-in)
+
+If the signal truly concerns every connected client (e.g., global configuration updates or
+system-wide invalidation), callers can explicitly use `broadcastToAll()`. This forces the caller
+to consciously choose a blanket broadcast.
+
+```ts
+// Invalidate system configuration for everyone
+group.broadcastToAll({ key: ['config'] })
 ```
 
 ### What the library guarantees vs. what is userland
 
 | Concern | Where it lives |
 |---|---|
-| SSE framing, keepalives, channel lifecycle | `core` |
+| SSE framing, keepalives, channel lifecycle | `core` (`SSEChannel`) |
 | Per-channel disconnect detection | transport adapter (`/node`, `/fetch`) |
-| Collecting channels, storing metadata | **userland** |
-| Deciding which channels to notify | **userland** (`matchFn`) |
+| Grouping channels, clean-ups, broadcast loops | `core` (`SSEChannelGroup`) |
+| Defining identity metadata structure | **userland** |
 | Auth, session identity, roles | **userland** (never touches `core`) |
 
-The `matchFn` predicate is **never passed to `core`**. The library has no routing table, no
-subscription registry, and no concept of "which clients want which keys." All of that logic
-lives in the application layer, which is the only place that knows about users and sessions.
-
-These patterns are documented in usage examples, not built into the library.
+The predicate in `broadcast` is evaluated synchronously against the registered metadata.
+If `channel.invalidate()` throws `ChannelClosedError` during transmission, the group catches it,
+removes the channel internally, and continues broadcasting to the next channel in the group.
+All other errors (e.g. `SchemaValidationError`) propagate immediately to the caller.
 
 ---
 
@@ -735,10 +730,13 @@ declare namespace StandardSchemaV1 {
 ### Server-side validation with Zod
 
 By providing a schema to `attachSSE` or `toSSEResponse`, the channel is typed with the inferred
-schema output, and all inputs to `channel.invalidate()` are validated at runtime:
+schema output, and all inputs to `channel.invalidate()` are validated at runtime. Using
+`SSEChannelGroup` with a metadata schema validation allows enforcing connection metadata types at the
+same time:
 
 ```ts
 import { z } from 'zod'
+import { SSEChannelGroup } from 'restale-kit'
 import { attachSSE } from 'restale-kit/node'
 
 // Define schema for valid application signals
@@ -748,17 +746,30 @@ const TodoSignalSchema = z.object({
   action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
 })
 
-// Infer the type
 type TodoSignal = z.infer<typeof TodoSignalSchema>
+
+// Define schema for connection metadata
+const ClientMetaSchema = z.object({
+  userId: z.string(),
+})
+
+type ClientMeta = z.infer<typeof ClientMetaSchema>
+
+// Create group validating both signals and connection metadata
+const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
+  metaSchema: ClientMetaSchema,
+})
 
 app.get('/sse', (req, res) => {
   // Pass schema to attachSSE to enforce it on the channel
   const channel = attachSSE(req, res, { signalSchema: TodoSignalSchema })
-  channels.set(channel, { userId: req.user.id })
+  
+  // Validated synchronously upon registration; throws SchemaValidationError if invalid
+  group.register(channel, { userId: req.user.id })
   
   // Enforces type safety at compile time:
   channel.invalidate({ key: ['todos', { userId: '123' }] }) // ✅ Valid type
-  channel.invalidate({ key: ['posts'] }) // ❌ TypeScript compilation error
+  // channel.invalidate({ key: ['posts'] }) // ❌ TypeScript compilation error
 })
 ```
 
@@ -804,4 +815,3 @@ function App() {
 - Event filtering or routing
 - Replaying missed events after a reconnect
 - Any query fetching, caching, or state management beyond calling into the chosen adapter
-- `ChannelGroup` / broadcast helpers (userland — see above)

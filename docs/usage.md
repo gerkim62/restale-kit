@@ -7,8 +7,7 @@ Based on the contract, here's the complete usage from both ends.
 ### Express
 ```ts
 import express from 'express'
-import { ChannelClosedError } from 'restale-kit'
-import type { SSEChannel } from 'restale-kit'
+import { SSEChannelGroup, InvalidateSignal } from 'restale-kit'
 import { attachSSE } from 'restale-kit/node'
 
 const app = express()
@@ -17,69 +16,45 @@ interface ClientMeta {
   userId: string
 }
 
-const channels = new Map<SSEChannel, ClientMeta>()
+// Create a connection group managed by the library
+const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
-  channels.set(channel, { userId: req.user.id })
+  
+  // Register the channel with its metadata
+  group.register(channel, { userId: req.user.id })
 
   req.on('close', () => {
     channel.notifyClosed()
-    channels.delete(channel)
+    group.deregister(channel) // Remove on disconnect
   })
 })
-
-// Broadcast helpers — userland, not part of the library.
-
-function broadcastAll(signal: Parameters<SSEChannel['invalidate']>[0]) {
-  for (const [channel] of channels) {
-    try {
-      channel.invalidate(signal)
-    } catch (e) {
-      if (e instanceof ChannelClosedError) channels.delete(channel)
-      else throw e
-    }
-  }
-}
-
-function broadcastWhere(
-  signal: Parameters<SSEChannel['invalidate']>[0],
-  matchFn: (meta: ClientMeta) => boolean
-) {
-  for (const [channel, meta] of channels) {
-    if (!matchFn(meta)) continue
-    try {
-      channel.invalidate(signal)
-    } catch (e) {
-      if (e instanceof ChannelClosedError) channels.delete(channel)
-      else throw e
-    }
-  }
-}
 
 // After a DB write, a webhook, etc.
 
 function notifyTodosChanged() {
-  broadcastAll({ key: ['todos'] })
+  // Opt in to broadcast to everyone
+  group.broadcastToAll({ key: ['todos'] })
 }
 
 function notifyUserTodosChanged(userId: string) {
-  broadcastWhere(
+  // Scoped broadcast (preferred) — filters channels by metadata
+  group.broadcast(
     { key: ['todos', { userId }], exact: true },
     (meta) => meta.userId === userId
   )
 }
 
 function notifyEverything() {
-  broadcastAll({ key: [] }) // [] = invalidate all
+  group.broadcastToAll({ key: [] }) // [] = invalidate all
 }
 ```
 
 ### Hono (or Bun / Deno / edge)
 ```ts
 import { Hono } from 'hono'
-import { ChannelClosedError } from 'restale-kit'
-import type { SSEChannel } from 'restale-kit'
+import { SSEChannelGroup, InvalidateSignal } from 'restale-kit'
 import { toSSEResponse } from 'restale-kit/fetch'
 
 const app = new Hono()
@@ -88,22 +63,22 @@ interface ClientMeta {
   userId: string
 }
 
-const channels = new Map<SSEChannel, ClientMeta>()
+const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 app.get('/sse', (c) => {
   const { response, channel } = toSSEResponse(c.req.raw)
-  channels.set(channel, { userId: c.get('userId') })
+  group.register(channel, { userId: c.get('userId') })
 
   // cleanup when client disconnects
   c.req.raw.signal.addEventListener('abort', () => {
     channel.notifyClosed()
-    channels.delete(channel)
+    group.deregister(channel)
   })
 
   return response // hand it back to Hono — this is the inverted flow
 })
 
-// Same broadcastAll / broadcastWhere helpers as the Express example above.
+// Same group.broadcast / group.broadcastToAll invalidation calls from anywhere in your app.
 ```
 
 ### Fastify (special case)
@@ -116,7 +91,7 @@ const app = Fastify()
 app.get('/sse', (request, reply) => {
   reply.hijack() // required — stops Fastify sending its own response
   const channel = attachSSE(request.raw, reply.raw)
-  // same Map + cleanup pattern as Express
+  // same group.register + cleanup pattern as Express
 })
 ```
 
@@ -230,8 +205,7 @@ For runtime validation of signals and full compile-time type safety, you can opt
 ```ts
 import express from 'express'
 import { z } from 'zod'
-import { attachSSE, ChannelClosedError } from 'restale-kit'
-import type { SSEChannel } from 'restale-kit'
+import { SSEChannelGroup } from 'restale-kit'
 import { attachSSE as attachNodeSSE } from 'restale-kit/node'
 
 // 1. Define schema for valid application signals
@@ -247,48 +221,40 @@ const AppSignalSchema = z.object({
 
 type AppSignal = z.infer<typeof AppSignalSchema>
 
-interface ClientMeta {
-  userId: string
-}
+// 2. Define schema for connection metadata
+const ClientMetaSchema = z.object({
+  userId: z.string(),
+})
 
-// 2. Type channels Map with the generic AppSignal
-const channels = new Map<SSEChannel<AppSignal>, ClientMeta>()
+type ClientMeta = z.infer<typeof ClientMetaSchema>
+
+// 3. Type connection group and pass the metaSchema
+const group = new SSEChannelGroup<AppSignal, ClientMeta>({
+  metaSchema: ClientMetaSchema,
+})
 
 app.get('/sse', (req, res) => {
-  // 3. Pass schema to attachSSE to type the returned channel
+  // 4. Pass schema to attachSSE to type the returned channel
   const channel = attachNodeSSE(req, res, { signalSchema: AppSignalSchema })
-  channels.set(channel, { userId: req.user.id })
+  
+  // Validation runs synchronously upon registration
+  group.register(channel, { userId: req.user.id })
 
   req.on('close', () => {
     channel.notifyClosed()
-    channels.delete(channel)
+    group.deregister(channel)
   })
 })
 
-// 4. Type the helper with AppSignal generic
-function broadcastWhere(
-  signal: AppSignal | AppSignal[],
-  matchFn: (meta: ClientMeta) => boolean
-) {
-  for (const [channel, meta] of channels) {
-    if (!matchFn(meta)) continue
-    try {
-      channel.invalidate(signal)
-    } catch (e) {
-      if (e instanceof ChannelClosedError) channels.delete(channel)
-      else throw e // SchemaValidationError propagates
-    }
-  }
-}
-
 // 5. Calling with incorrect structure will raise a TypeScript error and fail validation
 function notifyUserTodos(userId: string) {
-  broadcastWhere(
+  // Scoped broadcast — filters channels by metadata
+  group.broadcast(
     { key: ['todos', { userId }], exact: true }, // ✅ Valid
     (meta) => meta.userId === userId
   )
   
-  // broadcastWhere({ key: ['posts'] }, ...) // ❌ TypeScript compilation error
+  // group.broadcast({ key: ['posts'] }, ...) // ❌ TypeScript compilation error
 }
 ```
 
