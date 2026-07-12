@@ -9,7 +9,7 @@
 - `fastify` — Node adapter on port 3002
 - `node` — Node adapter on port 3003
 
-`frontend/` contains cache/UI implementations. `react-query` is the first one and can select any backend from its Server control. Its Vite proxy preserves same-origin EventSource requests while routing to the selected backend.
+`frontend/` contains cache/UI implementations. Both `react-query` and `react-swr` can select any backend from their Server control. Their Vite proxies preserve same-origin EventSource requests while routing to the selected backend.
 
 Run the frontend and one backend in separate terminals:
 
@@ -17,5 +17,7 @@ Run the frontend and one backend in separate terminals:
 pnpm dev:client
 pnpm dev:hono
 ```
+
+For the SWR implementation, run `pnpm dev:swr` instead of `pnpm dev:client`.
 
 The frontend is intentionally independent of the backend choice. Future frontends such as `frontend/react-swr` or `frontend/vue-query` import `@restale-kit-example/shared` and use the same `/todos` and `/sse` contract; future backends import the same package and expose that contract.

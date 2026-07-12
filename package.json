@@ -13,6 +13,7 @@
     "lint:fix": "eslint . --fix --max-warnings 0",
     "validate": "pnpm run typecheck && pnpm run lint",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
+    "dev:swr": "pnpm --filter @restale-kit-example/react-swr run dev",
     "dev:express": "pnpm --filter @restale-kit-example/express run dev",
     "dev:hono": "pnpm --filter @restale-kit-example/hono run dev",
     "dev:fastify": "pnpm --filter @restale-kit-example/fastify run dev",

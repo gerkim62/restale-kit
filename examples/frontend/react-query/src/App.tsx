@@ -18,6 +18,19 @@ import { useReStale } from 'restale-kit/react';
 import { tanstackAdapter } from 'restale-kit/tanstack-query';
 import { AppSignalSchema, type AppSignal, type Todo } from '@restale-kit-example/shared';
 
+type Server = 'express' | 'hono' | 'fastify' | 'node';
+
+const servers: ReadonlyArray<{ value: Server; label: string }> = [
+  { value: 'express', label: 'Express · Node adapter' },
+  { value: 'hono', label: 'Hono · Fetch adapter' },
+  { value: 'fastify', label: 'Fastify · Node adapter' },
+  { value: 'node', label: 'Native Node · Node adapter' },
+];
+
+function isServer(value: string): value is Server {
+  return servers.some((server) => server.value === value);
+}
+
 // Create TanStack Query Client
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,7 +125,7 @@ function Login() {
 function Dashboard() {
   const [userId, setUserId] = useState<string | null>(null);
   const [newTodoText, setNewTodoText] = useState('');
-  const [server, setServer] = useState<'express' | 'hono' | 'fastify' | 'node'>('express');
+  const [server, setServer] = useState<Server>('express');
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -126,7 +139,7 @@ function Dashboard() {
   }, [navigate]);
 
   const apiBase = `/api/${server}`;
-  const todoQueryKey = ['todos', { userId, server }] as const;
+  const todoQueryKey = ['todos', { userId, server }];
 
   // Connect to the selected server implementation's SSE stream.
   const { connection, reconnect } = useReStale<AppSignal>(
@@ -250,11 +263,12 @@ function Dashboard() {
           </div>
           <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             Server{' '}
-            <select value={server} onChange={(event) => setServer(event.target.value as typeof server)}>
-              <option value="express">Express · Node adapter</option>
-              <option value="hono">Hono · Fetch adapter</option>
-              <option value="fastify">Fastify · Node adapter</option>
-              <option value="node">Native Node · Node adapter</option>
+            <select value={server} onChange={(event) => {
+              if (isServer(event.target.value)) setServer(event.target.value);
+            }}>
+              {servers.map((serverOption) => (
+                <option key={serverOption.value} value={serverOption.value}>{serverOption.label}</option>
+              ))}
             </select>
           </label>
           <button className="btn-secondary" onClick={handleLogout} style={{ padding: '6px 12px', fontSize: '13px' }}>

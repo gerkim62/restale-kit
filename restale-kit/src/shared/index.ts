@@ -7,3 +7,4 @@ export type {
   SSEInvalidateEvent,
   ChannelState,
 } from './types.js'
+export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey } from './types.js'
