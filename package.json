@@ -17,7 +17,8 @@
     "dev:express": "pnpm --filter @restale-kit-example/express run dev",
     "dev:hono": "pnpm --filter @restale-kit-example/hono run dev",
     "dev:fastify": "pnpm --filter @restale-kit-example/fastify run dev",
-    "dev:node": "pnpm --filter @restale-kit-example/node run dev"
+    "dev:node": "pnpm --filter @restale-kit-example/node run dev",
+    "example": "node scripts/run-example.mjs"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

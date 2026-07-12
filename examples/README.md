@@ -3,6 +3,14 @@
 Each backend is a small HTTP/SSE Todo server. There is no starter-template
 configuration, test scaffolding, or persistence layer.
 
+Start a backend and frontend interactively:
+
+```sh
+pnpm example
+```
+
+The launcher prints the local frontend URL after you choose both applications.
+
 - **Zod validation:** Express, Hono, and the React Query client pass Zod schemas
   for request data and ReStale signals.
 - **No Zod validation:** Fastify, native Node, and the SWR client use the same
