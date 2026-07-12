@@ -6,7 +6,8 @@
     "dev": "tsx watch server.ts"
   },
   "dependencies": {
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "restale-kit": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
