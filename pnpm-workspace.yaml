@@ -1,7 +1,11 @@
 packages:
   - 'restale-kit'
-  - 'examples/conceptual-inline-demo/client'
-  - 'examples/conceptual-inline-demo/server'
+  - 'examples/express-and-react-query/client'
+  - 'examples/express-and-react-query/server'
+  - 'examples/express-and-react-query/shared'
 
 allowBuilds:
   esbuild: true
+
+minimumReleaseAgeExclude:
+  - helmet@8.3.0

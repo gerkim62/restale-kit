@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ESNext"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@src/*": ["./src/*"]
+    },
+    "useUnknownInCatchVariables": false,
+    "types": ["node"]
+  },
+  "ts-node": {
+    "swc": false,
+    "require": ["tsconfig-paths/register", "dotenv/config"],
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": ["src/public/*"]
+}

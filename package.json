@@ -8,7 +8,7 @@
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm --filter restale-kit run build",
-    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/client/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/server/tsconfig.json --noEmit",
+    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "validate": "pnpm run typecheck && pnpm run lint",
