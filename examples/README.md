@@ -1,23 +1,26 @@
-# Interchangeable examples
+# ReStale examples
 
-`shared/` contains the Todo domain contract: request validation, types, the in-memory Todo API, and the ReStale invalidation signal schema. It has no dependency on a web framework, cache, or frontend.
+Each backend is a small HTTP/SSE Todo server. There is no starter-template
+configuration, test scaffolding, or persistence layer.
 
-`backend/` contains equivalent HTTP/SSE implementations of that contract:
+- **Zod validation:** Express, Hono, and the React Query client pass Zod schemas
+  for request data and ReStale signals.
+- **No Zod validation:** Fastify, native Node, and the SWR client use the same
+  flow without application-level Zod parsing.
 
-- `express` — Node adapter on port 3000
-- `hono` — Fetch adapter on port 3001
-- `fastify` — Node adapter on port 3002
-- `node` — Node adapter on port 3003
-
-`frontend/` contains cache/UI implementations. Both `react-query` and `react-swr` can select any backend from their Server control. Their Vite proxies preserve same-origin EventSource requests while routing to the selected backend.
-
-Run the frontend and one backend in separate terminals:
+Run a backend and its matching client in separate terminals:
 
 ```sh
-pnpm dev:client
 pnpm dev:hono
+pnpm dev:client
 ```
 
-For the SWR implementation, run `pnpm dev:swr` instead of `pnpm dev:client`.
+Or use the no-Zod pair:
 
-The frontend is intentionally independent of the backend choice. Future frontends such as `frontend/react-swr` or `frontend/vue-query` import `@restale-kit-example/shared` and use the same `/todos` and `/sse` contract; future backends import the same package and expose that contract.
+```sh
+pnpm dev:fastify
+pnpm dev:swr
+```
+
+The Vite proxy defaults to Hono. Change its target to port `3002` for Fastify,
+or use `pnpm dev:express` and `pnpm dev:node` to run the other backend variants.

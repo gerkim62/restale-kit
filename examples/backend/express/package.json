@@ -3,55 +3,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build": "shx rm -rf dist && npm run lint && tsc --project tsconfig.prod.json && npm run build:copy-static && npm run build:make-db",
-    "build:copy-static": "shx mkdir -p dist/public dist/views && shx cp -r src/public/* dist/public && shx cp -r src/views/* dist/views",
-    "build:make-db": "shx mkdir -p dist/repos/common && shx touch dist/repos/common/database.json && echo \"{}\" > dist/repos/common/database.json",
-    "clean-install": "rm -rf ./node_modules && rm -r package-lock.json && npm i",
-    "dev:basic": "cross-env DOTENV_CONFIG_PATH=./config/.env.development tsx ./src/main.ts",
-    "dev:watch": "nodemon --exec \"npm run dev:basic\" --watch ./src --ext .ts",
-    "dev": "npm run dev:watch",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "start": "cross-env DOTENV_CONFIG_PATH=./config/.env.production node -r dotenv/config -r module-alias/register ./dist/main.js",
-    "sync": "delay 1s && browser-sync start --config bs-config.js",
-    "test": "cross-env NODE_ENV=test vitest",
-    "type-check": "tsc -b --noEmit"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "engines": {
-    "node": ">=16.0.0"
-  },
-  "_moduleAliases": {
-    "@src": "dist"
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "cross-env": "^10.1.0",
-    "dayjs": "^1.11.21",
-    "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "helmet": "^8.3.0",
-    "jet-env": "^1.1.6",
-    "jet-logger": "^2.2.3",
-    "jet-paths": "^3.1.1",
-    "jet-validators": "^2.3.1",
-    "jsonfile": "^6.2.1",
-    "module-alias": "^2.3.4",
-    "morgan": "^1.11.0",
-    "tspo": "^1.0.7",
-    "zod": "^3.24.0",
     "restale-kit": "workspace:*",
     "@restale-kit-example/shared": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.23.0",
-    "tsconfig-paths": "^4.2.0",
     "@types/node": "^22.0.0",
-    "@types/cors": "^2.8.17",
-    "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
-    "@types/morgan": "^1.9.9",
-    "ts-node": "^10.9.2",
-    "nodemon": "^3.1.9"
+    "typescript": "~6.0.2"
   }
 }

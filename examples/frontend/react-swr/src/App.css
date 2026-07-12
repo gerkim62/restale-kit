@@ -1,13 +1,7 @@
-#root { max-width: 720px; margin: 0 auto; padding: 2rem; }
+#root { max-width: 42rem; margin: 2rem auto; font: 16px system-ui, sans-serif; }
 main { display: grid; gap: 1rem; }
-header, .controls, .add-todo, li { display: flex; align-items: center; gap: 1rem; }
-header { justify-content: space-between; }
-h1, p { margin: 0; }
-.controls { flex-wrap: wrap; }
-label { display: grid; gap: .3rem; }
-input, select, button { font: inherit; padding: .5rem .65rem; }
-.add-todo input { flex: 1; }
-ul { display: grid; gap: .5rem; list-style: none; margin: 0; padding: 0; }
-li { justify-content: space-between; border: 1px solid #ddd; border-radius: .4rem; padding: .6rem; }
-.status { border-radius: 99px; padding: .3rem .6rem; background: #eee; }
-.status.open { background: #c8f7d2; }.status.error, .error { color: #b42318; }
+header, form { display: flex; justify-content: space-between; gap: .5rem; align-items: center; }
+h1 { margin: 0; font-size: 1.25rem; }
+input { flex: 1; }
+input, button { font: inherit; padding: .45rem .6rem; }
+ul { margin: 0; padding-left: 1.25rem; }

@@ -20,11 +20,7 @@ export const AppSignalSchema = z.object({
 
 export type AppSignal = z.infer<typeof AppSignalSchema>;
 
-export const ClientMetaSchema = z.object({
-  userId: z.string(),
-});
-
-export type ClientMeta = z.infer<typeof ClientMetaSchema>;
+export type ClientMeta = { userId: string };
 
 export const UserIdSchema = z.string().min(1, 'userId is required');
 export const CreateTodoSchema = z.object({
@@ -35,10 +31,6 @@ export const UpdateTodoSchema = z.object({
   completed: z.boolean().optional(),
 });
 
-/**
- * Framework-neutral in-memory API used by every transport example. The server
- * owns only HTTP parsing and SSE adaptation; behaviour stays identical.
- */
 export function createTodoApi(onTodosChanged: (userId: string) => void) {
   const userTodos = new Map<string, Todo[]>();
 

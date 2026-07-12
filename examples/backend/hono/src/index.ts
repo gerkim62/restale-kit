@@ -9,13 +9,12 @@ import {
   createTodoApi,
   type AppSignal,
   type ClientMeta,
-  ClientMetaSchema,
   UpdateTodoSchema,
   UserIdSchema,
 } from '@restale-kit-example/shared'
 
 const app = new Hono()
-const group = new SSEChannelGroup<AppSignal, ClientMeta>({ metaSchema: ClientMetaSchema })
+const group = new SSEChannelGroup<AppSignal, ClientMeta>()
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
