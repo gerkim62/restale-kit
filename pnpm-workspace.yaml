@@ -1,8 +1,8 @@
 packages:
   - 'restale-kit'
-  - 'examples/express-and-react-query/client'
-  - 'examples/express-and-react-query/server'
-  - 'examples/express-and-react-query/shared'
+  - 'examples/shared'
+  - 'examples/backend/*'
+  - 'examples/frontend/*'
 
 allowBuilds:
   esbuild: true
