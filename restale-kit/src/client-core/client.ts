@@ -1,6 +1,5 @@
 import type { InvalidateSignal } from '../core/types.js'
-import type { StandardSchemaV1 } from '../core/standard-schema.js'
-import { SchemaValidationError } from '../core/errors.js'
+import { type StandardSchemaV1, validateStandardSchema } from '../core/standard-schema.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -163,102 +162,15 @@ export class SSEInvalidatorClient<
 
     this.connectPromise = { promise, resolve: resolveConnect, reject: rejectConnect }
 
-    this.setStatus({ status: 'connecting' })
-
-    const es = new EventSource(this.url)
-    this.eventSource = es
-
-    es.onopen = () => {
-      this.attempt = 0 // Reset on successful open
-
-      this.setStatus({ status: 'open' })
-
-      // Resolve the connect() promise
-      if (this.connectPromise) {
-        this.connectPromise.resolve()
-        this.connectPromise = null
-      }
-    }
-
-    es.onerror = (event: Event) => {
-      // EventSource fires error and closes itself
-      this.teardown()
-
-      // Emit error event
-      this.dispatchEvent(new CustomEvent('error', { detail: event }))
-
-      if (this.autoReconnect && this.attempt < this.maxRetries) {
-        // Schedule retry — don't reject connect() yet
-        const delay = calculateBackoff(this.attempt, this.reconnectOptions)
-        this.attempt++
-
-        this.setStatus({ status: 'connecting' })
-
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null
-
-          // Carry over the existing connect promise if there is one
-          const existingPromise = this.connectPromise
-
-          this.setStatus({ status: 'connecting' })
-
-          const es2 = new EventSource(this.url)
-          this.eventSource = es2
-
-          es2.onopen = () => {
-            this.attempt = 0
-            this.setStatus({ status: 'open' })
-            if (existingPromise) {
-              existingPromise.resolve()
-              this.connectPromise = null
-            }
-          }
-
-          es2.onerror = (event2: Event) => {
-            this.teardown()
-            this.dispatchEvent(new CustomEvent('error', { detail: event2 }))
-
-            if (this.autoReconnect && this.attempt < this.maxRetries) {
-              const delay2 = calculateBackoff(this.attempt, this.reconnectOptions)
-              this.attempt++
-              this.setStatus({ status: 'connecting' })
-              this.retryTimer = setTimeout(() => {
-                this.retryTimer = null
-                this.retryInternal()
-              }, delay2)
-            } else {
-              // Max retries exhausted or autoReconnect off
-              this.setStatus({ status: 'error', error: event2 })
-              if (this.connectPromise) {
-                this.connectPromise.reject(event2)
-                this.connectPromise = null
-              }
-            }
-          }
-
-          this.wireInvalidateListener(es2)
-        }, delay)
-      } else {
-        // No auto-reconnect or max retries reached
-        this.setStatus({ status: 'error', error: event })
-
-        if (this.connectPromise) {
-          this.connectPromise.reject(event)
-          this.connectPromise = null
-        }
-      }
-    }
-
-    this.wireInvalidateListener(es)
+    this.establishConnection()
 
     return promise
   }
 
   /**
-   * Retry logic extracted to avoid deep nesting.
-   * Reuses the existing connectPromise if present.
+   * Establishes the connection and handles retries / promise resolution.
    */
-  private retryInternal(): void {
+  private establishConnection(): void {
     const existingPromise = this.connectPromise
 
     this.setStatus({ status: 'connecting' })
@@ -267,11 +179,13 @@ export class SSEInvalidatorClient<
     this.eventSource = es
 
     es.onopen = () => {
-      this.attempt = 0
+      this.attempt = 0 // Reset on successful open
       this.setStatus({ status: 'open' })
       if (existingPromise) {
         existingPromise.resolve()
-        this.connectPromise = null
+        if (this.connectPromise === existingPromise) {
+          this.connectPromise = null
+        }
       }
     }
 
@@ -285,13 +199,15 @@ export class SSEInvalidatorClient<
         this.setStatus({ status: 'connecting' })
         this.retryTimer = setTimeout(() => {
           this.retryTimer = null
-          this.retryInternal()
+          this.establishConnection()
         }, delay)
       } else {
         this.setStatus({ status: 'error', error: event })
-        if (this.connectPromise) {
-          this.connectPromise.reject(event)
-          this.connectPromise = null
+        if (existingPromise) {
+          existingPromise.reject(event)
+          if (this.connectPromise === existingPromise) {
+            this.connectPromise = null
+          }
         }
       }
     }
@@ -315,30 +231,8 @@ export class SSEInvalidatorClient<
           const results: TSignal[] = []
 
           for (const signal of signals) {
-            const result = this.signalSchema['~standard'].validate(signal)
-
-            if (result instanceof Promise) {
-              this.dispatchEvent(
-                new CustomEvent('error', {
-                  detail: new ErrorEvent('error', {
-                    message: 'async schemas are not supported',
-                  }),
-                })
-              )
-              return
-            }
-
-            if (result.issues) {
-              const schemaError = new SchemaValidationError(result.issues)
-              this.dispatchEvent(
-                new CustomEvent('error', {
-                  detail: new ErrorEvent('error', { message: schemaError.message }),
-                })
-              )
-              return
-            }
-
-            results.push(result.value)
+            const value = validateStandardSchema(signal, this.signalSchema)
+            results.push(value)
           }
 
           // Step 8: emit validated, typed payload

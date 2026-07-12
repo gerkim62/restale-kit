@@ -1,7 +1,7 @@
 import type { InvalidateSignal } from './types.js'
-import type { StandardSchemaV1 } from './standard-schema.js'
+import { type StandardSchemaV1, validateStandardSchema } from './standard-schema.js'
 import type { SSEChannel } from './channel.js'
-import { ChannelClosedError, SchemaValidationError } from './errors.js'
+import { ChannelClosedError } from './errors.js'
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting.
@@ -38,15 +38,7 @@ export class SSEChannelGroup<
    */
   register(channel: SSEChannel<TSignal>, meta: TMeta): void {
     if (this.metaSchema) {
-      const result = this.metaSchema['~standard'].validate(meta)
-
-      if (result instanceof Promise) {
-        throw new SchemaValidationError([{ message: 'async schemas are not supported' }])
-      }
-
-      if (result.issues) {
-        throw new SchemaValidationError(result.issues)
-      }
+      validateStandardSchema(meta, this.metaSchema)
     }
 
     this.channels.set(channel, meta)
@@ -96,22 +88,6 @@ export class SSEChannelGroup<
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
   broadcastToAll(signal: TSignal | TSignal[]): void {
-    const errors: unknown[] = []
-
-    for (const [channel] of this.channels) {
-      try {
-        channel.invalidate(signal)
-      } catch (error) {
-        if (error instanceof ChannelClosedError) {
-          this.channels.delete(channel)
-        } else {
-          errors.push(error)
-        }
-      }
-    }
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, 'Broadcast encountered validation or runtime errors')
-    }
+    this.broadcast(signal, () => true)
   }
 }

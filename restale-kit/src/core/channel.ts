@@ -1,6 +1,6 @@
 import type { InvalidateSignal, ChannelState } from './types.js'
-import type { StandardSchemaV1 } from './standard-schema.js'
-import { ChannelClosedError, SchemaValidationError } from './errors.js'
+import { type StandardSchemaV1, validateStandardSchema } from './standard-schema.js'
+import { ChannelClosedError } from './errors.js'
 import { formatInvalidateFrame, formatKeepalive } from './framing.js'
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 30_000
@@ -51,17 +51,7 @@ function validateSignal<TSignal extends InvalidateSignal>(
   signal: unknown,
   schema: StandardSchemaV1<unknown, TSignal>
 ): TSignal {
-  const result = schema['~standard'].validate(signal)
-
-  if (result instanceof Promise) {
-    throw new SchemaValidationError([{ message: 'async schemas are not supported' }])
-  }
-
-  if (result.issues) {
-    throw new SchemaValidationError(result.issues)
-  }
-
-  return result.value
+  return validateStandardSchema(signal, schema)
 }
 
 /**

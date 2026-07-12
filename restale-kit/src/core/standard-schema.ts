@@ -1,3 +1,5 @@
+import { SchemaValidationError } from './errors.js'
+
 /**
  * Standard Schema v1 interface — inlined per the Standard Schema spec's recommendation.
  * @see https://github.com/standard-schema/standard-schema
@@ -38,3 +40,25 @@ export declare namespace StandardSchemaV1 {
     readonly path?: ReadonlyArray<PropertyKey | { key: PropertyKey }>
   }
 }
+
+/**
+ * Validates a value against a Standard Schema v1.
+ * Throws a SchemaValidationError if the schema validation fails or returns a Promise.
+ */
+export function validateStandardSchema<T>(
+  value: unknown,
+  schema: StandardSchemaV1<unknown, T>
+): T {
+  const result = schema['~standard'].validate(value)
+
+  if (result instanceof Promise) {
+    throw new SchemaValidationError([{ message: 'async schemas are not supported' }])
+  }
+
+  if (result.issues) {
+    throw new SchemaValidationError(result.issues)
+  }
+
+  return result.value
+}
+
