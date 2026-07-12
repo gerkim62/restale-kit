@@ -1,7 +1,15 @@
 #root { max-width: 42rem; margin: 2rem auto; font: 16px system-ui, sans-serif; }
 main { display: grid; gap: 1rem; }
-header, form { display: flex; justify-content: space-between; gap: .5rem; align-items: center; }
-h1 { margin: 0; font-size: 1.25rem; }
-input { flex: 1; }
+header, form, li { display: flex; gap: .5rem; align-items: center; }
+header { justify-content: space-between; }
+header div { margin-right: auto; }
+h1, p { margin: 0; }
+h1 { font-size: 1.25rem; }
+header p { color: #666; font-size: .9rem; }
+input:not([type='checkbox']) { flex: 1; }
 input, button { font: inherit; padding: .45rem .6rem; }
-ul { margin: 0; padding-left: 1.25rem; }
+ul { margin: 0; padding: 0; display: grid; gap: .5rem; }
+li { list-style: none; }
+li span { flex: 1; }
+.done { color: #666; text-decoration: line-through; }
+.users { display: grid; gap: .5rem; }

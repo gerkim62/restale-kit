@@ -22,7 +22,14 @@ export type AppSignal = z.infer<typeof AppSignalSchema>;
 
 export type ClientMeta = { userId: string };
 
-export const UserIdSchema = z.string().min(1, 'userId is required');
+export const DemoUsers = [
+  { id: 'ada', name: 'Ada Lovelace' },
+  { id: 'grace', name: 'Grace Hopper' },
+  { id: 'linus', name: 'Linus Torvalds' },
+] as const;
+
+export type DemoUser = (typeof DemoUsers)[number];
+export const UserIdSchema = z.enum(['ada', 'grace', 'linus']);
 export const CreateTodoSchema = z.object({
   text: z.string().min(1, 'Todo text is required'),
 });

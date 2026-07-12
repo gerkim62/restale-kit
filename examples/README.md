@@ -11,6 +11,9 @@ pnpm example
 
 The launcher prints the local frontend URL after you choose both applications.
 
+The client then asks you to sign in as Ada, Grace, or Linus. Each demo session
+has its own Todo list and SSE invalidation stream.
+
 - **Zod validation:** Express, Hono, and the React Query client pass Zod schemas
   for request data and ReStale signals.
 - **No Zod validation:** Fastify, native Node, and the SWR client use the same
