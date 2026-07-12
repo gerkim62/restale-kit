@@ -423,14 +423,39 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
 }
 
+interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
+  invalidate: CustomEvent<TSignal | TSignal[]>
+  statuschange: CustomEvent<ConnectionStatus>
+  error: CustomEvent<Event>
+}
+
 class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal> extends EventTarget {
   constructor(url: string, opts?: ClientOptions<TSignal>)
   get status(): ConnectionStatus
   connect(): Promise<void>   // resolves when open; rejects with the error Event if it fails first
   close(): void               // reason 'manual'; connect() can reopen
-  // emits: 'invalidate' (CustomEvent<TSignal | TSignal[]>)   ← typed by schema
-  //        'statuschange' (CustomEvent<ConnectionStatus>)
-  //        'error' (CustomEvent<Event>)
+
+  addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
+    type: K,
+    listener: (this: SSEInvalidatorClient<TSignal>, ev: SSEInvalidatorClientEventMap<TSignal>[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void
+
+  removeEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
+    type: K,
+    listener: (this: SSEInvalidatorClient<TSignal>, ev: SSEInvalidatorClientEventMap<TSignal>[K]) => any,
+    options?: boolean | EventListenerOptions
+  ): void
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void
 }
 ```
 
@@ -629,7 +654,6 @@ app.get('/sse', (req, res) => {
 
   // Clean up when the client disconnects
   req.on('close', () => {
-    channel.notifyClosed()
     group.deregister(channel)
   })
 })

@@ -26,7 +26,6 @@ app.get('/sse', (req, res) => {
   group.register(channel, { userId: req.user.id })
 
   req.on('close', () => {
-    channel.notifyClosed()
     group.deregister(channel) // Remove on disconnect
   })
 })
@@ -71,7 +70,6 @@ app.get('/sse', (c) => {
 
   // cleanup when client disconnects
   c.req.raw.signal.addEventListener('abort', () => {
-    channel.notifyClosed()
     group.deregister(channel)
   })
 
@@ -151,7 +149,7 @@ function SSEStatus() {
     return <button onClick={reconnect}>Reconnect</button>
   }
 
-  return <span>{connection.status}</span> // 'connecting' | 'open' | 'closed'
+  return <span>{connection.status}</span> // 'connecting' | 'open' | 'closed' | 'error'
 }
 ```
 
@@ -241,7 +239,6 @@ app.get('/sse', (req, res) => {
   group.register(channel, { userId: req.user.id })
 
   req.on('close', () => {
-    channel.notifyClosed()
     group.deregister(channel)
   })
 })
