@@ -1,4 +1,4 @@
-import type { Arguments, ScopedMutator } from 'swr'
+import type { Arguments } from 'swr'
 import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
@@ -15,6 +15,17 @@ export interface SWRAdapterOptions<TSignal extends InvalidateSignal = Invalidate
 }
 
 /**
+ * The subset of SWR's global `mutate` API required by this adapter.
+ *
+ * Keeping this local avoids exposing SWR's broad generic mutator surface in
+ * ReStale's public API while remaining structurally compatible with it.
+ */
+export interface SWRMutator {
+  (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
+  (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
+}
+
+/**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *
  * By default, SWR keys must be JSON-safe arrays using the same hierarchical
@@ -26,7 +37,7 @@ export interface SWRAdapterOptions<TSignal extends InvalidateSignal = Invalidate
  * cached values without revalidation.
  */
 export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  mutate: ScopedMutator,
+  mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): (signal: TSignal | TSignal[]) => void {
   return (signal) => {
@@ -40,7 +51,7 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
       }
 
       if (item.action === 'remove') {
-        void mutate(filter, undefined, { revalidate: false })
+        void mutate(filter, undefined, false)
       } else {
         void mutate(filter)
       }
