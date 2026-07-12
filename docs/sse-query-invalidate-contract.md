@@ -500,15 +500,69 @@ users don't need to also import from core.
 ## Multi-channel broadcasting
 
 The library does not provide a `ChannelGroup` or `broadcast()` helper — that is userland code.
-The recommended `Set<SSEChannel>` pattern from the usage examples is simple and correct. One note
-for implementers:
 
-When iterating a `Set` and a channel throws `ChannelClosedError`, catch it and remove the channel
-from the set. Do not let one closed channel abort the broadcast to the remaining channels:
+### Broadcast contract
+
+The canonical userland broadcast signature is:
 
 ```ts
-function broadcast(channels: Set<SSEChannel>, signal: InvalidateSignal) {
-  for (const channel of channels) {
+function broadcast(
+  channels: Map<SSEChannel, unknown>,   // or Set — see below
+  signal: InvalidateSignal | InvalidateSignal[],
+  matchFn?: (meta: unknown) => boolean  // omit to broadcast to all
+): void
+```
+
+**Rules the implementation must follow:**
+
+1. If `matchFn` is provided, call it with the per-channel metadata before calling
+   `channel.invalidate()`. Only channels for which `matchFn(meta)` returns `true` receive the
+   signal.
+2. If `matchFn` is omitted or `undefined`, send to all channels (unconditional broadcast).
+3. If `channel.invalidate()` throws `ChannelClosedError`, remove that channel from the
+   collection and continue to the next channel. Never let one closed channel abort the broadcast.
+4. Any other error from `channel.invalidate()` is re-thrown immediately.
+5. The broadcast must be **synchronous** — all `invalidate()` calls happen in the same
+   microtask; no awaiting between channels.
+
+### Recommended data structure: `Map<SSEChannel, Meta>`
+
+A plain `Set<SSEChannel>` is sufficient for unconditional broadcasting, but selective broadcasting
+requires the caller to correlate channels with identity metadata (user ID, session ID, tenant, etc.).
+The recommended structure is a `Map` from channel to a metadata object chosen by the application:
+
+```ts
+// Application defines its own metadata shape — the library has no opinion on this.
+interface ClientMeta {
+  userId: string
+  roles: string[]
+}
+
+const channels = new Map<SSEChannel, ClientMeta>()
+
+// On connection:
+const channel = attachSSE(req, res)
+channels.set(channel, { userId: req.user.id, roles: req.user.roles })
+
+// On disconnect (transport adapter calls channel.notifyClosed(); clean up Map too):
+req.on('close', () => {
+  channel.notifyClosed()
+  channels.delete(channel)
+})
+```
+
+### Broadcast helpers (userland)
+
+The two patterns callers will write, shown in full so implementations are unambiguous:
+
+**Unconditional broadcast** — every connected client receives the signal:
+
+```ts
+function broadcastAll(
+  channels: Map<SSEChannel, unknown>,
+  signal: InvalidateSignal | InvalidateSignal[]
+): void {
+  for (const [channel] of channels) {
     try {
       channel.invalidate(signal)
     } catch (e) {
@@ -517,9 +571,60 @@ function broadcast(channels: Set<SSEChannel>, signal: InvalidateSignal) {
     }
   }
 }
+
+// Usage:
+broadcastAll(channels, { key: ['todos'] })
 ```
 
-This pattern is documented in usage examples, not built into the library.
+**Selective broadcast** — only clients whose metadata satisfies the predicate receive the signal:
+
+```ts
+function broadcastWhere<Meta>(
+  channels: Map<SSEChannel, Meta>,
+  signal: InvalidateSignal | InvalidateSignal[],
+  matchFn: (meta: Meta) => boolean
+): void {
+  for (const [channel, meta] of channels) {
+    if (!matchFn(meta)) continue
+    try {
+      channel.invalidate(signal)
+    } catch (e) {
+      if (e instanceof ChannelClosedError) channels.delete(channel)
+      else throw e
+    }
+  }
+}
+
+// Usage — only invalidate todos for user 123:
+broadcastWhere(
+  channels,
+  { key: ['todos', { userId: '123' }], exact: true },
+  (meta) => meta.userId === '123'
+)
+
+// Usage — invalidate all data for admin users:
+broadcastWhere(
+  channels,
+  { key: ['admin-data'] },
+  (meta) => meta.roles.includes('admin')
+)
+```
+
+### What the library guarantees vs. what is userland
+
+| Concern | Where it lives |
+|---|---|
+| SSE framing, keepalives, channel lifecycle | `core` |
+| Per-channel disconnect detection | transport adapter (`/node`, `/fetch`) |
+| Collecting channels, storing metadata | **userland** |
+| Deciding which channels to notify | **userland** (`matchFn`) |
+| Auth, session identity, roles | **userland** (never touches `core`) |
+
+The `matchFn` predicate is **never passed to `core`**. The library has no routing table, no
+subscription registry, and no concept of "which clients want which keys." All of that logic
+lives in the application layer, which is the only place that knows about users and sessions.
+
+These patterns are documented in usage examples, not built into the library.
 
 ---
 
