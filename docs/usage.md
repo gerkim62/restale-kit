@@ -221,6 +221,108 @@ client.close()
 
 ---
 
+## Zod & Standard Schema Integration (Optional)
+
+For runtime validation of signals and full compile-time type safety, you can optionally pass standard schema validation objects (like Zod) on both the server and client. If omitted, the library uses plain `InvalidateSignal` and bypasses schema validation.
+
+### Server Side with Zod
+
+```ts
+import express from 'express'
+import { z } from 'zod'
+import { attachSSE, ChannelClosedError } from 'restale-kit'
+import type { SSEChannel } from 'restale-kit'
+import { attachSSE as attachNodeSSE } from 'restale-kit/node'
+
+// 1. Define schema for valid application signals
+const AppSignalSchema = z.object({
+  key: z.union([
+    z.tuple([z.literal('todos')]),
+    z.tuple([z.literal('todos'), z.object({ userId: z.string() })]),
+    z.tuple([z.literal('users'), z.string()]),
+  ]),
+  exact: z.boolean().optional(),
+  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
+})
+
+type AppSignal = z.infer<typeof AppSignalSchema>
+
+interface ClientMeta {
+  userId: string
+}
+
+// 2. Type channels Map with the generic AppSignal
+const channels = new Map<SSEChannel<AppSignal>, ClientMeta>()
+
+app.get('/sse', (req, res) => {
+  // 3. Pass schema to attachSSE to type the returned channel
+  const channel = attachNodeSSE(req, res, { signalSchema: AppSignalSchema })
+  channels.set(channel, { userId: req.user.id })
+
+  req.on('close', () => {
+    channel.notifyClosed()
+    channels.delete(channel)
+  })
+})
+
+// 4. Type the helper with AppSignal generic
+function broadcastWhere(
+  signal: AppSignal | AppSignal[],
+  matchFn: (meta: ClientMeta) => boolean
+) {
+  for (const [channel, meta] of channels) {
+    if (!matchFn(meta)) continue
+    try {
+      channel.invalidate(signal)
+    } catch (e) {
+      if (e instanceof ChannelClosedError) channels.delete(channel)
+      else throw e // SchemaValidationError propagates
+    }
+  }
+}
+
+// 5. Calling with incorrect structure will raise a TypeScript error and fail validation
+function notifyUserTodos(userId: string) {
+  broadcastWhere(
+    { key: ['todos', { userId }], exact: true }, // ✅ Valid
+    (meta) => meta.userId === userId
+  )
+  
+  // broadcastWhere({ key: ['posts'] }, ...) // ❌ TypeScript compilation error
+}
+```
+
+### Client Side with Zod
+
+```tsx
+import { z } from 'zod'
+import { useReStale } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useQueryClient } from '@tanstack/react-query'
+
+const AppSignalSchema = z.object({
+  key: z.array(z.unknown()),
+  exact: z.boolean().optional(),
+  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
+})
+
+type AppSignal = z.infer<typeof AppSignalSchema>
+
+function App() {
+  const queryClient = useQueryClient()
+
+  // Passes the generic and signalSchema option to enforce type safety
+  const { connection } = useReStale<AppSignal>('/sse', {
+    signalSchema: AppSignalSchema,
+    onInvalidate: tanstackAdapter(queryClient), // Callback is typed to receive AppSignal | AppSignal[]
+  })
+
+  return <div>SSE: {connection.status}</div>
+}
+```
+
+---
+
 ## Mental Model Summary
 
 ```

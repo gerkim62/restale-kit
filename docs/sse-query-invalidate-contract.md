@@ -209,20 +209,33 @@ protocol logic.
 ```ts
 type ChannelState = 'open' | 'closed'
 
-interface SSEChannel {
+interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
-  invalidate(signal: InvalidateSignal | InvalidateSignal[]): void
+  invalidate(signal: TSignal | TSignal[]): void
   close(): void
   notifyClosed(): void   // called by a transport adapter when it detects the peer disconnected
 }
 
-interface SSEChannelOptions {
+interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   keepaliveIntervalMs?: number   // default 30_000
+  signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
 }
 
-function createSSEChannel(options?: SSEChannelOptions): SSEChannel
+function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
+  options?: SSEChannelOptions<TSignal>
+): SSEChannel<TSignal>
 ```
+
+When `signalSchema` is provided, `invalidate()` validates each signal (unwrapping arrays) via
+`signalSchema['~standard'].validate(signal)` before framing. If the result contains `issues`,
+`invalidate()` throws `SchemaValidationError`. If the result is a `Promise`, `invalidate()` throws
+`SchemaValidationError` with message `"async schemas are not supported"` — the channel lifecycle
+is synchronous.
+
+When `signalSchema` is omitted, `invalidate()` frames the signal as-is with no validation overhead
+(identical to the current behavior). The generic defaults to `InvalidateSignal`, so existing code
+that doesn't pass a schema compiles unchanged.
 
 `core` handles SSE framing and keepalives. It does not detect disconnects or set response headers —
 that's the transport adapter's job.
@@ -250,11 +263,14 @@ that's the transport adapter's job.
 
 **Rules:**
 
-| Method | State: `open` | State: `closed` |
-|---|---|---|
-| `invalidate(signal)` | Enqueues the SSE frame into the stream | Throws `ChannelClosedError` |
-| `close()` | Stops keepalive timer, closes the `ReadableStream` controller, transitions to `closed` | No-op |
-| `notifyClosed()` | Same as `close()` — called by transport when peer disconnects | No-op |
+| Method | State: `open` (no schema) | State: `open` (with schema) | State: `closed` |
+|---|---|---|---|
+| `invalidate(signal)` | Enqueues the SSE frame into the stream | Validates first → frames on success, throws `SchemaValidationError` on failure | Throws `ChannelClosedError` |
+| `close()` | Stops keepalive timer, closes the `ReadableStream` controller, transitions to `closed` | Same | No-op |
+| `notifyClosed()` | Same as `close()` — called by transport when peer disconnects | Same | No-op |
+
+`ChannelClosedError` is checked **before** schema validation — no point validating a signal that
+can't be sent.
 
 `invalidate()` throws rather than silently dropping the signal, because a dropped signal means the
 client's cache is now silently wrong. The caller should know.
@@ -267,7 +283,20 @@ class ChannelClosedError extends Error {
 }
 ```
 
-Exported from `restale-kit` (core).
+#### `SchemaValidationError`
+
+```ts
+class SchemaValidationError extends Error {
+  readonly name = 'SchemaValidationError'
+  readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
+  constructor(issues: ReadonlyArray<StandardSchemaV1.Issue>)
+}
+```
+
+Thrown by `invalidate()` when a signal fails schema validation. Contains both a formatted
+`message` string and the original `issues` array for programmatic access.
+
+Both error classes are exported from `restale-kit` (core).
 
 #### Backpressure
 
@@ -281,7 +310,11 @@ overflow strategy.
 ### `restale-kit/node`
 
 ```ts
-function attachSSE(req: IncomingMessage, res: ServerResponse, options?: SSEChannelOptions): SSEChannel
+function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
+  req: IncomingMessage,
+  res: ServerResponse,
+  options?: SSEChannelOptions<TSignal>
+): SSEChannel<TSignal>
 ```
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
@@ -294,7 +327,10 @@ sends its own response on top of the streamed one and throws.
 ### `restale-kit/fetch`
 
 ```ts
-function toSSEResponse(request: Request, options?: SSEChannelOptions): { response: Response; channel: SSEChannel }
+function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
+  request: Request,
+  options?: SSEChannelOptions<TSignal>
+): { response: Response; channel: SSEChannel<TSignal> }
 ```
 
 Constructs `new Response(channel.stream, { headers })`, wires
@@ -334,17 +370,18 @@ interface ReconnectOptions {
   maxRetries?: number     // default Infinity (unlimited)
 }
 
-interface ClientOptions {
+interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   autoReconnect?: boolean   // default true
   reconnect?: ReconnectOptions
+  signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
 }
 
-class SSEInvalidatorClient extends EventTarget {
-  constructor(url: string, opts?: ClientOptions)
+class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal> extends EventTarget {
+  constructor(url: string, opts?: ClientOptions<TSignal>)
   get status(): ConnectionStatus
   connect(): Promise<void>   // resolves when open; rejects with the error Event if it fails first
   close(): void               // reason 'manual'; connect() can reopen
-  // emits: 'invalidate' (CustomEvent<InvalidateSignal | InvalidateSignal[]>)
+  // emits: 'invalidate' (CustomEvent<TSignal | TSignal[]>)   ← typed by schema
   //        'statuschange' (CustomEvent<ConnectionStatus>)
   //        'error' (CustomEvent<Event>)
 }
@@ -394,7 +431,7 @@ so a pending promise never resolves against a torn-down connection.
 Every incoming `event: invalidate` payload is validated before being emitted as an `invalidate`
 event. A payload that fails validation emits `error` instead.
 
-**Validation rules:**
+**Validation pipeline:**
 
 1. `JSON.parse` must succeed — otherwise error.
 2. Result must be a plain object, or an array of plain objects — otherwise error.
@@ -403,15 +440,25 @@ event. A payload that fails validation emits `error` instead.
 5. If `action` is present, it must be one of `'invalidate' | 'refetch' | 'remove'` — otherwise error.
 6. **Extra unknown fields are ignored** — forward-compatible. A future protocol version can add
    optional fields without breaking existing clients.
+7. If `signalSchema` is provided: for each signal in the batch, call
+   `signalSchema['~standard'].validate(signal)`. If the result is a `Promise`, emit error
+   (`"async schemas are not supported"`). If `result.issues` is truthy, emit error
+   (`SchemaValidationError`). Otherwise use `result.value` as the typed output.
+8. Emit `'invalidate'` event with the validated, typed payload.
+
+Steps 1–6 (built-in structural validation) run **before** the user's schema (step 7). This means
+the schema can assume it's receiving a structurally valid `InvalidateSignal` and only needs to
+narrow the type further (e.g., constrain `key` to specific shapes).
 
 ---
 
 ### `restale-kit/react`
 
 ```ts
-interface UseReStaleOptions extends ClientOptions {
+interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
+  extends ClientOptions<TSignal> {
   disabled?: boolean
-  onInvalidate?: (signal: InvalidateSignal | InvalidateSignal[]) => void
+  onInvalidate?: (signal: TSignal | TSignal[]) => void   // ← typed by schema
 }
 
 interface UseReStaleResult {
@@ -420,7 +467,10 @@ interface UseReStaleResult {
   close(): void
 }
 
-function useReStale(url: string, opts?: UseReStaleOptions): UseReStaleResult
+function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
+  url: string,
+  opts?: UseReStaleOptions<TSignal>
+): UseReStaleResult
 ```
 
 Wraps `SSEInvalidatorClient` in a `useSyncExternalStore` subscription:
@@ -441,8 +491,10 @@ queries or caches — it only forwards `invalidate` events to `onInvalidate`.
 The one shipped adapter, and the pattern to copy for any other cache library later:
 
 ```ts
-function tanstackAdapter(queryClient: QueryClient) {
-  return (signal: InvalidateSignal | InvalidateSignal[]) => {
+function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  queryClient: QueryClient
+): (signal: TSignal | TSignal[]) => void {
+  return (signal) => {
     const list = Array.isArray(signal) ? signal : [signal]
     for (const s of list) {
       const filters = { queryKey: s.key, exact: s.exact }
@@ -485,7 +537,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` (core) | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `ChannelState`, `ChannelClosedError`, `InvalidateSignal`, `SSEInvalidateEvent`, `JSONValue` |
+| `restale-kit` (core) | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `ChannelState`, `ChannelClosedError`, `SchemaValidationError`, `InvalidateSignal`, `SSEInvalidateEvent`, `JSONValue` |
 | `restale-kit/client-core` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `InvalidateSignal` (re-export from core) |
 | `restale-kit/node` | `attachSSE` |
 | `restale-kit/fetch` | `toSSEResponse` |
@@ -494,6 +546,10 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 `InvalidateSignal` is re-exported from `client-core` so that adapter authors and direct `client-core`
 users don't need to also import from core.
+
+`StandardSchemaV1` is **not** re-exported — the type interface is inlined in the library's source
+(per the [Standard Schema spec's recommendation](https://github.com/standard-schema/standard-schema)).
+Users import schema constructors from their own library (Zod, Valibot, ArkType, etc.).
 
 ---
 
@@ -506,10 +562,10 @@ The library does not provide a `ChannelGroup` or `broadcast()` helper — that i
 The canonical userland broadcast signature is:
 
 ```ts
-function broadcast(
-  channels: Map<SSEChannel, unknown>,   // or Set — see below
-  signal: InvalidateSignal | InvalidateSignal[],
-  matchFn?: (meta: unknown) => boolean  // omit to broadcast to all
+function broadcast<TSignal extends InvalidateSignal = InvalidateSignal>(
+  channels: Map<SSEChannel<TSignal>, unknown>,
+  signal: TSignal | TSignal[],
+  matchFn?: (meta: unknown) => boolean
 ): void
 ```
 
@@ -521,18 +577,21 @@ function broadcast(
 2. If `matchFn` is omitted or `undefined`, send to all channels (unconditional broadcast).
 3. If `channel.invalidate()` throws `ChannelClosedError`, remove that channel from the
    collection and continue to the next channel. Never let one closed channel abort the broadcast.
-4. Any other error from `channel.invalidate()` is re-thrown immediately.
+4. Any other error from `channel.invalidate()` (including `SchemaValidationError`) is re-thrown immediately.
 5. The broadcast must be **synchronous** — all `invalidate()` calls happen in the same
    microtask; no awaiting between channels.
 
-### Recommended data structure: `Map<SSEChannel, Meta>`
+### Recommended data structure: `Map<SSEChannel<TSignal>, Meta>`
 
 A plain `Set<SSEChannel>` is sufficient for unconditional broadcasting, but selective broadcasting
 requires the caller to correlate channels with identity metadata (user ID, session ID, tenant, etc.).
 The recommended structure is a `Map` from channel to a metadata object chosen by the application:
 
 ```ts
-// Application defines its own metadata shape — the library has no opinion on this.
+import { z } from 'zod'
+import { attachSSE } from 'restale-kit/node'
+import type { SSEChannel } from 'restale-kit'
+
 interface ClientMeta {
   userId: string
   roles: string[]
@@ -558,9 +617,9 @@ The two patterns callers will write, shown in full so implementations are unambi
 **Unconditional broadcast** — every connected client receives the signal:
 
 ```ts
-function broadcastAll(
-  channels: Map<SSEChannel, unknown>,
-  signal: InvalidateSignal | InvalidateSignal[]
+function broadcastAll<TSignal extends InvalidateSignal>(
+  channels: Map<SSEChannel<TSignal>, unknown>,
+  signal: TSignal | TSignal[]
 ): void {
   for (const [channel] of channels) {
     try {
@@ -579,9 +638,9 @@ broadcastAll(channels, { key: ['todos'] })
 **Selective broadcast** — only clients whose metadata satisfies the predicate receive the signal:
 
 ```ts
-function broadcastWhere<Meta>(
-  channels: Map<SSEChannel, Meta>,
-  signal: InvalidateSignal | InvalidateSignal[],
+function broadcastWhere<TSignal extends InvalidateSignal, Meta>(
+  channels: Map<SSEChannel<TSignal>, Meta>,
+  signal: TSignal | TSignal[],
   matchFn: (meta: Meta) => boolean
 ): void {
   for (const [channel, meta] of channels) {
@@ -625,6 +684,117 @@ subscription registry, and no concept of "which clients want which keys." All of
 lives in the application layer, which is the only place that knows about users and sessions.
 
 These patterns are documented in usage examples, not built into the library.
+
+---
+
+## Standard Schema integration
+
+To ensure runtime type safety and encourage best practices, the library natively accepts
+[Standard Schema](https://github.com/standard-schema/standard-schema)-compatible validation schemas
+(like Zod, Valibot, ArkType, etc.) at its API boundaries.
+
+Providing a schema is **optional**. If no schema is passed, the API falls back to the default
+`InvalidateSignal` type with no runtime schema validation overhead.
+
+### The Standard Schema interface (inlined)
+
+To avoid external dependency issues, the library inlines the standard interface:
+
+```ts
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+  readonly "~standard": {
+    readonly version: 1;
+    readonly vendor: string;
+    readonly validate: (
+      value: unknown,
+      options?: { libraryOptions?: Record<string, unknown> }
+    ) => StandardSchemaV1.Result<Output> | Promise<StandardSchemaV1.Result<Output>>;
+    readonly types?: {
+      readonly input: Input;
+      readonly output: Output;
+    };
+  };
+}
+
+declare namespace StandardSchemaV1 {
+  type Result<Output> = SuccessResult<Output> | FailureResult;
+  interface SuccessResult<Output> {
+    readonly value: Output;
+    readonly issues?: undefined;
+  }
+  interface FailureResult {
+    readonly issues: ReadonlyArray<Issue>;
+  }
+  interface Issue {
+    readonly message: string;
+    readonly path?: ReadonlyArray<PropertyKey | { key: PropertyKey }>;
+  }
+}
+```
+
+### Server-side validation with Zod
+
+By providing a schema to `attachSSE` or `toSSEResponse`, the channel is typed with the inferred
+schema output, and all inputs to `channel.invalidate()` are validated at runtime:
+
+```ts
+import { z } from 'zod'
+import { attachSSE } from 'restale-kit/node'
+
+// Define schema for valid application signals
+const TodoSignalSchema = z.object({
+  key: z.tuple([z.literal('todos'), z.object({ userId: z.string() })]),
+  exact: z.literal(true).optional(),
+  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
+})
+
+// Infer the type
+type TodoSignal = z.infer<typeof TodoSignalSchema>
+
+app.get('/sse', (req, res) => {
+  // Pass schema to attachSSE to enforce it on the channel
+  const channel = attachSSE(req, res, { signalSchema: TodoSignalSchema })
+  channels.set(channel, { userId: req.user.id })
+  
+  // Enforces type safety at compile time:
+  channel.invalidate({ key: ['todos', { userId: '123' }] }) // ✅ Valid type
+  channel.invalidate({ key: ['posts'] }) // ❌ TypeScript compilation error
+})
+```
+
+At runtime, `channel.invalidate()` validates the signal against `TodoSignalSchema`.
+- If validation succeeds, the signal is framed and sent.
+- If validation fails, it throws a `SchemaValidationError`.
+- If the schema contains asynchronous validation logic (which returns a `Promise`), the call
+  throws a `SchemaValidationError` with the message `"async schemas are not supported"` since
+  SSE transmission is synchronous.
+
+### Client-side validation with Zod
+
+Similarly, providing a schema on the client restricts the events received by the cache adapter and
+ensures untrusted wire events match the expected structure:
+
+```ts
+import { z } from 'zod'
+import { useReStale } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
+
+const AppSignalSchema = z.object({
+  key: z.array(z.unknown()),
+  exact: z.boolean().optional(),
+  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
+})
+
+function App() {
+  const queryClient = useQueryClient()
+
+  // Hook inherits the schema's type
+  useReStale('/sse', {
+    signalSchema: AppSignalSchema,
+    onInvalidate: tanstackAdapter(queryClient) // ✅ Safely typed callback
+  })
+}
+```
 
 ---
 
