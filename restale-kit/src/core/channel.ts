@@ -45,16 +45,6 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 /**
- * Validates a single signal against a Standard Schema. Throws on failure or async result.
- */
-function validateSignal<TSignal extends InvalidateSignal>(
-  signal: unknown,
-  schema: StandardSchemaV1<unknown, TSignal>
-): TSignal {
-  return validateStandardSchema(signal, schema)
-}
-
-/**
  * Creates a new SSE channel.
  *
  * The channel produces a standard `ReadableStream<Uint8Array>` containing
@@ -105,7 +95,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (signalSchema) {
       const signals = Array.isArray(signal) ? signal : [signal]
       for (const s of signals) {
-        validateSignal(s, signalSchema)
+        validateStandardSchema(s, signalSchema)
       }
     }
 
