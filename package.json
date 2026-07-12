@@ -10,5 +10,10 @@
     "build": "pnpm --filter restale-kit run build",
     "dev:client": "pnpm --filter restale-kit-example-client run dev",
     "dev:server": "pnpm --filter restale-kit-example-server run dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

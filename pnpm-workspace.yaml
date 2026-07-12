@@ -2,3 +2,5 @@ packages:
   - 'restale-kit'
   - 'examples/conceptual-inline-demo/client'
   - 'examples/conceptual-inline-demo/server'
+allowBuilds:
+  esbuild: true
