@@ -38,7 +38,10 @@ restale-kit/
 │   ├── server/
 │   │   ├── core/         # channels and channel groups
 │   │   ├── node/         # Node HTTP helper
-│   │   └── fetch/        # Fetch API helper
+│   │   ├── express/      # Express adapter (re-exports from node)
+│   │   ├── fastify/      # Fastify adapter (re-exports from node)
+│   │   ├── fetch/        # Fetch API helper
+│   │   └── hono/         # Hono adapter (re-exports from fetch)
 │   ├── client/
 │   │   ├── core/         # connection state machine
 │   │   ├── react/        # useReStale hook
@@ -59,13 +62,19 @@ restale-kit/
   "exports": {
     ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
-    "./server/node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
-    "./server/fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
+    "./node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
+    "./express": { "types": "./dist/server/express/index.d.ts", "import": "./dist/server/express/index.js" },
+    "./fastify": { "types": "./dist/server/fastify/index.d.ts", "import": "./dist/server/fastify/index.js" },
+    "./fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
+    "./hono": { "types": "./dist/server/hono/index.d.ts", "import": "./dist/server/hono/index.js" },
     "./client": { "types": "./dist/client/core/index.d.ts", "import": "./dist/client/core/index.js" },
-    "./client/react": { "types": "./dist/client/react/index.d.ts", "import": "./dist/client/react/index.js" },
-    "./client/swr": { "types": "./dist/client/swr/index.d.ts", "import": "./dist/client/swr/index.js" },
-    "./client/tanstack-query": { "types": "./dist/client/tanstack-query/index.d.ts", "import": "./dist/client/tanstack-query/index.js" },
-    "./pubsub": { "types": "./dist/pubsub/core/index.d.ts", "import": "./dist/pubsub/core/index.js" }
+    "./react": { "types": "./dist/client/react/index.d.ts", "import": "./dist/client/react/index.js" },
+    "./swr": { "types": "./dist/client/swr/index.d.ts", "import": "./dist/client/swr/index.js" },
+    "./tanstack-query": { "types": "./dist/client/tanstack-query/index.d.ts", "import": "./dist/client/tanstack-query/index.js" },
+    "./pubsub": { "types": "./dist/pubsub/core/index.d.ts", "import": "./dist/pubsub/core/index.js" },
+    "./redis": { "types": "./dist/pubsub/redis/index.d.ts", "import": "./dist/pubsub/redis/index.js" },
+    "./ably": { "types": "./dist/pubsub/ably/index.d.ts", "import": "./dist/pubsub/ably/index.js" },
+    "./pusher": { "types": "./dist/pubsub/pusher/index.d.ts", "import": "./dist/pubsub/pusher/index.js" }
   },
   "type": "module"
 }
@@ -81,10 +90,9 @@ restale-kit/
   zero React-related anything.
 
 Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
-`restale-kit/fastify` respectively.
-directly (Fastify needs `reply.hijack()` first — see below). Hono, Bun, Deno, and edge runtimes
-speak `Request`/`Response`, so Hono uses `restale-kit/hono`; `restale-kit/fetch` remains
-available for other Fetch API runtimes.
+`restale-kit/fastify` respectively (Fastify needs `reply.hijack()` first — see below). Hono, Bun,
+Deno, and edge runtimes speak `Request`/`Response`, so Hono uses `restale-kit/hono`;
+`restale-kit/fetch` remains available for other Fetch API runtimes.
 
 ---
 
@@ -210,7 +218,7 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly stream: ReadableStream<Uint8Array>
   invalidate(signal: TSignal | TSignal[]): void
   close(): void
-  notifyClosed(): void   // called by a transport adapter when it detects the peer disconnected
+  disconnect(): void   // called by a transport adapter when it detects the peer disconnected
 }
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
@@ -238,22 +246,22 @@ that's the transport adapter's job.
 
 #### Channel lifecycle state machine
 
-```
+```text
   ┌─────────────────────────┐
   │       [open]            │
   │                         │
   │  invalidate() → ok      │
   │  close() → transition   │
-  │  notifyClosed() → trans │
+  │  disconnect() → trans   │
   └────────┬────────────────┘
-           │ close() or notifyClosed()
+           │ close() or disconnect()
            ▼
   ┌─────────────────────────┐
   │      [closed]           │
   │                         │
   │  invalidate() → throws  │
   │  close() → no-op        │
-  │  notifyClosed() → no-op │
+  │  disconnect() → no-op   │
   └─────────────────────────┘
 ```
 
@@ -263,7 +271,7 @@ that's the transport adapter's job.
 |---|---|---|---|
 | `invalidate(signal)` | Enqueues the SSE frame into the stream | Validates first → frames on success, throws `SchemaValidationError` on failure | Throws `ChannelClosedError` |
 | `close()` | Stops keepalive timer, closes the `ReadableStream` controller, transitions to `closed` | Same | No-op |
-| `notifyClosed()` | Same as `close()` — called by transport when peer disconnects | Same | No-op |
+| `disconnect()` | Same as `close()` — called by transport when peer disconnects | Same | No-op |
 
 `ChannelClosedError` is checked **before** schema validation — no point validating a signal that
 can't be sent.
@@ -298,17 +306,18 @@ Thrown by `invalidate()` when a signal fails schema validation. Contains both a 
 class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta = unknown> {
   constructor(options?: {
     metaSchema?: StandardSchemaV1<unknown, TMeta>
+    pubsub?: PubSubAdapter<TSignal>
   })
 
   /** Number of active channels in the group */
   readonly size: number
 
   /**
-   * Registers a channel with its associated metadata.
+   * Registers a channel with its associated metadata and optional routing topics.
    * If metaSchema was provided, validates metadata synchronously.
    * Throws SchemaValidationError if validation fails or is asynchronous.
    */
-  register(channel: SSEChannel<TSignal>, meta: TMeta): void
+  register(channel: SSEChannel<TSignal>, meta: TMeta, options?: { topics?: string[] }): void
 
   /** Deregisters a channel from the group */
   deregister(channel: SSEChannel<TSignal>): void
@@ -316,16 +325,24 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   /**
    * Broadcasts to channels matching the predicate.
    * If a channel throws ChannelClosedError, it is automatically deregistered.
-   * Any other errors (including SchemaValidationError) propagate immediately.
+   * Non-ChannelClosedError errors (e.g. SchemaValidationError) are collected across all
+   * channels and thrown as an AggregateError at the end — iteration always completes.
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void
 
   /**
    * Explicitly broadcasts to ALL channels in the group.
    * If a channel throws ChannelClosedError, it is automatically deregistered.
-   * Any other errors propagate immediately.
+   * Non-ChannelClosedError errors are collected and thrown as AggregateError at the end.
    */
   broadcastToAll(signal: TSignal | TSignal[]): void
+
+  /**
+   * Publishes a signal to a topic.
+   * 1. Delivers synchronously to any locally-held channels registered on that topic.
+   * 2. If a pub/sub adapter is configured, also publishes to the broker.
+   */
+  publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 }
 ```
 
@@ -363,7 +380,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 `Connection: keep-alive`), pipes `channel.stream` into `res` via
-`Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.notifyClosed)`.
+`Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
 
 For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
 sends its own response on top of the streamed one and throws.
@@ -378,7 +395,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
 ```
 
 Constructs `new Response(channel.stream, { headers })`, wires
-`request.signal.addEventListener('abort', channel.notifyClosed)`. Returns a `Response` for the
+`request.signal.addEventListener('abort', channel.disconnect)`. Returns a `Response` for the
 handler to `return` — inverted control flow vs. the Node adapter, because that's how Fetch-API
 frameworks work:
 
@@ -418,6 +435,7 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   autoReconnect?: boolean   // default true
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
+  withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
 }
 
 interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
