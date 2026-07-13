@@ -248,6 +248,7 @@ function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 ```ts
 import { swrAdapter } from 'restale-kit/swr'
 import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
+import type { Arguments } from 'swr'
 
 function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,

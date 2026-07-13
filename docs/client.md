@@ -45,7 +45,7 @@ useReStale(url: string, options: {
   // Connection
   autoReconnect?: boolean       // default true
   withCredentials?: boolean     // default false — send cookies cross-origin
-  disabled?: boolean            // default false — don't connect until true
+  disabled?: boolean            // default false — skip connection while true
 
   // Backoff
   reconnect?: {
@@ -165,10 +165,9 @@ client.close()
 | State | `connect()` result |
 |---|---|
 | `'open'` | No-op, returns resolved promise |
-| `'connecting'` | Returns the same pending promise |
+| `'connecting'` | Returns the same pending promise (also applies during automatic backoff retries) |
 | `'closed'` (manual or unmount) | Opens a new connection, resets backoff |
-| `'error'` | Opens a new connection, resets backoff |
-| `'error'` + backoff timer running | Cancels timer, connects immediately |
+| `'error'` | Cancels pending retry timer, opens a new connection, resets backoff |
 
 ---
 
@@ -256,11 +255,11 @@ swrAdapter(mutate, {
 
 When `autoReconnect: true` (default), failed connections retry with exponential backoff + jitter:
 
-```
+```text
 delay = min(baseDelayMs × 2^attempt, maxDelayMs)
 if jitter: delay = delay × random(0.5, 1.5)
 ```
 
 - `attempt` resets to 0 on successful `open`.
-- Calling `close()` or `reconnect()` cancels any pending retry timer.
-- `reconnect()` from the hook (or `client.connect()` directly) resets the backoff counter and immediately attempts to connect.
+- Calling `close()` cancels any pending retry timer.
+- `reconnect()` from the hook (or `client.connect()` when in `'error'` state) cancels the timer, resets the backoff counter, and immediately connects. While backoff is in progress the status is `'connecting'`, so `connect()` returns the existing pending promise rather than starting a new connection.

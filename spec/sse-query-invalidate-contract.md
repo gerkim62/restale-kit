@@ -38,7 +38,10 @@ restale-kit/
 │   ├── server/
 │   │   ├── core/         # channels and channel groups
 │   │   ├── node/         # Node HTTP helper
-│   │   └── fetch/        # Fetch API helper
+│   │   ├── express/      # Express adapter (re-exports from node)
+│   │   ├── fastify/      # Fastify adapter (re-exports from node)
+│   │   ├── fetch/        # Fetch API helper
+│   │   └── hono/         # Hono adapter (re-exports from fetch)
 │   ├── client/
 │   │   ├── core/         # connection state machine
 │   │   ├── react/        # useReStale hook
@@ -243,22 +246,22 @@ that's the transport adapter's job.
 
 #### Channel lifecycle state machine
 
-```
+```text
   ┌─────────────────────────┐
   │       [open]            │
   │                         │
   │  invalidate() → ok      │
   │  close() → transition   │
-  │  notifyClosed() → trans │
+  │  disconnect() → trans   │
   └────────┬────────────────┘
-           │ close() or notifyClosed()
+           │ close() or disconnect()
            ▼
   ┌─────────────────────────┐
   │      [closed]           │
   │                         │
   │  invalidate() → throws  │
   │  close() → no-op        │
-  │  notifyClosed() → no-op │
+  │  disconnect() → no-op   │
   └─────────────────────────┘
 ```
 

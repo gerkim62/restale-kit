@@ -84,7 +84,7 @@ function App() {
 }
 ```
 
-That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, every connected client's `['todos']` query is invalidated and immediately refetched.
+That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
 
 ---
 

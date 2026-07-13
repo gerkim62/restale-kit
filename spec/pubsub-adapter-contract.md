@@ -125,7 +125,7 @@ app.get('/sse', (req, res) => {
 })
 
 // From any instance, with or without a live connection of its own:
-group.publish(`user:${userId}`, { key: ['todos'] })
+await group.publish(`user:${userId}`, { key: ['todos'] })
 ```
 
 ## Open questions (resolve before a second adapter is written)

@@ -8,7 +8,7 @@ Without pub/sub: instance 2 mutates the DB, calls `group.publish(...)`, but has 
 
 With pub/sub: instance 2 publishes to a broker. The broker delivers to instance 1 (which holds the client's SSE connection). Instance 1 delivers the signal locally.
 
-```
+```text
 Client ──SSE──► Instance 1 ──subscribe──► Broker ◄──publish── Instance 2 ──DB write
 ```
 

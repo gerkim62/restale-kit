@@ -19,7 +19,7 @@
 
 ## Quick orientation
 
-```
+```text
 restale-kit/server         → SSEChannelGroup, createSSEChannel
 restale-kit/node           → attachSSE  (Express, Fastify, raw Node)
 restale-kit/express        → attachSSE  (re-exports from /node)

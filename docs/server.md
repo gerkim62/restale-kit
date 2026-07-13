@@ -8,7 +8,7 @@ The server side has two concerns:
 
 ## Framework adapters
 
-All adapters create an `SSEChannel` and set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). They also wire up disconnect detection automatically.
+All adapters create an `SSEChannel` and set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). They also wire up disconnect detection automatically — when the client disconnects, the adapter calls `channel.disconnect()` to close the transport stream. **Route handlers are still responsible for calling `group.deregister(channel)`** to remove the channel from the group.
 
 ### Express
 
@@ -136,7 +136,7 @@ group.deregister(channel)
 - `meta` can be any value; its type is inferred from the group's `TMeta` generic.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
-**Always call `deregister` on disconnect.** The group does not detect disconnects on its own — the transport adapter wires `disconnect` on the channel, but you must call `group.deregister(channel)` in your route handler's close/abort listener.
+**Ownership of cleanup:** Adapters automatically detect when a peer disconnects and call `channel.disconnect()` to close the underlying transport stream — you do not need to call that yourself. However, you **must** call `group.deregister(channel)` in your route handler's close/abort listener to remove the channel from the group's broadcast list.
 
 ---
 

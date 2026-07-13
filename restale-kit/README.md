@@ -47,7 +47,7 @@ flowchart LR
 npm install restale-kit
 ```
 
-Install peer dependencies for your stack (all optional):
+Install optional integration dependencies for your stack:
 
 ```sh
 npm install @tanstack/react-query react   # TanStack Query
