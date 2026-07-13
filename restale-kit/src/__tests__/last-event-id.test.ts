@@ -12,8 +12,8 @@ import { toSSEResponse } from '@/server/fetch/response.js'
 
 const decoder = new TextDecoder()
 
-describe('WHATWG Last-Event-ID & Event History Replay', async () => {
-  await it('formats SSE frames with id field when provided', async () => {
+void describe('WHATWG Last-Event-ID & Event History Replay', () => {
+  void it('formats SSE frames with id field when provided', () => {
     const signal = { key: ['users'] }
     const frameWithId = decoder.decode(formatInvalidateFrame(signal, '42'))
     assert.equal(frameWithId, 'id: 42\nevent: invalidate\ndata: {"key":["users"]}\n\n')
@@ -22,7 +22,7 @@ describe('WHATWG Last-Event-ID & Event History Replay', async () => {
     assert.equal(frameWithoutId, 'event: invalidate\ndata: {"key":["users"]}\n\n')
   })
 
-  await it('records events in EventStore and retrieves events after a given lastEventId', async () => {
+  void it('records events in EventStore and retrieves events after a given lastEventId', () => {
     const store = createEventStore({ capacity: 5 })
     const rec1 = store.add({ key: ['posts', 1] })
     const rec2 = store.add({ key: ['posts', 2] })
@@ -38,7 +38,7 @@ describe('WHATWG Last-Event-ID & Event History Replay', async () => {
     assert.equal(missed[1]?.id, '3')
   })
 
-  await it('replays missed events when channel is initialized with lastEventId and eventStore', async () => {
+  void it('replays missed events when channel is initialized with lastEventId and eventStore', async () => {
     const store = createEventStore()
     store.add({ key: ['items', 1] }) // id '1'
     store.add({ key: ['items', 2] }) // id '2'
@@ -66,7 +66,7 @@ describe('WHATWG Last-Event-ID & Event History Replay', async () => {
     channel.close()
   })
 
-  await it('parses Last-Event-ID header in attachSSE for Node requests', async () => {
+  void it('parses Last-Event-ID header in attachSSE for Node requests', () => {
     const reqEmitter = new EventEmitter()
     const dummyReq = Object.assign(reqEmitter, {
       headers: { 'last-event-id': '100' },
@@ -86,7 +86,7 @@ describe('WHATWG Last-Event-ID & Event History Replay', async () => {
     channel.close()
   })
 
-  await it('parses Last-Event-ID header in toSSEResponse for Fetch requests', async () => {
+  void it('parses Last-Event-ID header in toSSEResponse for Fetch requests', () => {
     const req = new Request('https://example.com/sse', {
       headers: {
         'Last-Event-ID': '200',
@@ -102,7 +102,7 @@ describe('WHATWG Last-Event-ID & Event History Replay', async () => {
     channel.close()
   })
 
-  await it('retains history across SSEChannelGroup operations', async () => {
+  void it('retains history across SSEChannelGroup operations', () => {
     const group = new SSEChannelGroup({ eventBufferCapacity: 10 })
     const ch1 = createSSEChannel()
     group.register(ch1, { userId: 'alice' })
