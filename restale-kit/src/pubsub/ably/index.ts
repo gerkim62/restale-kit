@@ -1,6 +1,8 @@
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { InvalidateSignal } from '@/types/protocol.js'
-import { isEnvelope, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
+import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import { isPubSubMessage, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
+import { generateInstanceId } from '@/utils/id.js'
+import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
 
 /**
  * Minimal structural interface for an Ably Channel.
@@ -39,7 +41,7 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
   client: AblyClient,
   options?: { useNativeEchoSuppression?: boolean }
 ): PubSubAdapter<TSignal> {
-  const instanceId = Math.random().toString(36).slice(2)
+  const instanceId = generateInstanceId()
   const useNativeEchoSuppression = !!options?.useNativeEchoSuppression
 
   if (useNativeEchoSuppression) {
@@ -63,42 +65,35 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
   }
 
   return {
-    async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
       const channel = client.channels.get(topic)
       if (useNativeEchoSuppression) {
-        await channel.publish('invalidate', signal)
+        await channel.publish('invalidate', message)
       } else {
-        const envelope = {
-          origin: instanceId,
-          payload: signal,
-        }
+        const envelope = wrapEnvelope(instanceId, message)
         await channel.publish('invalidate', envelope)
       }
     },
 
     async subscribe(
       topic: string,
-      onMessage: (signal: TSignal | TSignal[]) => void
+      onMessage: (message: PubSubMessage<TSignal>) => void
     ): Promise<() => Promise<void>> {
       const channel = client.channels.get(topic)
 
-      const listener = (message: { data: unknown }) => {
+      const listener = (msg: { data: unknown }) => {
         try {
-          const data = message.data
+          const data = msg.data
           if (useNativeEchoSuppression) {
-            if (isSignalPayload<TSignal>(data)) {
+            if (isPubSubMessage<TSignal>(data)) {
               onMessage(data)
+            } else if (isSignalPayload<TSignal>(data)) {
+              onMessage({ kind: 'signal', data })
             }
           } else {
-            if (isEnvelope(data)) {
-              if (data.origin === instanceId) {
-                // Suppress self-echo
-                return
-              }
-              const payload = data.payload
-              if (isSignalPayload<TSignal>(payload)) {
-                onMessage(payload)
-              }
+            const unwrapped = unwrapEnvelope<TSignal>(data, instanceId)
+            if (unwrapped) {
+              onMessage(unwrapped)
             }
           }
         } catch (err) {
@@ -138,3 +133,5 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     },
   }
 }
+
+

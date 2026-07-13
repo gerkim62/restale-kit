@@ -168,14 +168,14 @@ void test('Redis PubSub Adapter', async (t) => {
     const subscribeClient = new MockRedisClient()
     const adapter = redisPubSubAdapter(publishClient, { subscribeClient })
 
-    let receivedSignal: unknown = null
-    await adapter.subscribe('topic-x', (sig) => {
-      receivedSignal = sig
+    let receivedMessage: unknown = null
+    await adapter.subscribe('topic-x', (msg) => {
+      receivedMessage = msg
     })
 
     // Publish
     const testSignal = { key: ['todos'] }
-    await adapter.publish('topic-x', testSignal)
+    await adapter.publish('topic-x', { kind: 'signal', data: testSignal })
 
     // Verify published message is a JSON string of the envelope
     assert.strictEqual(publishClient.published.length, 1)
@@ -184,19 +184,19 @@ void test('Redis PubSub Adapter', async (t) => {
 
     const envelope = JSON.parse(message) as Record<string, unknown>
     assert.ok(envelope['origin'])
-    assert.deepStrictEqual(envelope['payload'], testSignal)
+    assert.deepStrictEqual(envelope['payload'], { kind: 'signal', data: testSignal })
 
     // Simulate receiving message published from *our* instance (self-echo)
     subscribeClient.emit('message', 'topic-x', message)
-    assert.strictEqual(receivedSignal, null) // Suppressed!
+    assert.strictEqual(receivedMessage, null) // Suppressed!
 
     // Simulate receiving message published from *another* instance
     const foreignEnvelope = {
       origin: 'another-instance-id',
-      payload: { key: ['todos', 'other'] }
+      payload: { kind: 'signal', data: { key: ['todos', 'other'] } }
     }
     subscribeClient.emit('message', 'topic-x', JSON.stringify(foreignEnvelope))
-    assert.deepStrictEqual(receivedSignal, { key: ['todos', 'other'] }) // Delivered!
+    assert.deepStrictEqual(receivedMessage, { kind: 'signal', data: { key: ['todos', 'other'] } }) // Delivered!
   })
 })
 
@@ -220,7 +220,7 @@ void test('Ably PubSub Adapter', async (t) => {
 
     // Default: uses envelope
     const defaultAdapter = ablyPubSubAdapter(defaultClient)
-    await defaultAdapter.publish('topic-y', { key: ['1'] })
+    await defaultAdapter.publish('topic-y', { kind: 'signal', data: { key: ['1'] } })
     assert.strictEqual(defaultChannel.publishedEvents.length, 1)
     const data = defaultChannel.publishedEvents[0].data as Record<string, unknown>
     assert.ok(data['origin']) // Envelope present
@@ -229,9 +229,9 @@ void test('Ably PubSub Adapter', async (t) => {
     const nativeChannel = new MockAblyChannel()
     const nativeClient = new MockAblyClient({ echoMessages: false }, nativeChannel)
     const nativeAdapter = ablyPubSubAdapter(nativeClient, { useNativeEchoSuppression: true })
-    await nativeAdapter.publish('topic-y', { key: ['1'] })
+    await nativeAdapter.publish('topic-y', { kind: 'signal', data: { key: ['1'] } })
     assert.strictEqual(nativeChannel.publishedEvents.length, 1)
-    assert.deepStrictEqual(nativeChannel.publishedEvents[0].data, { key: ['1'] }) // Raw payload
+    assert.deepStrictEqual(nativeChannel.publishedEvents[0].data, { kind: 'signal', data: { key: ['1'] } }) // Raw payload
   })
 
   await t.test('routing of channel failed/update errors and off cleanup', async () => {
@@ -274,16 +274,16 @@ void test('Pusher Webhook PubSub Adapter', async (t) => {
     const mockPusherServer = new MockPusherClient()
     const adapter = pusherPubSubAdapter(mockPusherServer)
 
-    let receivedSignal: unknown = null
-    await adapter.subscribe('topic-p', (sig) => {
-      receivedSignal = sig
+    let receivedMsg: unknown = null
+    await adapter.subscribe('topic-p', (msg) => {
+      receivedMsg = msg
     })
 
     // 1. Invalid webhook signature
     mockPusherServer.valid = false
     const ok1 = adapter.handleWebhook('invalid-body', { 'x-pusher-signature': 'bad' })
     assert.strictEqual(ok1, false)
-    assert.strictEqual(receivedSignal, null)
+    assert.strictEqual(receivedMsg, null)
 
     // 2. Valid webhook signature, foreign origin
     mockPusherServer.valid = true
@@ -293,19 +293,19 @@ void test('Pusher Webhook PubSub Adapter', async (t) => {
         name: 'invalidate',
         data: JSON.stringify({
           origin: 'some-other-instance',
-          payload: { key: ['data'] }
+          payload: { kind: 'signal', data: { key: ['data'] } }
         })
       }
     ]
 
     const ok2 = adapter.handleWebhook('body', { 'x-pusher-signature': 'good' })
     assert.strictEqual(ok2, true)
-    assert.deepStrictEqual(receivedSignal, { key: ['data'] })
+    assert.deepStrictEqual(receivedMsg, { kind: 'signal', data: { key: ['data'] } })
 
     // 3. Valid webhook signature, self-echo
-    receivedSignal = null
+    receivedMsg = null
     // Grab the origin from a published event
-    await adapter.publish('topic-p', { key: ['data'] })
+    await adapter.publish('topic-p', { kind: 'signal', data: { key: ['data'] } })
     assert.strictEqual(mockPusherServer.triggered.length, 1)
     const selfEnvelope = mockPusherServer.triggered[0].data as Record<string, unknown>
     const selfOrigin = selfEnvelope['origin'] as string
@@ -316,13 +316,13 @@ void test('Pusher Webhook PubSub Adapter', async (t) => {
         name: 'invalidate',
         data: JSON.stringify({
           origin: selfOrigin,
-          payload: { key: ['data'] }
+          payload: { kind: 'signal', data: { key: ['data'] } }
         })
       }
     ]
 
     const ok3 = adapter.handleWebhook('body2', { 'x-pusher-signature': 'good' })
     assert.strictEqual(ok3, true)
-    assert.strictEqual(receivedSignal, null) // Suppressed!
+    assert.strictEqual(receivedMsg, null) // Suppressed!
   })
 })

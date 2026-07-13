@@ -8,9 +8,9 @@ import type {
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
 import { SchemaValidationError } from '@/types/errors.js'
-
-const DEFAULT_AUTO_RECONNECT = true
-const DEFAULT_MAX_RETRIES = Infinity
+import { generateUUID } from '@/utils/id.js'
+import { appendQueryParam } from '@/utils/url.js'
+import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
  * Client-side SSE invalidation client built on native `EventSource`.
@@ -31,6 +31,7 @@ export class SSEInvalidatorClient<
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
   private readonly withCredentials: boolean
+  private readonly currentRequestId: string
 
   private eventSource: EventSource | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
@@ -45,12 +46,22 @@ export class SSEInvalidatorClient<
 
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
-    this.url = url
-    this.autoReconnect = opts?.autoReconnect ?? DEFAULT_AUTO_RECONNECT
-    this.maxRetries = opts?.reconnect?.maxRetries ?? DEFAULT_MAX_RETRIES
+    this.currentRequestId = generateUUID()
+    this.url = appendQueryParam(
+      url,
+      PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
+      this.currentRequestId
+    )
+    this.autoReconnect = opts?.autoReconnect ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+    this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.signalSchema = opts?.signalSchema
     this.withCredentials = opts?.withCredentials ?? false
+  }
+
+  /** The unique request ID generated for this connection instance. */
+  get requestId(): string {
+    return this.currentRequestId
   }
 
   /** Current connection status. */

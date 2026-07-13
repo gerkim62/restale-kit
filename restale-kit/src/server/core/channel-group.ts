@@ -1,9 +1,11 @@
-import type { InvalidateSignal, EventStore } from '@/types/protocol.js'
+import type { InvalidateSignal, EventStore, JSONValue, PubSubMessage } from '@/types/protocol.js'
+import { isJSONValue, matchesJSONValue } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
+import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
  * Manages subscription state and serialization for a specific topic.
@@ -22,7 +24,7 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
   constructor(
     private readonly topic: string,
     private readonly pubsub: PubSubAdapter<TSignal> | undefined,
-    private readonly onMessage: (signal: TSignal | TSignal[]) => void
+    private readonly onMessage: (message: PubSubMessage<TSignal>) => void
   ) {}
 
   add(channel: SSEChannel<TSignal>): void {
@@ -144,26 +146,92 @@ export class SSEChannelGroup<
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
   readonly eventStore?: EventStore<TSignal>
+  readonly controlTopic: string
+
+  private controlUnsubscribeFn?: () => void | Promise<void>
+  private controlPendingOp: Promise<void> = Promise.resolve()
 
   constructor(options?: {
     metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
+    controlTopic?: string
   }) {
     this.metaSchema = options?.metaSchema
     this.pubsub = options?.pubsub
+    this.controlTopic = options?.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
 
     if (options?.eventStore) {
       this.eventStore = options.eventStore
     } else if (options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
       this.eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity })
     }
+
+    if (this.pubsub) {
+      this.initControlSubscription()
+    }
   }
 
   /** Number of active channels in the group. */
   get size(): number {
     return this.channels.size
+  }
+
+  private initControlSubscription(): void {
+    const pubsub = this.pubsub
+    if (!pubsub) return
+
+    this.controlPendingOp = this.controlPendingOp.then(async () => {
+      let attempts = 0
+      const maxAttempts = 5
+      let delay = 100
+
+      const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+      for (;;) {
+        try {
+          const unsub = await pubsub.subscribe(this.controlTopic, (msg) => {
+            if (msg.kind === 'control') {
+              this.closeLocalMatches(msg.data)
+            }
+          })
+          this.controlUnsubscribeFn = unsub
+          break
+        } catch (err) {
+          attempts++
+          if (attempts >= maxAttempts) {
+            console.error(
+              `[ERROR][SSEChannelGroup.initControlSubscription] Failed to subscribe to control topic "${this.controlTopic}" after ${attempts.toString()} attempts:`,
+              err
+            )
+            break
+          }
+          await sleep(delay)
+          delay = Math.min(delay * 2, 2000)
+        }
+      }
+    })
+  }
+
+  /**
+   * Closes local channels whose metadata matches the criteria via subset matching.
+   */
+  private closeLocalMatches(criteria: JSONValue): number {
+    let localClosed = 0
+    const channelEntries = Array.from(this.channels.entries())
+    for (const [ch, entry] of channelEntries) {
+      if (isJSONValue(entry.meta) && matchesJSONValue(entry.meta, criteria, false)) {
+        try {
+          ch.close()
+        } catch {
+          // Ignore close errors on already closed channels
+        }
+        this.deregister(ch)
+        localClosed++
+      }
+    }
+    return localClosed
   }
 
   /**
@@ -228,7 +296,8 @@ export class SSEChannelGroup<
     for (const topic of topicsSet) {
       let topicManager = this.topics.get(topic)
       if (!topicManager) {
-        topicManager = new TopicManager(topic, this.pubsub, (signal) => {
+        topicManager = new TopicManager(topic, this.pubsub, (msg) => {
+          if (msg.kind !== 'signal') return
           // Deliver to all channels registered to this topic.
           // Query the live map to avoid closing over stale topicManager instances
           // during topic teardown and recreation.
@@ -236,7 +305,7 @@ export class SSEChannelGroup<
           if (!currentManager) return
 
           for (const ch of currentManager.channels) {
-            this.deliverToChannel(ch, signal, 'pubsub', topic)
+            this.deliverToChannel(ch, msg.data, 'pubsub', topic)
           }
         })
         this.topics.set(topic, topicManager)
@@ -261,6 +330,44 @@ export class SSEChannelGroup<
         if (topicManager.size === 0) {
           this.topics.delete(topic)
         }
+      }
+    }
+  }
+
+  /**
+   * Revokes channels matching `criteria`.
+   *
+   * 1. Closes and deregisters matching local channels immediately.
+   * 2. If a pub/sub adapter is configured, publishes the revocation criteria to `controlTopic`.
+   *
+   * Returns `{ localClosed }`.
+   */
+  async revoke(criteria: JSONValue): Promise<{ localClosed: number }> {
+    const localClosed = this.closeLocalMatches(criteria)
+
+    if (this.pubsub) {
+      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteria })
+    }
+
+    return { localClosed }
+  }
+
+  /**
+   * Tears down the control topic subscription idempotently.
+   * Does NOT close registered client channels.
+   */
+  async dispose(): Promise<void> {
+    await this.controlPendingOp
+    const unsub = this.controlUnsubscribeFn
+    this.controlUnsubscribeFn = undefined
+    if (unsub) {
+      try {
+        await unsub()
+      } catch (err) {
+        console.error(
+          `[ERROR][SSEChannelGroup.dispose] Failed to unsubscribe control topic "${this.controlTopic}":`,
+          err
+        )
       }
     }
   }
@@ -349,7 +456,8 @@ export class SSEChannelGroup<
 
     // 2. Publish to the broker
     if (this.pubsub) {
-      await this.pubsub.publish(topic, signal)
+      await this.pubsub.publish(topic, { kind: 'signal', data: signal })
     }
   }
 }
+

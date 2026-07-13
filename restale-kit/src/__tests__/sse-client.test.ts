@@ -29,7 +29,10 @@ void test('SSEInvalidatorClient passes withCredentials to EventSource', () => {
     void client.connect()
 
     assert.strictEqual(MockEventSource.instances.length, 1)
-    assert.strictEqual(MockEventSource.instances[0]?.url, '/sse')
+    assert.strictEqual(
+      MockEventSource.instances[0]?.url,
+      `/sse?restaleKitRequestId=${client.requestId}`
+    )
     assert.deepStrictEqual(MockEventSource.instances[0]?.options, { withCredentials: true })
   } finally {
     globalThis.EventSource = originalEventSource

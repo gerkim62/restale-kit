@@ -1,6 +1,8 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
+import { SSE_HEADERS } from '@/utils/constants.js'
+import { extractRequestId, extractLastEventId } from '@/server/transport-utils.js'
 
 /**
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
@@ -13,14 +15,12 @@ import { createSSEChannel } from '@/server/core/channel.js'
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal> } {
-  let lastEventId = options?.lastEventId
-  if (lastEventId === undefined) {
-    const header = request.headers.get('Last-Event-ID')
-    if (header !== null && header !== '') {
-      lastEventId = header
-    }
-  }
+): { response: Response; channel: SSEChannel<TSignal>; restaleKitRequestId: string } {
+  const urlObj = new URL(request.url)
+  const restaleKitRequestId = extractRequestId(urlObj.searchParams)
+
+  const lastEventId =
+    options?.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
@@ -30,11 +30,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const channel = createSSEChannel<TSignal>(channelOptions)
 
   const response = new Response(channel.stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
+    headers: SSE_HEADERS,
   })
 
   // Wire up disconnect detection via the request's AbortSignal
@@ -42,5 +38,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
     channel.disconnect()
   })
 
-  return { response, channel }
+  return { response, channel, restaleKitRequestId }
 }
+
+

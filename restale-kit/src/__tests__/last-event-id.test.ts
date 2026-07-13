@@ -69,6 +69,7 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
   void it('parses Last-Event-ID header in attachSSE for Node requests', async () => {
     const reqEmitter = new EventEmitter()
     const dummyReq = Object.assign(reqEmitter, {
+      url: '/sse?restaleKitRequestId=req-test1',
       headers: { 'last-event-id': '100' },
     }) as unknown as IncomingMessage
 
@@ -81,7 +82,7 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
     store.add({ key: ['a'] }, '100')
     store.add({ key: ['b'] }, '101')
 
-    const channel = attachSSE(dummyReq, dummyRes, { eventStore: store })
+    const { channel } = attachSSE(dummyReq, dummyRes, { eventStore: store })
     assert.equal(channel.state, 'open')
 
     const chunk = await new Promise<Buffer>((resolve) => {
@@ -98,7 +99,7 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
   })
 
   void it('parses Last-Event-ID header in toSSEResponse for Fetch requests', async () => {
-    const req = new Request('https://example.com/sse', {
+    const req = new Request('https://example.com/sse?restaleKitRequestId=req-test2', {
       headers: {
         'Last-Event-ID': '200',
       },
