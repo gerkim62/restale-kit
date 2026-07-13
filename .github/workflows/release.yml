@@ -28,8 +28,9 @@ jobs:
           VERSION=$(node -p "require('./restale-kit/package.json').version")
           test "v$VERSION" = "$GITHUB_REF_NAME"
       - run: pnpm run validate
-      - run: pnpm --filter restale-kit run test
-      - run: pnpm run test:package
+      - run: pnpm --filter restale-kit run test:coverage
+      - run: pnpm run build
+      - run: node scripts/verify-package.mjs
       - run: cd restale-kit && npm pack --dry-run
       - name: Publish to npm with provenance
         working-directory: restale-kit

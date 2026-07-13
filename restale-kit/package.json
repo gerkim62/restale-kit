@@ -98,11 +98,13 @@
   },
   "scripts": {
     "build": "pnpm run clean && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
-    "build:test": "pnpm run clean && tsc && tsc-alias -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "pnpm run build:test && node --test --test-force-exit dist/__tests__/adapters.test.js dist/__tests__/pubsub.test.js dist/__tests__/sse-client.test.js dist/__tests__/last-event-id.test.js dist/__tests__/revocation.test.js && pnpm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepack": "pnpm run build",
-    "release:check": "pnpm run test && npm pack --dry-run"
+    "release:check": "pnpm run typecheck && pnpm run test:coverage && pnpm run build && npm pack --dry-run"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.0.0",
@@ -134,13 +136,17 @@
   },
   "devDependencies": {
     "@tanstack/react-query": "^5.0.0",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "ably": "^2.3.2",
     "ioredis": "^5.4.1",
+    "jsdom": "^29.1.1",
     "pusher": "^5.2.0",
     "react": "^19.0.0",
     "swr": "^2.4.0",
-    "tsc-alias": "^1.9.0"
+    "tsc-alias": "^1.9.0",
+    "vitest": "^4.1.10"
   }
 }

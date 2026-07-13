@@ -283,10 +283,9 @@ export class SSEInvalidatorClient<
           "\n  error:", error.stack || error.message
         )
         const message = error.message
+        const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
         this.dispatchEvent(
-          new CustomEvent('error', {
-            detail: new ErrorEvent('error', { message }),
-          })
+          new CustomEvent('error', { detail })
         )
       }
     })
