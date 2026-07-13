@@ -163,14 +163,17 @@ import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
 function myCustomAdapter(): PubSubAdapter {
   return {
     async publish(topic, message) {
-      // Send PubSubMessage envelope to broker on topic
+      // Send PubSubMessage envelope to broker on topic.
       // message is a discriminated union:
-      // { kind: 'signal', data: TSignal | TSignal[] } or { kind: 'control', data: JSONValue }
+      // - Signals: { kind: 'signal', data: TSignal | TSignal[] }
+      //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB] }
+      // - Control: { kind: 'control', data: JSONValue }
     },
 
     async subscribe(topic, onMessage) {
-      // Subscribe to topic; call onMessage(message) when a PubSubMessage arrives
-      // Return an unsubscribe function
+      // Subscribe to topic; call onMessage(message) when a PubSubMessage arrives.
+      // Ensure batched signals remain preserved as { kind: 'signal', data: [signalA, signalB] } upon delivery.
+      // Return an unsubscribe function.
       return async () => {
         // Unsubscribe from topic
       }

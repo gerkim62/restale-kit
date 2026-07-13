@@ -37,7 +37,8 @@ import { attachSSE } from 'restale-kit/node'
 const group = new SSEChannelGroup()
 
 const server = http.createServer((req, res) => {
-  if (req.url?.startsWith('/sse') && req.method === 'GET') {
+  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
+  if (req.method === 'GET' && url.pathname === '/sse') {
     const { channel, connectionId } = attachSSE(req, res)
     group.register(channel, { connectionId })
     req.on('close', () => group.deregister(channel))
@@ -53,9 +54,10 @@ Fastify manages the HTTP response internally, so you must call `reply.hijack()` 
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
 import { attachSSE } from 'restale-kit/fastify'
+import { z } from 'zod'
 
-const app = Fastify()
 const group = new SSEChannelGroup()
+const app = Fastify()
 
 app.get('/sse', (request, reply) => {
   reply.hijack() // required

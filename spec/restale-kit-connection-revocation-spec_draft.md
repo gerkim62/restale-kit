@@ -1,7 +1,7 @@
 # Connection Revocation — Design Spec
 
 **Package:** restale-kit
-**Status:** Core design decided. One item remains open (§5).
+**Status:** Core design decided. All open items resolved (§5).
 
 ## 1. Problem
 
@@ -22,7 +22,7 @@ This falls directly out of the subset-match semantics already used for cache key
 
 ### 2.1 Populating `connectionId`
 
-The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. Always generate this with a cryptographically strong, collision-resistant generator — `crypto.randomUUID()` — never a predictable or enumerable value (incrementing counter, timestamp, short random string). This ID is an opaque connection-correlation value, not authentication: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; UUID unguessability is not authorization. This is fully automatic; the app developer never touches it.
+The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. By default, `crypto.randomUUID()` is used as the secure generator. If custom generators are provided via public overrides (e.g. `idGenerator`), they must produce collision-resistant, non-predictable values, avoiding predictable or enumerable identifiers (such as counters, timestamps, or short random strings). This ID is an opaque connection-correlation value, not authorization: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; unguessability is not authorization. This is fully automatic by default; the app developer never touches it unless supplying custom configuration options.
 
 On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the internal `restaleKitRequestId` query param off the incoming request and expose it as `connectionId` — the app developer does not extract it manually:
 
@@ -81,10 +81,10 @@ Per-adapter work needed:
 
 **Control-topic naming:** `controlTopic?: string`, optional, defaulting to a fixed collision-resistant string (e.g. `__restale_control__`) — same pattern as any other topic string passed to `register()`.
 
-## 5. Remaining open items
+## 5. Status of previous open items
 
-1. Partial-failure handling — local revoke succeeds but broker publish fails: propagate the error (consistent with `publish()` today), or something else?
-2. `attachSSE`/`toSSEResponse` return-shape widening (§2.1) is a breaking change for existing callers destructuring a bare `SSEChannel` from `attachSSE`. Ship as a major version bump, or accept the break inside this feature's own minor/patch (package is presumably pre-1.0)?
+1. Partial-failure handling — local revoke succeeds but broker publish fails: propagate the error (consistent with `publish()` today). Resolved.
+2. `attachSSE`/`toSSEResponse` return-shape widening (§2.1): accepted and implemented for current 0.x releases as explicit return shape `{ channel, connectionId }` and `{ response, channel, connectionId }`. Resolved.
 
 ## 6. Non-goals
 

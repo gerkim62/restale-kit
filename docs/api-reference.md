@@ -295,10 +295,6 @@ interface SWRMutator {
 import type { PubSubAdapter } from 'restale-kit/pubsub'
 import type { PubSubMessage, JSONValue, InvalidateSignal } from 'restale-kit'
 
-type PubSubMessage<TSignal extends InvalidateSignal> =
-  | { kind: 'signal'; data: TSignal | TSignal[] }
-  | { kind: 'control'; data: JSONValue }
-
 interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
   publish(topic: string, message: PubSubMessage<TSignal>): Promise<void>
   subscribe(

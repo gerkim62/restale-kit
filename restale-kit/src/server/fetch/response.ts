@@ -10,6 +10,9 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
  * Returns the `Response` to hand back to the framework, and the `SSEChannel`
  * to call `invalidate()` on from application logic elsewhere.
  *
+ * Throws an Error synchronously if the required `restaleKitRequestId` query
+ * parameter is missing or invalid.
+ *
  * Disconnect detection is wired to `request.signal.abort`.
  */
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(

@@ -6,8 +6,10 @@ export function appendQueryParam(baseUrl: string, key: string, value: string): s
   const hashIdx = baseUrl.indexOf('#')
   const hash = hashIdx !== -1 ? baseUrl.slice(hashIdx) : ''
   const pathAndSearch = hashIdx !== -1 ? baseUrl.slice(0, hashIdx) : baseUrl
-  const [pathname, search] = pathAndSearch.split('?')
-  const params = new URLSearchParams(search || '')
+  const queryIdx = pathAndSearch.indexOf('?')
+  const pathname = queryIdx !== -1 ? pathAndSearch.slice(0, queryIdx) : pathAndSearch
+  const searchStr = queryIdx !== -1 ? pathAndSearch.slice(queryIdx + 1) : ''
+  const params = new URLSearchParams(searchStr)
   params.set(key, value)
   const newSearch = params.toString()
   return `${pathname}?${newSearch}${hash}`

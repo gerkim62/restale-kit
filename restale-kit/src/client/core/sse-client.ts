@@ -26,6 +26,7 @@ export class SSEInvalidatorClient<
   TSignal extends InvalidateSignal = InvalidateSignal,
 > extends EventTarget {
   private readonly url: string
+  private readonly eventSourceUrl: string
   private readonly autoReconnect: boolean
   private readonly maxRetries: number
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
@@ -47,7 +48,8 @@ export class SSEInvalidatorClient<
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
     this.currentConnectionId = generateUUID()
-    this.url = appendQueryParam(
+    this.url = url
+    this.eventSourceUrl = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
       this.currentConnectionId
@@ -195,7 +197,7 @@ export class SSEInvalidatorClient<
 
     this.setStatus({ status: 'connecting' })
 
-    const es = new EventSource(this.url, { withCredentials: this.withCredentials })
+    const es = new EventSource(this.eventSourceUrl, { withCredentials: this.withCredentials })
     this.eventSource = es
 
     es.onopen = () => {

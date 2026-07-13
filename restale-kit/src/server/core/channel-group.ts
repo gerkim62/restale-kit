@@ -184,7 +184,6 @@ export class SSEChannelGroup<
 
     this.controlPendingOp = this.controlPendingOp.then(async () => {
       let attempts = 0
-      const maxAttempts = 5
       let delay = 100
 
       const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -200,13 +199,10 @@ export class SSEChannelGroup<
           break
         } catch (err) {
           attempts++
-          if (attempts >= maxAttempts) {
-            console.error(
-              `[ERROR][SSEChannelGroup.initControlSubscription] Failed to subscribe to control topic "${this.controlTopic}" after ${attempts.toString()} attempts:`,
-              err
-            )
-            break
-          }
+          console.error(
+            `[ERROR][SSEChannelGroup.initControlSubscription] Failed to subscribe to control topic "${this.controlTopic}" (attempt ${attempts.toString()}):`,
+            err
+          )
           await sleep(delay)
           delay = Math.min(delay * 2, 2000)
         }

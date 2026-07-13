@@ -189,7 +189,8 @@ app.get('/sse', (request, reply) => {
 import { attachSSE } from 'restale-kit/node'
 
 const server = http.createServer((req, res) => {
-  if (req.url?.startsWith('/sse')) {
+  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
+  if (req.method === 'GET' && url.pathname === '/sse') {
     const { channel, connectionId } = attachSSE(req, res)
     group.register(channel, { connectionId })
     req.on('close', () => group.deregister(channel))
@@ -348,10 +349,10 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
-| `autoReconnect` | `boolean` | `true` | Reconnect on drop. |
-| `withCredentials` | `boolean` | `false` | Send cookies cross-origin. |
+| `autoReconnect` | `boolean` | `true` | Auto-reconnect on disconnect. |
+| `signalSchema` | `StandardSchema` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
+| `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
-| `signalSchema` | `StandardSchema` | — | Runtime signal validation. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
@@ -364,6 +365,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `metaSchema` | Validates connection metadata on `register()`. |
 | `pubsub` | Pub/sub adapter for multi-instance scaling. |
 | `eventBufferCapacity` | Enables Last-Event-ID event history replay buffer. |
+| `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
 
 ### `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`

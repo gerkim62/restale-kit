@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert'
+import * as React from 'react'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { appendQueryParam } from '@/utils/url.js'
 import { attachSSE } from '@/server/node/attach.js'
@@ -43,22 +44,59 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     assert.ok(client.connectionId)
     assert.strictEqual(typeof client.connectionId, 'string')
     assert.strictEqual(
-      (client as any).url,
+      (client as any).eventSourceUrl,
       `/sse/stream?user=42&restaleKitRequestId=${client.connectionId}`
     )
   })
 
   await t.test('useReStale hook exposes connectionId', async () => {
     const { useReStale } = await import('@/client/react/useReStale.js')
-    // Lightweight mock of React environment for hook initialization test
     let res: any
     const TestComponent = () => {
-      res = useReStale('/sse', { onInvalidate: () => {} })
+      res = useReStale('/sse', { disabled: true, onInvalidate: () => {} })
       return null
     }
-    // Verify constructor instantiation exposes connectionId
-    const client = new SSEInvalidatorClient('/sse')
-    assert.ok(client.connectionId)
+
+    const stubDispatcher = {
+      useRef: (initial: any) => ({ current: initial }),
+      useCallback: (fn: any) => fn,
+      useSyncExternalStore: (_sub: any, getSnapshot: any) => getSnapshot(),
+      useEffect: (fn: any) => {
+        fn()
+      },
+    }
+
+    const secrets = [
+      (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+      (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
+      (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
+      (React as any).default?.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+      (React as any).default?.__CLIENT_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
+      (React as any).default?.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
+    ].filter(Boolean)
+
+    const prevHs = secrets.map((s) => s.H)
+    secrets.forEach((s) => {
+      s.H = stubDispatcher
+      if (s.ReactCurrentDispatcher) {
+        s.ReactCurrentDispatcher.current = stubDispatcher
+      }
+    })
+
+    try {
+      TestComponent()
+    } finally {
+      secrets.forEach((s, i) => {
+        s.H = prevHs[i]
+        if (s.ReactCurrentDispatcher) {
+          s.ReactCurrentDispatcher.current = prevHs[i]
+        }
+      })
+    }
+
+    assert.ok(res)
+    assert.ok(res.connectionId)
+    assert.strictEqual(typeof res.connectionId, 'string')
   })
 
   await t.test('attachSSE and toSSEResponse validation and return shape', () => {
@@ -131,24 +169,23 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     const brokerListeners = new Map<string, Array<(msg: PubSubMessage) => void>>()
 
     const createAdapter = (): PubSubAdapter => ({
-      async publish(topic, message) {
-        await Promise.resolve()
+      publish(topic, message) {
         const listeners = brokerListeners.get(topic) || []
         for (const fn of listeners) {
           fn(message)
         }
+        return Promise.resolve()
       },
-      async subscribe(topic, onMessage) {
-        await Promise.resolve()
+      subscribe(topic, onMessage) {
         if (!brokerListeners.has(topic)) brokerListeners.set(topic, [])
         brokerListeners.get(topic)!.push(onMessage)
-        return () => {
+        return Promise.resolve(() => {
           const list = brokerListeners.get(topic) || []
           brokerListeners.set(
             topic,
             list.filter((l) => l !== onMessage)
           )
-        }
+        })
       },
     })
 

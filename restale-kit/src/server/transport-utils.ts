@@ -2,7 +2,8 @@ import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
  * Extracts and validates the internal `restaleKitRequestId` query parameter.
- * Throws synchronously if missing or empty.
+ * Throws an Error synchronously if missing or invalid; transport functions (`attachSSE`, `toSSEResponse`)
+ * enforce this try/catch contract at the route boundary before attaching streams.
  */
 export function extractConnectionId(searchParams: URLSearchParams): string {
   const connectionId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
