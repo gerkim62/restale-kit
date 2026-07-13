@@ -16,9 +16,9 @@
     "./redis": { "types": "./dist/pubsub/redis/index.d.ts", "import": "./dist/pubsub/redis/index.js" },
     "./ably": { "types": "./dist/pubsub/ably/index.d.ts", "import": "./dist/pubsub/ably/index.js" },
     "./pusher": { "types": "./dist/pubsub/pusher/index.d.ts", "import": "./dist/pubsub/pusher/index.js" },
-    "./express": { "types": "./dist/express/index.d.ts", "import": "./dist/express/index.js" },
-    "./fastify": { "types": "./dist/fastify/index.d.ts", "import": "./dist/fastify/index.js" },
-    "./hono": { "types": "./dist/hono/index.d.ts", "import": "./dist/hono/index.js" }
+    "./express": { "types": "./dist/server/express/index.d.ts", "import": "./dist/server/express/index.js" },
+    "./fastify": { "types": "./dist/server/fastify/index.d.ts", "import": "./dist/server/fastify/index.js" },
+    "./hono": { "types": "./dist/server/hono/index.d.ts", "import": "./dist/server/hono/index.js" }
   },
   "scripts": {
     "build": "tsc",

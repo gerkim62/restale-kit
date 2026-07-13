@@ -1,2 +1,2 @@
 /** Hono uses the Fetch API transport. */
-export { toSSEResponse } from '../server/fetch/response.js'
+export { toSSEResponse } from '../fetch/response.js'

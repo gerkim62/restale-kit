@@ -8,6 +8,9 @@ restale-kit/
     │   ├── core/           # channels and channel groups
     │   ├── node/           # Node HTTP helper
     │   └── fetch/          # Fetch API helper
+    │   ├── express/        # Express adapter
+    │   ├── fastify/        # Fastify adapter
+    │   └── hono/           # Hono adapter
     ├── client/
     │   ├── core/           # browser SSE client
     │   ├── react/          # React hook
@@ -29,9 +32,9 @@ The package has four stable top-level domains: `types`, `server`, `client`, and
 | `restale-kit/server` | `./src/server/core/` |
 | `restale-kit/node` | `./src/server/node/` |
 | `restale-kit/fetch` | `./src/server/fetch/` |
-| `restale-kit/express` | `./src/express/` |
-| `restale-kit/fastify` | `./src/fastify/` |
-| `restale-kit/hono` | `./src/hono/` |
+| `restale-kit/express` | `./src/server/express/` |
+| `restale-kit/fastify` | `./src/server/fastify/` |
+| `restale-kit/hono` | `./src/server/hono/` |
 | `restale-kit/client` | `./src/client/core/` |
 | `restale-kit/react` | `./src/client/react/` |
 | `restale-kit/swr` | `./src/client/swr/` |
