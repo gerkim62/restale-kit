@@ -35,4 +35,17 @@ describe('swrAdapter', () => {
     expect(filter('users')).toBe(true)
     expect(filter('posts')).toBe(false)
   })
+
+  it('handles signal batches, undefined key, and non-array default key fallback', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter([{ key: ['a'] }, { key: ['b'], action: 'remove' }])
+    expect(mutate).toHaveBeenCalledTimes(2)
+
+    const filter = (mutate as any).mock.calls[0][0]
+    expect(filter(undefined)).toBe(false)
+    expect(filter('not-an-array')).toBe(false)
+  })
 })
+

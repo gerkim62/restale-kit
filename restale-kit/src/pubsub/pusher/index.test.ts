@@ -70,4 +70,55 @@ describe('pusherPubSubAdapter', () => {
     expect(success).toBe(true)
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['posts'] } })
   })
+
+  it('handles default warn handler, onError registration, unsubscribe, and webhook processing errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const validEnvelopeEvents = [
+      {
+        channel: 'my-channel',
+        name: 'invalidate',
+        data: {
+          origin: 'remote-id',
+          payload: { kind: 'signal', data: { key: ['todos'] } },
+        },
+      },
+    ]
+
+    const client = createMockPusherClient(true, validEnvelopeEvents)
+    const adapter = pusherPubSubAdapter(client)
+
+    // Subscribe with callback that throws an error
+    const throwingCallback = vi.fn().mockImplementation(() => {
+      throw new Error('Callback failed')
+    })
+    const unsub = await adapter.subscribe('my-channel', throwingCallback)
+
+    // Test default error handler warning when callback throws
+    adapter.handleWebhook('body', {})
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[WARN][pusherPubSubAdapter] Unhandled pusher error:',
+      expect.any(Error)
+    )
+
+    // Unsubscribe test
+    await unsub()
+
+    // Test custom onError handler
+    const customErrorHandler = vi.fn()
+    adapter.onError?.(customErrorHandler)
+
+    // Trigger webhook top level throw
+    vi.mocked(client.webhook).mockImplementationOnce(() => {
+      throw new Error('Webhook processing failed')
+    })
+
+    const res = adapter.handleWebhook('bad-body', {})
+    expect(res).toBe(false)
+    expect(customErrorHandler).toHaveBeenCalledWith(expect.any(Error))
+
+    consoleSpy.mockRestore()
+  })
 })
+
+

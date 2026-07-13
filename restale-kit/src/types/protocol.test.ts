@@ -90,5 +90,9 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     expect(matchesJSONValue(123, null, false)).toBe(false)
     expect(matchesJSONValue(null, 123, false)).toBe(false)
     expect(matchesJSONValue([1, 2], { 0: 1 }, false)).toBe(false)
+    expect(matchesJSONValue({ 0: 1 }, [1, 2], false)).toBe(false)
+    expect(matchesJSONValue([1, 2], [1], true)).toBe(false)
+    expect(matchesJSONValue([1], [1, 2], false)).toBe(false)
   })
 })
+

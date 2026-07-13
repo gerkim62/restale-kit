@@ -86,4 +86,79 @@ describe('ablyPubSubAdapter', () => {
 
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['native-test'] } })
   })
+
+  it('handles state change listeners, custom onError handler, and unsubscribe errors', async () => {
+    const stateListeners: Array<(state: { reason?: unknown }) => void> = []
+    const mockUnsubscribe = vi.fn().mockRejectedValue(new Error('Unsubscribe failed'))
+    const mockOff = vi.fn()
+
+    const channel: AblyChannel = {
+      publish: vi.fn(),
+      subscribe: vi.fn(),
+      unsubscribe: mockUnsubscribe,
+      on: vi.fn((event, cb) => {
+        stateListeners.push(cb)
+      }),
+      off: mockOff,
+    }
+
+    const client: AblyClient = {
+      channels: { get: () => channel },
+    }
+
+    const adapter = ablyPubSubAdapter(client)
+    const errorHandler = vi.fn()
+    if (adapter.onError) {
+      adapter.onError(errorHandler)
+    }
+
+    const unsub = await adapter.subscribe('channel-1', vi.fn())
+    expect(channel.on).toHaveBeenCalledWith('failed', expect.any(Function))
+    expect(channel.on).toHaveBeenCalledWith('update', expect.any(Function))
+
+    // Trigger state change error
+    const reasonErr = new Error('Ably state error')
+    stateListeners[0]({ reason: reasonErr })
+    expect(errorHandler).toHaveBeenCalledWith(reasonErr)
+
+    // Unsubscribe throws error
+    await expect(unsub()).rejects.toThrow('Unsubscribe failed')
+    expect(mockOff).toHaveBeenCalledWith('failed', expect.any(Function))
+    expect(mockOff).toHaveBeenCalledWith('update', expect.any(Function))
+    expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
+  })
+
+  it('handles client connection error events, legacy native echo signals, and error handler callback throws', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const connListeners: Record<string, (err: unknown) => void> = {}
+
+    const { client, channelListeners } = createMockAblyClient(false)
+    ;(client as any).connection = {
+      on: (event: string, cb: (err: unknown) => void) => {
+        connListeners[event] = cb
+      },
+    }
+
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true })
+    const throwingCallback = vi.fn().mockImplementation(() => {
+      throw new Error('Listener error')
+    })
+
+    await adapter.subscribe('channel-1', throwingCallback)
+
+    // Connection error event -> triggers default console.warn
+    connListeners['error']?.(new Error('Connection error'))
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[WARN][ablyPubSubAdapter] Unhandled ably connection/channel error:',
+      expect.any(Error)
+    )
+
+    // Legacy signal payload unwrapping with throwing listener
+    const listener = channelListeners[0]
+    listener({ data: { key: ['legacy-signal'] } })
+
+    consoleSpy.mockRestore()
+  })
 })
+
+

@@ -94,4 +94,42 @@ describe('channel', () => {
     expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
   })
+
+  it('uses eventStore and custom idGenerator during invalidate', async () => {
+    const store = createEventStore({ capacity: 10 })
+    const channel = createSSEChannel({ eventStore: store })
+
+    const id = channel.invalidate({ key: ['test-store'] })
+    expect(id).toBeDefined()
+    expect(store.getEventsAfter('').length).toBe(1)
+
+    const customGen = vi.fn().mockReturnValue('custom-id-123')
+    const customChannel = createSSEChannel({ idGenerator: customGen })
+
+    const generatedId = customChannel.invalidate({ key: ['test-custom'] })
+    expect(generatedId).toBe('custom-id-123')
+    expect(customGen).toHaveBeenCalled()
+  })
+
+  it('warns when controller.close throws inside closeInternal', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel()
+
+    // Cancel reader to trigger cancel callback on stream which closes stream controller
+    const reader = channel.stream.getReader()
+    await reader.cancel()
+
+    // Calling close after cancel will trigger controller.close error branch in closeInternal
+    channel.close()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
+      '\n  error:',
+      expect.any(String)
+    )
+
+    consoleSpy.mockRestore()
+  })
 })
+
+

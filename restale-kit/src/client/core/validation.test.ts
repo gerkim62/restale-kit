@@ -61,4 +61,20 @@ describe('client validatePayload', () => {
       { key: ['users'], action: 'remove' },
     ])
   })
+
+  it('validates signals with nested JSON objects/arrays in key and handles array non-object elements', () => {
+    const rawNested = JSON.stringify({
+      key: [{ filter: 'active' }, [1, 2, 'three']],
+    })
+    const validated = validatePayload(rawNested)
+    expect(validated).toEqual({
+      key: [{ filter: 'active' }, [1, 2, 'three']],
+    })
+
+    expect(() => validatePayload('[123]')).toThrow('Each signal must be a plain object')
+    expect(() => validatePayload('{"key": ["a"], "action": 123}')).toThrow(
+      "Signal \"action\" field must be one of 'invalidate', 'refetch', 'remove' — got '123'"
+    )
+  })
 })
+

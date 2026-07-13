@@ -71,4 +71,48 @@ describe('redisPubSubAdapter', () => {
 
     expect(client.unsubscribe).toHaveBeenCalledWith('topic-1')
   })
+
+  it('handles default warn fallback, onError handler, message parse errors, and unsubscribe errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { client, listeners } = createMockRedisClient()
+
+    const adapter = redisPubSubAdapter(client)
+
+    // Trigger subscriber client error event -> default warn
+    listeners['error']?.(new Error('Redis connection error'))
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[WARN][redisPubSubAdapter] Unhandled redis subscription client error:',
+      expect.any(Error)
+    )
+
+    // Set custom error handler
+    const errorHandler = vi.fn()
+    adapter.onError?.(errorHandler)
+
+    listeners['error']?.(new Error('Custom error'))
+    expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
+
+    // Message handler throws when callback throws
+    const throwingCallback = vi.fn().mockImplementation(() => {
+      throw new Error('OnMessage error')
+    })
+    await adapter.subscribe('topic-1', throwingCallback)
+
+    const remoteEnvelope = JSON.stringify({
+      origin: 'remote-id',
+      payload: { kind: 'signal', data: { key: ['err-test'] } },
+    })
+    listeners['message']?.('topic-1', remoteEnvelope)
+    expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
+
+    // Unsubscribe error
+    vi.mocked(client.unsubscribe).mockRejectedValueOnce(new Error('Redis unsubscribe failed'))
+    const unsub = await adapter.subscribe('topic-2', vi.fn())
+    await expect(unsub()).rejects.toThrow('Redis unsubscribe failed')
+    expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
+
+    consoleSpy.mockRestore()
+  })
 })
+
+

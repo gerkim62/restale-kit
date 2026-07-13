@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SSEChannelGroup } from './channel-group.js'
 import { createSSEChannel } from './channel.js'
+import { createEventStore } from './event-store.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
@@ -166,4 +167,102 @@ describe('channel-group', () => {
 
     expect(retryTopicAttempts).toBe(5)
   })
+
+  it('receives control messages via PubSub and revokes matching local connections', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 500, role: 'admin' })
+    await group['controlPendingOp']
+
+    // Simulate incoming control message over controlTopic
+    await pubsub.publish(group.controlTopic, {
+      kind: 'control',
+      data: { role: 'admin' },
+    })
+
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('retries control topic subscription if pubsub.subscribe fails initially', async () => {
+    let attempts = 0
+    const flakyPubSub = new MemoryPubSubAdapter()
+
+    vi.spyOn(flakyPubSub, 'subscribe').mockImplementation((topic, callback) => {
+      if (topic.includes('control')) {
+        attempts++
+        if (attempts === 1) {
+          return Promise.reject(new Error('Control sub failed'))
+        }
+      }
+      return Promise.resolve(() => Promise.resolve())
+    })
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub: flakyPubSub })
+    const ch = createSSEChannel()
+    group.register(ch, { userId: 1 })
+
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(200)
+    }
+
+    expect(attempts).toBeGreaterThanOrEqual(2)
+  })
+
+  it('handles non-Error thrown exceptions during delivery', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    vi.spyOn(ch, 'invalidate').mockImplementation(() => {
+      throw 'String error thrown'
+    })
+
+    group.register(ch, { userId: 1 })
+
+    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow()
+    expect(consoleSpy).toHaveBeenCalled()
+    expect(consoleSpy.mock.calls[0][0]).toContain('[ERROR][SSEChannelGroup')
+
+    consoleSpy.mockRestore()
+  })
+
+  it('disposes control subscription idempotently and logs unsubscribe errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const flakyPubSub = new MemoryPubSubAdapter()
+
+    vi.spyOn(flakyPubSub, 'subscribe').mockResolvedValue(() => {
+      return Promise.reject(new Error('Unsub control error'))
+    })
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub: flakyPubSub })
+    await group['controlPendingOp']
+    await group.dispose()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ERROR][SSEChannelGroup.dispose] Failed to unsubscribe control topic'),
+      expect.any(Error)
+    )
+
+    consoleSpy.mockRestore()
+  })
+
+  it('stores events in eventStore during broadcast and publish', async () => {
+    const store = createEventStore()
+    const group = new SSEChannelGroup<any, TestMeta>({ eventStore: store })
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 }, { topics: ['chat'] })
+
+    group.broadcast({ key: ['broadcast-event'] }, () => true)
+    expect(store.getEventsAfter('').length).toBe(1)
+
+    await group.publish('chat', { key: ['publish-event'] })
+    expect(store.getEventsAfter('').length).toBe(2)
+  })
 })
+
+
+

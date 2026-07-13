@@ -44,4 +44,19 @@ describe('node attachSSE', () => {
     req.emit('close')
     expect(channel.state).toBe('closed')
   })
+
+  it('handles fallback when req.url has no query string or is undefined', () => {
+    const reqWithoutUrl = Object.assign(new EventEmitter(), {
+      url: undefined,
+      headers: {},
+    }) as unknown as IncomingMessage
+
+    const res = createMockResponse()
+
+    expect(() => attachSSE(reqWithoutUrl, res)).toThrow(
+      'Missing or invalid restaleKitRequestId query parameter in request URL'
+    )
+  })
 })
+
+

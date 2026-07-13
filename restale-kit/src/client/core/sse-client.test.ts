@@ -145,4 +145,28 @@ describe('SSEInvalidatorClient', () => {
     expect(client.status).toEqual({ status: 'closed', reason: 'manual' })
     expect(es.readyState).toBe(MockEventSource.CLOSED)
   })
+
+  it('clears active retryTimer when disconnect() or close() is called', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 1000, jitter: false },
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+
+    // Cause connection error so a retry timer is scheduled
+    MockEventSource.instances[0]?.emitError()
+    expect(client.status.status).toBe('connecting')
+
+    // Calling close clears the scheduled retry timer
+    client.close()
+    expect(client.status.status).toBe('closed')
+
+    // Reconnecting after disconnect creates new EventSource instance
+    void client.connect()
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
 })
+
+
