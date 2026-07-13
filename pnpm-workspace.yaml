@@ -9,4 +9,5 @@ allowBuilds:
   esbuild: true
 
 minimumReleaseAgeExclude:
+  # helmet 8.3.0 is required by the Express example until its dependency range is updated.
   - helmet@8.3.0

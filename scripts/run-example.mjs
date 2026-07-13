@@ -28,6 +28,10 @@ function start(args, env = {}) {
   child.once('exit', (code) => {
     if (code && code !== 0) stop(code)
   })
+  child.once('error', (error) => {
+    console.error(`Could not start ${pnpm}: ${error.message}`)
+    stop(1)
+  })
 }
 
 function stop(code = 0) {

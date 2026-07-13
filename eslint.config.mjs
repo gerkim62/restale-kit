@@ -25,6 +25,17 @@ export default tseslint.config(
   // ESLint directive comment enforcement
   comments.recommended,
 
+  // Node.js globals used by root automation scripts.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
+
   // Our specific rules
   {
     files: ['**/*.ts', '**/*.tsx'],
