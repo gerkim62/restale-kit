@@ -151,6 +151,21 @@ describe('pusherPubSubAdapter', () => {
     expect(success).toBe(true)
     expect(callback).not.toHaveBeenCalled()
   })
+
+  it('handles webhooks for channels without active subscriber callbacks', () => {
+    const events = [
+      {
+        channel: 'unregistered-channel',
+        name: 'invalidate',
+        data: { origin: 'other', payload: { kind: 'signal', data: { key: ['x'] } } },
+      },
+    ]
+    const client = createMockPusherClient(true, events)
+    const adapter = pusherPubSubAdapter(client)
+
+    const success = adapter.handleWebhook('valid-body', {})
+    expect(success).toBe(true)
+  })
 })
 
 

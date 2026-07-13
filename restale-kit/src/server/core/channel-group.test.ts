@@ -422,6 +422,86 @@ describe('channel-group', () => {
     // ch.invalidate should have been called
     expect(invalidateSpy).toHaveBeenCalledWith({ key: ['remote-data'] }, undefined)
   })
+
+  // --- TopicManager edge cases for 100% line coverage ---
+
+  it('TopicManager handles channel removal while subscribe promise is resolving', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+
+    // Register ch to create topic manager
+    group.register(ch, { userId: 1 }, { topics: ['transient-topic'] })
+
+    // Immediately deregister before subscribe resolves
+    group.deregister(ch)
+
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    expect(pubsub.getTopicSubscriberCount('transient-topic')).toBe(0)
+  })
+
+  it('TopicManager logs error when subscribe fails after max 5 attempts', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const pubsub = new MemoryPubSubAdapter()
+    vi.spyOn(pubsub, 'subscribe').mockRejectedValue(new Error('Persistent pubsub error'))
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 }, { topics: ['failing-topic'] })
+
+    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(200)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ERROR][TopicManager.subscribe] Failed to subscribe to topic "failing-topic" after 5 attempts:'),
+      expect.any(Error)
+    )
+
+    consoleSpy.mockRestore()
+  })
+
+  it('TopicManager logs error when unsubscribe fails', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const pubsub = new MemoryPubSubAdapter()
+    vi.spyOn(pubsub, 'subscribe').mockResolvedValue(() => Promise.reject(new Error('Unsubscribe network failure')))
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 }, { topics: ['unsub-fail-topic'] })
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    group.deregister(ch)
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ERROR][TopicManager.unsubscribe] Failed to unsubscribe from topic "unsub-fail-topic":'),
+      expect.any(Error)
+    )
+
+    consoleSpy.mockRestore()
+  })
+
+  it('TopicManager handles channel added back while unsubscribe is pending', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    group.register(ch1, { userId: 1 }, { topics: ['readd-topic'] })
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    // Start unsub
+    group.deregister(ch1)
+    // Re-add ch2 immediately
+    group.register(ch2, { userId: 2 }, { topics: ['readd-topic'] })
+
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    expect(group.size).toBe(1)
+  })
 })
 
 

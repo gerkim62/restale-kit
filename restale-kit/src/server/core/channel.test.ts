@@ -167,23 +167,50 @@ describe('channel', () => {
     expect(decoder.decode(v2)).toBe('id: id-3\nevent: invalidate\ndata: {"key":["evt3"]}\n\n')
   })
 
-  it('handles raw string error when controller.close throws in closeInternal', async () => {
+  it('warns when controller.close throws an error in closeInternal', async () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const channel = createSSEChannel()
+    const OriginalReadableStream = globalThis.ReadableStream
 
-    // Mock controller close to throw string
+    // Intercept controller passed to ReadableStream start
+    globalThis.ReadableStream = class extends OriginalReadableStream<any> {
+      constructor(underlyingSource?: any, queuingStrategy?: any) {
+        const origStart = underlyingSource?.start
+        if (origStart) {
+          underlyingSource.start = function (ctrl: any) {
+            ctrl.close = () => {
+              throw new Error('Controller close stream error')
+            }
+            return origStart.call(this, ctrl)
+          }
+        }
+        super(underlyingSource, queuingStrategy)
+      }
+    } as any
+
+    try {
+      const channel = createSSEChannel()
+      channel.close()
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
+        '\n  error:',
+        expect.stringContaining('Controller close stream error')
+      )
+    } finally {
+      globalThis.ReadableStream = OriginalReadableStream
+      consoleSpy.mockRestore()
+    }
+  })
+
+  it('emits keepalive frame on timer interval when channel state is open', async () => {
+    const channel = createSSEChannel({ keepaliveIntervalMs: 1000 })
     const reader = channel.stream.getReader()
-    await reader.cancel()
 
-    channel.close()
+    await vi.advanceTimersByTimeAsync(1000)
+    const { value } = await reader.read()
+    reader.releaseLock()
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
-      '\n  error:',
-      expect.any(String)
-    )
-
-    consoleSpy.mockRestore()
+    expect(decoder.decode(value)).toBe(': keepalive\n\n')
   })
 
   it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {

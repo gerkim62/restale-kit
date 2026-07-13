@@ -373,6 +373,37 @@ describe('SSEInvalidatorClient', () => {
       globalThis.ErrorEvent = originalErrorEvent
     }
   })
+
+  it('validates array batch payload against signalSchema', async () => {
+    const schema = createValidSchema((s: any) => ({ key: s.key, action: 'refetch' as const }))
+    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema })
+
+    const invalidateSpy = vi.fn()
+    client.addEventListener('invalidate', (e: any) => invalidateSpy(e.detail))
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'invalidate',
+      JSON.stringify([{ key: ['todos'] }, { key: ['users'] }])
+    )
+
+    expect(invalidateSpy).toHaveBeenCalledWith([
+      { key: ['todos'], action: 'refetch' },
+      { key: ['users'], action: 'refetch' },
+    ])
+  })
+
+  it('rejects initial connectPromise when autoReconnect is false and error occurs', async () => {
+    const client = new SSEInvalidatorClient('/sse', { autoReconnect: false })
+    const p = client.connect()
+
+    MockEventSource.instances[0]?.emitError()
+
+    await expect(p).rejects.toBeInstanceOf(Event)
+  })
 })
 
 

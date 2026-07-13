@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { validatePayload } from './validation.js'
 
 describe('client validatePayload', () => {
-  it('throws error when JSON.parse fails', () => {
+  it('throws error and logs to console.error when JSON.parse fails', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => validatePayload('invalid json {')).toThrow('Failed to parse SSE payload as JSON')
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[ERROR][validatePayload] Failed to parse SSE payload as JSON',
+      '\n  rawData:',
+      'invalid json {',
+      '\n  error:',
+      expect.any(String)
+    )
+    consoleSpy.mockRestore()
   })
 
   it('throws error when payload is scalar or null', () => {

@@ -3,7 +3,7 @@ import { tanstackAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 
 describe('tanstackAdapter', () => {
-  it('maps default invalidate action to queryClient.invalidateQueries', () => {
+  it('defaults omitted action to invalidateQueries and does not invoke other methods', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       refetchQueries: vi.fn(),
@@ -17,9 +17,27 @@ describe('tanstackAdapter', () => {
       queryKey: ['todos', { status: 'active' }],
       exact: true,
     })
+    expect(queryClient.refetchQueries).not.toHaveBeenCalled()
+    expect(queryClient.removeQueries).not.toHaveBeenCalled()
   })
 
-  it('maps refetch action to queryClient.refetchQueries', () => {
+  it('maps explicit action "invalidate" to invalidateQueries', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      refetchQueries: vi.fn(),
+      removeQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    const adapter = tanstackAdapter(queryClient)
+    adapter({ key: ['todos'], action: 'invalidate', exact: false })
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['todos'],
+      exact: false,
+    })
+  })
+
+  it('maps refetch action to queryClient.refetchQueries and does not invoke invalidate/remove', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       refetchQueries: vi.fn(),
@@ -33,9 +51,11 @@ describe('tanstackAdapter', () => {
       queryKey: ['users'],
       exact: undefined,
     })
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
+    expect(queryClient.removeQueries).not.toHaveBeenCalled()
   })
 
-  it('maps remove action to queryClient.removeQueries', () => {
+  it('maps remove action to queryClient.removeQueries and does not invoke invalidate/refetch', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       refetchQueries: vi.fn(),
@@ -49,9 +69,11 @@ describe('tanstackAdapter', () => {
       queryKey: ['posts'],
       exact: undefined,
     })
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
+    expect(queryClient.refetchQueries).not.toHaveBeenCalled()
   })
 
-  it('processes batch array of signals', () => {
+  it('processes batch array of signals across different actions', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       refetchQueries: vi.fn(),
@@ -59,9 +81,23 @@ describe('tanstackAdapter', () => {
     } as unknown as QueryClient
 
     const adapter = tanstackAdapter(queryClient)
-    adapter([{ key: ['a'] }, { key: ['b'], action: 'remove' }])
+    adapter([
+      { key: ['a'] },
+      { key: ['b'], action: 'refetch' },
+      { key: ['c'], action: 'remove' },
+    ])
 
-    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1)
-    expect(queryClient.removeQueries).toHaveBeenCalledTimes(1)
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['a'],
+      exact: undefined,
+    })
+    expect(queryClient.refetchQueries).toHaveBeenCalledWith({
+      queryKey: ['b'],
+      exact: undefined,
+    })
+    expect(queryClient.removeQueries).toHaveBeenCalledWith({
+      queryKey: ['c'],
+      exact: undefined,
+    })
   })
 })
