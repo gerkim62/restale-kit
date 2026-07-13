@@ -2,7 +2,38 @@
   "name": "restale-kit",
   "version": "0.1.0",
   "description": "Minimal library to invalidate client-side queries via SSE",
+  "license": "MIT",
+  "author": "Gerison Kimathi <gerkim62@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gerkim62/restale-kit.git",
+    "directory": "restale-kit"
+  },
+  "bugs": {
+    "url": "https://github.com/gerkim62/restale-kit/issues"
+  },
+  "homepage": "https://github.com/gerkim62/restale-kit#readme",
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "query-invalidation",
+    "tanstack-query",
+    "swr",
+    "react"
+  ],
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
@@ -21,8 +52,12 @@
     "./hono": { "types": "./dist/server/hono/index.d.ts", "import": "./dist/server/hono/index.js" }
   },
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf dist"
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "build:test": "pnpm run clean && tsc",
+    "clean": "rm -rf dist",
+    "test": "pnpm run build:test && node --test --test-force-exit dist/__tests__/adapters.test.js dist/__tests__/pubsub.test.js && pnpm run build",
+    "prepack": "pnpm run build",
+    "release:check": "pnpm run test && npm pack --dry-run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

@@ -2,6 +2,7 @@
   "name": "sse-query-invalidator-workspace",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.11.0",
   "engines": {
     "node": ">=20.0.0"
   },
@@ -12,6 +13,7 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "validate": "pnpm run typecheck && pnpm run lint",
+    "test:package": "pnpm --filter restale-kit run test && node scripts/verify-package.mjs",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
     "dev:swr": "pnpm --filter @restale-kit-example/react-swr run dev",
     "dev:express": "pnpm --filter @restale-kit-example/express run dev",
