@@ -41,3 +41,5 @@ The package has four stable top-level domains: `types`, `server`, `client`, and
 | `restale-kit/tanstack-query` | `./src/client/tanstack-query/` |
 | `restale-kit/pubsub` | `./src/pubsub/core/` |
 | `restale-kit/redis` | `./src/pubsub/redis/` |
+| `restale-kit/ably` | `./src/pubsub/ably/` |
+| `restale-kit/pusher` | `./src/pubsub/pusher/` |

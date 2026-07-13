@@ -1,54 +1,54 @@
 # sse-query-invalidator-workspace
 
-Welcome to the development workspace for **restale-kit**! This repository is a monorepo containing the `restale-kit` package code, developer documentation, and several frontend/backend example integrations to test and demonstrate the library.
+Development workspace for **restale-kit** — a monorepo containing the library source, documentation, design specs, and example integrations.
 
 ---
 
 ## 📂 Workspace Structure
 
-- **[restale-kit](file:///home/gerison/coding/experiments/sse-query-invalidator/restale-kit/)**: The core library published to npm. Contains the client and server implementation along with integrations for TanStack Query, SWR, Redis, Ably, and Pusher.
-  - See the [restale-kit consumer README](file:///home/gerison/coding/experiments/sse-query-invalidator/restale-kit/README.md) for usage documentation.
-- **[examples](file:///home/gerison/coding/experiments/sse-query-invalidator/examples/)**: Sample code for both frontends and backends demonstrating the integration in action.
-  - **[examples/backend](file:///home/gerison/coding/experiments/sse-query-invalidator/examples/backend/)**: Implementations using Hono, Express, Fastify, and native Node.
-  - **[examples/frontend](file:///home/gerison/coding/experiments/sse-query-invalidator/examples/frontend/)**: Clients built with Vite + React + TanStack Query / SWR.
-- **[docs](file:///home/gerison/coding/experiments/sse-query-invalidator/docs/)**: Additional design documents, API contracts, pub/sub specifications, and notes.
+- **[restale-kit/](./restale-kit/)** — The core library published to npm. Contains all server adapters, client adapters, and pub/sub integrations.
+  - [restale-kit/README.md](./restale-kit/README.md) — Library usage documentation (also on npm).
+- **[docs/](./docs/)** — User-facing documentation guides.
+  - [Getting Started](./docs/getting-started.md), [Server](./docs/server.md), [Client](./docs/client.md), [Validation](./docs/validation.md), [Pub/Sub](./docs/pubsub.md), [API Reference](./docs/api-reference.md)
+- **[spec/](./spec/)** — Design documents, wire protocol contracts, and architectural decision records.
+- **[examples/](./examples/)** — Sample frontends and backends demonstrating the integration.
+  - **[examples/backend/](./examples/backend/)** — Hono, Express, Fastify, and native Node implementations.
+  - **[examples/frontend/](./examples/frontend/)** — Vite + React + TanStack Query and SWR clients.
 
 ---
 
-## 🛠️ Development & Commands
+## 🛠️ Development
 
-### 1. Installation
-Install workspace dependencies:
+### Install
 ```sh
 pnpm install
 ```
 
-### 2. Validation & Testing
-Build, check types, run linter, and run test suites:
+### Validate (typecheck + lint)
 ```sh
-# Lint all workspace files
-pnpm run lint
-
-# Build and verify the npm package targets
 pnpm run validate
+```
 
-# Run the adapters and pubsub test suite + package checks
+### Run tests
+```sh
 pnpm run test:package
 ```
 
-### 3. Interactive Examples
-To launch an interactive CLI to choose a frontend and backend pairing to run locally:
+### Interactive examples
 ```sh
 pnpm example
 ```
 
-Alternatively, run specific dev tasks in separate terminals:
-- **Express Backend:** `pnpm dev:express`
-- **Hono Backend:** `pnpm dev:hono`
-- **Fastify Backend:** `pnpm dev:fastify`
-- **Native Node Backend:** `pnpm dev:node`
-- **React-Query Client:** `pnpm dev:client`
-- **React-SWR Client:** `pnpm dev:swr`
+Or run specific stacks in separate terminals:
+
+| Command | Description |
+|---|---|
+| `pnpm dev:express` | Express backend |
+| `pnpm dev:hono` | Hono backend |
+| `pnpm dev:fastify` | Fastify backend |
+| `pnpm dev:node` | Native Node backend |
+| `pnpm dev:client` | React + TanStack Query frontend |
+| `pnpm dev:swr` | React + SWR frontend |
 
 ---
 
