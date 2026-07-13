@@ -8,7 +8,7 @@ Based on the contract, here's the complete usage from both ends.
 ```ts
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit/types'
+import type { InvalidateSignal } from 'restale-kit'
 import { attachSSE } from 'restale-kit/express'
 
 const app = express()
@@ -55,7 +55,7 @@ function notifyEverything() {
 ```ts
 import { Hono } from 'hono'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit/types'
+import type { InvalidateSignal } from 'restale-kit'
 import { toSSEResponse } from 'restale-kit/hono'
 
 const app = new Hono()

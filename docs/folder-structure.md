@@ -25,7 +25,7 @@ The package has four stable top-level domains: `types`, `server`, `client`, and
 
 | Import path | Source entrypoint |
 |---|---|
-| `restale-kit/types` | `./src/types/` |
+| `restale-kit` | `./src/types/` |
 | `restale-kit/server` | `./src/server/core/` |
 | `restale-kit/node` | `./src/server/node/` |
 | `restale-kit/fetch` | `./src/server/fetch/` |

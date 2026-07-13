@@ -57,7 +57,7 @@ restale-kit/
 {
   "name": "restale-kit",
   "exports": {
-    "./types": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
+    ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
     "./server/node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
     "./server/fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
@@ -340,7 +340,7 @@ When a `metaSchema` is provided in the constructor, `register()` validates the `
 synchronous.
 
 `SSEChannelGroup` is exported from `restale-kit/server`; shared errors are exported from
-`restale-kit/types`.
+`restale-kit`.
 
 #### Backpressure
 
@@ -606,7 +606,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit/types` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
+| `restale-kit` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup` |
 | `restale-kit/node`, `restale-kit/express`, `restale-kit/fastify` | `attachSSE` |
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
@@ -617,7 +617,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 | `restale-kit/pubsub` | `PubSubAdapter` |
 | `restale-kit/{redis,ably,pusher}` | provider-specific PubSub adapters |
 
-`InvalidateSignal` is available from `restale-kit/types` and re-exported from `restale-kit/client`
+`InvalidateSignal` is available from `restale-kit` and re-exported from `restale-kit/client`
 for direct client users.
 
 `StandardSchemaV1` is **not** re-exported — the type interface is inlined in the library's source

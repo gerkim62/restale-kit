@@ -4,7 +4,7 @@
   "description": "Minimal library to invalidate client-side queries via SSE",
   "type": "module",
   "exports": {
-    "./types": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
+    ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
     "./node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
     "./fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
