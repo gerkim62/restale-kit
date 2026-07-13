@@ -1,7 +1,8 @@
-import type { InvalidateSignal, ChannelState } from '@/types/protocol.js'
+import type { InvalidateSignal, ChannelState, EventStore } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import { formatInvalidateFrame, formatKeepalive } from '@/server/core/framing.js'
+import { createEventStore } from '@/server/core/event-store.js'
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 30_000
 
@@ -13,6 +14,14 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
   keepaliveIntervalMs?: number
   /** Optional Standard Schema for runtime signal validation. No schema = no validation. */
   signalSchema?: StandardSchemaV1<unknown, TSignal>
+  /** Last event ID received from the client (e.g. from standard Last-Event-ID HTTP header). */
+  lastEventId?: string
+  /** Shared EventStore for recording history and replaying missed events upon reconnect. */
+  eventStore?: EventStore<TSignal>
+  /** Capacity of automatically instantiated EventStore if `eventStore` is not provided. */
+  eventBufferCapacity?: number
+  /** Custom ID generator for assigned event frames. Ignored if an external `eventStore` is provided. */
+  idGenerator?: () => string
 }
 
 /**
@@ -33,8 +42,10 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * - When `state` is `'closed'`: throws `ChannelClosedError`.
    * - When a `signalSchema` was provided and validation fails: throws `SchemaValidationError`.
    * - When a `signalSchema` returns a Promise: throws `SchemaValidationError` ("async schemas are not supported").
+   *
+   * Returns the event ID assigned to the invalidation frame.
    */
-  invalidate(signal: TSignal | TSignal[]): void
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
   close(): void
   /**
@@ -56,6 +67,13 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 ): SSEChannel<TSignal> {
   const keepaliveIntervalMs = options?.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
   const signalSchema = options?.signalSchema
+  const lastEventId = options?.lastEventId
+  const idGenerator = options?.idGenerator
+
+  let eventStore: EventStore<TSignal> | undefined = options?.eventStore
+  if (eventStore === undefined && options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+    eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity, idGenerator })
+  }
 
   let state: ChannelState = 'open'
   let controller: ReadableStreamDefaultController<Uint8Array>
@@ -64,6 +82,15 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
       controller = ctrl
+
+      // Replay missed historical events if lastEventId and eventStore are present
+      if (lastEventId !== undefined && eventStore !== undefined) {
+        const missed = eventStore.getEventsAfter(lastEventId)
+        for (const record of missed) {
+          controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+        }
+      }
+
       keepaliveTimer = setInterval(() => {
         if (state === 'open') {
           controller.enqueue(formatKeepalive())
@@ -92,7 +119,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     }
   }
 
-  function invalidate(signal: TSignal | TSignal[]): void {
+  function invalidate(signal: TSignal | TSignal[], customId?: string): string {
     if (state === 'closed') {
       throw new ChannelClosedError()
     }
@@ -104,7 +131,19 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
     }
 
-    controller.enqueue(formatInvalidateFrame(signal))
+    let eventId = customId
+    if (eventStore !== undefined) {
+      const record = eventStore.add(signal, customId)
+      eventId = record.id
+      controller.enqueue(formatInvalidateFrame(signal, eventId))
+    } else {
+      if (eventId === undefined && idGenerator !== undefined) {
+        eventId = idGenerator()
+      }
+      controller.enqueue(formatInvalidateFrame(signal, eventId))
+    }
+
+    return eventId ?? ''
   }
 
   return {

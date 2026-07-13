@@ -14,7 +14,20 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   request: Request,
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
-  const channel = createSSEChannel<TSignal>(options)
+  let lastEventId = options?.lastEventId
+  if (lastEventId === undefined) {
+    const header = request.headers.get('Last-Event-ID')
+    if (header !== null && header !== '') {
+      lastEventId = header
+    }
+  }
+
+  const channelOptions: SSEChannelOptions<TSignal> = {
+    ...options,
+    lastEventId,
+  }
+
+  const channel = createSSEChannel<TSignal>(channelOptions)
 
   const response = new Response(channel.stream, {
     headers: {

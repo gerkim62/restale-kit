@@ -123,18 +123,22 @@ void test('PubSub Adapter Core Integration', async (t) => {
       }
     }
 
-    const group = new SSEChannelGroup({ pubsub: mockPubSub })
+    const group = new SSEChannelGroup({ pubsub: mockPubSub, eventBufferCapacity: 10 })
     const ch = createSSEChannel()
     group.register(ch, {}, { topics: ['topic-a'] })
 
-    // Mock invalidate to track execution
-    ch.invalidate = () => {
+    let capturedEventId: string | undefined = undefined
+    // Mock invalidate to track execution and eventId propagation
+    ch.invalidate = (_signal, eventId) => {
+      capturedEventId = eventId
       order.push('local-invalidate')
+      return eventId ?? ''
     }
 
     await group.publish('topic-a', { key: ['test'] })
 
     assert.deepStrictEqual(order, ['local-invalidate', 'broker-publish'])
+    assert.equal(capturedEventId, '1')
   })
 
   await t.test('error isolation in subscribe chain', async () => {

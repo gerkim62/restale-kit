@@ -41,6 +41,7 @@ export class SSEInvalidatorClient<
     resolve: () => void
     reject: (error: Event) => void
   } | null = null
+  private currentLastEventId: string | null = null
 
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
@@ -55,6 +56,11 @@ export class SSEInvalidatorClient<
   /** Current connection status. */
   get status(): ConnectionStatus {
     return this.currentStatus
+  }
+
+  /** The last event ID string received from the SSE stream, if any. */
+  get lastEventId(): string | null {
+    return this.currentLastEventId
   }
 
   /**
@@ -245,6 +251,10 @@ export class SSEInvalidatorClient<
         } else {
           // No schema — emit as-is after structural validation
           this.dispatchEvent(new CustomEvent('invalidate', { detail: validated }))
+        }
+
+        if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
+          this.currentLastEventId = event.lastEventId
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))
