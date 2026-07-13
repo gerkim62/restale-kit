@@ -27,7 +27,14 @@ export function unwrapEnvelope<T extends InvalidateSignal>(
   rawData: unknown,
   localOriginId: string
 ): PubSubMessage<T> | null {
-  const parsed: unknown = typeof rawData === 'string' ? (JSON.parse(rawData)) : rawData
+  let parsed: unknown = rawData
+  if (typeof rawData === 'string') {
+    try {
+      parsed = JSON.parse(rawData)
+    } catch {
+      return null
+    }
+  }
   if (!isEnvelope(parsed)) return null
   if (parsed.origin === localOriginId) return null // Suppress self-echo
 
