@@ -498,8 +498,39 @@ describe('channel-group', () => {
     // Re-add ch2 immediately
     group.register(ch2, { userId: 2 }, { topics: ['readd-topic'] })
 
-    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+    expect(group.size).toBe(1)
+  })
 
+  it('auto-creates EventStore when eventBufferCapacity > 0 is passed in options', () => {
+    const group = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 25 })
+    expect(group.eventStore).toBeDefined()
+
+    const ch = createSSEChannel()
+    const invalidateSpy = vi.spyOn(ch, 'invalidate')
+    group.register(ch, { userId: 99 })
+
+    group.broadcastToAll({ key: ['auto-store-group'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['auto-store-group'] }, '1')
+  })
+
+  it('preserves topic subscription when new channel registers while teardown is in-flight', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    // 1. Initial register
+    group.register(ch1, { userId: 10 }, { topics: ['shared-topic'] })
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+    expect(pubsub.getTopicSubscriberCount('shared-topic')).toBe(1)
+
+    // 2. Deregister ch1 to start teardown
+    group.deregister(ch1)
+    // 3. Immediately register ch2 on shared-topic before teardown tasks resolve
+    group.register(ch2, { userId: 20 }, { topics: ['shared-topic'] })
+
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+    expect(pubsub.getTopicSubscriberCount('shared-topic')).toBe(1)
     expect(group.size).toBe(1)
   })
 })

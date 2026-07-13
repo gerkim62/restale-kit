@@ -267,4 +267,4 @@ if jitter: delay = delay × random(0.5, 1.5)
 
 - `attempt` resets to 0 on successful `open`.
 - Calling `close()` cancels any pending retry timer.
-- `reconnect()` from the hook (or `client.connect()` when in `'error'` state) cancels the timer, resets the backoff counter, and immediately connects. While backoff is in progress the status is `'connecting'`, so `connect()` returns the existing pending promise rather than starting a new connection.
+- `reconnect()` from the hook (or `client.connect()`) cancels any active retry timer, resets the backoff counter, and immediately initiates a new connection attempt.

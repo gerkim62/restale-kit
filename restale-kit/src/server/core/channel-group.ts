@@ -24,7 +24,8 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
   constructor(
     private readonly topic: string,
     private readonly pubsub: PubSubAdapter<TSignal> | undefined,
-    private readonly onMessage: (message: PubSubMessage<TSignal>) => void
+    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
+    private readonly onTeardown?: (topic: string) => void
   ) {}
 
   add(channel: SSEChannel<TSignal>): void {
@@ -43,7 +44,12 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
   private sync(): void {
     const pubsub = this.pubsub
-    if (!pubsub) return
+    if (!pubsub) {
+      if (this.channels.size === 0) {
+        this.onTeardown?.(this.topic)
+      }
+      return
+    }
 
     const wantsSubscribe = this.channels.size > 0
     if (wantsSubscribe && !this.isSubscribed) {
@@ -52,6 +58,7 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
         .then(async () => {
           if (this.channels.size === 0) {
             this.isSubscribed = false
+            this.onTeardown?.(this.topic)
             return
           }
           if (this.unsubscribeFn) {
@@ -78,6 +85,7 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
           for (;;) {
             if (this.channels.size === 0) {
               this.isSubscribed = false
+              this.onTeardown?.(this.topic)
               return
             }
             try {
@@ -87,12 +95,14 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
                 this.unsubscribeFn = undefined
                 this.isSubscribed = false
                 await unsub()
+                this.onTeardown?.(this.topic)
               }
               break
             } catch (err) {
               attempts++
               if (attempts >= maxAttempts || this.channels.size === 0) {
                 this.isSubscribed = false
+                this.onTeardown?.(this.topic)
                 console.error(`[ERROR][TopicManager.subscribe] Failed to subscribe to topic "${this.topic}" after ${attempts.toString()} attempts:`, err)
                 break
               }
@@ -121,6 +131,9 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
               // Note: `isSubscribed` remains false to keep state consistent after unsubscribe failure.
               console.error(`[ERROR][TopicManager.unsubscribe] Failed to unsubscribe from topic "${this.topic}":`, err)
             }
+          }
+          if (this.channels.size === 0) {
+            this.onTeardown?.(this.topic)
           }
         })
         .catch((err: unknown) => {
@@ -292,18 +305,25 @@ export class SSEChannelGroup<
     for (const topic of topicsSet) {
       let topicManager = this.topics.get(topic)
       if (!topicManager) {
-        topicManager = new TopicManager(topic, this.pubsub, (msg) => {
-          if (msg.kind !== 'signal') return
-          // Deliver to all channels registered to this topic.
-          // Query the live map to avoid closing over stale topicManager instances
-          // during topic teardown and recreation.
-          const currentManager = this.topics.get(topic)
-          if (!currentManager) return
+        topicManager = new TopicManager(
+          topic,
+          this.pubsub,
+          (msg) => {
+            if (msg.kind !== 'signal') return
+            // Deliver to all channels registered to this topic.
+            // Query the live map to avoid closing over stale topicManager instances
+            // during topic teardown and recreation.
+            const currentManager = this.topics.get(topic)
+            if (!currentManager) return
 
-          for (const ch of currentManager.channels) {
-            this.deliverToChannel(ch, msg.data, 'pubsub', topic)
+            for (const ch of currentManager.channels) {
+              this.deliverToChannel(ch, msg.data, 'pubsub', topic)
+            }
+          },
+          (t) => {
+            this.topics.delete(t)
           }
-        })
+        )
         this.topics.set(topic, topicManager)
       }
       if (!existingEntry || !existingEntry.topics.has(topic)) {
@@ -323,9 +343,6 @@ export class SSEChannelGroup<
       const topicManager = this.topics.get(topic)
       if (topicManager) {
         topicManager.remove(channel)
-        if (topicManager.size === 0) {
-          this.topics.delete(topic)
-        }
       }
     }
   }

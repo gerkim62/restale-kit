@@ -137,10 +137,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       eventId = record.id
       controller.enqueue(formatInvalidateFrame(signal, eventId))
     } else {
-      if (eventId === undefined && idGenerator !== undefined) {
-        eventId = idGenerator()
-      }
-      controller.enqueue(formatInvalidateFrame(signal, eventId))
+      controller.enqueue(formatInvalidateFrame(signal, undefined))
     }
 
     return eventId ?? ''

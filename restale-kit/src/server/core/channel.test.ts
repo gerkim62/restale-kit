@@ -104,7 +104,7 @@ describe('channel', () => {
     expect(store.getEventsAfter('').length).toBe(1)
 
     const customGen = vi.fn().mockReturnValue('custom-id-123')
-    const customChannel = createSSEChannel({ idGenerator: customGen })
+    const customChannel = createSSEChannel({ eventBufferCapacity: 10, idGenerator: customGen })
 
     const generatedId = customChannel.invalidate({ key: ['test-custom'] })
     expect(generatedId).toBe('custom-id-123')

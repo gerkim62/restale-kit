@@ -1,10 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { toSSEResponse as honoToSSEResponse } from './index.js'
-import { toSSEResponse as fetchToSSEResponse } from '../fetch/response.js'
+import { toSSEResponse } from './index.js'
 
 describe('server/hono entrypoint', () => {
-  it('exports toSSEResponse function matching fetch response implementation', () => {
-    expect(honoToSSEResponse).toBeDefined()
-    expect(honoToSSEResponse).toBe(fetchToSSEResponse)
+  it('creates an SSE Response object and extracts connectionId from Hono Request', () => {
+    const req = new Request('https://example.com/sse?restaleKitRequestId=hono-789')
+    const { response, channel, connectionId } = toSSEResponse(req)
+
+    expect(connectionId).toBe('hono-789')
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    expect(response.headers.get('cache-control')).toBe('no-cache')
+    expect(channel.state).toBe('open')
+    channel.close()
+  })
+
+  it('throws Error synchronously when restaleKitRequestId query parameter is missing', () => {
+    const req = new Request('https://example.com/sse')
+    expect(() => toSSEResponse(req)).toThrow(
+      'Missing or invalid restaleKitRequestId query parameter in request URL'
+    )
   })
 })
