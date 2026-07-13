@@ -1,7 +1,7 @@
-import type { InvalidateSignal, ChannelState } from '../../types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '../../types/standard-schema.js'
-import { ChannelClosedError } from '../../types/errors.js'
-import { formatInvalidateFrame, formatKeepalive } from './framing.js'
+import type { InvalidateSignal, ChannelState } from '@/types/protocol.js'
+import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
+import { ChannelClosedError } from '@/types/errors.js'
+import { formatInvalidateFrame, formatKeepalive } from '@/server/core/framing.js'
 
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 30_000
 

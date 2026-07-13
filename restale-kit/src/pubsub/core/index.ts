@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '../../types/protocol.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 
 /** A broker-agnostic adapter interface for pub/sub operations. */
 export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {

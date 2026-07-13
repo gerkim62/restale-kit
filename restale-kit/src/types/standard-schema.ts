@@ -1,4 +1,4 @@
-import { SchemaValidationError } from './errors.js'
+import { SchemaValidationError } from '@/types/errors.js'
 
 /**
  * Standard Schema v1 interface — inlined per the Standard Schema spec's recommendation.

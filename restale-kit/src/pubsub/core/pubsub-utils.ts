@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '../../types/protocol.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 
 /**
  * Type guard to check if a value is a non-null object.

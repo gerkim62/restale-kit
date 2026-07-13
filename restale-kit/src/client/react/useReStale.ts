@@ -1,7 +1,7 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal } from '../../types/protocol.js'
-import { SSEInvalidatorClient } from '../core/sse-client.js'
-import type { ConnectionStatus, ClientOptions, SSEInvalidatorClientEventMap } from '../core/client-contracts.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import type { ConnectionStatus, ClientOptions, SSEInvalidatorClientEventMap } from '@/client/core/client-contracts.js'
 
 /**
  * Options for `useReStale`, extending `ClientOptions` with React-specific fields.

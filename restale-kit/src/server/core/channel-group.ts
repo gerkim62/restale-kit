@@ -1,8 +1,8 @@
-import type { InvalidateSignal } from '../../types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '../../types/standard-schema.js'
-import type { SSEChannel } from './channel.js'
-import { ChannelClosedError, SchemaValidationError } from '../../types/errors.js'
-import type { PubSubAdapter } from '../../pubsub/core/index.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
+import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
+import type { SSEChannel } from '@/server/core/channel.js'
+import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
+import type { PubSubAdapter } from '@/pubsub/core/index.js'
 
 /**
  * Manages subscription state and serialization for a specific topic.

@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert'
-import { redisPubSubAdapter, type RedisClient } from '../pubsub/redis/index.js'
-import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from '../pubsub/ably/index.js'
-import { pusherPubSubAdapter, type PusherClient, type PusherWebhook } from '../pubsub/pusher/index.js'
+import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index.js'
+import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from '@/pubsub/ably/index.js'
+import { pusherPubSubAdapter, type PusherClient, type PusherWebhook } from '@/pubsub/pusher/index.js'
 
 // Mock event emitter for Redis clients implementing RedisClient structurally
 class MockRedisClient implements RedisClient {

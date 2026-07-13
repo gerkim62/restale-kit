@@ -1,4 +1,4 @@
-import type { ReconnectOptions } from './client-contracts.js'
+import type { ReconnectOptions } from '@/client/core/client-contracts.js'
 
 const DEFAULT_BASE_DELAY_MS = 1_000
 const DEFAULT_MAX_DELAY_MS = 30_000

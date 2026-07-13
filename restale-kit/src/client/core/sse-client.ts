@@ -1,13 +1,13 @@
-import type { InvalidateSignal } from '../../types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '../../types/standard-schema.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
+import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type {
   ConnectionStatus,
   ClientOptions,
   SSEInvalidatorClientEventMap,
-} from './client-contracts.js'
-import { validatePayload } from './validation.js'
-import { calculateBackoff } from './backoff.js'
-import { SchemaValidationError } from '../../types/errors.js'
+} from '@/client/core/client-contracts.js'
+import { validatePayload } from '@/client/core/validation.js'
+import { calculateBackoff } from '@/client/core/backoff.js'
+import { SchemaValidationError } from '@/types/errors.js'
 
 const DEFAULT_AUTO_RECONNECT = true
 const DEFAULT_MAX_RETRIES = Infinity

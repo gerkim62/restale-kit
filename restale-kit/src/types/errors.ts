@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from './standard-schema.js'
+import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
 /**
  * Thrown when `invalidate()` is called on a channel that has already been closed.
