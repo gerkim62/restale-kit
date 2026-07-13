@@ -1,6 +1,7 @@
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { InvalidateSignal } from '@/types/protocol.js'
-import { isEnvelope, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
+import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import { generateInstanceId } from '@/utils/id.js'
+import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
 
 /**
  * Minimal structural interface for a Redis client (compatible with ioredis and node-redis).
@@ -25,7 +26,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   client: RedisClient,
   options?: { subscribeClient?: RedisClient }
 ): PubSubAdapter<TSignal> {
-  const instanceId = Math.random().toString(36).slice(2)
+  const instanceId = generateInstanceId()
   const subscribeClient = options?.subscribeClient || client.duplicate()
 
   // Delegate error handler to prevent Node crash on unhandled subscriber client error events
@@ -38,7 +39,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   })
 
   // Map of topic to the onMessage callback
-  const callbacks = new Map<string, (signal: TSignal | TSignal[]) => void>()
+  const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
 
   // Set up a single message listener on the subscription client
   subscribeClient.on('message', (channel: string, message: string) => {
@@ -46,16 +47,9 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     if (!onMessage) return
 
     try {
-      const parsed: unknown = JSON.parse(message)
-      if (isEnvelope(parsed)) {
-        if (parsed.origin === instanceId) {
-          // Suppress self-echo
-          return
-        }
-        const payload = parsed.payload
-        if (isSignalPayload<TSignal>(payload)) {
-          onMessage(payload)
-        }
+      const unwrapped = unwrapEnvelope<TSignal>(message, instanceId)
+      if (unwrapped) {
+        onMessage(unwrapped)
       }
     } catch (err) {
       errorHandler(err)
@@ -63,17 +57,14 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   })
 
   return {
-    async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
-      const envelope = {
-        origin: instanceId,
-        payload: signal,
-      }
+    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+      const envelope = wrapEnvelope(instanceId, message)
       await client.publish(topic, JSON.stringify(envelope))
     },
 
     async subscribe(
       topic: string,
-      onMessage: (signal: TSignal | TSignal[]) => void
+      onMessage: (message: PubSubMessage<TSignal>) => void
     ): Promise<() => Promise<void>> {
       callbacks.set(topic, onMessage)
       await subscribeClient.subscribe(topic)
@@ -94,3 +85,5 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     },
   }
 }
+
+

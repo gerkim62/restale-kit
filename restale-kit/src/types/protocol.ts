@@ -52,7 +52,7 @@ export function matchesInvalidateSignalKey(cacheKey: unknown, signal: Invalidate
   return signal.key.every((part, index) => matchesJSONValue(cacheKey[index], part, signal.exact === true))
 }
 
-function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: boolean): boolean {
+export function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: boolean): boolean {
   if (actual === expected) return true
   if (actual === null || expected === null || typeof actual !== 'object' || typeof expected !== 'object') {
     return false
@@ -71,6 +71,13 @@ function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: boolean
     Object.hasOwn(actual, key) && matchesJSONValue(actual[key], value, exact)
   )
 }
+
+/**
+ * Discriminated union envelope carried across pub/sub adapters.
+ */
+export type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
+  | { kind: 'signal'; data: TSignal | TSignal[] }
+  | { kind: 'control'; data: JSONValue }
 
 /**
  * The payload of a single SSE `invalidate` event — one signal or a batch.

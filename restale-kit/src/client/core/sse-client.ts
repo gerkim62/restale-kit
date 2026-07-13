@@ -8,9 +8,9 @@ import type {
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
 import { SchemaValidationError } from '@/types/errors.js'
-
-const DEFAULT_AUTO_RECONNECT = true
-const DEFAULT_MAX_RETRIES = Infinity
+import { generateUUID } from '@/utils/id.js'
+import { appendQueryParam } from '@/utils/url.js'
+import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
  * Client-side SSE invalidation client built on native `EventSource`.
@@ -26,11 +26,13 @@ export class SSEInvalidatorClient<
   TSignal extends InvalidateSignal = InvalidateSignal,
 > extends EventTarget {
   private readonly url: string
+  private readonly eventSourceUrl: string
   private readonly autoReconnect: boolean
   private readonly maxRetries: number
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
   private readonly withCredentials: boolean
+  private readonly currentConnectionId: string
 
   private eventSource: EventSource | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
@@ -45,12 +47,23 @@ export class SSEInvalidatorClient<
 
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
+    this.currentConnectionId = generateUUID()
     this.url = url
-    this.autoReconnect = opts?.autoReconnect ?? DEFAULT_AUTO_RECONNECT
-    this.maxRetries = opts?.reconnect?.maxRetries ?? DEFAULT_MAX_RETRIES
+    this.eventSourceUrl = appendQueryParam(
+      url,
+      PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
+      this.currentConnectionId
+    )
+    this.autoReconnect = opts?.autoReconnect ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+    this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.signalSchema = opts?.signalSchema
     this.withCredentials = opts?.withCredentials ?? false
+  }
+
+  /** The unique ID generated for this SSE connection instance. */
+  get connectionId(): string {
+    return this.currentConnectionId
   }
 
   /** Current connection status. */
@@ -184,7 +197,7 @@ export class SSEInvalidatorClient<
 
     this.setStatus({ status: 'connecting' })
 
-    const es = new EventSource(this.url, { withCredentials: this.withCredentials })
+    const es = new EventSource(this.eventSourceUrl, { withCredentials: this.withCredentials })
     this.eventSource = es
 
     es.onopen = () => {

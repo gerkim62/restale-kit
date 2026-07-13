@@ -3,8 +3,7 @@ import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-
 import { ChannelClosedError } from '@/types/errors.js'
 import { formatInvalidateFrame, formatKeepalive } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
-
-const DEFAULT_KEEPALIVE_INTERVAL_MS = 30_000
+import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
  * Configuration options for `createSSEChannel`.
@@ -65,7 +64,8 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
-  const keepaliveIntervalMs = options?.keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
+  const keepaliveIntervalMs =
+    options?.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
   const signalSchema = options?.signalSchema
   const lastEventId = options?.lastEventId
   const idGenerator = options?.idGenerator

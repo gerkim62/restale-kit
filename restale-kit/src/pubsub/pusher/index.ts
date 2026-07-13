@@ -1,6 +1,8 @@
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { InvalidateSignal } from '@/types/protocol.js'
-import { isEnvelope, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
+import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import { generateInstanceId } from '@/utils/id.js'
+import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
+import { PUBSUB_EVENTS } from '@/utils/constants.js'
 
 /**
  * Minimal structural interface for the Pusher Webhook parsed result.
@@ -28,27 +30,25 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
 ): PubSubAdapter<TSignal> & {
   handleWebhook(body: string, headers: Record<string, string>): boolean
 } {
-  const instanceId = Math.random().toString(36).slice(2)
+  const instanceId = generateInstanceId()
 
   let errorHandler: (err: unknown) => void = (err) => {
     console.warn('[WARN][pusherPubSubAdapter] Unhandled pusher error:', err)
   }
 
   // Map of topic (channel) to the active callback
-  const callbacks = new Map<string, (signal: TSignal | TSignal[]) => void>()
+  const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
 
   return {
-    async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
-      const envelope = {
-        origin: instanceId,
-        payload: signal,
-      }
-      await pusherServerClient.trigger(topic, 'invalidate', envelope)
+    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+      const eventName = message.kind === 'control' ? PUBSUB_EVENTS.CONTROL : PUBSUB_EVENTS.INVALIDATE
+      const envelope = wrapEnvelope(instanceId, message)
+      await pusherServerClient.trigger(topic, eventName, envelope)
     },
 
     subscribe(
       topic: string,
-      onMessage: (signal: TSignal | TSignal[]) => void
+      onMessage: (message: PubSubMessage<TSignal>) => void
     ): Promise<() => void> {
       callbacks.set(topic, onMessage)
       return Promise.resolve(() => {
@@ -78,21 +78,13 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
 
         const events = webhook.getEvents()
         for (const event of events) {
-          if (event.name === 'invalidate') {
+          if (event.name === PUBSUB_EVENTS.INVALIDATE || event.name === PUBSUB_EVENTS.CONTROL) {
             const onMessage = callbacks.get(event.channel)
             if (onMessage) {
               try {
-                const data = event.data
-                const parsed: unknown = typeof data === 'string' ? JSON.parse(data) : data
-                if (isEnvelope(parsed)) {
-                  if (parsed.origin === instanceId) {
-                    // Suppress self-echo
-                    continue
-                  }
-                  const payload = parsed.payload
-                  if (isSignalPayload<TSignal>(payload)) {
-                    onMessage(payload)
-                  }
+                const unwrapped = unwrapEnvelope<TSignal>(event.data, instanceId)
+                if (unwrapped) {
+                  onMessage(unwrapped)
                 }
               } catch (err) {
                 errorHandler(err)
@@ -108,3 +100,5 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
     },
   }
 }
+
+

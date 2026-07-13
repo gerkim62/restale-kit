@@ -28,10 +28,14 @@ void test('PubSub Adapter Core Integration', async (t) => {
 
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
-      subscribe: () => {
-        subscribeCalls++
+      subscribe: (topic) => {
+        if (topic !== '__restale_control__') {
+          subscribeCalls++
+        }
         return Promise.resolve(() => {
-          unsubscribeCalls++
+          if (topic !== '__restale_control__') {
+            unsubscribeCalls++
+          }
         })
       }
     }
@@ -77,7 +81,10 @@ void test('PubSub Adapter Core Integration', async (t) => {
 
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
-      subscribe: async () => {
+      subscribe: async (topic) => {
+        if (topic === '__restale_control__') {
+          return () => {}
+        }
         subscribeCalls++
         await delayDeferred.promise
         return () => {
@@ -100,13 +107,6 @@ void test('PubSub Adapter Core Integration', async (t) => {
       setTimeout(resolve, 10)
     })
 
-    // Because register -> deregister -> register occurred, the final state should be subscribed
-    // Let's verify unsubscribe was called for the transient deregister (or bypassed)
-    // Actually, in our optimized queue:
-    // Task 1: subscribe -> completes.
-    // Task 2: unsubscribe -> sees channels.size > 0, aborts (does not unsubscribe, stays subscribed).
-    // Task 3: subscribe -> sees unsubscribeFn is defined, returns immediately.
-    // So subscribeCalls = 1, unsubscribeCalls = 0!
     assert.strictEqual(subscribeCalls, 1)
     assert.strictEqual(unsubscribeCalls, 0)
   })
@@ -146,7 +146,8 @@ void test('PubSub Adapter Core Integration', async (t) => {
     let errorHandler: ((err: unknown) => void) | undefined
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
-      subscribe: () => {
+      subscribe: (topic) => {
+        if (topic === '__restale_control__') return Promise.resolve(() => {})
         const err = new Error('Broker Connection Failed')
         if (errorHandler) {
           errorHandler(err)
@@ -182,7 +183,8 @@ void test('PubSub Adapter Core Integration', async (t) => {
 
     // Verify subsequent operation on same topic still works (retries subscription)
     let secondSubscribeCalled = false
-    mockPubSub.subscribe = () => {
+    mockPubSub.subscribe = (topic) => {
+      if (topic === '__restale_control__') return Promise.resolve(() => {})
       secondSubscribeCalled = true
       return Promise.resolve(() => {})
     }
@@ -202,7 +204,8 @@ void test('PubSub Adapter Core Integration', async (t) => {
     let errorHandler: ((err: unknown) => void) | undefined
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
-      subscribe: () => {
+      subscribe: (topic) => {
+        if (topic === '__restale_control__') return Promise.resolve(() => {})
         return Promise.resolve(() => {
           const err = new Error('Broker Unsubscribe Failed')
           if (errorHandler) {
@@ -245,7 +248,8 @@ void test('PubSub Adapter Core Integration', async (t) => {
 
     // Verify the subscription state was still cleaned up
     let resubscribeCalled = false
-    mockPubSub.subscribe = () => {
+    mockPubSub.subscribe = (topic) => {
+      if (topic === '__restale_control__') return Promise.resolve(() => {})
       resubscribeCalled = true
       return Promise.resolve(() => {})
     }
@@ -266,9 +270,13 @@ void test('PubSub Adapter Core Integration', async (t) => {
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
       subscribe: (topic) => {
-        subscribeCalls.push(topic)
+        if (topic !== '__restale_control__') {
+          subscribeCalls.push(topic)
+        }
         return Promise.resolve(() => {
-          unsubscribeCalls.push(topic)
+          if (topic !== '__restale_control__') {
+            unsubscribeCalls.push(topic)
+          }
         })
       }
     }
@@ -308,6 +316,7 @@ void test('PubSub Adapter Core Integration', async (t) => {
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
       subscribe: (topic) => {
+        if (topic === '__restale_control__') return Promise.resolve(() => {})
         attempts++
         if (attempts < 3) {
           return Promise.reject(new Error('Transient connection error'))
@@ -332,6 +341,7 @@ void test('PubSub Adapter Core Integration', async (t) => {
     const mockPubSub: PubSubAdapter = {
       publish: () => Promise.resolve(),
       subscribe: (topic) => {
+        if (topic === '__restale_control__') return Promise.resolve(() => {})
         attempts++
         return Promise.reject(new Error('Transient connection error'))
       }
@@ -354,3 +364,4 @@ void test('PubSub Adapter Core Integration', async (t) => {
     assert.strictEqual(attempts, 1) // Only 1 attempt was made before aborting
   })
 })
+

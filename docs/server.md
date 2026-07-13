@@ -21,8 +21,8 @@ const app = express()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
-  group.register(channel, {})
+  const { channel, connectionId } = attachSSE(req, res)
+  group.register(channel, { userId: req.user?.id, connectionId })
   req.on('close', () => group.deregister(channel))
 })
 ```
@@ -37,9 +37,10 @@ import { attachSSE } from 'restale-kit/node'
 const group = new SSEChannelGroup()
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/sse' && req.method === 'GET') {
-    const channel = attachSSE(req, res)
-    group.register(channel, {})
+  const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
+  if (req.method === 'GET' && url.pathname === '/sse') {
+    const { channel, connectionId } = attachSSE(req, res)
+    group.register(channel, { connectionId })
     req.on('close', () => group.deregister(channel))
   }
 })
@@ -53,21 +54,22 @@ Fastify manages the HTTP response internally, so you must call `reply.hijack()` 
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
 import { attachSSE } from 'restale-kit/fastify'
+import { z } from 'zod'
 
-const app = Fastify()
 const group = new SSEChannelGroup()
+const app = Fastify()
 
 app.get('/sse', (request, reply) => {
   reply.hijack() // required
-  const channel = attachSSE(request.raw, reply.raw)
-  group.register(channel, {})
+  const { channel, connectionId } = attachSSE(request.raw, reply.raw)
+  group.register(channel, { connectionId })
   request.raw.on('close', () => group.deregister(channel))
 })
 ```
 
 ### Hono (Cloudflare Workers, Bun, Deno, edge)
 
-Fetch-API runtimes use an inverted response model — `toSSEResponse` returns both the `Response` to hand back to the framework and the `SSEChannel` to call `invalidate()` on.
+Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework, the `SSEChannel` to call `invalidate()` on, and the generated `connectionId`.
 
 ```ts
 import { Hono } from 'hono'
@@ -78,8 +80,8 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel } = toSSEResponse(c.req.raw)
-  group.register(channel, {})
+  const { response, channel, connectionId } = toSSEResponse(c.req.raw)
+  group.register(channel, { connectionId })
   c.req.raw.signal.addEventListener('abort', () => group.deregister(channel))
   return response // hand it back to Hono
 })
@@ -93,14 +95,14 @@ For any other Fetch-API runtime (Bun, Deno, plain `Request`/`Response`):
 import { toSSEResponse } from 'restale-kit/fetch'
 
 // Same API as restale-kit/hono
-const { response, channel } = toSSEResponse(request)
+const { response, channel, connectionId } = toSSEResponse(request)
 ```
 
 ---
 
 ## `SSEChannelGroup`
 
-`SSEChannelGroup` manages all connected clients and is where you send invalidation signals.
+`SSEChannelGroup` manages all connected clients and is where you send invalidation signals and control revocations.
 
 ```ts
 import { SSEChannelGroup } from 'restale-kit/server'
@@ -110,6 +112,7 @@ const group = new SSEChannelGroup()
 // With typed metadata
 interface ClientMeta {
   userId: string
+  connectionId: string
   roles: string[]
 }
 const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
@@ -121,6 +124,9 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 |---|---|---|
 | `metaSchema` | `StandardSchema` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
+| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
+| `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
+| `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
 
 ---
 
@@ -133,7 +139,7 @@ group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub 
 group.deregister(channel)
 ```
 
-- `meta` can be any value; its type is inferred from the group's `TMeta` generic.
+- `meta` can be any value; its type is inferred from the group's `TMeta` generic. Always include `connectionId` extracted from transport adapters.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Ownership of cleanup:** Adapters automatically detect when a peer disconnects and call `channel.disconnect()` to close the underlying transport stream — you do not need to call that yourself. However, you **must** call `group.deregister(channel)` in your route handler's close/abort listener to remove the channel from the group's broadcast list.
@@ -176,109 +182,67 @@ group.broadcast(
 )
 ```
 
-### Signal shape
-
-```ts
-interface InvalidateSignal {
-  key: JSONValue[]           // hierarchical key, e.g. ['todos', { userId: '42' }]
-  exact?: boolean            // true = exact match, false (default) = prefix match
-  action?: 'invalidate' | 'refetch' | 'remove'  // default: 'invalidate'
-}
-```
-
-**Actions:**
-
-| Action | Effect on TanStack Query | Effect on SWR |
-|---|---|---|
-| `'invalidate'` (default) | `queryClient.invalidateQueries()` — mark stale, refetch if active | `mutate(filter)` — revalidate |
-| `'refetch'` | `queryClient.refetchQueries()` — force immediate refetch | `mutate(filter)` — revalidate |
-| `'remove'` | `queryClient.removeQueries()` — purge from cache | `mutate(filter, undefined, false)` — clear without revalidate |
-
-### Key matching semantics
-
-Signal keys use **hierarchical prefix matching** by default (`exact: false`).
-
-Given a client cache key `['todos', { userId: 4, type: 'active' }, 'list']`:
-
-| Signal key | `exact` | Matches? |
-|---|---|---|
-| `['todos']` | false | ✅ prefix match |
-| `['todos', { userId: 4 }]` | false | ✅ object subset match |
-| `['todos', { userId: 4, type: 'active' }]` | false | ✅ exact object match |
-| `['todos', { userId: 4, label: 'work' }]` | false | ❌ unknown property |
-| `['todos', { userId: 4, type: 'active' }, 'list']` | true | ✅ exact match |
-| `['todos']` | true | ❌ length mismatch |
-| `[]` | false | ✅ matches everything |
-
 ---
 
-## `publish(topic, signal)` — pub/sub routing
+## Connection Revocation (`revoke()`)
 
-When using a pub/sub adapter for multi-instance deployments, use `publish` instead of `broadcast`:
+Use `group.revoke(criteria)` to actively close active client connections (e.g. on logout, session expiration, or user ban).
 
-```ts
-// Publish to a topic — reaches all instances with subscribers on that topic
-await group.publish(`user:${userId}`, { key: ['todos'] })
-```
-
-See the [Pub/Sub guide](./pubsub.md) for full setup details.
-
----
-
-## `createSSEChannel` (low-level)
-
-You normally don't need this — framework adapters call it for you. Use it only when writing a custom transport.
+`revoke` uses **subset-matching** against registered connection metadata (`matchesJSONValue`):
 
 ```ts
-import { createSSEChannel } from 'restale-kit/server'
-
-const channel = createSSEChannel({
-  keepaliveIntervalMs: 30_000, // default
-  signalSchema: MyZodSchema,   // optional
+// 1. Single-connection logout. `userId` and `sessionId` come from trusted
+// authentication/session middleware; `connectionId` is only a client correlation value.
+await group.revoke({
+  userId: req.user.id,
+  sessionId: req.session.id,
+  connectionId: req.body.connectionId,
 })
 
-// channel.stream: ReadableStream<Uint8Array> — pipe into your response
-// channel.invalidate(signal): void
-// channel.close(): void
-// channel.disconnect(): void  — call when peer disconnects
+// 2. User-wide ban / logout everywhere (closes ALL sessions for user-42 across the entire cluster)
+await group.revoke({ userId: 'user-42' })
 ```
 
----
+### Security: always scope client-supplied connection IDs
 
-## Error handling
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revoke({ connectionId: req.body.connectionId })` call in a request handler.
 
-- **`ChannelClosedError`** — thrown by `channel.invalidate()` if called after the channel is closed. `SSEChannelGroup` catches this automatically and deregisters the channel.
-- **`SchemaValidationError`** — thrown when signal or metadata validation fails (only when a schema is configured). Contains `.issues` for programmatic access.
-- **`AggregateError`** — thrown by `broadcast` / `broadcastToAll` if any channel encounters a non-`ChannelClosedError` (e.g. `SchemaValidationError`). Iteration always completes before throwing.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the revocation criteria. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
 
----
-
-## Connection metadata patterns
+If the client does not send a per-connection request ID, revoke the trusted session instead; this may close more than one tab:
 
 ```ts
-// Typed metadata for auth context
-interface ClientMeta {
-  userId: string
-  tenantId: string
-  roles: string[]
-}
-
-const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
-
-app.get('/sse', (req, res) => {
-  // Populate from your auth middleware
-  const channel = attachSSE(req, res)
-  group.register(channel, {
-    userId: req.user.id,
-    tenantId: req.user.tenantId,
-    roles: req.user.roles,
-  })
-  req.on('close', () => group.deregister(channel))
+await group.revoke({
+  userId: req.user.id,
+  sessionId: req.session.id,
 })
+```
 
-// Later — per-tenant invalidation
-group.broadcast(
-  { key: ['products'] },
-  (meta) => meta.tenantId === '...'
-)
+When a pub/sub adapter is configured, `revoke()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
+
+---
+
+## Reconnection & Event History Replay
+
+To prevent missed invalidation signals during momentary network drops, configure `eventBufferCapacity`:
+
+```ts
+const group = new SSEChannelGroup({
+  eventBufferCapacity: 100, // Retain the last 100 invalidation events
+})
+```
+
+When a client reconnects sending the standard `Last-Event-ID` HTTP header, `restale-kit` automatically queries the `eventStore` and replays all missed invalidation events in sequence before resuming live stream comments.
+
+---
+
+## Teardown (`dispose()`)
+
+Call `group.dispose()` during graceful server shutdown to unsubscribe control topic listeners without force-closing client channels:
+
+```ts
+process.on('SIGTERM', async () => {
+  await group.dispose()
+  server.close()
+})
 ```

@@ -100,7 +100,7 @@
     "build": "pnpm run clean && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "build:test": "pnpm run clean && tsc && tsc-alias -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "pnpm run build:test && node --test --test-force-exit dist/__tests__/adapters.test.js dist/__tests__/pubsub.test.js dist/__tests__/sse-client.test.js dist/__tests__/last-event-id.test.js && pnpm run build",
+    "test": "pnpm run build:test && node --test --test-force-exit dist/__tests__/adapters.test.js dist/__tests__/pubsub.test.js dist/__tests__/sse-client.test.js dist/__tests__/last-event-id.test.js dist/__tests__/revocation.test.js && pnpm run build",
     "prepack": "pnpm run build",
     "release:check": "pnpm run test && npm pack --dry-run"
   },

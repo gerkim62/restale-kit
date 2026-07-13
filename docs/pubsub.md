@@ -41,11 +41,12 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const { channel, connectionId } = attachSSE(req, res)
   const userId = req.user.id
+  const sessionId = req.session.id
 
-  // Register with topics this connection cares about
-  group.register(channel, { userId }, {
+  // Register with metadata and topics this connection cares about
+  group.register(channel, { userId, sessionId, connectionId }, {
     topics: [`user:${userId}`, 'global'],
   })
 
@@ -60,7 +61,15 @@ async function onTodoMutation(userId: string) {
 async function onGlobalChange() {
   await group.publish('global', { key: [] })
 }
+
+// Revoke one connection cluster-wide. userId/sessionId are obtained from
+// authenticated server state, not from the client request body.
+async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
+  await group.revoke({ userId, sessionId, connectionId })
+}
 ```
+
+`connectionId` is an opaque client correlation value, not an authorization credential. Always combine it with trusted metadata such as `userId` or a server-authenticated `sessionId` when revoking from an HTTP handler.
 
 ---
 
@@ -149,18 +158,22 @@ If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, 
 
 ```ts
 import type { PubSubAdapter } from 'restale-kit/pubsub'
-import type { InvalidateSignal } from 'restale-kit'
+import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
 
 function myCustomAdapter(): PubSubAdapter {
   return {
-    async publish(topic, signal) {
-      // Send signal to broker on topic
-      // signal may be a single object or an array — serialize as-is (preserve batch)
+    async publish(topic, message) {
+      // Send PubSubMessage envelope to broker on topic.
+      // message is a discriminated union:
+      // - Signals: { kind: 'signal', data: TSignal | TSignal[] }
+      //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB] }
+      // - Control: { kind: 'control', data: JSONValue }
     },
 
     async subscribe(topic, onMessage) {
-      // Subscribe to topic; call onMessage(signal) when a message arrives
-      // Return an unsubscribe function
+      // Subscribe to topic; call onMessage(message) when a PubSubMessage arrives.
+      // Ensure batched signals remain preserved as { kind: 'signal', data: [signalA, signalB] } upon delivery.
+      // Return an unsubscribe function.
       return async () => {
         // Unsubscribe from topic
       }
