@@ -130,6 +130,7 @@ void test('PubSub Adapter Core Integration', async (t) => {
     // Mock invalidate to track execution
     ch.invalidate = () => {
       order.push('local-invalidate')
+      return ''
     }
 
     await group.publish('topic-a', { key: ['test'] })

@@ -1,8 +1,9 @@
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, EventStore } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import { createEventStore } from '@/server/core/event-store.js'
 
 /**
  * Manages subscription state and serialization for a specific topic.
@@ -127,6 +128,7 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
   }
 }
 
+
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
  *
@@ -141,13 +143,22 @@ export class SSEChannelGroup<
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
+  readonly eventStore?: EventStore<TSignal>
 
   constructor(options?: {
     metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
+    eventStore?: EventStore<TSignal>
+    eventBufferCapacity?: number
   }) {
     this.metaSchema = options?.metaSchema
     this.pubsub = options?.pubsub
+
+    if (options?.eventStore) {
+      this.eventStore = options.eventStore
+    } else if (options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+      this.eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity })
+    }
   }
 
   /** Number of active channels in the group. */
@@ -162,10 +173,11 @@ export class SSEChannelGroup<
     channel: SSEChannel<TSignal>,
     signal: TSignal | TSignal[],
     context: string,
-    topic?: string
+    topic?: string,
+    eventId?: string
   ): void {
     try {
-      channel.invalidate(signal)
+      channel.invalidate(signal, eventId)
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)
@@ -263,6 +275,11 @@ export class SSEChannelGroup<
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
     const errors: unknown[] = []
+    let eventId: string | undefined = undefined
+    if (this.eventStore !== undefined) {
+      const record = this.eventStore.add(signal)
+      eventId = record.id
+    }
 
     // NOTE: Deleting entries from the `Map` during `for...of` iteration is fully safe in JS.
     // Deletions of already-visited or current keys do not impact the iterator loop, and
@@ -271,7 +288,7 @@ export class SSEChannelGroup<
       if (!predicate(entry.meta)) continue
 
       try {
-        channel.invalidate(signal)
+        channel.invalidate(signal, eventId)
       } catch (error) {
         if (error instanceof ChannelClosedError) {
           this.deregister(channel)
@@ -316,11 +333,17 @@ export class SSEChannelGroup<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+    let eventId: string | undefined = undefined
+    if (this.eventStore !== undefined) {
+      const record = this.eventStore.add(signal)
+      eventId = record.id
+    }
+
     // 1. Deliver to local channels registered on topic
     const topicManager = this.topics.get(topic)
     if (topicManager) {
       for (const channel of topicManager.channels) {
-        this.deliverToChannel(channel, signal, 'publish', topic)
+        this.deliverToChannel(channel, signal, 'publish', topic, eventId)
       }
     }
 

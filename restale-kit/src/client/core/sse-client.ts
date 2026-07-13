@@ -41,6 +41,7 @@ export class SSEInvalidatorClient<
     resolve: () => void
     reject: (error: Event) => void
   } | null = null
+  private currentLastEventId: string | null = null
 
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
@@ -55,6 +56,11 @@ export class SSEInvalidatorClient<
   /** Current connection status. */
   get status(): ConnectionStatus {
     return this.currentStatus
+  }
+
+  /** The last event ID string received from the SSE stream, if any. */
+  get lastEventId(): string | null {
+    return this.currentLastEventId
   }
 
   /**
@@ -224,6 +230,9 @@ export class SSEInvalidatorClient<
    */
   private wireInvalidateListener(es: EventSource): void {
     es.addEventListener('invalidate', (event: MessageEvent<string>) => {
+      if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
+        this.currentLastEventId = event.lastEventId
+      }
       let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
         // Steps 1–6: structural validation

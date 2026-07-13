@@ -78,6 +78,24 @@ function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: boolean
 export type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
 
 /**
+ * A recorded invalidation event with a unique sequence ID.
+ */
+export interface EventRecord<TSignal extends InvalidateSignal = InvalidateSignal> {
+  id: string
+  signal: TSignal | TSignal[]
+}
+
+/**
+ * An event history store interface for storing past events and replaying missed signals.
+ */
+export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
+  add(signal: TSignal | TSignal[], customId?: string): EventRecord<TSignal>
+  getEventsAfter(lastEventId: string): EventRecord<TSignal>[]
+  clear(): void
+}
+
+/**
  * The two states of an SSE channel's lifecycle.
  */
 export type ChannelState = 'open' | 'closed'
+

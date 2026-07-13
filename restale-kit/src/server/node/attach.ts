@@ -18,7 +18,22 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
-  const channel = createSSEChannel<TSignal>(options)
+  let lastEventId = options?.lastEventId
+  if (lastEventId === undefined) {
+    const header = req.headers['last-event-id']
+    if (typeof header === 'string') {
+      lastEventId = header
+    } else if (Array.isArray(header) && header.length > 0 && typeof header[0] === 'string') {
+      lastEventId = header[0]
+    }
+  }
+
+  const channelOptions: SSEChannelOptions<TSignal> = {
+    ...options,
+    lastEventId,
+  }
+
+  const channel = createSSEChannel<TSignal>(channelOptions)
 
   // Set SSE headers
   res.writeHead(200, {
@@ -28,7 +43,7 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   })
 
   // Pipe the ReadableStream into the Node response
-  // @ts-expect-error am unable to fix this 
+  // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility
   const nodeReadable = Readable.fromWeb(channel.stream)
   nodeReadable.pipe(res)
 

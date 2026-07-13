@@ -14,9 +14,10 @@ const encoder = new TextEncoder()
  *
  * The entire payload is sent as one `data:` line — no splitting across multiple lines.
  */
-export function formatInvalidateFrame(signal: SSEInvalidateEvent): Uint8Array {
+export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
   const json = JSON.stringify(signal)
-  return encoder.encode(`event: invalidate\ndata: ${json}\n\n`)
+  const idPrefix = id !== undefined ? `id: ${String(id)}\n` : ''
+  return encoder.encode(`${idPrefix}event: invalidate\ndata: ${json}\n\n`)
 }
 
 /**
