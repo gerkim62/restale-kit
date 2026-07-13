@@ -15,8 +15,9 @@ export function generateUUID(): string {
 }
 
 /**
- * Generates a short, collision-resistant instance ID for pub/sub self-echo suppression.
+ * Generates a collision-resistant instance ID for pub/sub self-echo suppression.
  */
 export function generateInstanceId(): string {
-  return Math.random().toString(36).slice(2)
+  return generateUUID()
 }
+
