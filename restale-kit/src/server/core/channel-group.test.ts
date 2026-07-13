@@ -359,7 +359,7 @@ describe('channel-group', () => {
 
   // --- eventBufferCapacity auto-creates eventStore ---
 
-  it('auto-creates an eventStore when eventBufferCapacity is set', () => {
+  it('auto-creates eventStore when eventBufferCapacity is set', () => {
     const group = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 50 })
     expect(group.eventStore).toBeDefined()
   })
@@ -370,6 +370,57 @@ describe('channel-group', () => {
 
     const group2 = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 0 })
     expect(group2.eventStore).toBeUndefined()
+  })
+
+  it('ignores errors thrown by ch.close() during revocation in closeLocalMatches', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 777 })
+
+    // Force close() to throw
+    vi.spyOn(ch, 'close').mockImplementation(() => {
+      throw new Error('Already closed stream')
+    })
+
+    const closed = await group.revoke({ userId: 777 })
+    expect(closed.localClosed).toBe(1)
+    expect(group.size).toBe(0)
+  })
+
+  it('deregisters closed channel in deliverToChannel when ChannelClosedError is thrown on publish', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 }, { topics: ['events'] })
+    ch.close()
+
+    expect(group.size).toBe(1)
+
+    // publish calls deliverToChannel which catches ChannelClosedError and deregisters
+    await group.publish('events', { key: ['test-close'] })
+    expect(group.size).toBe(0)
+  })
+
+  it('delivers remote signals received via PubSub callback to registered topic channels', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 88 }, { topics: ['remote-topic'] })
+
+    // Flush async TopicManager subscription
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    // Simulate pubsub emitting a signal message on 'remote-topic'
+    const invalidateSpy = vi.spyOn(ch, 'invalidate')
+    await pubsub.publish('remote-topic', {
+      kind: 'signal',
+      data: { key: ['remote-data'] },
+    })
+
+    // ch.invalidate should have been called
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['remote-data'] }, undefined)
   })
 })
 

@@ -345,6 +345,34 @@ describe('SSEInvalidatorClient', () => {
     expect(errorSpy).toHaveBeenCalled()
     expect(schemaSpy).not.toHaveBeenCalled() // schema was never consulted
   })
+
+  it('handles non-string data payload and missing ErrorEvent constructor during error dispatch', async () => {
+    const originalErrorEvent = globalThis.ErrorEvent
+    // @ts-expect-error override for test
+    delete globalThis.ErrorEvent
+
+    try {
+      const client = new SSEInvalidatorClient('/sse')
+      const errorSpy = vi.fn()
+      client.addEventListener('error', errorSpy)
+
+      const p = client.connect()
+      MockEventSource.instances[0]?.emitOpen()
+      await p
+
+      // Emit event with non-string data (object)
+      MockEventSource.instances[0]?.emitCustomEvent(
+        'invalidate',
+        { invalidObject: true } as any
+      )
+
+      expect(errorSpy).toHaveBeenCalled()
+      const errorDetail = errorSpy.mock.calls[0][0].detail
+      expect(errorDetail).toBeInstanceOf(Error)
+    } finally {
+      globalThis.ErrorEvent = originalErrorEvent
+    }
+  })
 })
 
 

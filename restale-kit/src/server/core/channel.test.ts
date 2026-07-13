@@ -150,6 +150,42 @@ describe('channel', () => {
     expect(schemaSpy).not.toHaveBeenCalled()
   })
 
+  it('replays all retained events if lastEventId is not found in eventStore', async () => {
+    const store = createEventStore({ capacity: 2 })
+    store.add({ key: ['evt1'] }, 'id-1')
+    store.add({ key: ['evt2'] }, 'id-2')
+    store.add({ key: ['evt3'] }, 'id-3') // id-1 is evicted
+
+    // lastEventId is 'id-1' which was evicted
+    const channel = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
+    const reader = channel.stream.getReader()
+    const { value: v1 } = await reader.read()
+    const { value: v2 } = await reader.read()
+    reader.releaseLock()
+
+    expect(decoder.decode(v1)).toBe('id: id-2\nevent: invalidate\ndata: {"key":["evt2"]}\n\n')
+    expect(decoder.decode(v2)).toBe('id: id-3\nevent: invalidate\ndata: {"key":["evt3"]}\n\n')
+  })
+
+  it('handles raw string error when controller.close throws in closeInternal', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel()
+
+    // Mock controller close to throw string
+    const reader = channel.stream.getReader()
+    await reader.cancel()
+
+    channel.close()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
+      '\n  error:',
+      expect.any(String)
+    )
+
+    consoleSpy.mockRestore()
+  })
+
   it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {
     const channel = createSSEChannel({ eventBufferCapacity: 20 })
     const id = channel.invalidate({ key: ['auto-store'] })

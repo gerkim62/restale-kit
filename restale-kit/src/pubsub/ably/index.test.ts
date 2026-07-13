@@ -182,6 +182,19 @@ describe('ablyPubSubAdapter', () => {
     expect(mockOff).toHaveBeenCalledWith('update', expect.any(Function))
     expect(channel.unsubscribe).toHaveBeenCalled()
   })
+
+  it('normalizes un-enveloped raw signal payload when native echo suppression is active', async () => {
+    const { client, channelListeners } = createMockAblyClient(false)
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-raw', callback)
+
+    const listener = channelListeners[0]
+    listener({ data: { key: ['raw-signal-key'] } })
+
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['raw-signal-key'] } })
+  })
 })
 
 

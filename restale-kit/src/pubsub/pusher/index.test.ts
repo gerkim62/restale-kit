@@ -138,6 +138,19 @@ describe('pusherPubSubAdapter', () => {
     expect(success).toBe(true)
     expect(callback).toHaveBeenCalledWith({ kind: 'control', data: { userId: 99 } })
   })
+
+  it('ignores webhooks with unrecognized event names', async () => {
+    const events = [{ channel: 'my-channel', name: 'client-event', data: {} }]
+    const client = createMockPusherClient(true, events)
+    const adapter = pusherPubSubAdapter(client)
+    const callback = vi.fn()
+
+    await adapter.subscribe('my-channel', callback)
+    const success = adapter.handleWebhook('body', {})
+
+    expect(success).toBe(true)
+    expect(callback).not.toHaveBeenCalled()
+  })
 })
 
 
