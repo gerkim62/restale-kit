@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import useSWR, { mutate } from 'swr'
-import { useReStale } from 'restale-kit/react'
-import { swrAdapter } from 'restale-kit/swr'
+import { useReStale } from 'restale-kit/client/react'
+import { swrAdapter } from 'restale-kit/client/swr'
 import { DemoUsers, type DemoUser, type Todo } from '@restale-kit-example/shared'
 import './App.css'
 

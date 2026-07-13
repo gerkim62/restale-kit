@@ -7,8 +7,9 @@ Based on the contract, here's the complete usage from both ends.
 ### Express
 ```ts
 import express from 'express'
-import { SSEChannelGroup, InvalidateSignal } from 'restale-kit'
-import { attachSSE } from 'restale-kit/node'
+import { SSEChannelGroup } from 'restale-kit/server'
+import type { InvalidateSignal } from 'restale-kit/types'
+import { attachSSE } from 'restale-kit/server/node'
 
 const app = express()
 
@@ -53,8 +54,9 @@ function notifyEverything() {
 ### Hono (or Bun / Deno / edge)
 ```ts
 import { Hono } from 'hono'
-import { SSEChannelGroup, InvalidateSignal } from 'restale-kit'
-import { toSSEResponse } from 'restale-kit/fetch'
+import { SSEChannelGroup } from 'restale-kit/server'
+import type { InvalidateSignal } from 'restale-kit/types'
+import { toSSEResponse } from 'restale-kit/server/fetch'
 
 const app = new Hono()
 
@@ -82,7 +84,7 @@ app.get('/sse', (c) => {
 ### Fastify (special case)
 ```ts
 import Fastify from 'fastify'
-import { attachSSE } from 'restale-kit/node'
+import { attachSSE } from 'restale-kit/server/node'
 
 const app = Fastify()
 
@@ -115,8 +117,8 @@ channel.invalidate({ key: ['user', { userId: '123' }], exact: true, action: 'rem
 ## Client Side (React + TanStack Query)
 
 ```tsx
-import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useReStale } from 'restale-kit/client/react'
+import { tanstackAdapter } from 'restale-kit/client/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 function App() {
@@ -168,12 +170,12 @@ useReStale('/sse', {
 
 ---
 
-## Using `client-core` directly (no React)
+## Using the client directly (no React)
 
-If you're on Vue, Svelte, or vanilla JS — you skip `restale-kit/react` and drive the client yourself:
+If you're on Vue, Svelte, or vanilla JS — you skip `restale-kit/client/react` and drive the client yourself:
 
 ```ts
-import { SSEInvalidatorClient } from 'restale-kit/client-core'
+import { SSEInvalidatorClient } from 'restale-kit/client'
 
 const client = new SSEInvalidatorClient('/sse', { autoReconnect: true })
 
@@ -203,8 +205,8 @@ For runtime validation of signals and full compile-time type safety, you can opt
 ```ts
 import express from 'express'
 import { z } from 'zod'
-import { SSEChannelGroup } from 'restale-kit'
-import { attachSSE as attachNodeSSE } from 'restale-kit/node'
+import { SSEChannelGroup } from 'restale-kit/server'
+import { attachSSE as attachNodeSSE } from 'restale-kit/server/node'
 
 // 1. Define schema for valid application signals
 const AppSignalSchema = z.object({
@@ -259,8 +261,8 @@ function notifyUserTodos(userId: string) {
 
 ```tsx
 import { z } from 'zod'
-import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useReStale } from 'restale-kit/client/react'
+import { tanstackAdapter } from 'restale-kit/client/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 const AppSignalSchema = z.object({
@@ -294,11 +296,11 @@ Your server logic
 
       │  SSE wire (text/event-stream)
 
-restale-kit/react
+restale-kit/client/react
   └─ useReStale                         ← connects, reconnects, unmounts cleanly
       └─ onInvalidate(signal)           ← fires on every received event
 
-restale-kit/tanstack-query
+restale-kit/client/tanstack-query
   └─ tanstackAdapter(queryClient)       ← translates signal → queryClient.invalidateQueries()
 
 TanStack Query

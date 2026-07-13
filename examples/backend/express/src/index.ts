@@ -1,6 +1,6 @@
 import express from 'express'
-import { SSEChannelGroup } from 'restale-kit'
-import { attachSSE } from 'restale-kit/node'
+import { SSEChannelGroup } from 'restale-kit/server'
+import { attachSSE } from 'restale-kit/server/node'
 import {
   AppSignalSchema,
   CreateTodoSchema,

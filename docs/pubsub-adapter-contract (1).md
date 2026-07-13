@@ -101,9 +101,9 @@ export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSign
 ## Adapter packages (subpath exports, each importing only its own broker's client lib)
 
 ```text
-restale-kit/pubsub-redis    # wraps a user-supplied ioredis (or compatible) client
-restale-kit/pubsub-ably     # wraps a user-supplied Ably client
-restale-kit/pubsub-pusher   # wraps a user-supplied Pusher client
+restale-kit/pubsub/redis    # wraps a user-supplied ioredis (or compatible) client
+restale-kit/pubsub/ably     # wraps a user-supplied Ably client
+restale-kit/pubsub/pusher   # wraps a user-supplied Pusher client
 ```
 
 `core` never imports any of these. Users install and pass in exactly one.
@@ -111,8 +111,8 @@ restale-kit/pubsub-pusher   # wraps a user-supplied Pusher client
 ## Usage shape
 
 ```ts
-import { SSEChannelGroup } from 'restale-kit'
-import { redisPubSubAdapter } from 'restale-kit/pubsub-redis'
+import { SSEChannelGroup } from 'restale-kit/server'
+import { redisPubSubAdapter } from 'restale-kit/pubsub/redis'
 
 const group = new SSEChannelGroup<Signal, Meta>({
   pubsub: redisPubSubAdapter(redisClient), // omit entirely = single-instance mode
@@ -130,7 +130,7 @@ group.publish(`user:${userId}`, { key: ['todos'] })
 
 ## Open questions (resolve before a second adapter is written)
 
-- **Subpath `exports` map**: `package.json` config for `restale-kit/pubsub-redis` etc.
+- **Subpath `exports` map**: `package.json` config for `restale-kit/pubsub/redis` etc.
   isn't specified here — needs a pointer to where that lives once implemented.
 - **Generic typing across adapter factories**: the relationship between `TSignal` on
   `SSEChannelGroup<TSignal, TMeta>` and on `redisPubSubAdapter<TSignal>(client)` isn't

@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert'
-import { SSEChannelGroup, type PubSubAdapter } from '../server-core/channel-group.js'
-import { createSSEChannel } from '../server-core/channel.js'
+import { SSEChannelGroup } from '../server/core/channel-group.js'
+import type { PubSubAdapter } from '../pubsub/core/index.js'
+import { createSSEChannel } from '../server/core/channel.js'
 
 // Simple defer helper
 interface Deferred<T> {

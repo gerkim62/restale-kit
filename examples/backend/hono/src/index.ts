@@ -1,8 +1,8 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { SSEChannelGroup } from 'restale-kit'
-import { toSSEResponse } from 'restale-kit/fetch'
+import { SSEChannelGroup } from 'restale-kit/server'
+import { toSSEResponse } from 'restale-kit/server/fetch'
 import {
   AppSignalSchema,
   CreateTodoSchema,
