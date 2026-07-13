@@ -74,16 +74,17 @@ restale-kit/
 - **Module format:** ESM-only. No CJS build.
 - **TypeScript target:** ES2022 (guarantees `ReadableStream`, `EventTarget`, `structuredClone`).
 - **No framework/library peer dependencies in root `package.json`.** Framework-specific subpaths
-  (`restale-kit/client/react`, `restale-kit/client/tanstack-query`) import from `react` and
+  (`restale-kit/react`, `restale-kit/tanstack-query`) import from `react` and
   `@tanstack/react-query` respectively — if those aren't installed, TypeScript errors at compile
   time and bundlers error at build time. This is sufficient enforcement and keeps the package
   manifest framework-agnostic. A Vue user installing `restale-kit` to use only `client` sees
   zero React-related anything.
 
-Express and Fastify both sit on Node's `http` module, so both use `restale-kit/server/node`
+Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
+`restale-kit/fastify` respectively.
 directly (Fastify needs `reply.hijack()` first — see below). Hono, Bun, Deno, and edge runtimes
-speak `Request`/`Response`, so all of them use `restale-kit/server/fetch`. No per-framework
-server packages exist.
+speak `Request`/`Response`, so Hono uses `restale-kit/hono`; `restale-kit/fetch` remains
+available for other Fetch API runtimes.
 
 ---
 
@@ -350,7 +351,7 @@ overflow strategy.
 
 ---
 
-### `restale-kit/server/node`
+### `restale-kit/node`, `restale-kit/express`, and `restale-kit/fastify`
 
 ```ts
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
@@ -367,7 +368,7 @@ Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
 sends its own response on top of the streamed one and throws.
 
-### `restale-kit/server/fetch`
+### `restale-kit/fetch` and `restale-kit/hono`
 
 ```ts
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
@@ -520,7 +521,7 @@ narrow the type further (e.g., constrain `key` to specific shapes).
 
 ---
 
-### `restale-kit/client/react`
+### `restale-kit/react`
 
 ```ts
 interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
@@ -554,7 +555,7 @@ queries or caches — it only forwards `invalidate` events to `onInvalidate`.
 
 ---
 
-### `restale-kit/client/tanstack-query`
+### `restale-kit/tanstack-query`
 
 The one shipped adapter, and the pattern to copy for any other cache library later:
 
@@ -586,8 +587,8 @@ function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 Usage:
 
 ```ts
-import { useReStale } from 'restale-kit/client/react'
-import { tanstackAdapter } from 'restale-kit/client/tanstack-query'
+import { useReStale } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 const queryClient = useQueryClient()
@@ -607,14 +608,14 @@ Each subpath export has a defined public API. Only these symbols are exported:
 |---|---|
 | `restale-kit/types` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup` |
-| `restale-kit/server/node` | `attachSSE` |
-| `restale-kit/server/fetch` | `toSSEResponse` |
+| `restale-kit/node`, `restale-kit/express`, `restale-kit/fastify` | `attachSSE` |
+| `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus` |
-| `restale-kit/client/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
-| `restale-kit/client/tanstack-query` | `tanstackAdapter` |
-| `restale-kit/client/swr` | `swrAdapter` |
+| `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
+| `restale-kit/tanstack-query` | `tanstackAdapter` |
+| `restale-kit/swr` | `swrAdapter` |
 | `restale-kit/pubsub` | `PubSubAdapter` |
-| `restale-kit/pubsub/{redis,ably,pusher}` | provider-specific PubSub adapters |
+| `restale-kit/{redis,ably,pusher}` | provider-specific PubSub adapters |
 
 `InvalidateSignal` is available from `restale-kit/types` and re-exported from `restale-kit/client`
 for direct client users.
@@ -640,7 +641,7 @@ interface ClientMeta {
   roles: string[]
 }
 
-import { attachSSE } from 'restale-kit/server/node'
+import { attachSSE } from 'restale-kit/express'
 import { SSEChannelGroup } from 'restale-kit/server'
 
 // Create a group typed with your metadata
@@ -761,7 +762,7 @@ same time:
 ```ts
 import { z } from 'zod'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/server/node'
+import { attachSSE } from 'restale-kit/fastify'
 
 // Define schema for valid application signals
 const TodoSignalSchema = z.object({
@@ -811,8 +812,8 @@ ensures untrusted wire events match the expected structure:
 
 ```ts
 import { z } from 'zod'
-import { useReStale } from 'restale-kit/client/react'
-import { tanstackAdapter } from 'restale-kit/client/tanstack-query'
+import { useReStale } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
 
 const AppSignalSchema = z.object({
   key: z.array(z.unknown()),

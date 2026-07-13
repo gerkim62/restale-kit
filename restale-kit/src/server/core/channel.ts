@@ -19,8 +19,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
  * A server-side SSE channel that produces a `ReadableStream<Uint8Array>`.
  *
  * Runtime-agnostic — does not know about Node's `http` module or any specific
- * framework. Transport helpers (`restale-kit/server/node`,
- * `restale-kit/server/fetch`) pipe
+ * framework. Transport helpers (`restale-kit/node`, `restale-kit/fetch`) pipe
  * this stream into their runtime's response mechanism.
  */
 export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {

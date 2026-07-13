@@ -27,11 +27,14 @@ The package has four stable top-level domains: `types`, `server`, `client`, and
 |---|---|
 | `restale-kit/types` | `./src/types/` |
 | `restale-kit/server` | `./src/server/core/` |
-| `restale-kit/server/node` | `./src/server/node/` |
-| `restale-kit/server/fetch` | `./src/server/fetch/` |
+| `restale-kit/node` | `./src/server/node/` |
+| `restale-kit/fetch` | `./src/server/fetch/` |
+| `restale-kit/express` | `./src/express/` |
+| `restale-kit/fastify` | `./src/fastify/` |
+| `restale-kit/hono` | `./src/hono/` |
 | `restale-kit/client` | `./src/client/core/` |
-| `restale-kit/client/react` | `./src/client/react/` |
-| `restale-kit/client/swr` | `./src/client/swr/` |
-| `restale-kit/client/tanstack-query` | `./src/client/tanstack-query/` |
+| `restale-kit/react` | `./src/client/react/` |
+| `restale-kit/swr` | `./src/client/swr/` |
+| `restale-kit/tanstack-query` | `./src/client/tanstack-query/` |
 | `restale-kit/pubsub` | `./src/pubsub/core/` |
-| `restale-kit/pubsub/redis` | `./src/pubsub/redis/` |
+| `restale-kit/redis` | `./src/pubsub/redis/` |

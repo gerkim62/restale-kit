@@ -16,7 +16,7 @@ const DEFAULT_MAX_RETRIES = Infinity
  * Client-side SSE invalidation client built on native `EventSource`.
  *
  * Framework-agnostic — emits typed events for connection status changes and
- * invalidation signals. UI framework wrappers (e.g., `restale-kit/client/react`)
+ * invalidation signals. UI framework wrappers (e.g., `restale-kit/react`)
  * subscribe to these events.
  *
  * Supports automatic reconnection with exponential backoff, and optional

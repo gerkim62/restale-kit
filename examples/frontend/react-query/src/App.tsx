@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { useReStale } from 'restale-kit/client/react'
-import { tanstackAdapter } from 'restale-kit/client/tanstack-query'
+import { useReStale } from 'restale-kit/react'
+import { tanstackAdapter } from 'restale-kit/tanstack-query'
 import { AppSignalSchema, DemoUsers, type AppSignal, type DemoUser, type Todo } from '@restale-kit-example/shared'
 import './App.css'
 
