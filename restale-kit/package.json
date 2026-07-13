@@ -1,6 +1,6 @@
 {
   "name": "restale-kit",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Minimal library to invalidate client-side queries via SSE",
   "type": "module",
   "exports": {
