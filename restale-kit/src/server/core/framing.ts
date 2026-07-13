@@ -16,7 +16,8 @@ const encoder = new TextEncoder()
  */
 export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
   const json = JSON.stringify(signal)
-  const idPrefix = id !== undefined ? `id: ${String(id)}\n` : ''
+  const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
+  const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
   return encoder.encode(`${idPrefix}event: invalidate\ndata: ${json}\n\n`)
 }
 

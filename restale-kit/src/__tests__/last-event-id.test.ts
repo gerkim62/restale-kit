@@ -66,7 +66,7 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
     channel.close()
   })
 
-  void it('parses Last-Event-ID header in attachSSE for Node requests', () => {
+  void it('parses Last-Event-ID header in attachSSE for Node requests', async () => {
     const reqEmitter = new EventEmitter()
     const dummyReq = Object.assign(reqEmitter, {
       headers: { 'last-event-id': '100' },
@@ -83,10 +83,21 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
 
     const channel = attachSSE(dummyReq, dummyRes, { eventStore: store })
     assert.equal(channel.state, 'open')
+
+    const chunk = await new Promise<Buffer>((resolve) => {
+      resStream.once('data', (data: Buffer) => {
+        resolve(data)
+      })
+    })
+
+    const text = decoder.decode(chunk)
+    assert.match(text, /id: 101/)
+    assert.doesNotMatch(text, /id: 100/)
+
     channel.close()
   })
 
-  void it('parses Last-Event-ID header in toSSEResponse for Fetch requests', () => {
+  void it('parses Last-Event-ID header in toSSEResponse for Fetch requests', async () => {
     const req = new Request('https://example.com/sse', {
       headers: {
         'Last-Event-ID': '200',
@@ -97,8 +108,21 @@ void describe('WHATWG Last-Event-ID & Event History Replay', () => {
     store.add({ key: ['x'] }, '200')
     store.add({ key: ['y'] }, '201')
 
-    const { channel } = toSSEResponse(req, { eventStore: store })
+    const { response, channel } = toSSEResponse(req, { eventStore: store })
     assert.equal(channel.state, 'open')
+    assert.notEqual(response.body, null)
+
+    if (response.body !== null) {
+      const reader = response.body.getReader()
+      const chunk = await reader.read()
+      assert.equal(chunk.done, false)
+      if (chunk.value !== undefined) {
+        const text = decoder.decode(chunk.value)
+        assert.match(text, /id: 201/)
+        assert.doesNotMatch(text, /id: 200/)
+      }
+    }
+
     channel.close()
   })
 

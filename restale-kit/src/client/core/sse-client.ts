@@ -230,9 +230,6 @@ export class SSEInvalidatorClient<
    */
   private wireInvalidateListener(es: EventSource): void {
     es.addEventListener('invalidate', (event: MessageEvent<string>) => {
-      if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
-        this.currentLastEventId = event.lastEventId
-      }
       let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
         // Steps 1–6: structural validation
@@ -254,6 +251,10 @@ export class SSEInvalidatorClient<
         } else {
           // No schema — emit as-is after structural validation
           this.dispatchEvent(new CustomEvent('invalidate', { detail: validated }))
+        }
+
+        if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
+          this.currentLastEventId = event.lastEventId
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))

@@ -21,9 +21,9 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   let lastEventId = options?.lastEventId
   if (lastEventId === undefined) {
     const header = req.headers['last-event-id']
-    if (typeof header === 'string') {
+    if (typeof header === 'string' && header !== '') {
       lastEventId = header
-    } else if (Array.isArray(header) && header.length > 0 && typeof header[0] === 'string') {
+    } else if (Array.isArray(header) && header.length > 0 && typeof header[0] === 'string' && header[0] !== '') {
       lastEventId = header[0]
     }
   }

@@ -20,7 +20,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
   eventStore?: EventStore<TSignal>
   /** Capacity of automatically instantiated EventStore if `eventStore` is not provided. */
   eventBufferCapacity?: number
-  /** Custom ID generator for assigned event frames. */
+  /** Custom ID generator for assigned event frames. Ignored if an external `eventStore` is provided. */
   idGenerator?: () => string
 }
 
