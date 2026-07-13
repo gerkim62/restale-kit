@@ -8,12 +8,17 @@
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm --filter restale-kit run build",
-    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/client/tsconfig.json --noEmit && node node_modules/typescript-7/bin/tsc -p examples/conceptual-inline-demo/server/tsconfig.json --noEmit",
+    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "validate": "pnpm run typecheck && pnpm run lint",
-    "dev:client": "pnpm --filter restale-kit-example-client run dev",
-    "dev:server": "pnpm --filter restale-kit-example-server run dev"
+    "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
+    "dev:swr": "pnpm --filter @restale-kit-example/react-swr run dev",
+    "dev:express": "pnpm --filter @restale-kit-example/express run dev",
+    "dev:hono": "pnpm --filter @restale-kit-example/hono run dev",
+    "dev:fastify": "pnpm --filter @restale-kit-example/fastify run dev",
+    "dev:node": "pnpm --filter @restale-kit-example/node run dev",
+    "example": "node scripts/run-example.mjs"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",

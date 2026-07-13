@@ -1,19 +1,24 @@
 {
   "name": "restale-kit",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Minimal library to invalidate client-side queries via SSE",
   "type": "module",
   "exports": {
-    ".":               { "types": "./dist/server-core/index.d.ts",    "import": "./dist/server-core/index.js" },
-    "./shared":        { "types": "./dist/shared/index.d.ts",         "import": "./dist/shared/index.js" },
-    "./client-core":   { "types": "./dist/client-core/index.d.ts",    "import": "./dist/client-core/index.js" },
-    "./node":          { "types": "./dist/node/index.d.ts",           "import": "./dist/node/index.js" },
-    "./fetch":         { "types": "./dist/fetch/index.d.ts",          "import": "./dist/fetch/index.js" },
-    "./react":         { "types": "./dist/react/index.d.ts",          "import": "./dist/react/index.js" },
-    "./tanstack-query": { "types": "./dist/tanstack-query/index.d.ts", "import": "./dist/tanstack-query/index.js" },
-    "./pubsub-redis":  { "types": "./dist/pubsub-redis/index.d.ts",   "import": "./dist/pubsub-redis/index.js" },
-    "./pubsub-ably":   { "types": "./dist/pubsub-ably/index.d.ts",    "import": "./dist/pubsub-ably/index.js" },
-    "./pubsub-pusher": { "types": "./dist/pubsub-pusher/index.d.ts",  "import": "./dist/pubsub-pusher/index.js" }
+    "./types": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
+    "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
+    "./node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
+    "./fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
+    "./client": { "types": "./dist/client/core/index.d.ts", "import": "./dist/client/core/index.js" },
+    "./react": { "types": "./dist/client/react/index.d.ts", "import": "./dist/client/react/index.js" },
+    "./swr": { "types": "./dist/client/swr/index.d.ts", "import": "./dist/client/swr/index.js" },
+    "./tanstack-query": { "types": "./dist/client/tanstack-query/index.d.ts", "import": "./dist/client/tanstack-query/index.js" },
+    "./pubsub": { "types": "./dist/pubsub/core/index.d.ts", "import": "./dist/pubsub/core/index.js" },
+    "./redis": { "types": "./dist/pubsub/redis/index.d.ts", "import": "./dist/pubsub/redis/index.js" },
+    "./ably": { "types": "./dist/pubsub/ably/index.d.ts", "import": "./dist/pubsub/ably/index.js" },
+    "./pusher": { "types": "./dist/pubsub/pusher/index.d.ts", "import": "./dist/pubsub/pusher/index.js" },
+    "./express": { "types": "./dist/express/index.d.ts", "import": "./dist/express/index.js" },
+    "./fastify": { "types": "./dist/fastify/index.d.ts", "import": "./dist/fastify/index.js" },
+    "./hono": { "types": "./dist/hono/index.d.ts", "import": "./dist/hono/index.js" }
   },
   "scripts": {
     "build": "tsc",
@@ -22,6 +27,7 @@
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
     "@tanstack/react-query": "^5.0.0",
+    "swr": "^2.0.0",
     "ioredis": ">=4",
     "ably": ">=2",
     "pusher": ">=5"
@@ -31,6 +37,9 @@
       "optional": true
     },
     "@tanstack/react-query": {
+      "optional": true
+    },
+    "swr": {
       "optional": true
     },
     "ioredis": {
@@ -48,6 +57,7 @@
     "react": "^19.0.0",
     "@types/react": "^19.0.0",
     "@tanstack/react-query": "^5.0.0",
+    "swr": "^2.4.0",
     "ioredis": "^5.4.1",
     "ably": "^2.3.2",
     "pusher": "^5.2.0"

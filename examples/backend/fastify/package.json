@@ -1,0 +1,20 @@
+{
+  "type": "module",
+  "name": "@restale-kit-example/fastify",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0",
+    "restale-kit": "workspace:*",
+    "@restale-kit-example/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.2",
+    "tsx": "^4.23.0"
+  }
+}

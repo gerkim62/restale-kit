@@ -5,10 +5,10 @@
 A minimal library that lets a server tell any client-side cache to invalidate specific keys over a
 persistent SSE connection. One job, done well.
 
-**Core agnosticism principle:** `core` and `client-core` know nothing about any cache library or UI
+**Dependency boundary:** `server`, `client`, and `types` know nothing about any cache library or UI
 framework. They define a generic wire protocol with generic cache operations. Each adapter package
 maps those operations to a specific library's API. If you removed every adapter, `core` and
-`client-core` would still compile and function — they just wouldn't do anything useful with the
+`client` would still compile and function — it just wouldn't do anything useful with the
 signals.
 
 v1 ships: React + TanStack Query on the client, Node and any Fetch-API runtime (Hono, Bun, Deno,
@@ -19,8 +19,8 @@ or specced now.
 | Axis | v1 | Open seam for later |
 |---|---|---|
 | Server I/O runtime | Node, Fetch API | any runtime that can produce a byte stream |
-| UI framework | React | any framework — wrap `client-core` the way `react` does |
-| Cache library | TanStack Query | any library — write a `(signal) => void` adapter the way `tanstack-query` does |
+| UI framework | React | any framework — wrap `client` the way `client/react` does |
+| Cache library | TanStack Query | any library — write a `(signal) => void` integration like `client/tanstack-query` |
 
 ---
 
@@ -34,29 +34,21 @@ restale-kit/
 ├── package.json          # single package with "exports" map
 ├── tsconfig.json
 ├── src/
-│   ├── core/             # wire protocol types + server-side SSE channel
-│   │   ├── types.ts
-│   │   ├── framing.ts
-│   │   ├── channel.ts
-│   │   └── index.ts
-│   ├── client-core/      # connection state machine, reconnect, event emitting
-│   │   ├── types.ts
-│   │   ├── validation.ts
-│   │   ├── backoff.ts
-│   │   ├── client.ts
-│   │   └── index.ts
-│   ├── node/             # Node http transport
-│   │   ├── attach.ts
-│   │   └── index.ts
-│   ├── fetch/            # Fetch API transport
-│   │   ├── response.ts
-│   │   └── index.ts
-│   ├── react/            # useReStale hook
-│   │   ├── useReStale.ts
-│   │   └── index.ts
-│   └── tanstack-query/   # TanStack Query adapter
-│       ├── adapter.ts
-│       └── index.ts
+│   ├── types/            # wire protocol types, schemas, and errors
+│   ├── server/
+│   │   ├── core/         # channels and channel groups
+│   │   ├── node/         # Node HTTP helper
+│   │   └── fetch/        # Fetch API helper
+│   ├── client/
+│   │   ├── core/         # connection state machine
+│   │   ├── react/        # useReStale hook
+│   │   ├── swr/          # SWR integration
+│   │   └── tanstack-query/ # TanStack Query integration
+│   └── pubsub/
+│       ├── core/         # contract and shared utilities
+│       ├── redis/
+│       ├── ably/
+│       └── pusher/
 ```
 
 **`package.json` exports map:**
@@ -65,12 +57,15 @@ restale-kit/
 {
   "name": "restale-kit",
   "exports": {
-    ".":               { "types": "./dist/core/index.d.ts",           "import": "./dist/core/index.js" },
-    "./client-core":   { "types": "./dist/client-core/index.d.ts",    "import": "./dist/client-core/index.js" },
-    "./node":          { "types": "./dist/node/index.d.ts",           "import": "./dist/node/index.js" },
-    "./fetch":         { "types": "./dist/fetch/index.d.ts",          "import": "./dist/fetch/index.js" },
-    "./react":         { "types": "./dist/react/index.d.ts",          "import": "./dist/react/index.js" },
-    "./tanstack-query": { "types": "./dist/tanstack-query/index.d.ts", "import": "./dist/tanstack-query/index.js" }
+    "./types": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
+    "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
+    "./server/node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
+    "./server/fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
+    "./client": { "types": "./dist/client/core/index.d.ts", "import": "./dist/client/core/index.js" },
+    "./client/react": { "types": "./dist/client/react/index.d.ts", "import": "./dist/client/react/index.js" },
+    "./client/swr": { "types": "./dist/client/swr/index.d.ts", "import": "./dist/client/swr/index.js" },
+    "./client/tanstack-query": { "types": "./dist/client/tanstack-query/index.d.ts", "import": "./dist/client/tanstack-query/index.js" },
+    "./pubsub": { "types": "./dist/pubsub/core/index.d.ts", "import": "./dist/pubsub/core/index.js" }
   },
   "type": "module"
 }
@@ -82,13 +77,14 @@ restale-kit/
   (`restale-kit/react`, `restale-kit/tanstack-query`) import from `react` and
   `@tanstack/react-query` respectively — if those aren't installed, TypeScript errors at compile
   time and bundlers error at build time. This is sufficient enforcement and keeps the package
-  manifest framework-agnostic. A Vue user installing `restale-kit` to use only `client-core` sees
+  manifest framework-agnostic. A Vue user installing `restale-kit` to use only `client` sees
   zero React-related anything.
 
-Express and Fastify both sit on Node's `http` module, so both use `restale-kit/node`
+Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
+`restale-kit/fastify` respectively.
 directly (Fastify needs `reply.hijack()` first — see below). Hono, Bun, Deno, and edge runtimes
-speak `Request`/`Response`, so all of them use `restale-kit/fetch`. No per-framework
-server packages exist.
+speak `Request`/`Response`, so Hono uses `restale-kit/hono`; `restale-kit/fetch` remains
+available for other Fetch API runtimes.
 
 ---
 
@@ -343,7 +339,8 @@ When a `metaSchema` is provided in the constructor, `register()` validates the `
 `SchemaValidationError` with the message `"async schemas are not supported"` since registration is
 synchronous.
 
-All error classes and `SSEChannelGroup` are exported from `restale-kit` (core).
+`SSEChannelGroup` is exported from `restale-kit/server`; shared errors are exported from
+`restale-kit/types`.
 
 #### Backpressure
 
@@ -354,7 +351,7 @@ overflow strategy.
 
 ---
 
-### `restale-kit/node`
+### `restale-kit/node`, `restale-kit/express`, and `restale-kit/fastify`
 
 ```ts
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
@@ -371,7 +368,7 @@ Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
 sends its own response on top of the streamed one and throws.
 
-### `restale-kit/fetch`
+### `restale-kit/fetch` and `restale-kit/hono`
 
 ```ts
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
@@ -399,7 +396,7 @@ Auth, per-user scoping, and event filtering are out of scope — left to the use
 
 ## Client side
 
-### `restale-kit/client-core`
+### `restale-kit/client`
 
 No UI framework, no cache library dependency.
 
@@ -530,7 +527,7 @@ narrow the type further (e.g., constrain `key` to specific shapes).
 interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
   extends ClientOptions<TSignal> {
   disabled?: boolean
-  onInvalidate?: (signal: TSignal | TSignal[]) => void   // ← typed by schema
+  onInvalidate: (signal: TSignal | TSignal[]) => void   // ← typed by schema
 }
 
 interface UseReStaleResult {
@@ -541,7 +538,7 @@ interface UseReStaleResult {
 
 function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   url: string,
-  opts?: UseReStaleOptions<TSignal>
+  opts: UseReStaleOptions<TSignal>
 ): UseReStaleResult
 ```
 
@@ -599,7 +596,7 @@ useReStale('/sse', { onInvalidate: tanstackAdapter(queryClient) })
 ```
 
 Supporting a different cache library or UI framework later means writing one function or one
-`client-core` wrapper in this same shape — not a change to `core` or `client-core`.
+`client` wrapper in this same shape — not a change to the direct client implementation.
 
 ---
 
@@ -609,15 +606,19 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` (core) | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `ChannelState`, `ChannelClosedError`, `SchemaValidationError`, `InvalidateSignal`, `SSEInvalidateEvent`, `JSONValue` |
-| `restale-kit/client-core` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `InvalidateSignal` (re-export from core) |
-| `restale-kit/node` | `attachSSE` |
-| `restale-kit/fetch` | `toSSEResponse` |
-| `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` (re-export) |
+| `restale-kit/types` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
+| `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup` |
+| `restale-kit/node`, `restale-kit/express`, `restale-kit/fastify` | `attachSSE` |
+| `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
+| `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus` |
+| `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
 | `restale-kit/tanstack-query` | `tanstackAdapter` |
+| `restale-kit/swr` | `swrAdapter` |
+| `restale-kit/pubsub` | `PubSubAdapter` |
+| `restale-kit/{redis,ably,pusher}` | provider-specific PubSub adapters |
 
-`InvalidateSignal` is re-exported from `client-core` so that adapter authors and direct `client-core`
-users don't need to also import from core.
+`InvalidateSignal` is available from `restale-kit/types` and re-exported from `restale-kit/client`
+for direct client users.
 
 `StandardSchemaV1` is **not** re-exported — the type interface is inlined in the library's source
 (per the [Standard Schema spec's recommendation](https://github.com/standard-schema/standard-schema)).
@@ -640,8 +641,8 @@ interface ClientMeta {
   roles: string[]
 }
 
-import { attachSSE } from 'restale-kit/node'
-import { SSEChannelGroup } from 'restale-kit'
+import { attachSSE } from 'restale-kit/express'
+import { SSEChannelGroup } from 'restale-kit/server'
 
 // Create a group typed with your metadata
 const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
@@ -760,8 +761,8 @@ same time:
 
 ```ts
 import { z } from 'zod'
-import { SSEChannelGroup } from 'restale-kit'
-import { attachSSE } from 'restale-kit/node'
+import { SSEChannelGroup } from 'restale-kit/server'
+import { attachSSE } from 'restale-kit/fastify'
 
 // Define schema for valid application signals
 const TodoSignalSchema = z.object({

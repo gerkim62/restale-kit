@@ -1,44 +1,40 @@
 ```
 restale-kit/
-├── package.json          # single package with "exports" map
+├── package.json
 ├── tsconfig.json
-├── src/
-│   ├── core/             # wire protocol types + server-side SSE channel
-│   │   ├── types.ts
-│   │   ├── framing.ts
-│   │   ├── channel.ts
-│   │   └── index.ts
-│   ├── client-core/      # connection state machine, reconnect, event emitting
-│   │   ├── types.ts
-│   │   ├── validation.ts
-│   │   ├── backoff.ts
-│   │   ├── client.ts
-│   │   └── index.ts
-│   ├── node/             # Node http transport
-│   │   ├── attach.ts
-│   │   └── index.ts
-│   ├── fetch/            # Fetch API transport
-│   │   ├── response.ts
-│   │   └── index.ts
-│   ├── react/            # useReStale hook
-│   │   ├── useReStale.ts
-│   │   └── index.ts
-│   └── tanstack-query/   # TanStack Query adapter
-│       ├── adapter.ts
-│       └── index.ts
+└── src/
+    ├── types/              # wire protocol types, schemas, and errors
+    ├── server/
+    │   ├── core/           # channels and channel groups
+    │   ├── node/           # Node HTTP helper
+    │   └── fetch/          # Fetch API helper
+    ├── client/
+    │   ├── core/           # browser SSE client
+    │   ├── react/          # React hook
+    │   ├── swr/            # SWR integration
+    │   └── tanstack-query/ # TanStack Query integration
+    └── pubsub/
+        ├── core/           # PubSub contract and shared utilities
+        ├── redis/
+        ├── ably/
+        └── pusher/
 ```
 
-Single publishable package with subpath exports — not a monorepo. One `package.json`, one version,
-one `npm publish`.
+The package has four stable top-level domains: `types`, `server`, `client`, and
+`pubsub`. Frameworks and providers are nested under the domain they extend.
 
-**Subpath exports:**
-
-| Import path | Subpath |
+| Import path | Source entrypoint |
 |---|---|
-| `restale-kit` | `./src/core/` |
-| `restale-kit/client-core` | `./src/client-core/` |
-| `restale-kit/node` | `./src/node/` |
-| `restale-kit/fetch` | `./src/fetch/` |
-| `restale-kit/react` | `./src/react/` |
-| `restale-kit/tanstack-query` | `./src/tanstack-query/` |
-
+| `restale-kit/types` | `./src/types/` |
+| `restale-kit/server` | `./src/server/core/` |
+| `restale-kit/node` | `./src/server/node/` |
+| `restale-kit/fetch` | `./src/server/fetch/` |
+| `restale-kit/express` | `./src/express/` |
+| `restale-kit/fastify` | `./src/fastify/` |
+| `restale-kit/hono` | `./src/hono/` |
+| `restale-kit/client` | `./src/client/core/` |
+| `restale-kit/react` | `./src/client/react/` |
+| `restale-kit/swr` | `./src/client/swr/` |
+| `restale-kit/tanstack-query` | `./src/client/tanstack-query/` |
+| `restale-kit/pubsub` | `./src/pubsub/core/` |
+| `restale-kit/redis` | `./src/pubsub/redis/` |
