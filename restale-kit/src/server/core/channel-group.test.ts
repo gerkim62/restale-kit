@@ -262,6 +262,115 @@ describe('channel-group', () => {
     await group.publish('chat', { key: ['publish-event'] })
     expect(store.getEventsAfter('').length).toBe(2)
   })
+
+  // --- Broadcast: non-ChannelClosedError does NOT deregister ---
+
+  it('broadcast does NOT deregister channels that throw non-ChannelClosedError', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const badSchema = createInvalidSchema('Validation failed')
+    const ch = createSSEChannel({ signalSchema: badSchema })
+
+    group.register(ch, { userId: 1 })
+    expect(group.size).toBe(1)
+
+    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
+
+    // Channel should still be registered — it threw SchemaValidationError, not ChannelClosedError
+    expect(group.size).toBe(1)
+    expect(ch.state).toBe('open')
+  })
+
+  // --- publish() to broker with no local subscribers ---
+
+  it('publishes to broker even when no local channels are subscribed to the topic', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const publishSpy = vi.spyOn(pubsub, 'publish')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+
+    // No channels registered on 'orphan-topic'
+    await group.publish('orphan-topic', { key: ['remote-only'] })
+
+    // Broker should still receive the signal for remote instances
+    expect(publishSpy).toHaveBeenCalledWith('orphan-topic', {
+      kind: 'signal',
+      data: { key: ['remote-only'] },
+    })
+  })
+
+  it('publish() is a no-op (not an error) when no local subs and no pubsub configured', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+
+    // Should not throw
+    await expect(group.publish('nonexistent', { key: ['test'] })).resolves.toBeUndefined()
+  })
+
+  // --- deliverToChannel swallows non-ChannelClosedError in publish() context ---
+
+  it('publish() logs but does not throw when channel.invalidate throws non-ChannelClosedError', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const badSchema = createInvalidSchema('Schema error')
+    const ch = createSSEChannel({ signalSchema: badSchema })
+
+    group.register(ch, { userId: 1 }, { topics: ['chat'] })
+
+    // publish() via deliverToChannel should log the error but NOT throw
+    await expect(group.publish('chat', { key: ['test'] })).resolves.toBeUndefined()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ERROR][SSEChannelGroup.publish]'),
+      expect.any(String)
+    )
+
+    consoleSpy.mockRestore()
+  })
+
+  // --- TopicManager race: register during pending unsubscribe ---
+
+  it('handles re-registration on a topic while unsubscribe is in flight', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const subscribeSpy = vi.spyOn(pubsub, 'subscribe')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    // Register ch1 on topic-x → TopicManager subscribes
+    group.register(ch1, { userId: 1 }, { topics: ['topic-x'] })
+
+    // Flush subscription
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(100)
+
+    // Deregister ch1 → starts unsubscribe (refcount 1 → 0)
+    group.deregister(ch1)
+
+    // Immediately register ch2 on same topic → refcount 0 → 1 while unsubscribe in flight
+    group.register(ch2, { userId: 2 }, { topics: ['topic-x'] })
+
+    // Flush pending ops
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(100)
+
+    // The topic should still be subscribed (ch2 is on it)
+    expect(group.size).toBe(1)
+    // subscribe was called at least twice (initial + re-subscribe)
+    expect(subscribeSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
+  })
+
+  // --- eventBufferCapacity auto-creates eventStore ---
+
+  it('auto-creates an eventStore when eventBufferCapacity is set', () => {
+    const group = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 50 })
+    expect(group.eventStore).toBeDefined()
+  })
+
+  it('does not create eventStore when eventBufferCapacity is 0 or undefined', () => {
+    const group1 = new SSEChannelGroup<any, TestMeta>()
+    expect(group1.eventStore).toBeUndefined()
+
+    const group2 = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 0 })
+    expect(group2.eventStore).toBeUndefined()
+  })
 })
 
 

@@ -130,6 +130,25 @@ describe('channel', () => {
 
     consoleSpy.mockRestore()
   })
+
+  it('throws ChannelClosedError BEFORE schema validation when channel is closed', () => {
+    const schemaSpy = vi.fn().mockReturnValue({ value: { key: ['test'] } })
+    const schema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: schemaSpy,
+      },
+    }
+
+    const channel = createSSEChannel({ signalSchema: schema as any })
+    channel.close()
+
+    // Must throw ChannelClosedError, not SchemaValidationError
+    expect(() => channel.invalidate({ key: ['test'] } as any)).toThrow(ChannelClosedError)
+    // Schema should never have been consulted
+    expect(schemaSpy).not.toHaveBeenCalled()
+  })
 })
 
 

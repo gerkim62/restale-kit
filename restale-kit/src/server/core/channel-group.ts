@@ -373,8 +373,9 @@ export class SSEChannelGroup<
    *
    * - If a channel throws `ChannelClosedError`, it is automatically deregistered
    *   and iteration continues.
-   * - Any other errors (including `SchemaValidationError`) are skipped —
-   *   the failed channel is deregistered and iteration continues.
+   * - Any other errors (e.g. `SchemaValidationError`) are collected across all
+   *   channels and thrown as an `AggregateError` at the end — iteration always
+   *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
     const errors: unknown[] = []

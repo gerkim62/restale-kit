@@ -167,6 +167,184 @@ describe('SSEInvalidatorClient', () => {
     void client.connect()
     expect(MockEventSource.instances).toHaveLength(2)
   })
+
+  // --- connect() edge cases: all 6 states from spec table ---
+
+  it('connect() is no-op when already open — returns resolved promise', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    expect(client.status.status).toBe('open')
+
+    // Calling connect() again while open should be a no-op
+    const p2 = client.connect()
+    await expect(p2).resolves.toBeUndefined()
+    // Should NOT have created a new EventSource
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
+  it('connect() from closed-manual creates new EventSource and resets backoff', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
+    })
+
+    // Open then close
+    const p1 = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p1
+    client.close()
+    expect(client.status).toEqual({ status: 'closed', reason: 'manual' })
+
+    // Connect again — should create new EventSource
+    const p2 = client.connect()
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(client.status.status).toBe('connecting')
+
+    MockEventSource.instances[1]?.emitOpen()
+    await p2
+    expect(client.status.status).toBe('open')
+  })
+
+  it('connect() from closed-unmount creates new EventSource (allows reuse after re-mount)', async () => {
+    // Simulate unmount close by directly testing that connect works from any closed state
+    const client = new SSEInvalidatorClient('/sse')
+
+    // Open, close, then connect again
+    const p1 = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p1
+    client.close()
+
+    // Re-connect from closed state
+    void client.connect()
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(client.status.status).toBe('connecting')
+  })
+
+  it('connect() from error state creates new EventSource and resets backoff', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: false,
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+    MockEventSource.instances[0]?.emitError()
+
+    // Should be in error state since autoReconnect is false
+    expect(client.status.status).toBe('error')
+
+    // connect() from error should create new EventSource
+    const p2 = client.connect()
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(client.status.status).toBe('connecting')
+
+    MockEventSource.instances[1]?.emitOpen()
+    await p2
+    expect(client.status.status).toBe('open')
+  })
+
+  it('connect() while backing off cancels pending retry and immediately attempts', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 5000, jitter: false },
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+
+    // First error triggers backoff (5000ms delay)
+    MockEventSource.instances[0]?.emitError()
+    expect(client.status.status).toBe('connecting')
+    expect(MockEventSource.instances).toHaveLength(1) // retry hasn't fired yet
+
+    // Calling connect() while backing off should cancel the retry and immediately attempt
+    const p2 = client.connect()
+    expect(MockEventSource.instances).toHaveLength(2) // immediate new connection
+
+    MockEventSource.instances[1]?.emitOpen()
+    await p2
+    expect(client.status.status).toBe('open')
+
+    // Advance time past the old backoff — should NOT create another EventSource
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(MockEventSource.instances).toHaveLength(2) // no extra connection
+  })
+
+  // --- close() rejects pending connect promise ---
+
+  it('close() while connecting rejects the pending connect() promise', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const p = client.connect()
+
+    expect(client.status.status).toBe('connecting')
+
+    client.close()
+    await expect(p).rejects.toBeInstanceOf(Event)
+  })
+
+  // --- Client validation pipeline ordering ---
+
+  it('emits error event when signalSchema returns async Promise', async () => {
+    const asyncSchema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate() {
+          return Promise.resolve({ value: { key: ['test'] } })
+        },
+      },
+    }
+
+    const client = new SSEInvalidatorClient('/sse', { signalSchema: asyncSchema as any })
+    const errorSpy = vi.fn()
+    client.addEventListener('error', errorSpy)
+    const invalidateSpy = vi.fn()
+    client.addEventListener('invalidate', invalidateSpy)
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'invalidate',
+      JSON.stringify({ key: ['test'] })
+    )
+
+    expect(errorSpy).toHaveBeenCalled()
+    expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+
+  it('schema validation runs AFTER structural validation (steps 1-6 before step 7)', async () => {
+    const schemaSpy = vi.fn().mockReturnValue({ value: { key: ['test'] } })
+    const schema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: schemaSpy,
+      },
+    }
+
+    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema as any })
+    const errorSpy = vi.fn()
+    client.addEventListener('error', errorSpy)
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    // Send structurally invalid payload (missing key) — should fail at step 3
+    // and never reach the schema (step 7)
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'invalidate',
+      JSON.stringify({ notAKey: true })
+    )
+
+    expect(errorSpy).toHaveBeenCalled()
+    expect(schemaSpy).not.toHaveBeenCalled() // schema was never consulted
+  })
 })
 
 

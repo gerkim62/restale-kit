@@ -92,8 +92,8 @@ export class SSEInvalidatorClient<
       return Promise.resolve()
     }
 
-    // Already connecting — return same pending promise
-    if (this.currentStatus.status === 'connecting' && this.connectPromise) {
+    // Already connecting and actively establishing socket (not waiting on retry timer) — return same pending promise
+    if (this.currentStatus.status === 'connecting' && this.connectPromise && this.retryTimer === null) {
       return this.connectPromise.promise
     }
 
@@ -118,9 +118,9 @@ export class SSEInvalidatorClient<
     this.teardown()
     this.setStatus({ status: 'closed', reason: 'manual' })
 
-    // Reject any pending connect promise so it doesn't dangle
+    // Reject any pending connect promise so callers aren't left dangling
     if (this.connectPromise) {
-      // The connect() promise listeners are removed — just clean up
+      this.connectPromise.reject(new Event('close'))
       this.connectPromise = null
     }
   }

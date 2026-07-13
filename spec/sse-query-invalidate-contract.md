@@ -127,9 +127,20 @@ Other adapters (SWR, Apollo, custom) would map the same three actions to their o
 
 ### Exact SSE frame format
 
-Each call to `channel.invalidate()` produces exactly one SSE event:
+Each call to `channel.invalidate()` produces exactly one SSE event.
+
+**Without event history** (default — no `eventStore` configured):
 
 ```
+event: invalidate\n
+data: <JSON payload>\n
+\n
+```
+
+**With event history** (`eventStore` configured or `eventBufferCapacity > 0`):
+
+```
+id: <event ID>\n
 event: invalidate\n
 data: <JSON payload>\n
 \n
@@ -138,20 +149,23 @@ data: <JSON payload>\n
 Where `<JSON payload>` is the output of `JSON.stringify(signal)` — a single object or an array.
 The entire payload is sent as one `data:` line. No splitting across multiple `data:` lines.
 
-**No `id:` field.** The library does not replay missed events (documented in "What this library
-does not do"), so setting `id:` would give `EventSource` a false `Last-Event-ID` that the server
-would ignore, which is misleading. Omitting it keeps the contract honest.
+**`id:` field behavior:** By default (no `eventStore`), no `id:` field is emitted — there is
+nothing to replay, so advertising an event ID would be misleading. When an `eventStore` is
+configured, every event receives an auto-incrementing (or custom-generated) ID. The `id:` field
+causes `EventSource` to send `Last-Event-ID` on reconnect, which the server can use to replay
+missed events from the store. The `id:` field value is sanitized to strip `\r` and `\n`
+characters.
 
 **Example frames:**
 
-Single signal:
+Single signal (no event store):
 ```
 event: invalidate
 data: {"key":["todos"],"exact":false}
 
 ```
 
-Batch signal:
+Batch signal (no event store):
 ```
 event: invalidate
 data: [{"key":["todos"]},{"key":["todos-count"]}]
@@ -216,7 +230,7 @@ type ChannelState = 'open' | 'closed'
 interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
-  invalidate(signal: TSignal | TSignal[]): void
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void
   disconnect(): void   // called by a transport adapter when it detects the peer disconnected
 }
@@ -224,12 +238,19 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   keepaliveIntervalMs?: number   // default 30_000
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
+  lastEventId?: string           // Last-Event-ID from the reconnecting client
+  eventStore?: EventStore<TSignal> // shared store for recording history and replaying missed events
+  eventBufferCapacity?: number   // auto-creates an EventStore with this capacity if eventStore is not provided
+  idGenerator?: () => string     // custom ID generator; ignored when an external eventStore is provided
 }
 
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 ```
+
+`invalidate()` returns the event ID assigned to the frame (the `customId` if provided, or the
+auto-generated ID from the `eventStore`, or `''` when no ID is assigned).
 
 When `signalSchema` is provided, `invalidate()` validates each signal (unwrapping arrays) via
 `signalSchema['~standard'].validate(signal)` before framing. If the result contains `issues`,
@@ -240,6 +261,19 @@ is synchronous.
 When `signalSchema` is omitted, `invalidate()` frames the signal as-is with no validation overhead
 (identical to the current behavior). The generic defaults to `InvalidateSignal`, so existing code
 that doesn't pass a schema compiles unchanged.
+
+#### Event history and replay
+
+When `eventStore` is provided (or `eventBufferCapacity > 0` is set, which auto-creates one),
+every `invalidate()` call records the signal in the store with a unique event ID. The SSE frame
+includes an `id:` field so that `EventSource` tracks the `Last-Event-ID`.
+
+On reconnect, if the transport adapter extracts a `lastEventId` from the incoming request's
+`Last-Event-ID` header, the channel replays all events stored after that ID into the stream
+before starting keepalives. If the `lastEventId` is not found in the store (e.g., it fell off
+the ring buffer), all currently stored events are replayed.
+
+The default `EventStore` is an in-memory bounded ring buffer (default capacity: 100).
 
 `core` handles SSE framing and keepalives. It does not detect disconnects or set response headers —
 that's the transport adapter's job.
@@ -269,7 +303,7 @@ that's the transport adapter's job.
 
 | Method | State: `open` (no schema) | State: `open` (with schema) | State: `closed` |
 |---|---|---|---|
-| `invalidate(signal)` | Enqueues the SSE frame into the stream | Validates first → frames on success, throws `SchemaValidationError` on failure | Throws `ChannelClosedError` |
+| `invalidate(signal)` | Enqueues the SSE frame into the stream; returns event ID | Validates first → frames on success, throws `SchemaValidationError` on failure; returns event ID on success | Throws `ChannelClosedError` |
 | `close()` | Stops keepalive timer, closes the `ReadableStream` controller, transitions to `closed` | Same | No-op |
 | `disconnect()` | Same as `close()` — called by transport when peer disconnects | Same | No-op |
 
@@ -375,12 +409,19 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): SSEChannel<TSignal>
+): { channel: SSEChannel<TSignal>; connectionId: string }
 ```
+
+Extracts the `restaleKitRequestId` query parameter from the request URL and returns it as
+`connectionId`. Throws synchronously if the parameter is missing or empty — a channel registered
+without a `connectionId` cannot be revoked with per-connection precision.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 `Connection: keep-alive`), pipes `channel.stream` into `res` via
 `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
+
+Extracts the `Last-Event-ID` header from the request and passes it to `createSSEChannel` for
+event replay (when an `eventStore` is configured).
 
 For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
 sends its own response on top of the streamed one and throws.
@@ -391,8 +432,11 @@ sends its own response on top of the streamed one and throws.
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal> }
+): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
 ```
+
+Extracts `connectionId` from the `restaleKitRequestId` query parameter and `Last-Event-ID` from
+request headers. Throws synchronously if the query parameter is missing.
 
 Constructs `new Response(channel.stream, { headers })`, wires
 `request.signal.addEventListener('abort', channel.disconnect)`. Returns a `Response` for the
@@ -549,6 +593,7 @@ interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 interface UseReStaleResult {
+  connectionId: string            // unique ID for this SSE connection instance
   connection: ConnectionStatus
   reconnect(): Promise<void>
   close(): void
@@ -721,7 +766,9 @@ group.broadcastToAll({ key: ['config'] })
 The predicate in `broadcast` is evaluated synchronously against the registered metadata.
 If `channel.invalidate()` throws `ChannelClosedError` during transmission, the group catches it,
 removes the channel internally, and continues broadcasting to the next channel in the group.
-All other errors (e.g. `SchemaValidationError`) propagate immediately to the caller.
+All other errors (e.g. `SchemaValidationError`) are collected across all channels; once iteration
+completes, they are thrown as a single `AggregateError`. The errored channels are **not**
+deregistered — they remain in the group and may succeed on a subsequent broadcast.
 
 ---
 
@@ -856,5 +903,6 @@ function App() {
 
 - Auth, session scoping, CORS
 - Event filtering or routing
-- Replaying missed events after a reconnect
+- Guaranteed at-least-once delivery — event replay (via `EventStore`) is best-effort from a
+  bounded in-memory ring buffer; events that fall off the buffer before a client reconnects are lost
 - Any query fetching, caching, or state management beyond calling into the chosen adapter

@@ -25,17 +25,25 @@ functions with zero adapters installed — it just falls back to local-only deli
 ## `PubSubAdapter` interface
 
 ```ts
+type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
+  | { kind: 'signal'; data: TSignal | TSignal[] }
+  | { kind: 'control'; data: JSONValue }
+
 export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
-  publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+  publish(topic: string, message: PubSubMessage<TSignal>): Promise<void>
 
   subscribe(
     topic: string,
-    onMessage: (signal: TSignal | TSignal[]) => void
+    onMessage: (message: PubSubMessage<TSignal>) => void
   ): Promise<() => void | Promise<void>>
 
   onError?(handler: (error: unknown) => void): void
 }
 ```
+
+Payloads are wrapped in a discriminated `PubSubMessage` union so that a single pair of
+`publish`/`subscribe` methods handles both invalidation signals and control messages (e.g.,
+connection revocation) with full type safety via the `kind` discriminant.
 
 - Topics are plain strings. Payloads are `TSignal` — same JSON constraint as the wire
   protocol everywhere else.
