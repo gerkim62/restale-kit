@@ -113,6 +113,16 @@ describe('redisPubSubAdapter', () => {
 
     consoleSpy.mockRestore()
   })
+
+  it('ignores message received on channel without registered subscriber', () => {
+    const { client, listeners } = createMockRedisClient()
+    const adapter = redisPubSubAdapter(client)
+
+    // Fire message for 'unregistered-topic'
+    expect(() => {
+      listeners['message']?.('unregistered-topic', JSON.stringify({ origin: 'other', payload: { kind: 'signal', data: { key: ['x'] } } }))
+    }).not.toThrow()
+  })
 })
 
 

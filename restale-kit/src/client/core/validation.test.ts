@@ -76,5 +76,35 @@ describe('client validatePayload', () => {
       "Signal \"action\" field must be one of 'invalidate', 'refetch', 'remove' — got '123'"
     )
   })
+
+  it('normalizes single valid signal and strips unknown fields', () => {
+    const raw = JSON.stringify({
+      key: ['todos', 1],
+      exact: true,
+      action: 'refetch',
+      extraField: 'should be stripped',
+    })
+
+    const validated = validatePayload(raw)
+    expect(validated).toEqual({
+      key: ['todos', 1],
+      exact: true,
+      action: 'refetch',
+    })
+  })
+
+  it('throws error when signal key array contains non-JSON-serialisable elements', () => {
+    // isJSONValue false branch for function / symbol / bigint
+    expect(() => validatePayload(JSON.stringify({ key: [1, null] }))).not.toThrow()
+
+    expect(() =>
+      validatePayload({
+        key: [1, Symbol('bad')],
+      } as any)
+    ).toThrow(
+      'Signal must have a "key" property that is an array of JSON-serialisable values'
+    )
+  })
 })
+
 

@@ -22,12 +22,16 @@ describe('pubsub-utils', () => {
     expect(isPubSubMessage({ kind: 'signal', data: { key: ['items'] } })).toBe(true)
     expect(isPubSubMessage({ kind: 'control', data: { userId: 10 } })).toBe(true)
 
+    expect(isPubSubMessage(null)).toBe(false)
+    expect(isPubSubMessage(123)).toBe(false)
     expect(isPubSubMessage({ kind: 'unknown', data: {} })).toBe(false)
     expect(isPubSubMessage({ kind: 'control', data: Symbol('bad') })).toBe(false)
   })
 
   it('isEnvelope validates origin string and payload property', () => {
     expect(isEnvelope({ origin: 'inst-1', payload: { kind: 'control', data: {} } })).toBe(true)
+    expect(isEnvelope(null)).toBe(false)
+    expect(isEnvelope(123)).toBe(false)
     expect(isEnvelope({ origin: 123, payload: {} })).toBe(false)
     expect(isEnvelope({ origin: 'inst-1' })).toBe(false)
   })

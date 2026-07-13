@@ -94,5 +94,17 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     expect(matchesJSONValue([1, 2], [1], true)).toBe(false)
     expect(matchesJSONValue([1], [1, 2], false)).toBe(false)
   })
+
+  it('matches nested arrays inside key elements', () => {
+    const signalPrefix = { key: ['todos', [1, 2]] }
+    expect(matchesInvalidateSignalKey(['todos', [1, 2, 3]], signalPrefix)).toBe(true)
+
+    const signalExact = { key: ['todos', [1, 2]], exact: true }
+    expect(matchesInvalidateSignalKey(['todos', [1, 2, 3]], signalExact)).toBe(false)
+    expect(matchesInvalidateSignalKey(['todos', [1, 2]], signalExact)).toBe(true)
+
+    // Type mismatch in nested array element (array vs object)
+    expect(matchesJSONValue([1, [2]], [1, { 0: 2 }], false)).toBe(false)
+  })
 })
 

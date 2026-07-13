@@ -119,6 +119,25 @@ describe('pusherPubSubAdapter', () => {
 
     consoleSpy.mockRestore()
   })
+
+  it('dispatches control events received via pusher webhook', async () => {
+    const controlEnvelope = {
+      origin: 'remote-pusher-id',
+      payload: { kind: 'control', data: { userId: 99 } },
+    }
+    const events = [{ channel: 'my-channel', name: 'control', data: controlEnvelope }]
+
+    const client = createMockPusherClient(true, events)
+    const adapter = pusherPubSubAdapter(client)
+    const callback = vi.fn()
+
+    await adapter.subscribe('my-channel', callback)
+
+    const success = adapter.handleWebhook('valid-body', {})
+
+    expect(success).toBe(true)
+    expect(callback).toHaveBeenCalledWith({ kind: 'control', data: { userId: 99 } })
+  })
 })
 
 

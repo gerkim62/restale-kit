@@ -149,6 +149,12 @@ describe('channel', () => {
     // Schema should never have been consulted
     expect(schemaSpy).not.toHaveBeenCalled()
   })
+
+  it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {
+    const channel = createSSEChannel({ eventBufferCapacity: 20 })
+    const id = channel.invalidate({ key: ['auto-store'] })
+    expect(id).toBe('1') // EventStore auto-increment ID
+  })
 })
 
 

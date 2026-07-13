@@ -159,6 +159,29 @@ describe('ablyPubSubAdapter', () => {
 
     consoleSpy.mockRestore()
   })
+
+  it('unsubscribes cleanly removing stateListeners when channel.off is available', async () => {
+    const mockOff = vi.fn()
+    const channel: AblyChannel = {
+      publish: vi.fn(),
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: mockOff,
+    }
+    const client: AblyClient = {
+      channels: { get: () => channel },
+    }
+
+    const adapter = ablyPubSubAdapter(client)
+    const unsub = await adapter.subscribe('channel-clean', vi.fn())
+
+    await unsub()
+
+    expect(mockOff).toHaveBeenCalledWith('failed', expect.any(Function))
+    expect(mockOff).toHaveBeenCalledWith('update', expect.any(Function))
+    expect(channel.unsubscribe).toHaveBeenCalled()
+  })
 })
 
 

@@ -39,5 +39,10 @@ describe('pubsub envelope', () => {
     it('returns null on invalid envelope structure', () => {
       expect(unwrapEnvelope({ foo: 'bar' }, 'my-origin')).toBeNull()
     })
+
+    it('returns null when envelope payload is neither a valid PubSubMessage nor InvalidateSignal', () => {
+      const env = { origin: 'other-origin', payload: { invalidPayload: true } }
+      expect(unwrapEnvelope(env, 'my-origin')).toBeNull()
+    })
   })
 })
