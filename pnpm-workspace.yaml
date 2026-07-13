@@ -3,6 +3,7 @@ packages:
   - 'examples/shared'
   - 'examples/backend/*'
   - 'examples/frontend/*'
+  - 'examples/vercel-redis'
 
 allowBuilds:
   esbuild: true
