@@ -2,9 +2,40 @@
   "name": "restale-kit",
   "version": "0.1.0",
   "description": "Minimal library to invalidate client-side queries via SSE",
+  "license": "MIT",
+  "author": "Gerison Kimathi <gerkim62@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gerkim62/restale-kit.git",
+    "directory": "restale-kit"
+  },
+  "bugs": {
+    "url": "https://github.com/gerkim62/restale-kit/issues"
+  },
+  "homepage": "https://github.com/gerkim62/restale-kit#readme",
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "query-invalidation",
+    "tanstack-query",
+    "swr",
+    "react"
+  ],
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
-    "./types": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
+    ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
     "./node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
     "./fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
@@ -16,13 +47,17 @@
     "./redis": { "types": "./dist/pubsub/redis/index.d.ts", "import": "./dist/pubsub/redis/index.js" },
     "./ably": { "types": "./dist/pubsub/ably/index.d.ts", "import": "./dist/pubsub/ably/index.js" },
     "./pusher": { "types": "./dist/pubsub/pusher/index.d.ts", "import": "./dist/pubsub/pusher/index.js" },
-    "./express": { "types": "./dist/express/index.d.ts", "import": "./dist/express/index.js" },
-    "./fastify": { "types": "./dist/fastify/index.d.ts", "import": "./dist/fastify/index.js" },
-    "./hono": { "types": "./dist/hono/index.d.ts", "import": "./dist/hono/index.js" }
+    "./express": { "types": "./dist/server/express/index.d.ts", "import": "./dist/server/express/index.js" },
+    "./fastify": { "types": "./dist/server/fastify/index.d.ts", "import": "./dist/server/fastify/index.js" },
+    "./hono": { "types": "./dist/server/hono/index.d.ts", "import": "./dist/server/hono/index.js" }
   },
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf dist"
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "build:test": "pnpm run clean && tsc",
+    "clean": "rm -rf dist",
+    "test": "pnpm run build:test && node --test --test-force-exit dist/__tests__/adapters.test.js dist/__tests__/pubsub.test.js && pnpm run build",
+    "prepack": "pnpm run build",
+    "release:check": "pnpm run test && npm pack --dry-run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

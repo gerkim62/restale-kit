@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify matching tag and package version
+        run: |
+          VERSION=$(node -p "require('./restale-kit/package.json').version")
+          test "v$VERSION" = "$GITHUB_REF_NAME"
+      - run: pnpm run validate
+      - run: pnpm --filter restale-kit run test
+      - run: pnpm run test:package
+      - run: cd restale-kit && npm pack --dry-run
+      - name: Publish to npm with provenance
+        working-directory: restale-kit
+        run: npm publish --provenance --access public
+      - name: Create GitHub release from changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          node scripts/extract-changelog.mjs "$VERSION" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md

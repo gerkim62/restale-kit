@@ -1,6 +1,6 @@
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit/types'
+import type { InvalidateSignal } from 'restale-kit'
 import { attachSSE } from 'restale-kit/fastify'
 import { createTodoApi } from '@restale-kit-example/shared'
 

@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit/types'
+import type { InvalidateSignal } from 'restale-kit'
 import { attachSSE } from 'restale-kit/node'
 import { createTodoApi } from '@restale-kit-example/shared'
 
