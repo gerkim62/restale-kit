@@ -61,7 +61,7 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     assert.ok(client.connectionId)
   })
 
-  await t.test('attachSSE and toSSEResponse validation and return shape', async () => {
+  await t.test('attachSSE and toSSEResponse validation and return shape', () => {
     // 1. attachSSE - missing param throws
     const mockReqMissing = new EventEmitter() as any
     mockReqMissing.url = '/sse'
@@ -132,14 +132,16 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
 
     const createAdapter = (): PubSubAdapter => ({
       async publish(topic, message) {
+        await Promise.resolve()
         const listeners = brokerListeners.get(topic) || []
         for (const fn of listeners) {
           fn(message)
         }
       },
       async subscribe(topic, onMessage) {
+        await Promise.resolve()
         if (!brokerListeners.has(topic)) brokerListeners.set(topic, [])
-        brokerListeners.get(topic)!.push(onMessage as (msg: PubSubMessage) => void)
+        brokerListeners.get(topic)!.push(onMessage)
         return () => {
           const list = brokerListeners.get(topic) || []
           brokerListeners.set(
