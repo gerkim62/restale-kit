@@ -122,7 +122,7 @@ class SSEChannelGroup<
 
 ### `revoke(criteria)` security
 
-`criteria` subset-matches connection metadata. If a criterion includes `restaleKitRequestId` supplied by a client, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A request ID is an opaque connection correlation value, not proof that a caller is authorized to revoke that connection.
+`criteria` subset-matches connection metadata. If a criterion includes a client-supplied `connectionId`, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A connection ID is an opaque correlation value, not proof that a caller is authorized to revoke that connection.
 
 ---
 
@@ -141,7 +141,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): { channel: SSEChannel<TSignal>; restaleKitRequestId: string }
+): { channel: SSEChannel<TSignal>; connectionId: string }
 ```
 
 > **Fastify:** Call `reply.hijack()` before passing `request.raw` / `reply.raw`.
@@ -160,7 +160,7 @@ import { toSSEResponse } from 'restale-kit/hono'
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; restaleKitRequestId: string }
+): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
 ```
 
 ---
@@ -180,7 +180,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   extends EventTarget
 {
   constructor(url: string, options?: ClientOptions<TSignal>)
-  get requestId(): string
+  get connectionId(): string
   get status(): ConnectionStatus
   get lastEventId(): string | null
   connect(): Promise<void>
@@ -240,7 +240,7 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
 }
 
 interface UseReStaleResult {
-  requestId: string
+  connectionId: string
   connection: ConnectionStatus
   reconnect(): Promise<void>
   close(): void

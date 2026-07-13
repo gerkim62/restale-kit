@@ -38,17 +38,17 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     )
   })
 
-  await t.test('SSEInvalidatorClient exposes requestId and appends restaleKitRequestId', () => {
+  await t.test('SSEInvalidatorClient exposes connectionId and appends the internal query parameter', () => {
     const client = new SSEInvalidatorClient('/sse/stream?user=42')
-    assert.ok(client.requestId)
-    assert.strictEqual(typeof client.requestId, 'string')
+    assert.ok(client.connectionId)
+    assert.strictEqual(typeof client.connectionId, 'string')
     assert.strictEqual(
       (client as any).url,
-      `/sse/stream?user=42&restaleKitRequestId=${client.requestId}`
+      `/sse/stream?user=42&restaleKitRequestId=${client.connectionId}`
     )
   })
 
-  await t.test('useReStale hook exposes requestId', async () => {
+  await t.test('useReStale hook exposes connectionId', async () => {
     const { useReStale } = await import('@/client/react/useReStale.js')
     // Lightweight mock of React environment for hook initialization test
     let res: any
@@ -56,9 +56,9 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
       res = useReStale('/sse', { onInvalidate: () => {} })
       return null
     }
-    // Verify constructor instantiation exposes requestId
+    // Verify constructor instantiation exposes connectionId
     const client = new SSEInvalidatorClient('/sse')
-    assert.ok(client.requestId)
+    assert.ok(client.connectionId)
   })
 
   await t.test('attachSSE and toSSEResponse validation and return shape', async () => {
@@ -72,14 +72,14 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
       /Missing or invalid restaleKitRequestId query parameter/
     )
 
-    // attachSSE - valid param returns { channel, restaleKitRequestId }
+    // attachSSE - valid param returns { channel, connectionId }
     const mockReqValid = new EventEmitter() as any
     mockReqValid.url = '/sse?restaleKitRequestId=req-999'
     mockReqValid.headers = {}
     const mockResStream = new PassThrough() as any
     mockResStream.writeHead = () => {}
     const attached = attachSSE(mockReqValid, mockResStream)
-    assert.strictEqual(attached.restaleKitRequestId, 'req-999')
+    assert.strictEqual(attached.connectionId, 'req-999')
     assert.ok(attached.channel)
 
     // 2. toSSEResponse - missing param throws
@@ -89,10 +89,10 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
       /Missing or invalid restaleKitRequestId query parameter/
     )
 
-    // toSSEResponse - valid param returns { response, channel, restaleKitRequestId }
+    // toSSEResponse - valid param returns { response, channel, connectionId }
     const fetchReqValid = new Request('http://localhost/sse?restaleKitRequestId=req-888')
     const sseResp = toSSEResponse(fetchReqValid)
-    assert.strictEqual(sseResp.restaleKitRequestId, 'req-888')
+    assert.strictEqual(sseResp.connectionId, 'req-888')
     assert.ok(sseResp.channel)
     assert.ok(sseResp.response)
   })
@@ -104,14 +104,14 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     const ch2 = createSSEChannel()
     const ch3 = createSSEChannel()
 
-    group.register(ch1, { userId: 'user-1', restaleKitRequestId: 'req-1' })
-    group.register(ch2, { userId: 'user-1', restaleKitRequestId: 'req-2' })
-    group.register(ch3, { userId: 'user-2', restaleKitRequestId: 'req-3' })
+    group.register(ch1, { userId: 'user-1', connectionId: 'req-1' })
+    group.register(ch2, { userId: 'user-1', connectionId: 'req-2' })
+    group.register(ch3, { userId: 'user-2', connectionId: 'req-3' })
 
     assert.strictEqual(group.size, 3)
 
-    // Revoke single connection via restaleKitRequestId
-    const res1 = await group.revoke({ restaleKitRequestId: 'req-1' })
+    // Revoke a single connection via connectionId
+    const res1 = await group.revoke({ connectionId: 'req-1' })
     assert.strictEqual(res1.localClosed, 1)
     assert.strictEqual(ch1.state, 'closed')
     assert.strictEqual(ch2.state, 'open')
@@ -160,12 +160,12 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     const chB1 = createSSEChannel()
     const chB2 = createSSEChannel()
 
-    groupA.register(chA, { userId: 'user-10', restaleKitRequestId: 'req-a' })
-    groupB.register(chB1, { userId: 'user-10', restaleKitRequestId: 'req-b1' })
-    groupB.register(chB2, { userId: 'user-10', restaleKitRequestId: 'req-b2' })
+    groupA.register(chA, { userId: 'user-10', connectionId: 'req-a' })
+    groupB.register(chB1, { userId: 'user-10', connectionId: 'req-b1' })
+    groupB.register(chB2, { userId: 'user-10', connectionId: 'req-b2' })
 
-    // Instance A revokes specific request ID 'req-b1' residing on Instance B
-    const result = await groupA.revoke({ restaleKitRequestId: 'req-b1' })
+    // Instance A revokes connection 'req-b1' residing on Instance B
+    const result = await groupA.revoke({ connectionId: 'req-b1' })
     assert.strictEqual(result.localClosed, 0) // None closed locally on instance A
 
     // Wait microtasks for instance B to receive control message

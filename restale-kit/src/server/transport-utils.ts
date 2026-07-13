@@ -1,17 +1,17 @@
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
- * Extracts and validates the `restaleKitRequestId` query parameter from URL search params.
+ * Extracts and validates the internal `restaleKitRequestId` query parameter.
  * Throws synchronously if missing or empty.
  */
-export function extractRequestId(searchParams: URLSearchParams): string {
-  const requestId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
-  if (!requestId) {
+export function extractConnectionId(searchParams: URLSearchParams): string {
+  const connectionId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
+  if (!connectionId) {
     throw new Error(
       `Missing or invalid ${PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM} query parameter in request URL`
     )
   }
-  return requestId
+  return connectionId
 }
 
 /**

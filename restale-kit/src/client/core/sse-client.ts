@@ -31,7 +31,7 @@ export class SSEInvalidatorClient<
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
   private readonly withCredentials: boolean
-  private readonly currentRequestId: string
+  private readonly currentConnectionId: string
 
   private eventSource: EventSource | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
@@ -46,11 +46,11 @@ export class SSEInvalidatorClient<
 
   constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
-    this.currentRequestId = generateUUID()
+    this.currentConnectionId = generateUUID()
     this.url = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
-      this.currentRequestId
+      this.currentConnectionId
     )
     this.autoReconnect = opts?.autoReconnect ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
@@ -59,9 +59,9 @@ export class SSEInvalidatorClient<
     this.withCredentials = opts?.withCredentials ?? false
   }
 
-  /** The unique request ID generated for this connection instance. */
-  get requestId(): string {
-    return this.currentRequestId
+  /** The unique ID generated for this SSE connection instance. */
+  get connectionId(): string {
+    return this.currentConnectionId
   }
 
   /** Current connection status. */

@@ -64,7 +64,7 @@ useReStale(url: string, options: {
 
 ```ts
 {
-  requestId: string             // unique request ID generated for this connection instance
+  connectionId: string          // unique ID generated for this SSE connection instance
   connection: ConnectionStatus  // current state
   reconnect(): Promise<void>    // manually reconnect; resets backoff counter
   close(): void                 // manually close
@@ -146,7 +146,7 @@ client.addEventListener('invalidate', (event) => {
 })
 
 // Access client properties
-console.log('Unique request ID:', client.requestId) // e.g. "a1b2c3d4-..."
+console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
 console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 
 // Track connection state changes

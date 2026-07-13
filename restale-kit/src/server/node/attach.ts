@@ -4,7 +4,7 @@ import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
-import { extractRequestId, extractLastEventId } from '@/server/transport-utils.js'
+import { extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
 
 /**
  * Attaches an SSE channel to a Node.js HTTP response.
@@ -19,11 +19,11 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): { channel: SSEChannel<TSignal>; restaleKitRequestId: string } {
+): { channel: SSEChannel<TSignal>; connectionId: string } {
   const rawUrl = req.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  const restaleKitRequestId = extractRequestId(searchParams)
+  const connectionId = extractConnectionId(searchParams)
 
   const lastEventId = options?.lastEventId ?? extractLastEventId((name) => req.headers[name])
 
@@ -47,7 +47,6 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
     channel.disconnect()
   })
 
-  return { channel, restaleKitRequestId }
+  return { channel, connectionId }
 }
-
 

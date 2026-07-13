@@ -21,8 +21,8 @@ const app = express()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const { channel, restaleKitRequestId } = attachSSE(req, res)
-  group.register(channel, { userId: req.user?.id, restaleKitRequestId })
+  const { channel, connectionId } = attachSSE(req, res)
+  group.register(channel, { userId: req.user?.id, connectionId })
   req.on('close', () => group.deregister(channel))
 })
 ```
@@ -38,8 +38,8 @@ const group = new SSEChannelGroup()
 
 const server = http.createServer((req, res) => {
   if (req.url?.startsWith('/sse') && req.method === 'GET') {
-    const { channel, restaleKitRequestId } = attachSSE(req, res)
-    group.register(channel, { restaleKitRequestId })
+    const { channel, connectionId } = attachSSE(req, res)
+    group.register(channel, { connectionId })
     req.on('close', () => group.deregister(channel))
   }
 })
@@ -59,15 +59,15 @@ const group = new SSEChannelGroup()
 
 app.get('/sse', (request, reply) => {
   reply.hijack() // required
-  const { channel, restaleKitRequestId } = attachSSE(request.raw, reply.raw)
-  group.register(channel, { restaleKitRequestId })
+  const { channel, connectionId } = attachSSE(request.raw, reply.raw)
+  group.register(channel, { connectionId })
   request.raw.on('close', () => group.deregister(channel))
 })
 ```
 
 ### Hono (Cloudflare Workers, Bun, Deno, edge)
 
-Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework, the `SSEChannel` to call `invalidate()` on, and the generated `restaleKitRequestId`.
+Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework, the `SSEChannel` to call `invalidate()` on, and the generated `connectionId`.
 
 ```ts
 import { Hono } from 'hono'
@@ -78,8 +78,8 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel, restaleKitRequestId } = toSSEResponse(c.req.raw)
-  group.register(channel, { restaleKitRequestId })
+  const { response, channel, connectionId } = toSSEResponse(c.req.raw)
+  group.register(channel, { connectionId })
   c.req.raw.signal.addEventListener('abort', () => group.deregister(channel))
   return response // hand it back to Hono
 })
@@ -93,7 +93,7 @@ For any other Fetch-API runtime (Bun, Deno, plain `Request`/`Response`):
 import { toSSEResponse } from 'restale-kit/fetch'
 
 // Same API as restale-kit/hono
-const { response, channel, restaleKitRequestId } = toSSEResponse(request)
+const { response, channel, connectionId } = toSSEResponse(request)
 ```
 
 ---
@@ -110,7 +110,7 @@ const group = new SSEChannelGroup()
 // With typed metadata
 interface ClientMeta {
   userId: string
-  restaleKitRequestId: string
+  connectionId: string
   roles: string[]
 }
 const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
@@ -136,7 +136,7 @@ group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub 
 group.deregister(channel)
 ```
 
-- `meta` can be any value; its type is inferred from the group's `TMeta` generic. Always include `restaleKitRequestId` extracted from transport adapters.
+- `meta` can be any value; its type is inferred from the group's `TMeta` generic. Always include `connectionId` extracted from transport adapters.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Ownership of cleanup:** Adapters automatically detect when a peer disconnects and call `channel.disconnect()` to close the underlying transport stream — you do not need to call that yourself. However, you **must** call `group.deregister(channel)` in your route handler's close/abort listener to remove the channel from the group's broadcast list.
@@ -189,22 +189,22 @@ Use `group.revoke(criteria)` to actively close active client connections (e.g. o
 
 ```ts
 // 1. Single-connection logout. `userId` and `sessionId` come from trusted
-// authentication/session middleware; `requestId` is only a client correlation value.
+// authentication/session middleware; `connectionId` is only a client correlation value.
 await group.revoke({
   userId: req.user.id,
   sessionId: req.session.id,
-  restaleKitRequestId: req.body.requestId,
+  connectionId: req.body.connectionId,
 })
 
 // 2. User-wide ban / logout everywhere (closes ALL sessions for user-42 across the entire cluster)
 await group.revoke({ userId: 'user-42' })
 ```
 
-### Security: always scope client-supplied request IDs
+### Security: always scope client-supplied connection IDs
 
-`restaleKitRequestId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revoke({ restaleKitRequestId: req.body.requestId })` call in a request handler.
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revoke({ connectionId: req.body.connectionId })` call in a request handler.
 
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the revocation criteria. This ensures that an arbitrary or leaked request ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the revocation criteria. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
 
 If the client does not send a per-connection request ID, revoke the trusted session instead; this may close more than one tab:
 

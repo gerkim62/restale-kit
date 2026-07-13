@@ -11,34 +11,34 @@ An open SSE connection has no way to learn its session ended (logout, ban, revok
 
 Registering channels with only `{ userId }` (as the current examples do) makes per-login revocation impossible — browser A and browser B, same user, are indistinguishable. Revoking by `userId` closes both. That's correct for "sign out everywhere" / a ban, wrong for a normal logout.
 
-**Required fix:** meta must carry an identifier unique per connection/login — `restaleKitRequestId` — alongside `userId`.
+**Required fix:** meta must carry an identifier unique per connection/login — `connectionId` — alongside `userId`.
 
 | Intent | Call | Effect |
 |---|---|---|
-| Log out this browser only | `revoke({ userId, sessionId, restaleKitRequestId })` | Closes exactly one connection within the authenticated scope |
+| Log out this browser only | `revoke({ userId, sessionId, connectionId })` | Closes exactly one connection within the authenticated scope |
 | Sign out everywhere / ban | `revoke({ userId })` | Closes every session for that user |
 
 This falls directly out of the subset-match semantics already used for cache keys (`matchesJSONValue`) — no new matching logic needed, just meta granular enough to use it correctly.
 
-### 2.1 Populating `restaleKitRequestId`
+### 2.1 Populating `connectionId`
 
 The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. Always generate this with a cryptographically strong, collision-resistant generator — `crypto.randomUUID()` — never a predictable or enumerable value (incrementing counter, timestamp, short random string). This ID is an opaque connection-correlation value, not authentication: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; UUID unguessability is not authorization. This is fully automatic; the app developer never touches it.
 
-On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the `restaleKitRequestId` query param off the incoming request internally and hand it back to the caller — the app developer does not extract it manually:
+On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the internal `restaleKitRequestId` query param off the incoming request and expose it as `connectionId` — the app developer does not extract it manually:
 
 ```ts
 app.get('/sse', (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)     // manual — app-defined identity
-  const { channel, restaleKitRequestId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId, restaleKitRequestId }) // spread the extracted id in
+  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel, { userId, connectionId }) // spread the extracted id in
 })
 ```
 
-`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `restaleKitRequestId` is different in kind, not just in name — it's not app auth state, it's *connection* identity that `revoke()`'s own correctness depends on (the meta-shape bug in §2). Leaving it manual would mean a developer who forgets to wire it, or mismatches the query param name between client and server, silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revoke({ userId, sessionId, restaleKitRequestId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The contract table's "Auth, session identity, roles" row refers to *app-defined* session/auth state (a user's login, roles, tenant) — `restaleKitRequestId` here is transport-level connection identity scoped to this package's own protocol, not the app's session concept.
+`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revoke()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revoke({ userId, sessionId, connectionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `restaleKitRequestId` query parameter is transport-level protocol identity, not the app's session concept.
 
 The query param name is deliberately namespaced (`restaleKitRequestId`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
 
-`attachSSE` returns `{ channel, restaleKitRequestId }` instead of a bare `SSEChannel`; `toSSEResponse` returns `{ response, channel, restaleKitRequestId }`. If the query param is missing or malformed, both throw synchronously before the channel is created (same failure timing as an invalid `signalSchema`), rather than falling back to `undefined` — a channel silently registered without a `restaleKitRequestId` cannot be revoked with per-connection precision, which defeats the fix in §2.
+`attachSSE` returns `{ channel, connectionId }` instead of a bare `SSEChannel`; `toSSEResponse` returns `{ response, channel, connectionId }`. If the query param is missing or malformed, both throw synchronously before the channel is created (same failure timing as an invalid `signalSchema`), rather than falling back to `undefined` — a channel silently registered without a `connectionId` cannot be revoked with per-connection precision, which defeats the fix in §2.
 
 There's no `groupId`. `controlTopic` stays a plain optional string, same pattern as ordinary topics.
 

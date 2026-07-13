@@ -41,12 +41,12 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, restaleKitRequestId } = attachSSE(req, res)
+  const { channel, connectionId } = attachSSE(req, res)
   const userId = req.user.id
   const sessionId = req.session.id
 
   // Register with metadata and topics this connection cares about
-  group.register(channel, { userId, sessionId, restaleKitRequestId }, {
+  group.register(channel, { userId, sessionId, connectionId }, {
     topics: [`user:${userId}`, 'global'],
   })
 
@@ -64,12 +64,12 @@ async function onGlobalChange() {
 
 // Revoke one connection cluster-wide. userId/sessionId are obtained from
 // authenticated server state, not from the client request body.
-async function logoutUserConnection(userId: string, sessionId: string, requestId: string) {
-  await group.revoke({ userId, sessionId, restaleKitRequestId: requestId })
+async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
+  await group.revoke({ userId, sessionId, connectionId })
 }
 ```
 
-`restaleKitRequestId` is an opaque client correlation value, not an authorization credential. Always combine it with trusted metadata such as `userId` or a server-authenticated `sessionId` when revoking from an HTTP handler.
+`connectionId` is an opaque client correlation value, not an authorization credential. Always combine it with trusted metadata such as `userId` or a server-authenticated `sessionId` when revoking from an HTTP handler.
 
 ---
 

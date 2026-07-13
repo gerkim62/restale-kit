@@ -2,7 +2,7 @@ import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
-import { extractRequestId, extractLastEventId } from '@/server/transport-utils.js'
+import { extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
 
 /**
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
@@ -15,9 +15,9 @@ import { extractRequestId, extractLastEventId } from '@/server/transport-utils.j
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; restaleKitRequestId: string } {
+): { response: Response; channel: SSEChannel<TSignal>; connectionId: string } {
   const urlObj = new URL(request.url)
-  const restaleKitRequestId = extractRequestId(urlObj.searchParams)
+  const connectionId = extractConnectionId(urlObj.searchParams)
 
   const lastEventId =
     options?.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
@@ -38,7 +38,6 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
     channel.disconnect()
   })
 
-  return { response, channel, restaleKitRequestId }
+  return { response, channel, connectionId }
 }
-
 
