@@ -1,4 +1,4 @@
-import type { SSEInvalidateEvent } from '../../types/protocol.js'
+import type { SSEInvalidateEvent } from '@/types/protocol.js'
 
 const encoder = new TextEncoder()
 

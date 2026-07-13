@@ -1,6 +1,6 @@
-import type { InvalidateSignal } from '../../types/protocol.js'
-import type { SSEChannelOptions, SSEChannel } from '../core/channel.js'
-import { createSSEChannel } from '../core/channel.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
+import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
+import { createSSEChannel } from '@/server/core/channel.js'
 
 /**
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).

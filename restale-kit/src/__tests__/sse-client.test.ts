@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SSEInvalidatorClient } from '../client/core/sse-client.js'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 class MockEventSource extends EventTarget {
   static instances: MockEventSource[] = []

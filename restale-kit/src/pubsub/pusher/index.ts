@@ -1,6 +1,6 @@
-import type { PubSubAdapter } from '../core/index.js'
-import type { InvalidateSignal } from '../../types/protocol.js'
-import { isEnvelope, isSignalPayload } from '../core/pubsub-utils.js'
+import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
+import { isEnvelope, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
 
 /**
  * Minimal structural interface for the Pusher Webhook parsed result.
