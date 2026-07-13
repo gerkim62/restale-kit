@@ -458,6 +458,8 @@ import { SSEInvalidatorClient } from 'restale-kit/client'
 
 const client = new SSEInvalidatorClient('/sse', {
   autoReconnect: true,
+  // Set to true when connecting cross-origin with cookie-based authentication.
+  withCredentials: true,
   reconnect: {
     baseDelayMs: 1000,
     maxDelayMs: 30000,
@@ -501,6 +503,7 @@ await client.connect()
     - `jitter`: `boolean` (Default: `true`). Add random jitter factor.
     - `maxRetries`: `number` (Default: `Infinity`).
   - `signalSchema`: `StandardSchema` (Optional). Validate signal before dispatching.
+  - `withCredentials`: `boolean` (Default: `false`). Include credentials in the SSE request. For cross-origin SSE, the server must send `Access-Control-Allow-Credentials: true` and a specific `Access-Control-Allow-Origin` value (not `*`).
 
 #### `useReStale(url, options)`
 - Extends all `SSEInvalidatorClient` options and adds:

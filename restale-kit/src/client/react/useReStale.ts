@@ -51,6 +51,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
       signalSchema: opts.signalSchema,
+      withCredentials: opts.withCredentials,
     })
   }
 

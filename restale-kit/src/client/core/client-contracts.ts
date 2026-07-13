@@ -34,6 +34,8 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   reconnect?: ReconnectOptions
   /** Optional Standard Schema for runtime payload validation. */
   signalSchema?: StandardSchemaV1<unknown, TSignal>
+  /** Include credentials when opening the EventSource connection. Default: false. */
+  withCredentials?: boolean
 }
 
 /**

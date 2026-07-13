@@ -30,6 +30,7 @@ export class SSEInvalidatorClient<
   private readonly maxRetries: number
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
+  private readonly withCredentials: boolean
 
   private eventSource: EventSource | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
@@ -48,6 +49,7 @@ export class SSEInvalidatorClient<
     this.maxRetries = opts?.reconnect?.maxRetries ?? DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.signalSchema = opts?.signalSchema
+    this.withCredentials = opts?.withCredentials ?? false
   }
 
   /** Current connection status. */
@@ -176,7 +178,7 @@ export class SSEInvalidatorClient<
 
     this.setStatus({ status: 'connecting' })
 
-    const es = new EventSource(this.url)
+    const es = new EventSource(this.url, { withCredentials: this.withCredentials })
     this.eventSource = es
 
     es.onopen = () => {
