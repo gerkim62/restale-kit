@@ -64,6 +64,7 @@ useReStale(url: string, options: {
 
 ```ts
 {
+  requestId: string             // unique request ID generated for this connection instance
   connection: ConnectionStatus  // current state
   reconnect(): Promise<void>    // manually reconnect; resets backoff counter
   close(): void                 // manually close
@@ -143,6 +144,10 @@ client.addEventListener('invalidate', (event) => {
   const signal = event.detail // InvalidateSignal | InvalidateSignal[]
   // call your own cache library here
 })
+
+// Access client properties
+console.log('Unique request ID:', client.requestId) // e.g. "a1b2c3d4-..."
+console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 
 // Track connection state changes
 client.addEventListener('statuschange', (event) => {

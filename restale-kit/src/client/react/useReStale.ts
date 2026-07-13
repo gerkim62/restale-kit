@@ -18,6 +18,8 @@ export interface UseReStaleOptions<TSignal extends InvalidateSignal = Invalidate
  * Return value of `useReStale`.
  */
 export interface UseReStaleResult {
+  /** Unique request ID generated for this connection instance. */
+  requestId: string
   /** Current connection status. */
   connection: ConnectionStatus
   /** Manually trigger a reconnection. Resets backoff. */
@@ -100,5 +102,5 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   const reconnect = useCallback(() => client.connect(), [client])
   const close = useCallback(() => { client.close() }, [client])
 
-  return { connection, reconnect, close }
+  return { requestId: client.requestId, connection, reconnect, close }
 }

@@ -15,14 +15,14 @@ Registering channels with only `{ userId }` (as the current examples do) makes p
 
 | Intent | Call | Effect |
 |---|---|---|
-| Log out this browser only | `revoke({ restaleKitRequestId })` | Closes exactly one connection |
+| Log out this browser only | `revoke({ userId, sessionId, restaleKitRequestId })` | Closes exactly one connection within the authenticated scope |
 | Sign out everywhere / ban | `revoke({ userId })` | Closes every session for that user |
 
 This falls directly out of the subset-match semantics already used for cache keys (`matchesJSONValue`) — no new matching logic needed, just meta granular enough to use it correctly.
 
 ### 2.1 Populating `restaleKitRequestId`
 
-The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. Always generate this with a cryptographically strong, collision-resistant generator — `crypto.randomUUID()` — never a predictable or enumerable value (incrementing counter, timestamp, short random string). `revoke({ restaleKitRequestId })` closes on an exact match; a guessable id would let one client revoke another client's session. This is fully automatic; the app developer never touches it.
+The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. Always generate this with a cryptographically strong, collision-resistant generator — `crypto.randomUUID()` — never a predictable or enumerable value (incrementing counter, timestamp, short random string). This ID is an opaque connection-correlation value, not authentication: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; UUID unguessability is not authorization. This is fully automatic; the app developer never touches it.
 
 On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the `restaleKitRequestId` query param off the incoming request internally and hand it back to the caller — the app developer does not extract it manually:
 
@@ -34,7 +34,7 @@ app.get('/sse', (req, res) => {
 })
 ```
 
-`userId` (and any other app-defined identity — roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `restaleKitRequestId` is different in kind, not just in name — it's not app auth state, it's *connection* identity that `revoke()`'s own correctness depends on (the meta-shape bug in §2). Leaving it manual would mean a developer who forgets to wire it, or mismatches the query param name between client and server, silently reintroduces the exact bug this feature exists to fix — with no error, just a `revoke({ restaleKitRequestId })` that matches nothing or matches everything. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The contract table's "Auth, session identity, roles" row refers to *app-defined* session/auth state (a user's login, roles, tenant) — `restaleKitRequestId` here is transport-level connection identity scoped to this package's own protocol, not the app's session concept.
+`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `restaleKitRequestId` is different in kind, not just in name — it's not app auth state, it's *connection* identity that `revoke()`'s own correctness depends on (the meta-shape bug in §2). Leaving it manual would mean a developer who forgets to wire it, or mismatches the query param name between client and server, silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revoke({ userId, sessionId, restaleKitRequestId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The contract table's "Auth, session identity, roles" row refers to *app-defined* session/auth state (a user's login, roles, tenant) — `restaleKitRequestId` here is transport-level connection identity scoped to this package's own protocol, not the app's session concept.
 
 The query param name is deliberately namespaced (`restaleKitRequestId`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
 

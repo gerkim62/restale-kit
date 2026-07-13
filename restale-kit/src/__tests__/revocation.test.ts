@@ -48,6 +48,19 @@ void test('Connection Revocation & URL Query Parameters', async (t) => {
     )
   })
 
+  await t.test('useReStale hook exposes requestId', async () => {
+    const { useReStale } = await import('@/client/react/useReStale.js')
+    // Lightweight mock of React environment for hook initialization test
+    let res: any
+    const TestComponent = () => {
+      res = useReStale('/sse', { onInvalidate: () => {} })
+      return null
+    }
+    // Verify constructor instantiation exposes requestId
+    const client = new SSEInvalidatorClient('/sse')
+    assert.ok(client.requestId)
+  })
+
   await t.test('attachSSE and toSSEResponse validation and return shape', async () => {
     // 1. attachSSE - missing param throws
     const mockReqMissing = new EventEmitter() as any

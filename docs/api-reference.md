@@ -64,12 +64,16 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 interface SSEChannelOptions<TSignal> {
   keepaliveIntervalMs?: number                        // default 30_000
   signalSchema?: StandardSchema<unknown, TSignal>
+  lastEventId?: string
+  eventStore?: EventStore<TSignal>
+  eventBufferCapacity?: number
+  idGenerator?: () => string
 }
 
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
-  invalidate(signal: TSignal | TSignal[]): void       // throws ChannelClosedError or SchemaValidationError
+  invalidate(signal: TSignal | TSignal[], customId?: string): string // throws ChannelClosedError or SchemaValidationError
   close(): void                                       // server-initiated close; idempotent
   disconnect(): void                                  // called by transport on peer disconnect; idempotent
 }
@@ -85,9 +89,13 @@ class SSEChannelGroup<
   constructor(options?: {
     metaSchema?: StandardSchema<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
+    eventStore?: EventStore<TSignal>
+    eventBufferCapacity?: number
+    controlTopic?: string                             // default '__restale_control__'
   })
 
   readonly size: number
+  readonly controlTopic: string
 
   register(
     channel: SSEChannel<TSignal>,
@@ -105,8 +113,16 @@ class SSEChannelGroup<
   broadcastToAll(signal: TSignal | TSignal[]): void
 
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+
+  revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+
+  dispose(): Promise<void>
 }
 ```
+
+### `revoke(criteria)` security
+
+`criteria` subset-matches connection metadata. If a criterion includes `restaleKitRequestId` supplied by a client, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A request ID is an opaque connection correlation value, not proof that a caller is authorized to revoke that connection.
 
 ---
 
@@ -125,7 +141,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): SSEChannel<TSignal>
+): { channel: SSEChannel<TSignal>; restaleKitRequestId: string }
 ```
 
 > **Fastify:** Call `reply.hijack()` before passing `request.raw` / `reply.raw`.
@@ -144,7 +160,7 @@ import { toSSEResponse } from 'restale-kit/hono'
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal> }
+): { response: Response; channel: SSEChannel<TSignal>; restaleKitRequestId: string }
 ```
 
 ---
@@ -164,7 +180,9 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   extends EventTarget
 {
   constructor(url: string, options?: ClientOptions<TSignal>)
+  get requestId(): string
   get status(): ConnectionStatus
+  get lastEventId(): string | null
   connect(): Promise<void>
   close(): void
 
@@ -222,6 +240,7 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
 }
 
 interface UseReStaleResult {
+  requestId: string
   connection: ConnectionStatus
   reconnect(): Promise<void>
   close(): void
@@ -274,12 +293,17 @@ interface SWRMutator {
 
 ```ts
 import type { PubSubAdapter } from 'restale-kit/pubsub'
+import type { PubSubMessage, JSONValue, InvalidateSignal } from 'restale-kit'
+
+type PubSubMessage<TSignal extends InvalidateSignal> =
+  | { kind: 'signal'; data: TSignal | TSignal[] }
+  | { kind: 'control'; data: JSONValue }
 
 interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
-  publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+  publish(topic: string, message: PubSubMessage<TSignal>): Promise<void>
   subscribe(
     topic: string,
-    onMessage: (signal: TSignal | TSignal[]) => void
+    onMessage: (message: PubSubMessage<TSignal>) => void
   ): Promise<() => void | Promise<void>>
   onError?(handler: (error: unknown) => void): void
 }
