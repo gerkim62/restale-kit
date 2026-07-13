@@ -26,6 +26,9 @@ describe('useReStale', () => {
 
     expect(MockEventSource.instances).toHaveLength(1)
     const instance = MockEventSource.instances[0]
+    act(() => {
+      instance.emitOpen()
+    })
 
     unmount()
     expect(instance.readyState).toBe(MockEventSource.CLOSED)
@@ -68,6 +71,12 @@ describe('useReStale', () => {
 
     expect(result.current.connectionId).toBeDefined()
     expect(result.current.connection.status).toBe('connecting')
+
+    const instance = MockEventSource.instances[0]
+    act(() => {
+      instance.emitOpen()
+    })
+    expect(result.current.connection.status).toBe('open')
 
     act(() => {
       result.current.close()
