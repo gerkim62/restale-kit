@@ -146,7 +146,7 @@ describe('SSEInvalidatorClient', () => {
     expect(es.readyState).toBe(MockEventSource.CLOSED)
   })
 
-  it('clears active retryTimer when disconnect() or close() is called', async () => {
+  it('clears active retryTimer when disconnect() or close() is called', () => {
     const client = new SSEInvalidatorClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 1000, jitter: false },
@@ -298,7 +298,7 @@ describe('SSEInvalidatorClient', () => {
       },
     }
 
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: asyncSchema as any })
+    const client = new SSEInvalidatorClient('/sse', { signalSchema: asyncSchema })
     const errorSpy = vi.fn()
     client.addEventListener('error', errorSpy)
     const invalidateSpy = vi.fn()
@@ -327,7 +327,7 @@ describe('SSEInvalidatorClient', () => {
       },
     }
 
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema as any })
+    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema })
     const errorSpy = vi.fn()
     client.addEventListener('error', errorSpy)
 

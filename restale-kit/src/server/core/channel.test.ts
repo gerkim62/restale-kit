@@ -95,7 +95,7 @@ describe('channel', () => {
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
   })
 
-  it('uses eventStore and custom idGenerator during invalidate', async () => {
+  it('uses eventStore and custom idGenerator during invalidate', () => {
     const store = createEventStore({ capacity: 10 })
     const channel = createSSEChannel({ eventStore: store })
 
@@ -167,12 +167,12 @@ describe('channel', () => {
     expect(decoder.decode(v2)).toBe('id: id-3\nevent: invalidate\ndata: {"key":["evt3"]}\n\n')
   })
 
-  it('warns when controller.close throws an error in closeInternal', async () => {
+  it('warns when controller.close throws an error in closeInternal', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const OriginalReadableStream = globalThis.ReadableStream
 
     // Intercept controller passed to ReadableStream start
-    globalThis.ReadableStream = class extends OriginalReadableStream<any> {
+    globalThis.ReadableStream = class extends (OriginalReadableStream as any) {
       constructor(underlyingSource?: any, queuingStrategy?: any) {
         const origStart = underlyingSource?.start
         if (origStart) {
@@ -185,7 +185,7 @@ describe('channel', () => {
         }
         super(underlyingSource, queuingStrategy)
       }
-    } as any
+    } as unknown as typeof ReadableStream
 
     try {
       const channel = createSSEChannel()

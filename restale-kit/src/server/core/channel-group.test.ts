@@ -217,7 +217,7 @@ describe('channel-group', () => {
     const ch = createSSEChannel()
 
     vi.spyOn(ch, 'invalidate').mockImplementation(() => {
-      throw 'String error thrown'
+      throw new Error('String error thrown')
     })
 
     group.register(ch, { userId: 1 })
