@@ -155,6 +155,7 @@ group.deregister(channel)
 ```
 
 - `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
+- Omitting `meta` (or passing `undefined`) is equivalent to registering with `{}` — an empty metadata object. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
@@ -179,6 +180,8 @@ group.broadcastToAll([
 ])
 ```
 
+`broadcastToAll` reaches **all** registered channels, including those registered without metadata.
+
 ### `broadcast(signal, predicate)` — filtered broadcast (preferred)
 
 Use a predicate against each channel's registered metadata to scope the invalidation:
@@ -197,6 +200,8 @@ group.broadcast(
 )
 ```
 
+The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i.e. metadata was omitted on registration), the predicate receives `undefined` and must handle it explicitly.
+
 ### `broadcastByKey(signal)` — automatic key-based matching
 
 Broadcasts to channels whose metadata matches the signal's key using the same hierarchical prefix/exact matching semantics as the wire protocol. This eliminates the need to write manual predicate functions that mirror what the signal key already expresses.
@@ -213,51 +218,71 @@ For `broadcastByKey` to match, the channels must be registered with array-shaped
 
 The signal's `key` is matched against each channel's metadata (which must be a JSON array key). A channel receives the signal when its registered metadata array has the signal's key array as a prefix.
 
+### Broadcasting without metadata
+
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) are treated as having `{}` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+
 ---
 
 ## Connection Revocation
 
 To actively close client connections (e.g., on logout, session expiration, or user ban), the group provides two dedicated APIs.
 
-### Criteria-Based Revocation (`revoke()`)
+### Criteria-Based Revocation (`revokeMany()`)
 
 Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
 
 ```ts
 // Close all connections for user-42 across the entire cluster
-await group.revoke({ userId: 'user-42' })
+await group.revokeMany({ userId: 'user-42' })
 ```
 
 Returns `{ localClosed: number }`.
 
-### Connection-Specific Revocation (`revokeConnection()`)
+### Connection-Specific Revocation (`revokeOne()`)
 
 Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
 
-When a pub/sub adapter is configured, `revokeConnection` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
+When a pub/sub adapter is configured, `revokeOne` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
 
 ```ts
 // Close one specific connection, scoped to the requesting user
-const result = await group.revokeConnection(connectionId, { userId: req.user.id })
+const result = await group.revokeOne(connectionId, { userId: req.user.id })
 // result: { closed: boolean }
 ```
 
+### Revocation without metadata
+
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeMany()`**. Omitting metadata is semantically equivalent to `{}`, but `undefined` is not a JSON value, so `revokeMany` criteria matching is skipped entirely for those channels — even `revokeMany({})` returns `localClosed: 0` for them.
+
+To revoke a channel that has no metadata, use `revokeOne(connectionId)` instead:
+
+```ts
+// ❌ Does not work — revokeMany cannot match channels with undefined meta
+await group.revokeMany({})
+
+// ✅ Works — revokeOne looks up by connectionId, bypassing metadata matching
+await group.revokeOne(channel.connectionId)
+```
+
+If you need criteria-based revocation, always register channels with explicit metadata.
+
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeConnection(connectionId)` call in a request handler.
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeOne(connectionId)` call in a request handler.
 
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeConnection(...)` or in the criteria of `revoke(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeOne(...)` or in the criteria of `revokeMany(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
 
 If the client does not send a per-connection request ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
 
 ```ts
-await group.revoke({
+await group.revokeMany({
   userId: req.user.id,
   sessionId: req.session.id,
 })
 ```
 
-When a pub/sub adapter is configured, criteria-mode `revoke()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
+When a pub/sub adapter is configured, `revokeMany()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
 
 ---
 
