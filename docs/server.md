@@ -48,7 +48,9 @@ const server = http.createServer((req, res) => {
 
 ### Fastify
 
-Fastify manages the HTTP response internally, so you must call `reply.hijack()` before handing the socket to `attachSSE`. Without it, Fastify will write its own response on top of the SSE stream.
+`restale-kit/fastify` accepts either Fastify's wrapped `request`/`reply` objects or the raw `request.raw`/`reply.raw` Node objects. When you pass the wrapped objects, `attachSSE` automatically calls `reply.hijack()` for you — you don't need to do it manually.
+
+`reply.hijack()` tells Fastify to give up ownership of the underlying socket. Without it, Fastify's lifecycle hooks try to write their own response on top of the SSE stream after your handler returns, corrupting the output.
 
 ```ts
 import Fastify from 'fastify'
@@ -59,8 +61,19 @@ import { z } from 'zod'
 const group = new SSEChannelGroup()
 const app = Fastify()
 
+// Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
-  reply.hijack() // required
+  const { channel, connectionId } = attachSSE(request, reply)
+  group.register(channel, { connectionId })
+  request.raw.on('close', () => group.deregister(channel))
+})
+```
+
+If you need to use the raw Node objects (e.g. in a middleware context), you must call `reply.hijack()` yourself before passing them:
+
+```ts
+app.get('/sse', (request, reply) => {
+  reply.hijack() // required when passing .raw objects directly
   const { channel, connectionId } = attachSSE(request.raw, reply.raw)
   group.register(channel, { connectionId })
   request.raw.on('close', () => group.deregister(channel))
