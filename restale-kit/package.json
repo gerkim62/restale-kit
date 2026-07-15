@@ -1,6 +1,6 @@
 {
   "name": "restale-kit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Minimal library to invalidate client-side queries via SSE",
   "license": "MIT",
   "author": "Gerison Kimathi <gerkim62@gmail.com>",
