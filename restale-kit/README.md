@@ -67,7 +67,7 @@ npm install pusher                        # Pusher pub/sub
 | `restale-kit/server` | `createSSEChannel`, `SSEChannelGroup` |
 | `restale-kit/node` | `attachSSE` (Node `http`) |
 | `restale-kit/express` | `attachSSE` |
-| `restale-kit/fastify` | `attachSSE` (requires `reply.hijack()`) |
+| `restale-kit/fastify` | `attachSSE` (auto-calls `reply.hijack()` when passed Fastify objects) |
 | `restale-kit/fetch` | `toSSEResponse` (Bun, Deno, Cloudflare Workers) |
 | `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient` |
@@ -176,8 +176,8 @@ app.get('/sse', (c) => {
 import { attachSSE } from 'restale-kit/fastify'
 
 app.get('/sse', (request, reply) => {
-  reply.hijack() // required — prevents Fastify writing its own response
-  const { channel, connectionId } = attachSSE(request.raw, reply.raw)
+  // Pass request/reply directly — reply.hijack() is called automatically
+  const { channel, connectionId } = attachSSE(request, reply)
   group.register(channel, { connectionId })
   request.raw.on('close', () => group.deregister(channel))
 })
@@ -372,8 +372,12 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `attachSSE(req, res, options?)` | `{ channel, connectionId }` | Attaches SSE stream to Node HTTP response. |
+| `attachSSE(req, res, options?)` | `{ channel, connectionId }` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
 | `toSSEResponse(request, options?)` | `{ response, channel, connectionId }` | Creates Fetch API SSE response object. |
+
+### `channel.invalidate(signal, customId?)`
+
+Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. If neither `eventBufferCapacity` nor `eventStore` is configured, the return value is `''` and can be ignored.
 
 → Full API: [API Reference](https://github.com/gerkim62/restale-kit/blob/main/docs/api-reference.md)
 

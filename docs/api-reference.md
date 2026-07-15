@@ -73,7 +73,20 @@ interface SSEChannelOptions<TSignal> {
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
-  invalidate(signal: TSignal | TSignal[], customId?: string): string // throws ChannelClosedError or SchemaValidationError
+  /**
+   * Enqueues a signal (or array of signals) into the SSE stream.
+   *
+   * Returns the SSE event ID string assigned to this frame. When an
+   * `eventStore` or `eventBufferCapacity` is configured, this ID is used
+   * for Last-Event-ID replay: the client echoes it back in the
+   * `Last-Event-ID` header on reconnect, and `restale-kit` replays any
+   * events that follow it. If neither eventBufferCapacity nor eventStore is
+   * configured, the return value is an empty string and can be ignored.
+   *
+   * Throws `ChannelClosedError` when `state` is `'closed'`.
+   * Throws `SchemaValidationError` when `signalSchema` validation fails.
+   */
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void                                       // server-initiated close; idempotent
   disconnect(): void                                  // called by transport on peer disconnect; idempotent
 }
@@ -124,18 +137,32 @@ class SSEChannelGroup<
 
 `criteria` subset-matches connection metadata. If a criterion includes a client-supplied `connectionId`, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A connection ID is an opaque correlation value, not proof that a caller is authorized to revoke that connection.
 
+### `controlTopic` and multi-group deployments
+
+Each `SSEChannelGroup` subscribes to its `controlTopic` on the pub/sub adapter to receive cross-instance revocation messages. The default topic name is `'__restale_control__'`.
+
+If you create **multiple `SSEChannelGroup` instances that share the same pub/sub adapter** (e.g. one group per tenant, or one group per resource type), each group must be given a unique `controlTopic`. Otherwise all groups will receive every revocation broadcast intended for any one of them, causing spurious connection closures:
+
+```ts
+// ❌ Both groups listen on '__restale_control__' — revocations bleed across groups
+const groupA = new SSEChannelGroup({ pubsub: adapter })
+const groupB = new SSEChannelGroup({ pubsub: adapter })
+
+// ✅ Each group has its own control channel
+const groupA = new SSEChannelGroup({ pubsub: adapter, controlTopic: '__restale_control_a__' })
+const groupB = new SSEChannelGroup({ pubsub: adapter, controlTopic: '__restale_control_b__' })
+```
+
 ---
 
 ## `restale-kit/node` · `restale-kit/express` · `restale-kit/fastify`
 
-All three export the same `attachSSE` function (Express and Fastify re-export from `/node`).
+`/node` and `/express` export `attachSSE` for raw Node.js `IncomingMessage`/`ServerResponse` objects. `/fastify` re-exports from `/node` but also accepts Fastify's wrapped request/reply objects directly and calls `reply.hijack()` automatically.
 
 ```ts
 import { attachSSE } from 'restale-kit/node'
 // or
 import { attachSSE } from 'restale-kit/express'
-// or
-import { attachSSE } from 'restale-kit/fastify'
 
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
@@ -145,7 +172,28 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 // Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
 ```
 
-> **Fastify:** Call `reply.hijack()` before passing `request.raw` / `reply.raw`.
+```ts
+import { attachSSE } from 'restale-kit/fastify'
+import type { FastifyRequestLike, FastifyReplyLike } from 'restale-kit/fastify'
+
+// Preferred: pass Fastify request/reply directly — reply.hijack() is called automatically
+function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
+  req: IncomingMessage | FastifyRequestLike,
+  res: ServerResponse | FastifyReplyLike,
+  options?: SSEChannelOptions<TSignal>
+): { channel: SSEChannel<TSignal>; connectionId: string }
+
+interface FastifyRequestLike {
+  raw: IncomingMessage
+}
+
+interface FastifyReplyLike {
+  raw: ServerResponse
+  hijack?: () => void
+}
+```
+
+> **Fastify auto-hijack:** When a `FastifyReplyLike` object (one with a `.raw` property) is passed as `res`, `attachSSE` automatically calls `reply.hijack()` before taking ownership of the socket. You do not need to call it yourself. Passing `request.raw` / `reply.raw` directly also works, but then you must call `reply.hijack()` manually before `attachSSE`.
 
 ---
 
