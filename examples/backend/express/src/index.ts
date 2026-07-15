@@ -23,7 +23,6 @@ app.get('/sse', (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)
   const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
   group.register(channel, { userId })
-  req.once('close', () => group.deregister(channel))
 })
 
 app.get('/todos', (req, res) => res.json(todos.getTodos(UserIdSchema.parse(req.query.userId))))

@@ -96,13 +96,11 @@ app.use(express.json())
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
+  const channel = attachSSE(req, res)
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId,
   })
-  req.on('close', () => group.deregister(channel))
 })
 
 app.post('/api/todos', async (req, res) => {
@@ -114,10 +112,9 @@ app.post('/api/todos', async (req, res) => {
 // Revoke one connection. Scope the client-supplied request ID with trusted
 // identity/session values from authentication middleware.
 app.post('/api/logout', async (req, res) => {
-  await group.revoke({
+  await group.revokeConnection(req.body.connectionId, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId: req.body.connectionId,
   })
   res.json({ success: true })
 })
@@ -163,9 +160,8 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel, connectionId } = toSSEResponse(c.req.raw)
-  group.register(channel, { connectionId })
-  c.req.raw.signal.addEventListener('abort', () => group.deregister(channel))
+  const { response, channel } = toSSEResponse(c.req.raw)
+  group.register(channel)
   return response
 })
 ```
@@ -177,9 +173,8 @@ import { attachSSE } from 'restale-kit/fastify'
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
-  const { channel, connectionId } = attachSSE(request, reply)
-  group.register(channel, { connectionId })
-  request.raw.on('close', () => group.deregister(channel))
+  const channel = attachSSE(request, reply)
+  group.register(channel)
 })
 ```
 
@@ -191,9 +186,8 @@ import { attachSSE } from 'restale-kit/node'
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const { channel, connectionId } = attachSSE(req, res)
-    group.register(channel, { connectionId })
-    req.on('close', () => group.deregister(channel))
+    const channel = attachSSE(req, res)
+    group.register(channel)
   }
 })
 ```
@@ -229,6 +223,22 @@ Given cache key `['todos', { userId: 4, type: 'active' }]`:
 | `'invalidate'` (default) | `invalidateQueries` | `mutate(filter)` |
 | `'refetch'` | `refetchQueries` | `mutate(filter)` |
 | `'remove'` | `removeQueries` | `mutate(filter, undefined, false)` |
+
+**Broadcasting:**
+
+```ts
+// Broadcast to all connected clients
+group.broadcastToAll({ key: ['todos'] })
+
+// Broadcast to clients matching a predicate
+group.broadcast(
+  { key: ['todos', { userId: 42 }] },
+  (meta) => meta.userId === 42
+)
+
+// Broadcast using automatic key-based matching (metadata must be array-shaped query keys)
+group.broadcastByKey({ key: ['todos', { userId: 42 }] })
+```
 
 ---
 
@@ -276,9 +286,8 @@ type AppSignal = z.infer<typeof AppSignalSchema>
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { connectionId })
-  req.on('close', () => group.deregister(channel))
+  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel)
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
@@ -310,15 +319,13 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
+  const channel = attachSSE(req, res)
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId,
   }, {
     topics: [`user:${req.user.id}`],
   })
-  req.on('close', () => group.deregister(channel))
 })
 
 // Publish invalidations across cluster
@@ -327,7 +334,7 @@ await group.publish(`user:${userId}`, { key: ['todos'] })
 // Revoke one connection across the cluster. `userId` and `sessionId` come
 // from authenticated server state; `connectionId` is the client correlation value.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revoke({ userId, sessionId, connectionId })
+  await group.revokeConnection(connectionId, { userId, sessionId })
 }
 
 // Revoke all sessions across cluster (ban / logout everywhere)
@@ -372,8 +379,8 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `attachSSE(req, res, options?)` | `{ channel, connectionId }` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
-| `toSSEResponse(request, options?)` | `{ response, channel, connectionId }` | Creates Fetch API SSE response object. |
+| `attachSSE(req, res, options?)` | `SSEChannel<TSignal>` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
+| `toSSEResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Creates Fetch API SSE response object. |
 
 ### `channel.invalidate(signal, customId?)`
 

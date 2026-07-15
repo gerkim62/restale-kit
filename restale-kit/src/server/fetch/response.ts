@@ -18,7 +18,7 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; connectionId: string } {
+): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)
 
@@ -28,6 +28,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
+    connectionId,
   }
 
   const channel = createSSEChannel<TSignal>(channelOptions)
@@ -41,6 +42,6 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
     channel.disconnect()
   })
 
-  return { response, channel, connectionId }
+  return { response, channel }
 }
 

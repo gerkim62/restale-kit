@@ -16,7 +16,7 @@ function createMockResponse(): ServerResponse {
 }
 
 describe('node attachSSE', () => {
-  it('attaches SSE channel to Node req/res and sets headers', () => {
+  it('attaches SSE channel to Node req/res, sets headers, and exposes connectionId on channel', () => {
     const req = Object.assign(new EventEmitter(), {
       url: '/sse?restaleKitRequestId=req-999',
       headers: {},
@@ -24,9 +24,9 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const { channel, connectionId } = attachSSE(req, res)
+    const channel = attachSSE(req, res)
 
-    expect(connectionId).toBe('req-999')
+    expect(channel.connectionId).toBe('req-999')
     expect(channel.state).toBe('open')
     expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
   })
@@ -39,7 +39,7 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const { channel } = attachSSE(req, res)
+    const channel = attachSSE(req, res)
 
     req.emit('close')
     expect(channel.state).toBe('closed')
@@ -58,5 +58,3 @@ describe('node attachSSE', () => {
     )
   })
 })
-
-

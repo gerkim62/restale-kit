@@ -8,7 +8,9 @@ The server side has two concerns:
 
 ## Framework adapters
 
-All adapters create an `SSEChannel` and set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). They also wire up disconnect detection automatically — when the client disconnects, the adapter calls `channel.disconnect()` to close the transport stream. **Route handlers are still responsible for calling `group.deregister(channel)`** to remove the channel from the group.
+All adapters create an `SSEChannel` and set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). They also wire up disconnect detection automatically — when the client disconnects, the adapter calls `channel.disconnect()` to close the transport stream.
+
+The channel is also **automatically deregistered** from the group when it closes — you do not need a manual cleanup listener. The auto-deregister hook is wired by `group.register()` on first registration.
 
 ### Express
 
@@ -21,9 +23,8 @@ const app = express()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
-  group.register(channel, { userId: req.user?.id, connectionId })
-  req.on('close', () => group.deregister(channel))
+  const channel = attachSSE(req, res)
+  group.register(channel, { userId: req.user?.id })
 })
 ```
 
@@ -39,9 +40,8 @@ const group = new SSEChannelGroup()
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const { channel, connectionId } = attachSSE(req, res)
-    group.register(channel, { connectionId })
-    req.on('close', () => group.deregister(channel))
+    const channel = attachSSE(req, res)
+    group.register(channel, { userId: req.user?.id })
   }
 })
 ```
@@ -63,9 +63,8 @@ const app = Fastify()
 
 // Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
-  const { channel, connectionId } = attachSSE(request, reply)
-  group.register(channel, { connectionId })
-  request.raw.on('close', () => group.deregister(channel))
+  const channel = attachSSE(request, reply)
+  group.register(channel, { userId: request.user?.id })
 })
 ```
 
@@ -74,15 +73,14 @@ If you need to use the raw Node objects (e.g. in a middleware context), you must
 ```ts
 app.get('/sse', (request, reply) => {
   reply.hijack() // required when passing .raw objects directly
-  const { channel, connectionId } = attachSSE(request.raw, reply.raw)
-  group.register(channel, { connectionId })
-  request.raw.on('close', () => group.deregister(channel))
+  const channel = attachSSE(request.raw, reply.raw)
+  group.register(channel, { userId: request.user?.id })
 })
 ```
 
 ### Hono (Cloudflare Workers, Bun, Deno, edge)
 
-Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework, the `SSEChannel` to call `invalidate()` on, and the generated `connectionId`.
+Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework and the `SSEChannel` to call `invalidate()` on. The connection ID is accessible as `channel.connectionId`.
 
 ```ts
 import { Hono } from 'hono'
@@ -93,9 +91,8 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel, connectionId } = toSSEResponse(c.req.raw)
-  group.register(channel, { connectionId })
-  c.req.raw.signal.addEventListener('abort', () => group.deregister(channel))
+  const { response, channel } = toSSEResponse(c.req.raw)
+  group.register(channel, { userId: c.req.header('X-User-ID') })
   return response // hand it back to Hono
 })
 ```
@@ -108,7 +105,7 @@ For any other Fetch-API runtime (Bun, Deno, plain `Request`/`Response`):
 import { toSSEResponse } from 'restale-kit/fetch'
 
 // Same API as restale-kit/hono
-const { response, channel, connectionId } = toSSEResponse(request)
+const { response, channel } = toSSEResponse(request)
 ```
 
 ---
@@ -125,7 +122,6 @@ const group = new SSEChannelGroup()
 // With typed metadata
 interface ClientMeta {
   userId: string
-  connectionId: string
   roles: string[]
 }
 const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
@@ -146,16 +142,23 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 ## `register` and `deregister`
 
 ```ts
+// If TMeta accepts undefined, metadata is optional:
+group.register(channel)
+
+// If TMeta does not accept undefined, metadata is required:
 group.register(channel, meta)
-group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub routing
+
+// With topics routing:
+group.register(channel, meta, { topics: ['user:42', 'global'] })
 
 group.deregister(channel)
 ```
 
-- `meta` can be any value; its type is inferred from the group's `TMeta` generic. Always include `connectionId` extracted from transport adapters.
+- `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
+- Omitting `meta` (or passing `undefined`) is equivalent to registering with `{}` — an empty metadata object. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
-**Ownership of cleanup:** Adapters automatically detect when a peer disconnects and call `channel.disconnect()` to close the underlying transport stream — you do not need to call that yourself. However, you **must** call `group.deregister(channel)` in your route handler's close/abort listener to remove the channel from the group's broadcast list.
+**Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
 
 ---
 
@@ -177,6 +180,8 @@ group.broadcastToAll([
 ])
 ```
 
+`broadcastToAll` reaches **all** registered channels, including those registered without metadata.
+
 ### `broadcast(signal, predicate)` — filtered broadcast (preferred)
 
 Use a predicate against each channel's registered metadata to scope the invalidation:
@@ -195,43 +200,89 @@ group.broadcast(
 )
 ```
 
----
+The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i.e. metadata was omitted on registration), the predicate receives `undefined` and must handle it explicitly.
 
-## Connection Revocation (`revoke()`)
+### `broadcastByKey(signal)` — automatic key-based matching
 
-Use `group.revoke(criteria)` to actively close active client connections (e.g. on logout, session expiration, or user ban).
-
-`revoke` uses **subset-matching** against registered connection metadata (`matchesJSONValue`):
+Broadcasts to channels whose metadata matches the signal's key using the same hierarchical prefix/exact matching semantics as the wire protocol. This eliminates the need to write manual predicate functions that mirror what the signal key already expresses.
 
 ```ts
-// 1. Single-connection logout. `userId` and `sessionId` come from trusted
-// authentication/session middleware; `connectionId` is only a client correlation value.
-await group.revoke({
-  userId: req.user.id,
-  sessionId: req.session.id,
-  connectionId: req.body.connectionId,
-})
+// Instead of:
+group.broadcast({ key: ['todos', { userId }] }, (meta) => meta[0] === 'todos' && meta[1]?.userId === userId)
 
-// 2. User-wide ban / logout everywhere (closes ALL sessions for user-42 across the entire cluster)
-await group.revoke({ userId: 'user-42' })
+// You can write:
+group.broadcastByKey({ key: ['todos', { userId }] })
 ```
+
+For `broadcastByKey` to match, the channels must be registered with array-shaped metadata representing their cached queries (e.g. `TMeta = JSONValue[]`).
+
+The signal's `key` is matched against each channel's metadata (which must be a JSON array key). A channel receives the signal when its registered metadata array has the signal's key array as a prefix.
+
+### Broadcasting without metadata
+
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) are treated as having `{}` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+
+---
+
+## Connection Revocation
+
+To actively close client connections (e.g., on logout, session expiration, or user ban), the group provides two dedicated APIs.
+
+### Criteria-Based Revocation (`revokeMany()`)
+
+Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
+
+```ts
+// Close all connections for user-42 across the entire cluster
+await group.revokeMany({ userId: 'user-42' })
+```
+
+Returns `{ localClosed: number }`.
+
+### Connection-Specific Revocation (`revokeOne()`)
+
+Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
+
+When a pub/sub adapter is configured, `revokeOne` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
+
+```ts
+// Close one specific connection, scoped to the requesting user
+const result = await group.revokeOne(connectionId, { userId: req.user.id })
+// result: { closed: boolean }
+```
+
+### Revocation without metadata
+
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeMany()`**. Omitting metadata is semantically equivalent to `{}`, but `undefined` is not a JSON value, so `revokeMany` criteria matching is skipped entirely for those channels — even `revokeMany({})` returns `localClosed: 0` for them.
+
+To revoke a channel that has no metadata, use `revokeOne(connectionId)` instead:
+
+```ts
+// ❌ Does not work — revokeMany cannot match channels with undefined meta
+await group.revokeMany({})
+
+// ✅ Works — revokeOne looks up by connectionId, bypassing metadata matching
+await group.revokeOne(channel.connectionId)
+```
+
+If you need criteria-based revocation, always register channels with explicit metadata.
 
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revoke({ connectionId: req.body.connectionId })` call in a request handler.
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeOne(connectionId)` call in a request handler.
 
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the revocation criteria. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeOne(...)` or in the criteria of `revokeMany(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
 
-If the client does not send a per-connection request ID, revoke the trusted session instead; this may close more than one tab:
+If the client does not send a per-connection request ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
 
 ```ts
-await group.revoke({
+await group.revokeMany({
   userId: req.user.id,
   sessionId: req.session.id,
 })
 ```
 
-When a pub/sub adapter is configured, `revoke()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
+When a pub/sub adapter is configured, `revokeMany()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
 
 ---
 

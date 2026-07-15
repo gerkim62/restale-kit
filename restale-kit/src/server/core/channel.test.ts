@@ -218,6 +218,50 @@ describe('channel', () => {
     const id = channel.invalidate({ key: ['auto-store'] })
     expect(id).toBe('1') // EventStore auto-increment ID
   })
+
+  it('exposes connectionId from options', () => {
+    const channel = createSSEChannel({ connectionId: 'test-conn-id' })
+    expect(channel.connectionId).toBe('test-conn-id')
+  })
+
+  it('connectionId defaults to empty string when not provided', () => {
+    const channel = createSSEChannel()
+    expect(channel.connectionId).toBe('')
+  })
+
+  it('onClose fires callback when channel is closed', () => {
+    const channel = createSSEChannel()
+    const cb = vi.fn()
+    channel.onClose(cb)
+    expect(cb).not.toHaveBeenCalled()
+    channel.close()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('onClose fires immediately if channel is already closed', () => {
+    const channel = createSSEChannel()
+    channel.close()
+    const cb = vi.fn()
+    channel.onClose(cb)
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('onClose fires on disconnect', () => {
+    const channel = createSSEChannel()
+    const cb = vi.fn()
+    channel.onClose(cb)
+    channel.disconnect()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('onClose does not fire twice if close is called twice', () => {
+    const channel = createSSEChannel()
+    const cb = vi.fn()
+    channel.onClose(cb)
+    channel.close()
+    channel.close()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
 })
 
 

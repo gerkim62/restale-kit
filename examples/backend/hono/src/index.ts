@@ -25,7 +25,6 @@ app.get('/sse', (c) => {
   const userId = UserIdSchema.parse(c.req.query('userId'))
   const { response, channel } = toSSEResponse<AppSignal>(c.req.raw, { signalSchema: AppSignalSchema })
   group.register(channel, { userId })
-  c.req.raw.signal.addEventListener('abort', () => group.deregister(channel), { once: true })
   return response
 })
 

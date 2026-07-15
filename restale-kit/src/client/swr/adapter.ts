@@ -1,3 +1,4 @@
+import { useCallback, useRef } from 'react'
 import type { Arguments } from 'swr'
 import {
   isJSONValueArray,
@@ -57,6 +58,32 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
       }
     }
   }
+}
+
+/**
+ * React hook that returns a stable `onInvalidate` callback for SWR.
+ *
+ * Equivalent to `swrAdapter(mutate, options)` but memoized — safe to pass
+ * directly to `useReStale` without creating a new function on every render.
+ *
+ * @example
+ * import { mutate } from 'swr'
+ * const onInvalidate = useSwrAdapter(mutate)
+ * useReStale('/api/sse', { onInvalidate })
+ */
+export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  mutate: SWRMutator,
+  options?: SWRAdapterOptions<TSignal>
+): (signal: TSignal | TSignal[]) => void {
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+
+  return useCallback(
+    (signal: TSignal | TSignal[]) => {
+      swrAdapter<TSignal>(mutate, optionsRef.current)(signal)
+    },
+    [mutate]
+  )
 }
 
 function toCanonicalKey(key: Arguments): JSONValue[] | undefined {

@@ -29,6 +29,231 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
+  it('allows omitting meta when no metaSchema provided', () => {
+    const group = new SSEChannelGroup()
+    const channel = createSSEChannel()
+
+    // Should work without passing meta
+    group.register(channel)
+    expect(group.size).toBe(1)
+
+    const spy = vi.spyOn(channel, 'invalidate')
+    group.broadcastToAll({ key: ['test'] })
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('broadcastToAll delivers to all channels even when meta is undefined', () => {
+    // Regression: broadcast() previously had `if (entry.meta === undefined) continue`
+    // which skipped channels registered without meta, breaking broadcastToAll.
+    const group = new SSEChannelGroup()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+    const ch3 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+    const spy3 = vi.spyOn(ch3, 'invalidate')
+
+    group.register(ch1)
+    group.register(ch2)
+    group.register(ch3)
+
+    group.broadcastToAll({ key: ['update'] })
+
+    expect(spy1).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy2).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+  })
+
+  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
+    // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
+    // undefined, the predicate receives undefined (not skipped) and can act on it.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 1 })
+    group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
+
+    const seenMetas: ({ userId: number } | undefined)[] = []
+    group.broadcast({ key: ['test'] }, (meta) => {
+      seenMetas.push(meta)
+      return true
+    })
+
+    expect(seenMetas).toContain(undefined)
+    expect(seenMetas).toContainEqual({ userId: 1 })
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).toHaveBeenCalled()
+  })
+
+  it('broadcast predicate can filter out channels with undefined meta', () => {
+    // Predicate returning false for undefined meta should skip that channel,
+    // but NOT all channels — channels with defined meta should still be reached.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 42 })
+    group.register(chNoMeta)
+
+    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
+
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).not.toHaveBeenCalled()
+  })
+
+  it('broadcastByKey silently skips channels with undefined meta (not a JSON value)', () => {
+    // undefined is not a valid JSONValue, so isJSONValue(meta) returns false and
+    // the channel is excluded from key-based matching — this is correct behaviour.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 7 })
+    group.register(chNoMeta) // undefined meta
+
+    group.broadcastByKey({ key: [{ userId: 7 }] })
+
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).not.toHaveBeenCalled()
+  })
+
+  it('omitting meta is equivalent to passing {} — revokeMany cannot match it by criteria', async () => {
+    // Omitting meta stores undefined internally, which is treated as {} semantically.
+    // However, undefined is not a JSONValue, so channelMatchesCriteria returns false
+    // for any criteria — revokeMany cannot revoke these channels by metadata match.
+    // Use revokeOne(connectionId) instead.
+    const group = new SSEChannelGroup()
+    const ch = createSSEChannel()
+
+    group.register(ch) // no meta — equivalent to {}
+    expect(group.size).toBe(1)
+
+    const result = await group.revokeMany({})
+    expect(result.localClosed).toBe(0) // {} criteria does NOT match undefined meta
+    expect(ch.state).toBe('open')
+    expect(group.size).toBe(1)
+  })
+
+  it('channels with undefined meta can still be revoked via revokeOne(connectionId)', async () => {
+    // revokeOne looks up by connectionId directly, bypassing metadata matching,
+    // so it works regardless of whether meta was provided.
+    const group = new SSEChannelGroup()
+    const ch = createSSEChannel({ connectionId: 'no-meta-conn' })
+
+    group.register(ch)
+    expect(group.size).toBe(1)
+
+    const result = await group.revokeOne(ch.connectionId)
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('allows omitting meta even with metaSchema if default satisfies schema', () => {
+    const metaSchema = createValidSchema()
+    const group = new SSEChannelGroup<any, any>({ metaSchema })
+    const channel = createSSEChannel()
+
+    // Empty object should pass validation
+    group.register(channel)
+    expect(group.size).toBe(1)
+  })
+
+  it('defaults omitted meta to undefined when registering', () => {
+    const group = new SSEChannelGroup<any, any>()
+    const channel = createSSEChannel()
+    group.register(channel)
+
+    const entry = group['channels'].get(channel)
+    expect(entry).toBeDefined()
+    expect(entry?.meta).toBeUndefined()
+  })
+
+  it('respects metaSchema and triggers validation error if omitted meta does not satisfy schema', () => {
+    const metaSchema = createInvalidSchema('Metadata is required')
+    const group = new SSEChannelGroup<any, any>({ metaSchema })
+    const channel = createSSEChannel()
+
+    expect(() => {
+      group.register(channel)
+    }).toThrow(SchemaValidationError)
+  })
+
+  it('stores the coerced/transformed metadata returned by the schema when metaSchema is defined', () => {
+    const metaSchema = createValidSchema((val: any) => {
+      const obj = val && typeof val === 'object' ? val : {}
+      return {
+        userId: Number(obj.userId || 42),
+        role: String(obj.role || 'guest')
+      }
+    })
+    const group = new SSEChannelGroup<any, { userId?: number; role?: string } | undefined>({ metaSchema })
+    const channel = createSSEChannel()
+
+    group.register(channel)
+
+    const entry = (group as any).channels.get(channel)
+    expect(entry.meta).toEqual({ userId: 42, role: 'guest' })
+  })
+
+  it('enforces meta to be required at compile-time when TMeta does not accept undefined', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const channel = createSSEChannel()
+
+    // @ts-expect-error - meta is required because TestMeta does not accept undefined
+    group.register(channel)
+
+    // @ts-expect-error - meta must match TestMeta type (userId must be number)
+    group.register(channel, { userId: 'not-a-number' })
+
+    // Should compile when meta is provided
+    group.register(channel, { userId: 1 })
+  })
+
+  it('enforces metaSchema output type to match TMeta at compile-time', () => {
+    const stringSchema = createValidSchema((_val: unknown) => 'hello')
+    
+    // @ts-expect-error - metaSchema output (string) does not match TMeta (TestMeta)
+    new SSEChannelGroup<any, TestMeta>({ metaSchema: stringSchema })
+  })
+
+  it('statically verifies register parameter requirement constraints', () => {
+    // 1. When TMeta does not accept undefined, meta parameter must be required
+    type ParamsRequired = Parameters<SSEChannelGroup<any, TestMeta>['register']>
+    type IsRequiredOptional = 1 extends ParamsRequired['length'] ? true : false
+    const checkRequired: IsRequiredOptional = false
+    expect(checkRequired).toBe(false)
+
+    // 2. When TMeta accepts undefined, meta parameter must be optional
+    type ParamsOptional = Parameters<SSEChannelGroup<any, TestMeta | undefined>['register']>
+    type IsOptionalOptional = 1 extends ParamsOptional['length'] ? true : false
+    const checkOptional: IsOptionalOptional = true
+    expect(checkOptional).toBe(true)
+  })
+
+  it('broadcast predicate receives TMeta (not TMeta | undefined) so no optional chaining is needed', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const channel = createSSEChannel()
+    group.register(channel, { userId: 1 })
+
+    // Static check: meta.userId compiles without optional chaining
+    group.broadcast({ key: ['test'] }, (meta) => {
+      const _userId: number = meta.userId
+      return _userId > 0
+    })
+  })
+
   it('registers channel and handles topic updates on re-registration', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const channel = createSSEChannel()
@@ -78,12 +303,12 @@ describe('channel-group', () => {
   it('deregisters closed channels automatically during broadcast', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const ch1 = createSSEChannel()
-    ch1.close()
 
     group.register(ch1, { userId: 1 })
     expect(group.size).toBe(1)
 
-    group.broadcastToAll({ key: ['test'] })
+    // Close after registration — auto-deregister fires via onClose
+    ch1.close()
     expect(group.size).toBe(0)
   })
 
@@ -128,7 +353,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 100 })
     group.register(ch2, { userId: 200 })
 
-    const result = await group.revoke({ userId: 100 })
+    const result = await group.revokeMany({ userId: 100 })
 
     expect(result.localClosed).toBe(1)
     expect(ch1.state).toBe('closed')
@@ -383,7 +608,7 @@ describe('channel-group', () => {
       throw new Error('Already closed stream')
     })
 
-    const closed = await group.revoke({ userId: 777 })
+    const closed = await group.revokeMany({ userId: 777 })
     expect(closed.localClosed).toBe(1)
     expect(group.size).toBe(0)
   })
@@ -393,13 +618,15 @@ describe('channel-group', () => {
     const ch = createSSEChannel()
 
     group.register(ch, { userId: 1 }, { topics: ['events'] })
-    ch.close()
-
     expect(group.size).toBe(1)
 
-    // publish calls deliverToChannel which catches ChannelClosedError and deregisters
-    await group.publish('events', { key: ['test-close'] })
+    // Close after registration — deliverToChannel still catches ChannelClosedError on next publish
+    // but auto-deregister via onClose fires first, so publish finds no local channels
+    ch.close()
     expect(group.size).toBe(0)
+
+    // publish should not throw even with no registered channels
+    await expect(group.publish('events', { key: ['test-close'] })).resolves.toBeUndefined()
   })
 
   it('delivers remote signals received via PubSub callback to registered topic channels', async () => {
@@ -533,7 +760,229 @@ describe('channel-group', () => {
     expect(pubsub.getTopicSubscriberCount('shared-topic')).toBe(1)
     expect(group.size).toBe(1)
   })
-})
 
+  // --- Auto-deregister via onClose ---
+
+  it('auto-deregisters channel when it is closed after register()', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 })
+    expect(group.size).toBe(1)
+
+    ch.close()
+    expect(group.size).toBe(0)
+  })
+
+  it('auto-deregisters channel when it is disconnected', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 })
+    ch.disconnect()
+    expect(group.size).toBe(0)
+  })
+
+  it('does not wire a second onClose listener on re-registration', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+    const onCloseSpy = vi.spyOn(ch, 'onClose')
+
+    group.register(ch, { userId: 1 })
+    // Re-register with different meta
+    group.register(ch, { userId: 2 })
+    expect(onCloseSpy).toHaveBeenCalledTimes(1)
+    expect(group.size).toBe(1)
+
+    ch.close()
+    // Should be deregistered exactly once, not double-deregistered
+    expect(group.size).toBe(0)
+  })
+
+  // --- broadcastByKey ---
+
+  it('broadcastByKey delivers to channels whose metadata matches the signal key', () => {
+    const group = new SSEChannelGroup<any, { userId: number }>()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+
+    // metadata is { userId: 1 } — treated as [{ userId: 1 }] for key matching
+    group.register(ch1, { userId: 1 })
+    group.register(ch2, { userId: 2 })
+
+    // signal key [{ userId: 1 }] should match only ch1
+    group.broadcastByKey({ key: [{ userId: 1 }] })
+
+    expect(spy1).toHaveBeenCalledWith({ key: [{ userId: 1 }] }, undefined)
+    expect(spy2).not.toHaveBeenCalled()
+  })
+
+  it('broadcastByKey delivers to all channels when key matches all metadata', () => {
+    const group = new SSEChannelGroup<any, { role: string }>()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+
+    group.register(ch1, { role: 'admin' })
+    group.register(ch2, { role: 'user' })
+
+    // empty key prefix matches every channel
+    group.broadcastByKey({ key: [] })
+
+    expect(spy1).toHaveBeenCalled()
+    expect(spy2).toHaveBeenCalled()
+  })
+
+  it('broadcastByKey delivers nothing when no metadata matches', () => {
+    const group = new SSEChannelGroup<any, { userId: number }>()
+    const ch = createSSEChannel()
+    const spy = vi.spyOn(ch, 'invalidate')
+
+    group.register(ch, { userId: 5 })
+
+    group.broadcastByKey({ key: [{ userId: 99 }] })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  // --- revokeOne ---
+
+  it('revokeOne closes matching connection locally and publishes control message', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const publishSpy = vi.spyOn(pubsub, 'publish')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-1' })
+
+    group.register(ch, { userId: 100 })
+    const result = await group.revokeOne(ch.connectionId)
+
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+
+    expect(publishSpy).toHaveBeenCalledWith(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId
+        }
+      }
+    })
+  })
+
+  it('revokeOne enforces scope checks', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-2' })
+
+    group.register(ch, { userId: 100, role: 'admin' })
+
+    // Non-matching scope
+    const result1 = await group.revokeOne(ch.connectionId, { userId: 200 })
+    expect(result1.closed).toBe(false)
+    expect(ch.state).toBe('open')
+    expect(group.size).toBe(1)
+
+    // Matching scope
+    const result2 = await group.revokeOne(ch.connectionId, { userId: 100, role: 'admin' })
+    expect(result2.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('handles remote revokeOne messages via pubsub', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-3' })
+
+    group.register(ch, { userId: 100 })
+    await group['controlPendingOp']
+
+    // Simulate remote node publishing control message
+    await pubsub.publish(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId,
+          scope: { userId: 100 }
+        }
+      }
+    })
+
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('revokeOne scope matching uses structural equality, not reference equality', async () => {
+    // Regression: scope comparison previously used !== (reference equality), so
+    // nested objects/arrays in scope would never match — even locally.
+    interface NestedMeta { userId: number; address: { city: string } }
+    const group = new SSEChannelGroup<any, NestedMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-nested' })
+
+    group.register(ch, { userId: 1, address: { city: 'London' } })
+
+    // Scope built independently — different object reference, same structure
+    const scope = { address: { city: 'London' } }
+    const result = await group.revokeOne(ch.connectionId, scope)
+
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('revokeOne scope matching works structurally after JSON round-trip (remote pubsub path)', async () => {
+    // Regression: the remote revokeOne path serializes scope to JSON and back.
+    // With reference equality this would always fail for nested objects.
+    interface NestedMeta { userId: number; permissions: { admin: boolean } }
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, NestedMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-roundtrip' })
+
+    group.register(ch, { userId: 7, permissions: { admin: true } })
+    await group['controlPendingOp']
+
+    // Simulate a remote node publishing the revokeOne control message.
+    // The scope object is a fresh deserialized value — different reference.
+    await pubsub.publish(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId,
+          scope: { permissions: { admin: true } }
+        }
+      }
+    })
+
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('manages connectionIndex collision-safely', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    
+    // Create two channels with the same connection ID
+    const ch1 = createSSEChannel({ connectionId: 'shared-id' })
+    const ch2 = createSSEChannel({ connectionId: 'shared-id' })
+
+    group.register(ch1, { userId: 100 })
+    group.register(ch2, { userId: 100 })
+    expect(group.size).toBe(2)
+
+    // Deregistering ch1 should not delete 'shared-id' from connectionIndex
+    group.deregister(ch1)
+    expect(group.size).toBe(1)
+
+    // revokeOne for 'shared-id' should still be able to find and revoke ch2
+    const result = await group.revokeOne('shared-id')
+    expect(result.closed).toBe(true)
+    expect(ch2.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+})
 
 

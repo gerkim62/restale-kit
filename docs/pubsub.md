@@ -41,16 +41,14 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
+  const channel = attachSSE(req, res)
   const userId = req.user.id
   const sessionId = req.session.id
 
   // Register with metadata and topics this connection cares about
-  group.register(channel, { userId, sessionId, connectionId }, {
+  group.register(channel, { userId, sessionId }, {
     topics: [`user:${userId}`, 'global'],
   })
-
-  req.on('close', () => group.deregister(channel))
 })
 
 // From any instance — no need to know which instance holds the client
@@ -65,7 +63,7 @@ async function onGlobalChange() {
 // Revoke one connection cluster-wide. userId/sessionId are obtained from
 // authenticated server state, not from the client request body.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revoke({ userId, sessionId, connectionId })
+  await group.revokeConnection(connectionId, { userId, sessionId })
 }
 ```
 

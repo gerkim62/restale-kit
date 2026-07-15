@@ -22,13 +22,13 @@ function createMockExpressResponse(): ServerResponse {
 }
 
 describe('server/express entrypoint', () => {
-  it('attaches SSE headers and extracts connectionId from express req/res', () => {
+  it('attaches SSE headers and exposes connectionId on the returned channel', () => {
     const req = createMockExpressRequest('/sse?restaleKitRequestId=express-123')
     const res = createMockExpressResponse()
 
-    const { channel, connectionId } = attachSSE(req, res)
+    const channel = attachSSE(req, res)
 
-    expect(connectionId).toBe('express-123')
+    expect(channel.connectionId).toBe('express-123')
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',

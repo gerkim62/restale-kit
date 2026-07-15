@@ -55,9 +55,8 @@ const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
   // channel is typed as SSEChannel<AppSignal>
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { connectionId })
-  req.on('close', () => group.deregister(channel))
+  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel)
 })
 
 // TypeScript enforces valid signal shapes at compile time:
@@ -72,7 +71,6 @@ group.broadcastToAll({ key: ['todos', { userId: '42' }] })        // ✅
 const ClientMetaSchema = z.object({
   userId: z.string(),
   role: z.enum(['user', 'admin']),
-  connectionId: z.string(),
 })
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
@@ -81,15 +79,13 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
 
   // Throws SchemaValidationError if validation fails
   group.register(channel, {
     userId: req.user.id,
     role: req.user.role,
-    connectionId,
   })
-  req.on('close', () => group.deregister(channel))
 })
 
 // Predicate is now fully typed against ClientMeta:
@@ -107,9 +103,8 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId: req.user.id, role: req.user.role, connectionId })
-  req.on('close', () => group.deregister(channel))
+  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel, { userId: req.user.id, role: req.user.role })
 })
 ```
 

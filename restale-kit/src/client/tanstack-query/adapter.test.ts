@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi } from 'vitest'
-import { tanstackAdapter } from './adapter.js'
+import { renderHook } from '@testing-library/react'
+import { tanstackAdapter, useTanstackAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 
 describe('tanstackAdapter', () => {
@@ -99,5 +102,33 @@ describe('tanstackAdapter', () => {
       queryKey: ['c'],
       exact: undefined,
     })
+  })
+})
+
+describe('useTanstackAdapter', () => {
+  it('returns a stable memoized callback that delegates to tanstackAdapter', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      refetchQueries: vi.fn(),
+      removeQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    const { result, rerender } = renderHook(
+      ({ client }) => useTanstackAdapter(client),
+      { initialProps: { client: queryClient } }
+    )
+
+    const cb1 = result.current
+    cb1({ key: ['todos'], action: 'invalidate' })
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['todos'],
+      exact: undefined,
+    })
+
+    // Rerender with identical inputs and assert callback identity
+    rerender({ client: queryClient })
+    const cb2 = result.current
+    expect(cb1).toBe(cb2)
   })
 })

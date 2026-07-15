@@ -1,1 +1,1 @@
-export { tanstackAdapter } from './adapter.js'
+export { tanstackAdapter, useTanstackAdapter } from './adapter.js'
