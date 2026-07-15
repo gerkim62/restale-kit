@@ -126,7 +126,6 @@ const group = new SSEChannelGroup({
   pubsub: ablyPubSubAdapter(ably, { useNativeEchoSuppression: true }),
 })
 ```
-```
 
 ---
 

@@ -17,6 +17,7 @@ describe('useReStale', () => {
 
   afterEach(() => {
     globalThis.EventSource = originalEventSource
+    vi.restoreAllMocks()
   })
 
   it('opens connection on mount and closes on unmount', () => {
@@ -35,7 +36,6 @@ describe('useReStale', () => {
     unmount()
     expect(instance.readyState).toBe(MockEventSource.CLOSED)
     expect(spy).toHaveBeenCalledTimes(1)
-    spy.mockRestore()
   })
 
   it('does not open connection when disabled is true', () => {

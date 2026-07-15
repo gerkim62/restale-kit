@@ -80,7 +80,7 @@ connection revocation) with full type safety via the `kind` discriminant.
   - **Race on concurrent register/unsubscribe** is handled via a sequential `pendingOp` promise chain — the async subscribe/unsubscribe operations are serialized so that a `register()` arriving while an `unsubscribe()` is still in flight correctly restores the subscription.
 - `publish(topic, signal)`:
   1. Delivers synchronously to any locally-held channels registered on that topic.
-  2. If a `pubsub` adapter is configured, also calls `pubsub.publish(topic, signal)` — even if there are no local subscribers on the topic, because remote instances may hold matching channels.
+  2. If a `pubsub` adapter is configured, also calls `pubsub.publish(topic, { kind: 'signal', data: signal })` — even if there are no local subscribers on the topic, because remote instances may hold matching channels.
 - `publish()` to a topic with no local subscribers and no `pubsub` configured is a no-op, not an error.
 
 ## Adapter packages (subpath exports, each importing only its own broker's client lib)

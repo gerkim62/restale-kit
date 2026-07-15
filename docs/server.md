@@ -210,7 +210,7 @@ Broadcasts to channels whose registered metadata matches the signal's key using 
 group.broadcastByKey({ key: ['todos', { userId }] })
 ```
 
-The signal's `key` is matched against each channel's registered metadata (which can be a JSON array key or an object/scalar value automatically matched against the signal key). A channel receives the signal when its registered metadata matches or forms a prefix of the signal key.
+The signal's `key` is matched against each channel's registered metadata (which can be a JSON array key or an object/scalar value automatically matched against the signal key). A channel receives the signal when its registered metadata matches or extends the signal key (when `exact: true`, keys must match exactly).
 
 ### Broadcasting without metadata
 
@@ -267,7 +267,7 @@ If you need criteria-based revocation, always register channels with explicit me
 
 Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeByConnectionId(...)` or in the criteria of `revokeWhere(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization. Always pass `scope` with trusted server-side identity (e.g. `{ userId: req.user.id }`) so that a forged or leaked `connectionId` cannot close another user's connection.
 
-If the client does not send a per-connection request ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
+If the client does not send a connection ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
 
 ```ts
 await group.revokeWhere({

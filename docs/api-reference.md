@@ -401,7 +401,7 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
 import { redisPubSubAdapter } from 'restale-kit/redis'
 import type { RedisClient } from 'restale-kit/redis'
 
-// Minimal structural interface compatible with ioredis and node-redis:
+// Minimal structural interface compatible with ioredis and node-redis legacy mode (event-emitter format):
 interface RedisClient {
   publish(topic: string, message: string): unknown
   subscribe(topic: string): unknown
