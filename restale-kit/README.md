@@ -112,10 +112,9 @@ app.post('/api/todos', async (req, res) => {
 // Revoke one connection. Scope the client-supplied request ID with trusted
 // identity/session values from authentication middleware.
 app.post('/api/logout', async (req, res) => {
-  await group.revoke({
+  await group.revokeConnection(req.body.connectionId, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId: req.body.connectionId,
   })
   res.json({ success: true })
 })
@@ -237,7 +236,7 @@ group.broadcast(
   (meta) => meta.userId === 42
 )
 
-// Broadcast using automatic key-based matching (metadata matched against signal key)
+// Broadcast using automatic key-based matching (metadata must be array-shaped query keys)
 group.broadcastByKey({ key: ['todos', { userId: 42 }] })
 ```
 
@@ -335,7 +334,7 @@ await group.publish(`user:${userId}`, { key: ['todos'] })
 // Revoke one connection across the cluster. `userId` and `sessionId` come
 // from authenticated server state; `connectionId` is the client correlation value.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revoke({ userId, sessionId, connectionId })
+  await group.revokeConnection(connectionId, { userId, sessionId })
 }
 
 // Revoke all sessions across cluster (ban / logout everywhere)

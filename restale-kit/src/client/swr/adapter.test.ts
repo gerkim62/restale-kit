@@ -1,11 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
-import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
+// @vitest-environment jsdom
 
-// useCallback is a React render-context hook — stub it as identity for unit tests
-vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>()
-  return { ...actual, useCallback: (fn: unknown) => fn }
-})
+import { describe, it, expect, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
 
 describe('swrAdapter', () => {
   it('invokes mutate with filter function for invalidate action', () => {
@@ -56,16 +53,38 @@ describe('swrAdapter', () => {
 })
 
 describe('useSwrAdapter', () => {
-  it('returns a callback that delegates to swrAdapter', () => {
+  it('returns a stable memoized callback that delegates to swrAdapter, and updates with changed options', () => {
     const mutate = vi.fn() as unknown as SWRMutator
-    const cb = useSwrAdapter(mutate)
+    const options1 = { toInvalidateKey: vi.fn().mockReturnValue(['todos']) }
+    const options2 = { toInvalidateKey: vi.fn().mockReturnValue(['todos']) }
 
-    cb({ key: ['todos'] })
+    const { result, rerender } = renderHook(
+      ({ mut, opts }) => useSwrAdapter(mut, opts),
+      { initialProps: { mut: mutate, opts: options1 } }
+    )
+
+    const cb1 = result.current
+    cb1({ key: ['todos'] })
 
     expect(mutate).toHaveBeenCalledTimes(1)
     const filter = (mutate as any).mock.calls[0][0]
-    expect(filter(['todos'])).toBe(true)
-    expect(filter(['other'])).toBe(false)
+    filter('some-key')
+    expect(options1.toInvalidateKey).toHaveBeenCalledWith('some-key', { key: ['todos'] })
+
+    // Rerender with identical options (same reference) and check stability
+    rerender({ mut: mutate, opts: options1 })
+    expect(result.current).toBe(cb1)
+
+    // Rerender with different options - callback reference remains stable (same reference)
+    rerender({ mut: mutate, opts: options2 })
+    expect(result.current).toBe(cb1)
+
+    cb1({ key: ['todos'] })
+    expect(mutate).toHaveBeenCalledTimes(2)
+    const filter2 = (mutate as any).mock.calls[1][0]
+    filter2('some-key')
+    expect(options2.toInvalidateKey).toHaveBeenCalledWith('some-key', { key: ['todos'] })
+    expect(options1.toInvalidateKey).toHaveBeenCalledTimes(1) // not called again
   })
 })
 

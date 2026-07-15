@@ -52,16 +52,17 @@ describe('channel-group', () => {
     expect(group.size).toBe(1)
   })
 
-  it('defaults omitted meta to empty object {} when registering', () => {
+  it('defaults omitted meta to undefined when registering', () => {
     const group = new SSEChannelGroup<any, any>()
     const channel = createSSEChannel()
     group.register(channel)
 
-    const entry = (group as any).channels.get(channel)
-    expect(entry.meta).toEqual({})
+    const entry = group['channels'].get(channel)
+    expect(entry).toBeDefined()
+    expect(entry?.meta).toBeUndefined()
   })
 
-  it('respects metaSchema and triggers validation error if omitted meta (defaulting to {}) does not satisfy schema', () => {
+  it('respects metaSchema and triggers validation error if omitted meta does not satisfy schema', () => {
     const metaSchema = createInvalidSchema('Metadata is required')
     const group = new SSEChannelGroup<any, any>({ metaSchema })
     const channel = createSSEChannel()
@@ -234,7 +235,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 100 })
     group.register(ch2, { userId: 200 })
 
-    const result = await group.revoke({ userId: 100 })
+    const result = await group.revokeMany({ userId: 100 })
 
     expect(result.localClosed).toBe(1)
     expect(ch1.state).toBe('closed')
@@ -489,7 +490,7 @@ describe('channel-group', () => {
       throw new Error('Already closed stream')
     })
 
-    const closed = await group.revoke({ userId: 777 })
+    const closed = await group.revokeMany({ userId: 777 })
     expect(closed.localClosed).toBe(1)
     expect(group.size).toBe(0)
   })
@@ -667,10 +668,12 @@ describe('channel-group', () => {
   it('does not wire a second onClose listener on re-registration', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const ch = createSSEChannel()
+    const onCloseSpy = vi.spyOn(ch, 'onClose')
 
     group.register(ch, { userId: 1 })
     // Re-register with different meta
     group.register(ch, { userId: 2 })
+    expect(onCloseSpy).toHaveBeenCalledTimes(1)
     expect(group.size).toBe(1)
 
     ch.close()
@@ -726,6 +729,96 @@ describe('channel-group', () => {
 
     group.broadcastByKey({ key: [{ userId: 99 }] })
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  // --- revokeOne ---
+
+  it('revokeOne closes matching connection locally and publishes control message', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const publishSpy = vi.spyOn(pubsub, 'publish')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-1' })
+
+    group.register(ch, { userId: 100 })
+    const result = await group.revokeOne(ch.connectionId)
+
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+
+    expect(publishSpy).toHaveBeenCalledWith(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId
+        }
+      }
+    })
+  })
+
+  it('revokeOne enforces scope checks', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-2' })
+
+    group.register(ch, { userId: 100, role: 'admin' })
+
+    // Non-matching scope
+    const result1 = await group.revokeOne(ch.connectionId, { userId: 200 })
+    expect(result1.closed).toBe(false)
+    expect(ch.state).toBe('open')
+    expect(group.size).toBe(1)
+
+    // Matching scope
+    const result2 = await group.revokeOne(ch.connectionId, { userId: 100, role: 'admin' })
+    expect(result2.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('handles remote revokeOne messages via pubsub', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-3' })
+
+    group.register(ch, { userId: 100 })
+    await group['controlPendingOp']
+
+    // Simulate remote node publishing control message
+    await pubsub.publish(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId,
+          scope: { userId: 100 }
+        }
+      }
+    })
+
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('manages connectionIndex collision-safely', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    
+    // Create two channels with the same connection ID
+    const ch1 = createSSEChannel({ connectionId: 'shared-id' })
+    const ch2 = createSSEChannel({ connectionId: 'shared-id' })
+
+    group.register(ch1, { userId: 100 })
+    group.register(ch2, { userId: 100 })
+    expect(group.size).toBe(2)
+
+    // Deregistering ch1 should not delete 'shared-id' from connectionIndex
+    group.deregister(ch1)
+    expect(group.size).toBe(1)
+
+    // revokeOne for 'shared-id' should still be able to find and revoke ch2
+    const result = await group.revokeOne('shared-id')
+    expect(result.closed).toBe(true)
+    expect(ch2.state).toBe('closed')
+    expect(group.size).toBe(0)
   })
 })
 

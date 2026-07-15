@@ -1,12 +1,9 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
 import { tanstackAdapter, useTanstackAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
-
-// useCallback is a React render-context hook — stub it as identity for unit tests
-vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>()
-  return { ...actual, useCallback: (fn: unknown) => fn }
-})
 
 describe('tanstackAdapter', () => {
   it('defaults omitted action to invalidateQueries and does not invoke other methods', () => {
@@ -116,13 +113,22 @@ describe('useTanstackAdapter', () => {
       removeQueries: vi.fn(),
     } as unknown as QueryClient
 
-    // useCallback needs React render context — test the factory output directly
-    const cb = useTanstackAdapter(queryClient)
-    cb({ key: ['todos'], action: 'invalidate' })
+    const { result, rerender } = renderHook(
+      ({ client }) => useTanstackAdapter(client),
+      { initialProps: { client: queryClient } }
+    )
+
+    const cb1 = result.current
+    cb1({ key: ['todos'], action: 'invalidate' })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['todos'],
       exact: undefined,
     })
+
+    // Rerender with identical inputs and assert callback identity
+    rerender({ client: queryClient })
+    const cb2 = result.current
+    expect(cb1).toBe(cb2)
   })
 })

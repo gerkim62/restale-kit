@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import type { Arguments } from 'swr'
 import {
   isJSONValueArray,
@@ -75,10 +75,15 @@ export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSigna
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): (signal: TSignal | TSignal[]) => void {
-  // mutate from swr is a stable module-level singleton; options object identity may change
-  // so we depend on mutate only for the memo key (options are read through a ref internally
-  // via swrAdapter's closure — stable enough for typical usage).
-  return useCallback(swrAdapter<TSignal>(mutate, options), [mutate])
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+
+  return useCallback(
+    (signal: TSignal | TSignal[]) => {
+      swrAdapter<TSignal>(mutate, optionsRef.current)(signal)
+    },
+    [mutate]
+  )
 }
 
 function toCanonicalKey(key: Arguments): JSONValue[] | undefined {

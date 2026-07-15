@@ -153,8 +153,8 @@ export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta?: TMeta; topics: Set<string>; connectionId: string }>()
-  private readonly connectionIndex = new Map<string, SSEChannel<TSignal>>()
+  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
@@ -205,7 +205,25 @@ export class SSEChannelGroup<
         try {
           const unsub = await pubsub.subscribe(this.controlTopic, (msg) => {
             if (msg.kind === 'control') {
-              this.closeLocalMatches(msg.data)
+              const dataObj = msg.data
+              if (dataObj && typeof dataObj === 'object' && !Array.isArray(dataObj) && 'revokeOne' in dataObj) {
+                const revokePayload = dataObj.revokeOne
+                if (revokePayload && typeof revokePayload === 'object' && !Array.isArray(revokePayload)) {
+                  if ('connectionId' in revokePayload && typeof revokePayload.connectionId === 'string') {
+                    const connectionId = revokePayload.connectionId
+                    let scope: Record<string, JSONValue> | undefined = undefined
+                    if ('scope' in revokePayload) {
+                      const scopeVal = revokePayload.scope
+                      if (scopeVal && typeof scopeVal === 'object' && !Array.isArray(scopeVal)) {
+                        scope = scopeVal
+                      }
+                    }
+                    this.closeLocalConnection(connectionId, scope)
+                  }
+                }
+              } else {
+                this.closeLocalMatches(msg.data)
+              }
             }
           })
           this.controlUnsubscribeFn = unsub
@@ -230,7 +248,7 @@ export class SSEChannelGroup<
     let localClosed = 0
     const channelEntries = Array.from(this.channels.entries())
     for (const [ch, entry] of channelEntries) {
-      if (isJSONValue(entry.meta) && matchesJSONValue(entry.meta, criteria, false)) {
+      if (channelMatchesCriteria(ch, entry.meta, criteria)) {
         try {
           ch.close()
         } catch {
@@ -241,6 +259,38 @@ export class SSEChannelGroup<
       }
     }
     return localClosed
+  }
+
+  private closeLocalConnection(connectionId: string, scope?: Record<string, JSONValue>): boolean {
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels || channels.size === 0) return false
+
+    let closedAny = false
+    for (const channel of Array.from(channels)) {
+      if (scope !== undefined) {
+        const entry = this.channels.get(channel)
+        if (!entry) continue
+        const meta = entry.meta
+        if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
+        let scopeMatched = true
+        for (const [k, v] of Object.entries(scope)) {
+          if (!Object.hasOwn(meta, k) || Reflect.get(meta, k) !== v) {
+            scopeMatched = false
+            break
+          }
+        }
+        if (!scopeMatched) continue
+      }
+
+      try {
+        channel.close()
+      } catch {
+        // already closed
+      }
+      this.deregister(channel)
+      closedAny = true
+    }
+    return closedAny
   }
 
   /**
@@ -288,14 +338,11 @@ export class SSEChannelGroup<
     const meta = args[0]
     const options = args[1]
 
-    const container = { value: meta }
-    if (meta === undefined) {
-      Object.assign(container, { value: {} })
-    }
-
-    let validatedMeta = container.value
+    let validatedMeta: TMeta | undefined
     if (this.metaSchema) {
-      validatedMeta = validateStandardSchema(container.value, this.metaSchema)
+      validatedMeta = validateStandardSchema(meta, this.metaSchema)
+    } else {
+      validatedMeta = meta
     }
 
     const topicsList = options?.topics || []
@@ -320,7 +367,12 @@ export class SSEChannelGroup<
     const connectionId = channel.connectionId
     this.channels.set(channel, { meta: validatedMeta, topics: topicsSet, connectionId })
     if (connectionId) {
-      this.connectionIndex.set(connectionId, channel)
+      let set = this.connectionIndex.get(connectionId)
+      if (!set) {
+        set = new Set()
+        this.connectionIndex.set(connectionId, set)
+      }
+      set.add(channel)
     }
 
     for (const topic of topicsSet) {
@@ -361,7 +413,13 @@ export class SSEChannelGroup<
 
     this.channels.delete(channel)
     if (entry.connectionId) {
-      this.connectionIndex.delete(entry.connectionId)
+      const set = this.connectionIndex.get(entry.connectionId)
+      if (set) {
+        set.delete(channel)
+        if (set.size === 0) {
+          this.connectionIndex.delete(entry.connectionId)
+        }
+      }
     }
 
     for (const topic of entry.topics) {
@@ -373,70 +431,44 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Revokes connections in two modes depending on the first argument:
+   * Revokes connections by matching channel metadata (and connectionId) against the criteria.
    *
-   * **Mode 1 — criteria object:** closes all channels whose metadata matches
-   * `criteria` via subset matching. Publishes to the control topic if pub/sub
-   * is configured so remote instances also close matching channels.
-   *
-   * ```ts
-   * // Close all connections for a user (ban, log out everywhere)
-   * await group.revoke({ userId: 42 })
-   * ```
-   *
-   * **Mode 2 — connectionId string:** closes the single channel identified by
-   * `connectionId`. Pass `scope` (a partial metadata object) to verify ownership
-   * before closing — if the channel's metadata does not match `scope`, nothing
-   * happens and `{ closed: false }` is returned. This prevents a client from
-   * revoking another user's connection by guessing IDs.
-   *
-   * ```ts
-   * // Close one specific connection, scoped to the requesting user
-   * await group.revoke(connectionId, { userId: req.user.id })
-   * ```
-   *
-   * Returns `{ localClosed: number }` in criteria mode, or
-   * `{ closed: boolean }` in connectionId mode.
+   * Closes all matching channels locally and broadcasts the criteria to the cluster-wide control topic.
    */
-  async revoke(criteria: JSONValue): Promise<{ localClosed: number }>
-  async revoke(connectionId: string, scope?: Partial<TMeta>): Promise<{ closed: boolean }>
-  async revoke(
-    criteriaOrId: JSONValue,
-    scope?: Partial<TMeta>
-  ): Promise<{ localClosed: number } | { closed: boolean }> {
-    // ConnectionId mode: first arg is a non-null string
-    if (typeof criteriaOrId === 'string') {
-      const connectionId = criteriaOrId
-      const channel = this.connectionIndex.get(connectionId)
-      if (!channel) return { closed: false }
-
-      // Scope check — verify the channel belongs to the caller
-      if (scope !== undefined) {
-        const entry = this.channels.get(channel)
-        if (!entry) return { closed: false }
-        const meta: unknown = entry.meta
-        // Only works when meta is a plain object — if it isn't, the scope check fails safe.
-        if (typeof meta !== 'object' || meta === null) return { closed: false }
-        for (const [k, v] of Object.entries(scope)) {
-          if (!Object.hasOwn(meta, k) || Reflect.get(meta, k) !== v) {
-            return { closed: false }
-          }
-        }
-      }
-
-      try { channel.close() } catch { /* already closed */ }
-      this.deregister(channel)
-      return { closed: true }
-    }
-
-    // Criteria mode: close all matching + publish to control topic
-    const localClosed = this.closeLocalMatches(criteriaOrId)
+  async revokeMany(criteria: JSONValue): Promise<{ localClosed: number }> {
+    const localClosed = this.closeLocalMatches(criteria)
 
     if (this.pubsub) {
-      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteriaOrId })
+      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteria })
     }
 
     return { localClosed }
+  }
+
+  /**
+   * Revokes a specific client connection by its unique connection ID.
+   *
+   * Optionally checks a `scope` object against the channel's metadata to ensure
+   * the request is authorized (e.g. validating the connection belongs to the requesting user).
+   *
+   * If a pub/sub adapter is configured, this also broadcasts a control message to the cluster
+   * so that remote instances can close matching connections.
+   */
+  async revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }> {
+    const closed = this.closeLocalConnection(connectionId, scope)
+
+    if (this.pubsub) {
+      const revokePayload: { [key: string]: JSONValue } = { connectionId }
+      if (scope !== undefined) {
+        revokePayload.scope = scope
+      }
+      await this.pubsub.publish(this.controlTopic, {
+        kind: 'control',
+        data: { revokeOne: revokePayload }
+      })
+    }
+
+    return { closed }
   }
 
   /**
@@ -480,11 +512,9 @@ export class SSEChannelGroup<
     // Deletions of already-visited or current keys do not impact the iterator loop, and
     // deregistration side effects (like topic cleanup) are localized to the deregistered channel.
     for (const [channel, entry] of this.channels) {
-      // register() always stores a defined meta (at least {}), so this guard
-      // only serves as a TypeScript narrowing hint — it never fires at runtime.
       if (entry.meta === undefined) continue
       const shouldInclude = predicate(entry.meta)
-      
+
       if (!shouldInclude) continue
 
       try {
@@ -578,5 +608,46 @@ export class SSEChannelGroup<
       await this.pubsub.publish(topic, { kind: 'signal', data: signal })
     }
   }
+}
+
+function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONValue): boolean {
+  if (!isJSONValue(meta)) return false
+
+  // 1. Direct match on metadata
+  if (matchesJSONValue(meta, criteria, false)) {
+    return true
+  }
+
+  // 2. Match on combined object if metadata is an object
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    const combined = { ...meta, connectionId: ch.connectionId }
+    if (matchesJSONValue(combined, criteria, false)) {
+      return true
+    }
+  }
+
+  // 3. Match on connectionId alone if criteria is an object containing connectionId
+  if (criteria && typeof criteria === 'object' && !Array.isArray(criteria)) {
+    const criteriaObj = criteria as Record<string, JSONValue>
+    if ('connectionId' in criteriaObj) {
+      if (ch.connectionId !== criteriaObj.connectionId) {
+        return false
+      }
+      const otherKeys = Object.keys(criteriaObj).filter(k => k !== 'connectionId')
+      if (otherKeys.length === 0) {
+        return true
+      }
+      if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+        const remainingCriteria: Record<string, JSONValue> = {}
+        for (const k of otherKeys) {
+          remainingCriteria[k] = criteriaObj[k]
+        }
+        return matchesJSONValue(meta, remainingCriteria, false)
+      }
+      return false
+    }
+  }
+
+  return false
 }
 

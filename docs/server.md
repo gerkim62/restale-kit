@@ -142,14 +142,19 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 ## `register` and `deregister`
 
 ```ts
-group.register(channel)                            // no metadata
-group.register(channel, meta)                      // with metadata
-group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub routing
+// If TMeta accepts undefined, metadata is optional:
+group.register(channel)
+
+// If TMeta does not accept undefined, metadata is required:
+group.register(channel, meta)
+
+// With topics routing:
+group.register(channel, meta, { topics: ['user:42', 'global'] })
 
 group.deregister(channel)
 ```
 
-- `meta` is optional (defaults to `{}` if omitted). Its type is inferred from the group's `TMeta` generic.
+- `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
@@ -198,55 +203,52 @@ Broadcasts to channels whose metadata matches the signal's key using the same hi
 
 ```ts
 // Instead of:
-group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
+group.broadcast({ key: ['todos', { userId }] }, (meta) => meta[0] === 'todos' && meta[1]?.userId === userId)
 
 // You can write:
 group.broadcastByKey({ key: ['todos', { userId }] })
 ```
 
-The signal's `key` is matched against each channel's metadata treated as a `JSONValue`. A channel receives the signal when its metadata is a JSON object whose fields are a superset of the signal's key objects.
+For `broadcastByKey` to match, the channels must be registered with array-shaped metadata representing their cached queries (e.g. `TMeta = JSONValue[]`).
+
+The signal's `key` is matched against each channel's metadata (which must be a JSON array key). A channel receives the signal when its registered metadata array has the signal's key array as a prefix.
 
 ---
 
-## Connection Revocation (`revoke()`)
+## Connection Revocation
 
-Use `group.revoke()` to actively close active client connections (e.g. on logout, session expiration, or user ban).
+To actively close client connections (e.g., on logout, session expiration, or user ban), the group provides two dedicated APIs.
 
-### Mode 1 — criteria object
+### Criteria-Based Revocation (`revoke()`)
 
 Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
 
 ```ts
 // Close all connections for user-42 across the entire cluster
 await group.revoke({ userId: 'user-42' })
-
-// Single-connection logout — scope with trusted identity values
-await group.revoke({
-  userId: req.user.id,
-  sessionId: req.session.id,
-  connectionId: req.body.connectionId,
-})
 ```
 
 Returns `{ localClosed: number }`.
 
-### Mode 2 — connectionId string
+### Connection-Specific Revocation (`revokeConnection()`)
 
 Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
 
+When a pub/sub adapter is configured, `revokeConnection` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
+
 ```ts
 // Close one specific connection, scoped to the requesting user
-const result = await group.revoke(connectionId, { userId: req.user.id })
+const result = await group.revokeConnection(connectionId, { userId: req.user.id })
 // result: { closed: boolean }
 ```
 
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revoke({ connectionId: req.body.connectionId })` call in a request handler.
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeConnection(connectionId)` call in a request handler.
 
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the revocation criteria. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeConnection(...)` or in the criteria of `revoke(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
 
-If the client does not send a per-connection request ID, revoke the trusted session instead; this may close more than one tab:
+If the client does not send a per-connection request ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
 
 ```ts
 await group.revoke({

@@ -68,6 +68,7 @@ interface SSEChannelOptions<TSignal> {
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   idGenerator?: () => string
+  connectionId?: string                               // unique connection ID from client
 }
 
 interface SSEChannel<TSignal> {
@@ -115,8 +116,9 @@ class SSEChannelGroup<
 
   register(
     channel: SSEChannel<TSignal>,
-    meta?: TMeta,
-    options?: { topics?: string[] }
+    ...args: undefined extends TMeta
+      ? [meta?: TMeta, options?: { topics?: string[] }]
+      : [meta: TMeta, options?: { topics?: string[] }]
   ): void
 
   deregister(channel: SSEChannel<TSignal>): void
@@ -133,7 +135,7 @@ class SSEChannelGroup<
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   revoke(criteria: JSONValue): Promise<{ localClosed: number }>
-  revoke(connectionId: string, scope?: Partial<TMeta>): Promise<{ closed: boolean }>
+  revokeConnection(connectionId: string, scope?: Partial<TMeta>): Promise<{ closed: boolean }>
 
   dispose(): Promise<void>
 }
