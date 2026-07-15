@@ -917,6 +917,51 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
+  it('revokeOne scope matching uses structural equality, not reference equality', async () => {
+    // Regression: scope comparison previously used !== (reference equality), so
+    // nested objects/arrays in scope would never match — even locally.
+    interface NestedMeta { userId: number; address: { city: string } }
+    const group = new SSEChannelGroup<any, NestedMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-nested' })
+
+    group.register(ch, { userId: 1, address: { city: 'London' } })
+
+    // Scope built independently — different object reference, same structure
+    const scope = { address: { city: 'London' } }
+    const result = await group.revokeOne(ch.connectionId, scope)
+
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
+  it('revokeOne scope matching works structurally after JSON round-trip (remote pubsub path)', async () => {
+    // Regression: the remote revokeOne path serializes scope to JSON and back.
+    // With reference equality this would always fail for nested objects.
+    interface NestedMeta { userId: number; permissions: { admin: boolean } }
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, NestedMeta>({ pubsub })
+    const ch = createSSEChannel({ connectionId: 'conn-roundtrip' })
+
+    group.register(ch, { userId: 7, permissions: { admin: true } })
+    await group['controlPendingOp']
+
+    // Simulate a remote node publishing the revokeOne control message.
+    // The scope object is a fresh deserialized value — different reference.
+    await pubsub.publish(group.controlTopic, {
+      kind: 'control',
+      data: {
+        revokeOne: {
+          connectionId: ch.connectionId,
+          scope: { permissions: { admin: true } }
+        }
+      }
+    })
+
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
   it('manages connectionIndex collision-safely', async () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     

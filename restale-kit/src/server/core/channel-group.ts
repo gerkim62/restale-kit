@@ -272,14 +272,10 @@ export class SSEChannelGroup<
         if (!entry) continue
         const meta = entry.meta
         if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
-        let scopeMatched = true
-        for (const [k, v] of Object.entries(scope)) {
-          if (!Object.hasOwn(meta, k) || Reflect.get(meta, k) !== v) {
-            scopeMatched = false
-            break
-          }
-        }
-        if (!scopeMatched) continue
+        if (!isJSONValue(meta)) continue
+        // Use structural deep equality so nested objects/arrays in scope match
+        // correctly — including values reconstructed after remote serialization.
+        if (!matchesJSONValue(meta, scope, false)) continue
       }
 
       try {
