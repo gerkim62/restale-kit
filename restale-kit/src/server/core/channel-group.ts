@@ -153,7 +153,7 @@ export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -338,11 +338,16 @@ export class SSEChannelGroup<
     const meta = args[0]
     const options = args[1]
 
-    let validatedMeta: TMeta | undefined
+    let validatedMeta: TMeta
     if (this.metaSchema) {
       validatedMeta = validateStandardSchema(meta, this.metaSchema)
     } else {
-      validatedMeta = meta
+      // When no metaSchema is provided, `meta` is the raw args[0] value, typed as
+      // `TMeta | undefined`. The overload signature guarantees that `undefined` is
+      // only reachable here when `undefined extends TMeta` (i.e., undefined IS a
+      // valid TMeta), so this cast is always safe at runtime.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta (see overload)
+      validatedMeta = meta as TMeta
     }
 
     const topicsList = options?.topics || []
@@ -512,7 +517,6 @@ export class SSEChannelGroup<
     // Deletions of already-visited or current keys do not impact the iterator loop, and
     // deregistration side effects (like topic cleanup) are localized to the deregistered channel.
     for (const [channel, entry] of this.channels) {
-      if (entry.meta === undefined) continue
       const shouldInclude = predicate(entry.meta)
 
       if (!shouldInclude) continue

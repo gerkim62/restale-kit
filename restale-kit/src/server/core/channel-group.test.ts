@@ -42,6 +42,92 @@ describe('channel-group', () => {
     expect(spy).toHaveBeenCalled()
   })
 
+  it('broadcastToAll delivers to all channels even when meta is undefined', () => {
+    // Regression: broadcast() previously had `if (entry.meta === undefined) continue`
+    // which skipped channels registered without meta, breaking broadcastToAll.
+    const group = new SSEChannelGroup()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+    const ch3 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+    const spy3 = vi.spyOn(ch3, 'invalidate')
+
+    group.register(ch1)
+    group.register(ch2)
+    group.register(ch3)
+
+    group.broadcastToAll({ key: ['update'] })
+
+    expect(spy1).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy2).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+  })
+
+  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
+    // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
+    // undefined, the predicate receives undefined (not skipped) and can act on it.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 1 })
+    group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
+
+    const seenMetas: ({ userId: number } | undefined)[] = []
+    group.broadcast({ key: ['test'] }, (meta) => {
+      seenMetas.push(meta)
+      return true
+    })
+
+    expect(seenMetas).toContain(undefined)
+    expect(seenMetas).toContainEqual({ userId: 1 })
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).toHaveBeenCalled()
+  })
+
+  it('broadcast predicate can filter out channels with undefined meta', () => {
+    // Predicate returning false for undefined meta should skip that channel,
+    // but NOT all channels — channels with defined meta should still be reached.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 42 })
+    group.register(chNoMeta)
+
+    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
+
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).not.toHaveBeenCalled()
+  })
+
+  it('broadcastByKey silently skips channels with undefined meta (not a JSON value)', () => {
+    // undefined is not a valid JSONValue, so isJSONValue(meta) returns false and
+    // the channel is excluded from key-based matching — this is correct behaviour.
+    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
+    const chWithMeta = createSSEChannel()
+    const chNoMeta = createSSEChannel()
+
+    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
+    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
+
+    group.register(chWithMeta, { userId: 7 })
+    group.register(chNoMeta) // undefined meta
+
+    group.broadcastByKey({ key: [{ userId: 7 }] })
+
+    expect(spyWith).toHaveBeenCalled()
+    expect(spyNo).not.toHaveBeenCalled()
+  })
+
   it('allows omitting meta even with metaSchema if default satisfies schema', () => {
     const metaSchema = createValidSchema()
     const group = new SSEChannelGroup<any, any>({ metaSchema })
