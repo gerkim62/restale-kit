@@ -115,7 +115,7 @@ class SSEChannelGroup<
 
   register(
     channel: SSEChannel<TSignal>,
-    meta: TMeta,
+    meta?: TMeta,
     options?: { topics?: string[] }
   ): void
 

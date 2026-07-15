@@ -46,7 +46,7 @@ const group = new SSEChannelGroup()
 // SSE endpoint — clients connect here
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
-  group.register(channel, {})
+  group.register(channel)
 })
 
 // After any mutation, broadcast the invalidation

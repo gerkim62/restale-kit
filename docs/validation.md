@@ -56,7 +56,7 @@ const group = new SSEChannelGroup<AppSignal>()
 app.get('/sse', (req, res) => {
   // channel is typed as SSEChannel<AppSignal>
   const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, {})
+  group.register(channel)
 })
 
 // TypeScript enforces valid signal shapes at compile time:

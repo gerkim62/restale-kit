@@ -16,7 +16,7 @@ import {
 const app = new Hono()
 const group = new SSEChannelGroup<AppSignal, ClientMeta>()
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
+  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta?.userId === userId)
 })
 
 app.use('*', cors())

@@ -29,6 +29,29 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
+  it('allows omitting meta when no metaSchema provided', () => {
+    const group = new SSEChannelGroup()
+    const channel = createSSEChannel()
+
+    // Should work without passing meta
+    group.register(channel)
+    expect(group.size).toBe(1)
+
+    const spy = vi.spyOn(channel, 'invalidate')
+    group.broadcastToAll({ key: ['test'] })
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('allows omitting meta even with metaSchema if default satisfies schema', () => {
+    const metaSchema = createValidSchema()
+    const group = new SSEChannelGroup<any, any>({ metaSchema })
+    const channel = createSSEChannel()
+
+    // Empty object should pass validation
+    group.register(channel)
+    expect(group.size).toBe(1)
+  })
+
   it('registers channel and handles topic updates on re-registration', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const channel = createSSEChannel()
@@ -52,7 +75,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ key: ['admin-data'] }, (meta) => meta.role === 'admin')
+    group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()

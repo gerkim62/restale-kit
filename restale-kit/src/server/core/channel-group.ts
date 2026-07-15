@@ -153,7 +153,7 @@ export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
+  private readonly channels = new Map<SSEChannel<TSignal>, { meta?: TMeta; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, SSEChannel<TSignal>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -279,8 +279,8 @@ export class SSEChannelGroup<
    * The channel is automatically deregistered when it closes — no manual cleanup required.
    * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
    */
-  register(channel: SSEChannel<TSignal>, meta: TMeta, options?: { topics?: string[] }): void {
-    if (this.metaSchema) {
+  register(channel: SSEChannel<TSignal>, meta?: TMeta, options?: { topics?: string[] }): void {
+    if (this.metaSchema && meta !== undefined) {
       validateStandardSchema(meta, this.metaSchema)
     }
 
@@ -454,7 +454,7 @@ export class SSEChannelGroup<
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
-  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
+  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -466,7 +466,9 @@ export class SSEChannelGroup<
     // Deletions of already-visited or current keys do not impact the iterator loop, and
     // deregistration side effects (like topic cleanup) are localized to the deregistered channel.
     for (const [channel, entry] of this.channels) {
-      if (!predicate(entry.meta)) continue
+      const shouldInclude = predicate(entry.meta)
+      
+      if (!shouldInclude) continue
 
       try {
         channel.invalidate(signal, eventId)

@@ -41,7 +41,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
     const channel = attachSSE(req, res)
-    group.register(channel, {})
+    group.register(channel, { userId: req.user?.id })
   }
 })
 ```
@@ -64,7 +64,7 @@ const app = Fastify()
 // Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
   const channel = attachSSE(request, reply)
-  group.register(channel, {})
+  group.register(channel, { userId: request.user?.id })
 })
 ```
 
@@ -74,7 +74,7 @@ If you need to use the raw Node objects (e.g. in a middleware context), you must
 app.get('/sse', (request, reply) => {
   reply.hijack() // required when passing .raw objects directly
   const channel = attachSSE(request.raw, reply.raw)
-  group.register(channel, {})
+  group.register(channel, { userId: request.user?.id })
 })
 ```
 
@@ -92,7 +92,7 @@ const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
   const { response, channel } = toSSEResponse(c.req.raw)
-  group.register(channel, {})
+  group.register(channel, { userId: c.req.header('X-User-ID') })
   return response // hand it back to Hono
 })
 ```
@@ -142,13 +142,14 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 ## `register` and `deregister`
 
 ```ts
-group.register(channel, meta)
+group.register(channel)                            // no metadata
+group.register(channel, meta)                      // with metadata
 group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub routing
 
 group.deregister(channel)
 ```
 
-- `meta` can be any value; its type is inferred from the group's `TMeta` generic.
+- `meta` is optional (defaults to `{}` if omitted). Its type is inferred from the group's `TMeta` generic.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
