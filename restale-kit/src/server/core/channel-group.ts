@@ -447,9 +447,9 @@ export class SSEChannelGroup<
    * connections matching a role. Every channel whose registered metadata is a superset of
    * `criteria` is closed.
    *
-   * **Note:** Channels registered without metadata (i.e. `meta` omitted or `undefined`) are treated
-   * as `{}` semantically, but `undefined` is not a JSON value so they are **excluded** from
-   * criteria-based matching. To revoke such channels, use `revokeByConnectionId(connectionId)` instead.
+   * **Note:** Channels registered without metadata (i.e. `meta` omitted or `undefined`) have `undefined`
+   * metadata. Because `undefined` is not a valid JSON value, criteria-based matching is skipped entirely
+   * for those channels. To revoke such channels, use `revokeByConnectionId(connectionId)` instead.
    */
   async revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }> {
     const localClosed = this.closeLocalMatches(criteria)
