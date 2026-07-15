@@ -27,7 +27,7 @@ Pass a Standard Schema to enforce further type constraints at runtime:
 
 - **Server-side `signalSchema`** — validates signals before `channel.invalidate()` sends them.
 - **Server-side `metaSchema`** — validates connection metadata in `group.register()`.
-- **Client-side `signalSchema`** — validates received signals after structural validation (step 6 above).
+- **Client-side `signalSchema`** — validates received signals after structural validation (step 7 of the client validation pipeline).
 
 ---
 
@@ -55,8 +55,8 @@ const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
   // channel is typed as SSEChannel<AppSignal>
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, {})
+  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel, { connectionId })
   req.on('close', () => group.deregister(channel))
 })
 
@@ -72,6 +72,7 @@ group.broadcastToAll({ key: ['todos', { userId: '42' }] })        // ✅
 const ClientMetaSchema = z.object({
   userId: z.string(),
   role: z.enum(['user', 'admin']),
+  connectionId: z.string(),
 })
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
@@ -80,12 +81,13 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
 
   // Throws SchemaValidationError if validation fails
   group.register(channel, {
     userId: req.user.id,
     role: req.user.role,
+    connectionId,
   })
   req.on('close', () => group.deregister(channel))
 })
@@ -105,8 +107,8 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId: req.user.id, role: req.user.role })
+  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel, { userId: req.user.id, role: req.user.role, connectionId })
   req.on('close', () => group.deregister(channel))
 })
 ```
