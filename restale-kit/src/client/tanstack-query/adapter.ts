@@ -47,10 +47,10 @@ export function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSig
  * directly to `useReStale` without creating a new function on every render.
  *
  * @example
- * const onInvalidate = useTanstackAdapter(queryClient)
+ * const onInvalidate = useTanstackQueryAdapter(queryClient)
  * useReStale('/api/sse', { onInvalidate })
  */
-export function useTanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): (signal: TSignal | TSignal[]) => void {
   // queryClient is stable by convention; memoize so identity is preserved across renders.

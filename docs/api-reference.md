@@ -333,7 +333,7 @@ function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
  * Call at the component top level; returns a stable callback across renders.
  * Equivalent to useCallback(tanstackAdapter(queryClient), [queryClient]).
  */
-function useTanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): (signal: TSignal | TSignal[]) => void
 ```

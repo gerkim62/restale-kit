@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackAdapter, useTanstackAdapter } from './adapter.js'
+import { tanstackAdapter, useTanstackQueryAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 
 describe('tanstackAdapter', () => {
@@ -105,7 +105,7 @@ describe('tanstackAdapter', () => {
   })
 })
 
-describe('useTanstackAdapter', () => {
+describe('useTanstackQueryAdapter', () => {
   it('returns a stable memoized callback that delegates to tanstackAdapter', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
@@ -114,7 +114,7 @@ describe('useTanstackAdapter', () => {
     } as unknown as QueryClient
 
     const { result, rerender } = renderHook(
-      ({ client }) => useTanstackAdapter(client),
+      ({ client }) => useTanstackQueryAdapter(client),
       { initialProps: { client: queryClient } }
     )
 

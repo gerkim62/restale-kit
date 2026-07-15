@@ -207,10 +207,10 @@ useReStale('/sse', {
 
 Batch signals (arrays) are processed one-by-one in order.
 
-### `useTanstackAdapter` — memoized hook variant
+### `useTanstackQueryAdapter` — memoized hook variant
 
 ```ts
-import { useTanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 ```
 
 Equivalent to `tanstackAdapter(queryClient)` but wrapped in `useCallback` for referential stability across renders. Call it at the top level of your component and pass the result to `useReStale`:
@@ -218,12 +218,12 @@ Equivalent to `tanstackAdapter(queryClient)` but wrapped in `useCallback` for re
 ```tsx
 function App() {
   const queryClient = useQueryClient()
-  const onInvalidate = useTanstackAdapter(queryClient) // called as a hook, at top level
+  const onInvalidate = useTanstackQueryAdapter(queryClient) // called as a hook, at top level
   useReStale('/sse', { onInvalidate })
 }
 ```
 
-Note: `useTanstackAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need memoization (e.g. `queryClient` is module-level), use `tanstackAdapter` directly instead.
+Note: `useTanstackQueryAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need memoization (e.g. `queryClient` is module-level), use `tanstackAdapter` directly instead.
 
 ---
 
