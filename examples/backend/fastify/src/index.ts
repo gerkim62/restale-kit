@@ -16,7 +16,6 @@ app.get('/sse', (request, reply) => {
   const channel = attachSSE(request, reply)
   const connectionId = (request.query as { restaleKitRequestId: string }).restaleKitRequestId
   group.register(channel, { userId: userId(request.query), connectionId })
-  request.raw.once('close', () => group.deregister(channel))
 })
 
 app.get('/todos', (request) => todos.getTodos(userId(request.query)))
