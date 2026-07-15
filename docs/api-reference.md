@@ -80,8 +80,8 @@ interface SSEChannel<TSignal> {
    * `eventStore` or `eventBufferCapacity` is configured, this ID is used
    * for Last-Event-ID replay: the client echoes it back in the
    * `Last-Event-ID` header on reconnect, and `restale-kit` replays any
-   * events that follow it. If no event store is configured, the return
-   * value is an empty string and can be ignored.
+   * events that follow it. If neither eventBufferCapacity nor eventStore is
+   * configured, the return value is an empty string and can be ignored.
    *
    * Throws `ChannelClosedError` when `state` is `'closed'`.
    * Throws `SchemaValidationError` when `signalSchema` validation fails.

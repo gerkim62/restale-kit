@@ -377,7 +377,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 ### `channel.invalidate(signal, customId?)`
 
-Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. Without an event store the return value is `''` and can be ignored.
+Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. If neither `eventBufferCapacity` nor `eventStore` is configured, the return value is `''` and can be ignored.
 
 → Full API: [API Reference](https://github.com/gerkim62/restale-kit/blob/main/docs/api-reference.md)
 
