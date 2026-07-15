@@ -183,6 +183,8 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 // Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
+// The returned channel's `connectionId` property is populated from the
+// `restaleKitRequestId` query parameter extracted from the request URL.
 ```
 
 ```ts
@@ -224,6 +226,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 // Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
+// `channel.connectionId` is populated from the `restaleKitRequestId` query parameter.
 ```
 
 ---
@@ -301,6 +304,9 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
   disabled?: boolean                // default false
   onInvalidate: (signal: TSignal | TSignal[]) => void  // required
 }
+// Option stability: autoReconnect, reconnect, signalSchema, and withCredentials are
+// applied only at client creation time. Changing them after mount has no effect until
+// the url prop changes (which recreates the SSEInvalidatorClient).
 
 interface UseReStaleResult {
   connectionId: string
@@ -321,6 +327,15 @@ import type { QueryClient } from '@tanstack/react-query'
 function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): (signal: TSignal | TSignal[]) => void
+
+/**
+ * Memoized hook variant of tanstackAdapter.
+ * Call at the component top level; returns a stable callback across renders.
+ * Equivalent to useCallback(tanstackAdapter(queryClient), [queryClient]).
+ */
+function useTanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  queryClient: QueryClient
+): (signal: TSignal | TSignal[]) => void
 ```
 
 ---
@@ -333,6 +348,16 @@ import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
 import type { Arguments } from 'swr'
 
 function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  mutate: SWRMutator,
+  options?: SWRAdapterOptions<TSignal>
+): (signal: TSignal | TSignal[]) => void
+
+/**
+ * Memoized hook variant of swrAdapter.
+ * Call at the component top level; stores options in a ref so they update on re-render
+ * without breaking referential stability.
+ */
+function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): (signal: TSignal | TSignal[]) => void

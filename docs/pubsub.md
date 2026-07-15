@@ -63,7 +63,7 @@ async function onGlobalChange() {
 // Revoke one connection cluster-wide. userId/sessionId are obtained from
 // authenticated server state, not from the client request body.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revokeConnection(connectionId, { userId, sessionId })
+  await group.revokeOne(connectionId, { userId, sessionId })
 }
 ```
 

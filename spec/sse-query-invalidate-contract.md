@@ -230,9 +230,11 @@ type ChannelState = 'open' | 'closed'
 interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
+  readonly connectionId: string
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void
   disconnect(): void   // called by a transport adapter when it detects the peer disconnected
+  onClose(callback: () => void): void
 }
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
@@ -381,20 +383,42 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   broadcastToAll(signal: TSignal | TSignal[]): void
 
   /**
+   * Broadcasts to channels whose metadata matches the signal's key using the
+   * same hierarchical prefix/exact matching semantics as the wire protocol.
+   * Eliminates the need to write manual predicate functions for key-based routing.
+   */
+  broadcastByKey(signal: TSignal): void
+
+  /**
    * Publishes a signal to a topic.
-   * 1. Delivers synchronously to any locally-held channels registered on that topic.
+   * 1. Delivers to any locally-held channels registered on that topic.
    * 2. If a pub/sub adapter is configured, also publishes to the broker.
+   *
+   * Unlike broadcast(), delivery errors to individual channels are logged
+   * but not thrown — publish() only propagates errors from the broker publish call.
    */
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   /**
-   * Revokes channels whose registered metadata subset-matches criteria.
+   * Revokes all channels whose registered metadata subset-matches `criteria`.
    * 1. Closes and deregisters matching local channels immediately.
    * 2. If a pub/sub adapter is configured, publishes the revocation criteria to
    *    controlTopic so other instances can close their matching local channels.
    * Returns { localClosed } — the number of local channels closed.
+   *
+   * Note: channels registered without metadata cannot be matched and are skipped.
+   * Use revokeOne(connectionId) to revoke those channels instead.
    */
-  revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+  revokeMany(criteria: JSONValue): Promise<{ localClosed: number }>
+
+  /**
+   * Revokes the single channel identified by connectionId.
+   * Pass `scope` (a partial metadata object) to verify ownership before closing.
+   * If the channel's metadata does not match `scope`, nothing is closed.
+   * If a pub/sub adapter is configured, broadcasts a control message to the cluster.
+   * Returns { closed: boolean }.
+   */
+  revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
 
   /**
    * Tears down the control topic subscription idempotently.
@@ -738,13 +762,8 @@ const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
   
-  // Register the channel in the group
+  // Register the channel in the group — auto-deregisters on disconnect
   group.register(channel, { userId: req.user.id, roles: req.user.roles })
-
-  // Clean up when the client disconnects
-  req.on('close', () => {
-    group.deregister(channel)
-  })
 })
 ```
 
