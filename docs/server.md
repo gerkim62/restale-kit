@@ -155,7 +155,7 @@ group.deregister(channel)
 ```
 
 - `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
-- Omitting `meta` (or passing `undefined`) is equivalent to registering with `{}` — an empty metadata object. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
+- Omitting `meta` (or passing `undefined`) registers `undefined` as metadata, meaning the channel has no metadata properties. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
@@ -214,7 +214,7 @@ The signal's `key` is matched against each channel's registered metadata (which 
 
 ### Broadcasting without metadata
 
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) are treated as having `{}` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
 
 ---
 
@@ -247,7 +247,7 @@ const result = await group.revokeByConnectionId(connectionId, { userId: req.user
 
 ### Revocation without metadata
 
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeWhere()`**. Omitting metadata is semantically equivalent to `{}`, but `undefined` is not a JSON value, so `revokeWhere` criteria matching is skipped entirely for those channels — even `revokeWhere({})` returns `localClosed: 0` for them.
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeWhere()`**. Omitting metadata registers `undefined` as metadata. Because `undefined` is not a valid JSON value, criteria matching is skipped entirely for those channels — even `revokeWhere({})` returns `localClosed: 0` for them.
 
 To revoke a channel that has no metadata, use `revokeByConnectionId(connectionId)` instead:
 

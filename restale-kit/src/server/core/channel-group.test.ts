@@ -128,15 +128,14 @@ describe('channel-group', () => {
     expect(spyNo).not.toHaveBeenCalled()
   })
 
-  it('omitting meta is equivalent to passing {} — revokeWhere cannot match it by criteria', async () => {
-    // Omitting meta stores undefined internally, which is treated as {} semantically.
-    // However, undefined is not a JSONValue, so channelMatchesCriteria returns false
-    // for any criteria — revokeWhere cannot revoke these channels by metadata match.
-    // Use revokeByConnectionId(connectionId) instead.
+  it('omitting meta sets metadata to undefined — revokeWhere cannot match it by criteria', async () => {
+    // Omitting meta stores undefined internally. Because undefined is not a valid JSONValue,
+    // channelMatchesCriteria returns false for any criteria — revokeWhere cannot revoke
+    // these channels by metadata match. Use revokeByConnectionId(connectionId) instead.
     const group = new SSEChannelGroup()
     const ch = createSSEChannel()
 
-    group.register(ch) // no meta — equivalent to {}
+    group.register(ch) // no meta — meta is undefined
     expect(group.size).toBe(1)
 
     const result = await group.revokeWhere({})
@@ -165,7 +164,7 @@ describe('channel-group', () => {
     const group = new SSEChannelGroup<any, any>({ metaSchema })
     const channel = createSSEChannel()
 
-    // Empty object should pass validation
+    // Omitted metadata (undefined) passes validation
     group.register(channel)
     expect(group.size).toBe(1)
   })

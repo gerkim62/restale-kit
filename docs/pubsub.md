@@ -223,5 +223,5 @@ Topics are plain strings — design them to match your invalidation granularity:
 ## Delivery guarantees
 
 - **At most once per currently-subscribed instance.** If an instance loses its broker connection while a signal is published, that signal is dropped for that instance's clients.
-- **No message replay.** Clients that were disconnected when a signal fired do not receive it on reconnect — same as SSE's native behavior.
-- This is intentional: invalidation signals are cheap to re-emit on the next mutation.
+- **Event history replay:** Configure `eventBufferCapacity` or a custom `eventStore` on `SSEChannelGroup` to enable `Last-Event-ID` event replay for reconnecting clients. Without an event store, clients that were disconnected when a signal fired do not receive missed events upon reconnect.
+- Invalidation signals without replay configured are cheap to re-emit on subsequent mutations.

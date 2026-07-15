@@ -1,4 +1,4 @@
-# restale-kit — pub/sub adapter contract (draft)
+# restale-kit — pub/sub adapter contract
 
 ## Problem
 
@@ -19,8 +19,7 @@ drop signals for some connected clients.
 `core` knows nothing about any specific broker (Redis, Ably, Pusher, Postgres, ...).
 It defines a minimal `PubSubAdapter` interface. Adapters live in separate subpath
 exports and translate a broker's native API to that interface. `core` compiles and
-functions with zero adapters installed — it just falls back to local-only delivery
-(today's `broadcast`/`broadcastToAll` behavior, unchanged).
+functions with zero adapters installed — it just falls back to local-only delivery.
 
 ## `PubSubAdapter` interface
 
@@ -114,10 +113,9 @@ app.get('/sse', (req, res) => {
 await group.publish(`user:${userId}`, { key: ['todos'] })
 ```
 
-## Non-goals (v1)
+## Non-goals
 
-- No message replay/history for clients that were disconnected when a signal fired —
-  matches existing SSE-drops-while-disconnected behavior; document explicitly.
+- Pub/sub messaging itself does not persist history; event replay across client reconnects is provided at the SSE layer via `EventStore` / `eventBufferCapacity`.
 - No delivery guarantees beyond "at most once, per currently-subscribed instance."
 - No built-in adapter for queue-style brokers (SQS, plain Kafka consumer groups)
   without an instance-unique ephemeral subscription — out of scope until a concrete

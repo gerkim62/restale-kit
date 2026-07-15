@@ -1,4 +1,4 @@
-# restale-kit — contract document (v2)
+# restale-kit — contract specification
 
 ## Purpose
 
@@ -11,16 +11,13 @@ maps those operations to a specific library's API. If you removed every adapter,
 `client` would still compile and function — it just wouldn't do anything useful with the
 signals.
 
-v1 ships: React + TanStack Query on the client, Node and any Fetch-API runtime (Hono, Bun, Deno,
-edge) on the server. The design keeps two seams open — one per axis below — so other frameworks and
-cache libraries can be added later without changing `core`, but nothing beyond v1's scope is built
-or specced now.
+First-class support includes: React + TanStack Query / SWR on the client, Node and Fetch-API runtimes (Hono, Bun, Deno, Fastify, Express, edge) on the server. The design keeps seams open so other frameworks and cache libraries can be added without changing `core`.
 
-| Axis | v1 | Open seam for later |
+| Axis | Standard Adapters | Extensibility Seam |
 |---|---|---|
-| Server I/O runtime | Node, Fetch API | any runtime that can produce a byte stream |
-| UI framework | React | any framework — wrap `client` the way `client/react` does |
-| Cache library | TanStack Query | any library — write a `(signal) => void` integration like `client/tanstack-query` |
+| Server I/O runtime | Node, Fetch API, Express, Fastify, Hono | Any runtime that can produce a byte stream |
+| UI framework | React | Any framework — wrap `client` the way `client/react` does |
+| Cache library | TanStack Query, SWR | Any library — write a `(signal) => void` integration like `client/tanstack-query` |
 
 ---
 
@@ -455,10 +452,9 @@ synchronous.
 
 #### Backpressure
 
-v1: unbounded internal buffer. If the client can't consume fast enough, frames accumulate in the
-`ReadableStream`'s internal queue. This is acceptable for the expected payload sizes (small JSON
-objects at low frequency). A future version may add a `maxBufferSize` option with a configurable
-overflow strategy.
+Unbounded internal buffer. If the client can't consume fast enough, frames accumulate in the
+`ReadableStream`'s internal queue. This is acceptable for expected payload sizes (small JSON
+objects at low frequency).
 
 ---
 

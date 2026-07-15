@@ -120,7 +120,7 @@ class SSEChannelGroup<
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
   ): void
-  // Omitting meta (or passing undefined) is equivalent to registering with {}.
+  // Omitting meta (or passing undefined) sets metadata to undefined.
   // Channels without metadata are included in broadcastToAll and broadcast(),
   // excluded from broadcastByKey(), and cannot be targeted by revokeWhere().
   // Use revokeByConnectionId(connectionId) to revoke them.
