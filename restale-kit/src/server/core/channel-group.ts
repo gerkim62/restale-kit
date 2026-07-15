@@ -461,13 +461,6 @@ export class SSEChannelGroup<
     return { localClosed }
   }
 
-  /**
-   * @deprecated Renamed to `revokeWhere`. Use `revokeWhere` instead.
-   */
-  async revokeMany(criteria: JSONValue): Promise<{ localClosed: number }> {
-    console.warn('[restale-kit] `revokeMany` is deprecated and will be removed in a future release. Use `revokeWhere` instead.')
-    return this.revokeWhere(criteria)
-  }
 
   /**
    * Revokes a specific client connection by its unique connection ID.
@@ -522,13 +515,6 @@ export class SSEChannelGroup<
     return { closed }
   }
 
-  /**
-   * @deprecated Renamed to `revokeByConnectionId`. Use `revokeByConnectionId` instead.
-   */
-  async revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }> {
-    console.warn('[restale-kit] `revokeOne` is deprecated and will be removed in a future release. Use `revokeByConnectionId` instead.')
-    return this.revokeByConnectionId(connectionId, scope)
-  }
 
   /**
    * Tears down the control topic subscription idempotently.

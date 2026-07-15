@@ -987,25 +987,6 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('deprecated revokeMany and revokeOne aliases delegate correctly', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ connectionId: 'conn-deprecated' })
-    group.register(ch, { userId: 42 })
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    const res1 = await group.revokeOne(ch.connectionId, { userId: 42 })
-    expect(res1.closed).toBe(true)
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('`revokeOne` is deprecated'))
-
-    const ch2 = createSSEChannel({ connectionId: 'conn-deprecated-2' })
-    group.register(ch2, { userId: 99 })
-    const res2 = await group.revokeMany({ userId: 99 })
-    expect(res2.localClosed).toBe(1)
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('`revokeMany` is deprecated'))
-
-    warnSpy.mockRestore()
-  })
 })
 
 

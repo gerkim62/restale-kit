@@ -204,19 +204,13 @@ The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i
 
 ### `broadcastByKey(signal)` — automatic key-based matching
 
-Broadcasts to channels whose metadata matches the signal's key using the same hierarchical prefix/exact matching semantics as the wire protocol. This eliminates the need to write manual predicate functions that mirror what the signal key already expresses.
+Broadcasts to channels whose registered metadata matches the signal's key using hierarchical prefix/exact matching semantics.
 
 ```ts
-// Instead of:
-group.broadcast({ key: ['todos', { userId }] }, (meta) => meta[0] === 'todos' && meta[1]?.userId === userId)
-
-// You can write:
 group.broadcastByKey({ key: ['todos', { userId }] })
 ```
 
-For `broadcastByKey` to match, the channels must be registered with array-shaped metadata representing their cached queries (e.g. `TMeta = JSONValue[]`).
-
-The signal's `key` is matched against each channel's metadata (which must be a JSON array key). A channel receives the signal when its registered metadata array has the signal's key array as a prefix.
+The signal's `key` is matched against each channel's registered metadata (which can be a JSON array key or an object/scalar value automatically matched against the signal key). A channel receives the signal when its registered metadata matches or forms a prefix of the signal key.
 
 ### Broadcasting without metadata
 
