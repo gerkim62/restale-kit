@@ -182,9 +182,9 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
-// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
+// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // The returned channel's `connectionId` property is populated from the
-// `restaleKitRequestId` query parameter extracted from the request URL.
+// `__restale_cid__` query parameter extracted from the request URL.
 ```
 
 ```ts
@@ -225,8 +225,8 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
-// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
-// `channel.connectionId` is populated from the `restaleKitRequestId` query parameter.
+// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
+// `channel.connectionId` is populated from the `__restale_cid__` query parameter.
 ```
 
 ---

@@ -45,7 +45,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
   })
 
   it('Fetch: toSSEResponse → invalidate → reads correct SSE frame from Response body', async () => {
-    const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-1')
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-1')
     const { response, channel } = toSSEResponse(request)
 
     expect(channel.connectionId).toBe('e2e-1')
@@ -60,7 +60,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
 
   it('Fetch: toSSEResponse with eventStore emits id: field in SSE frame', async () => {
     const store = createEventStore({ capacity: 10 })
-    const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-2')
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-2')
     const { response, channel } = toSSEResponse(request, { eventStore: store })
 
     const id = channel.invalidate({ key: ['users'] })
@@ -71,7 +71,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
   })
 
   it('Node: attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {
-    const req = createMockNodeRequest('/sse?restaleKitRequestId=e2e-node-1')
+    const req = createMockNodeRequest('/sse?__restale_cid__=e2e-node-1')
     const res = createMockNodeResponse()
 
     const channel = attachSSE(req, res)
@@ -87,7 +87,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
   })
 
   it('Fetch: batch invalidate produces single SSE frame with JSON array', async () => {
-    const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-3')
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-3')
     const { response, channel } = toSSEResponse(request)
 
     channel.invalidate([{ key: ['todos'] }, { key: ['users'] }])
@@ -99,7 +99,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
   })
 
   it('Fetch: keepalive frame is correctly formatted in E2E stream', async () => {
-    const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-4')
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-4')
     const { response, channel } = toSSEResponse(request, { keepaliveIntervalMs: 1000 })
 
     const reader = response.body!.getReader()
@@ -119,7 +119,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     store.add({ key: ['c'] }, 'evt-3')
 
     // Simulate reconnection with Last-Event-ID header
-    const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-5', {
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-5', {
       headers: { 'Last-Event-ID': 'evt-1' },
     })
     const { response } = toSSEResponse(request, { eventStore: store })

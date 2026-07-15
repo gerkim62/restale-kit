@@ -24,7 +24,7 @@ describe('SSEInvalidatorClient', () => {
 
     expect(MockEventSource.instances).toHaveLength(1)
     const instance = MockEventSource.instances[0]
-    expect(instance.url).toBe(`/sse?restaleKitRequestId=${client.connectionId}`)
+    expect(instance.url).toBe(`/sse?__restale_cid__=${client.connectionId}`)
     expect(instance.options).toEqual({ withCredentials: true })
   })
 

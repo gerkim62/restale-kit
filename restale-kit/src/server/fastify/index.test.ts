@@ -23,7 +23,7 @@ function createMockNodeResponse(): ServerResponse {
 
 describe('server/fastify entrypoint', () => {
   it('automatically calls reply.hijack() and exposes connectionId on the returned channel', () => {
-    const rawReq = createMockNodeRequest('/sse?restaleKitRequestId=fastify-1')
+    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-1')
     const rawRes = createMockNodeResponse()
 
     const mockRequest = { raw: rawReq }
@@ -38,7 +38,7 @@ describe('server/fastify entrypoint', () => {
   })
 
   it('works directly with raw IncomingMessage and ServerResponse', () => {
-    const rawReq = createMockNodeRequest('/sse?restaleKitRequestId=fastify-2')
+    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-2')
     const rawRes = createMockNodeResponse()
 
     const channel = attachSSE(rawReq, rawRes)

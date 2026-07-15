@@ -59,7 +59,7 @@ app.post('/api/todos', async (req, res) => {
 app.listen(3000)
 ```
 
-> **Note:** `attachSSE` requires the `restaleKitRequestId` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
+> **Note:** `attachSSE` requires the `__restale_cid__` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
 
 ### 2. Client (React + TanStack Query)
 

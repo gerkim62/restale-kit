@@ -24,21 +24,21 @@ This falls directly out of the subset-match semantics already used for cache key
 
 The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. By default, `crypto.randomUUID()` is used as the secure generator. If custom generators are provided via public overrides (e.g. `idGenerator`), they must produce collision-resistant, non-predictable values, avoiding predictable or enumerable identifiers (such as counters, timestamps, or short random strings). This ID is an opaque connection-correlation value, not authorization: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; unguessability is not authorization. This is fully automatic by default; the app developer never touches it unless supplying custom configuration options.
 
-On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the internal `restaleKitRequestId` query param off the incoming request and expose it as `connectionId` — the app developer does not extract it manually:
+On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the internal `__restale_cid__` query param off the incoming request and expose it as `connectionId` — the app developer does not extract it manually:
 
 ```ts
 app.get('/sse', (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)     // manual — app-defined identity
   const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  // channel.connectionId is populated automatically from the restaleKitRequestId query param
+  // channel.connectionId is populated automatically from the __restale_cid__ query param
   // The group reads it internally — no need to pass it into metadata
   group.register(channel, { userId })
 })
 ```
 
-`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revokeWhere()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revokeByConnectionId(channel.connectionId, { userId, sessionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `restaleKitRequestId` query parameter is transport-level protocol identity, not the app's session concept.
+`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revokeWhere()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revokeByConnectionId(channel.connectionId, { userId, sessionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `__restale_cid__` query parameter is transport-level protocol identity, not the app's session concept.
 
-The query param name is deliberately namespaced (`restaleKitRequestId`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
+The query param name is deliberately namespaced (`__restale_cid__`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
 
 `attachSSE` returns a bare `SSEChannel`; the connection ID is available as `channel.connectionId` and is read by the group internally. `toSSEResponse` returns `{ response, channel }`. If the query param is missing or malformed, both throw synchronously before the channel is created (same failure timing as an invalid `signalSchema`), rather than falling back to `undefined` — a channel silently registered without a `connectionId` cannot be revoked with per-connection precision, which defeats the fix in §2.
 

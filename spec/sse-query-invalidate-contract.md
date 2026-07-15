@@ -461,7 +461,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): { channel: SSEChannel<TSignal>; connectionId: string }
 ```
 
-Extracts the `restaleKitRequestId` query parameter from the request URL and returns it as
+Extracts the `__restale_cid__` query parameter from the request URL and returns it as
 `connectionId`. Throws synchronously if the parameter is missing or empty — a channel registered
 without a `connectionId` cannot be revoked with per-connection precision.
 
@@ -484,7 +484,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
 ```
 
-Extracts `connectionId` from the `restaleKitRequestId` query parameter and `Last-Event-ID` from
+Extracts `connectionId` from the `__restale_cid__` query parameter and `Last-Event-ID` from
 request headers. Throws synchronously if the query parameter is missing.
 
 Constructs `new Response(channel.stream, { headers })`, wires

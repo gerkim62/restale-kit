@@ -1,7 +1,7 @@
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
 /**
- * Extracts and validates the internal `restaleKitRequestId` query parameter.
+ * Extracts and validates the internal `__restale_cid__` query parameter.
  * Throws an Error synchronously if missing or invalid; transport functions (`attachSSE`, `toSSEResponse`)
  * enforce this try/catch contract at the route boundary before attaching streams.
  */
