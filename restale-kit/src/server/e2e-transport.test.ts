@@ -46,9 +46,9 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
 
   it('Fetch: toSSEResponse → invalidate → reads correct SSE frame from Response body', async () => {
     const request = new Request('https://example.com/sse?restaleKitRequestId=e2e-1')
-    const { response, channel, connectionId } = toSSEResponse(request)
+    const { response, channel } = toSSEResponse(request)
 
-    expect(connectionId).toBe('e2e-1')
+    expect(channel.connectionId).toBe('e2e-1')
     expect(response.headers.get('content-type')).toBe('text/event-stream')
 
     // Invalidate, then read from the Response body stream
@@ -74,8 +74,8 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const req = createMockNodeRequest('/sse?restaleKitRequestId=e2e-node-1')
     const res = createMockNodeResponse()
 
-    const { channel, connectionId } = attachSSE(req, res)
-    expect(connectionId).toBe('e2e-node-1')
+    const channel = attachSSE(req, res)
+    expect(channel.connectionId).toBe('e2e-node-1')
 
     channel.invalidate({ key: ['products'] })
 

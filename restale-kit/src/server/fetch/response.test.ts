@@ -3,11 +3,11 @@ import { toSSEResponse } from './response.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
 
 describe('fetch toSSEResponse', () => {
-  it('creates SSE Response for Fetch API request', () => {
+  it('creates SSE Response for Fetch API request and exposes connectionId on channel', () => {
     const request = new Request('https://example.com/sse?restaleKitRequestId=conn-fetch-1')
-    const { response, channel, connectionId } = toSSEResponse(request)
+    const { response, channel } = toSSEResponse(request)
 
-    expect(connectionId).toBe('conn-fetch-1')
+    expect(channel.connectionId).toBe('conn-fetch-1')
     expect(channel.state).toBe('open')
     expect(response.headers.get('content-type')).toBe(SSE_HEADERS['Content-Type'])
     expect(response.headers.get('cache-control')).toBe(SSE_HEADERS['Cache-Control'])

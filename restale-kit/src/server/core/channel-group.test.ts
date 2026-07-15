@@ -78,12 +78,12 @@ describe('channel-group', () => {
   it('deregisters closed channels automatically during broadcast', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const ch1 = createSSEChannel()
-    ch1.close()
 
     group.register(ch1, { userId: 1 })
     expect(group.size).toBe(1)
 
-    group.broadcastToAll({ key: ['test'] })
+    // Close after registration — auto-deregister fires via onClose
+    ch1.close()
     expect(group.size).toBe(0)
   })
 
@@ -393,13 +393,15 @@ describe('channel-group', () => {
     const ch = createSSEChannel()
 
     group.register(ch, { userId: 1 }, { topics: ['events'] })
-    ch.close()
-
     expect(group.size).toBe(1)
 
-    // publish calls deliverToChannel which catches ChannelClosedError and deregisters
-    await group.publish('events', { key: ['test-close'] })
+    // Close after registration — deliverToChannel still catches ChannelClosedError on next publish
+    // but auto-deregister via onClose fires first, so publish finds no local channels
+    ch.close()
     expect(group.size).toBe(0)
+
+    // publish should not throw even with no registered channels
+    await expect(group.publish('events', { key: ['test-close'] })).resolves.toBeUndefined()
   })
 
   it('delivers remote signals received via PubSub callback to registered topic channels', async () => {

@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
 
+// useCallback is a React render-context hook — stub it as identity for unit tests
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>()
+  return { ...actual, useCallback: (fn: unknown) => fn }
+})
+
 describe('swrAdapter', () => {
   it('invokes mutate with filter function for invalidate action', () => {
     const mutate = vi.fn() as unknown as SWRMutator

@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { tanstackAdapter, useTanstackAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 
+// useCallback is a React render-context hook — stub it as identity for unit tests
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>()
+  return { ...actual, useCallback: (fn: unknown) => fn }
+})
+
 describe('tanstackAdapter', () => {
   it('defaults omitted action to invalidateQueries and does not invoke other methods', () => {
     const queryClient = {

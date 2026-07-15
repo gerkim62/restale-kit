@@ -153,7 +153,8 @@ export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string> }>()
+  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
+  private readonly connectionIndex = new Map<string, SSEChannel<TSignal>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
@@ -274,6 +275,9 @@ export class SSEChannelGroup<
    * If `metaSchema` was provided to the constructor, validates the metadata
    * synchronously. Throws `SchemaValidationError` if validation fails or
    * if the schema returns a Promise (async schemas are not supported).
+   *
+   * The channel is automatically deregistered when it closes — no manual cleanup required.
+   * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
    */
   register(channel: SSEChannel<TSignal>, meta: TMeta, options?: { topics?: string[] }): void {
     if (this.metaSchema) {
@@ -299,7 +303,11 @@ export class SSEChannelGroup<
       }
     }
 
-    this.channels.set(channel, { meta, topics: topicsSet })
+    const connectionId = channel.connectionId
+    this.channels.set(channel, { meta, topics: topicsSet, connectionId })
+    if (connectionId) {
+      this.connectionIndex.set(connectionId, channel)
+    }
 
     for (const topic of topicsSet) {
       let topicManager = this.topics.get(topic)
@@ -309,12 +317,8 @@ export class SSEChannelGroup<
           this.pubsub,
           (msg) => {
             if (msg.kind !== 'signal') return
-            // Deliver to all channels registered to this topic.
-            // Query the live map to avoid closing over stale topicManager instances
-            // during topic teardown and recreation.
             const currentManager = this.topics.get(topic)
             if (!currentManager) return
-
             for (const ch of currentManager.channels) {
               this.deliverToChannel(ch, msg.data, 'pubsub', topic)
             }
@@ -342,6 +346,9 @@ export class SSEChannelGroup<
     if (!entry) return
 
     this.channels.delete(channel)
+    if (entry.connectionId) {
+      this.connectionIndex.delete(entry.connectionId)
+    }
 
     for (const topic of entry.topics) {
       const topicManager = this.topics.get(topic)
@@ -352,18 +359,67 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Revokes channels matching `criteria`.
+   * Revokes connections in two modes depending on the first argument:
    *
-   * 1. Closes and deregisters matching local channels immediately.
-   * 2. If a pub/sub adapter is configured, publishes the revocation criteria to `controlTopic`.
+   * **Mode 1 — criteria object:** closes all channels whose metadata matches
+   * `criteria` via subset matching. Publishes to the control topic if pub/sub
+   * is configured so remote instances also close matching channels.
    *
-   * Returns `{ localClosed }`.
+   * ```ts
+   * // Close all connections for a user (ban, log out everywhere)
+   * await group.revoke({ userId: 42 })
+   * ```
+   *
+   * **Mode 2 — connectionId string:** closes the single channel identified by
+   * `connectionId`. Pass `scope` (a partial metadata object) to verify ownership
+   * before closing — if the channel's metadata does not match `scope`, nothing
+   * happens and `{ closed: false }` is returned. This prevents a client from
+   * revoking another user's connection by guessing IDs.
+   *
+   * ```ts
+   * // Close one specific connection, scoped to the requesting user
+   * await group.revoke(connectionId, { userId: req.user.id })
+   * ```
+   *
+   * Returns `{ localClosed: number }` in criteria mode, or
+   * `{ closed: boolean }` in connectionId mode.
    */
-  async revoke(criteria: JSONValue): Promise<{ localClosed: number }> {
-    const localClosed = this.closeLocalMatches(criteria)
+  async revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+  async revoke(connectionId: string, scope?: Partial<TMeta>): Promise<{ closed: boolean }>
+  async revoke(
+    criteriaOrId: JSONValue,
+    scope?: Partial<TMeta>
+  ): Promise<{ localClosed: number } | { closed: boolean }> {
+    // ConnectionId mode: first arg is a non-null string
+    if (typeof criteriaOrId === 'string') {
+      const connectionId = criteriaOrId
+      const channel = this.connectionIndex.get(connectionId)
+      if (!channel) return { closed: false }
+
+      // Scope check — verify the channel belongs to the caller
+      if (scope !== undefined) {
+        const entry = this.channels.get(channel)
+        if (!entry) return { closed: false }
+        const meta: unknown = entry.meta
+        // Only works when meta is a plain object — if it isn't, the scope check fails safe.
+        if (typeof meta !== 'object' || meta === null) return { closed: false }
+        for (const [k, v] of Object.entries(scope)) {
+          if (!Object.hasOwn(meta, k) || Reflect.get(meta, k) !== v) {
+            return { closed: false }
+          }
+        }
+      }
+
+      try { channel.close() } catch { /* already closed */ }
+      this.deregister(channel)
+      return { closed: true }
+    }
+
+    // Criteria mode: close all matching + publish to control topic
+    const localClosed = this.closeLocalMatches(criteriaOrId)
 
     if (this.pubsub) {
-      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteria })
+      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteriaOrId })
     }
 
     return { localClosed }
