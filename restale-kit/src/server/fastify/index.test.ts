@@ -22,7 +22,7 @@ function createMockNodeResponse(): ServerResponse {
 }
 
 describe('server/fastify entrypoint', () => {
-  it('automatically calls reply.hijack() if a Fastify reply object is passed', () => {
+  it('automatically calls reply.hijack() and exposes connectionId on the returned channel', () => {
     const rawReq = createMockNodeRequest('/sse?restaleKitRequestId=fastify-1')
     const rawRes = createMockNodeResponse()
 
@@ -32,6 +32,7 @@ describe('server/fastify entrypoint', () => {
     const channel = attachSSE(mockRequest, mockReply)
 
     expect(mockReply.hijack).toHaveBeenCalledTimes(1)
+    expect(channel.connectionId).toBe('fastify-1')
     expect(channel.state).toBe('open')
     channel.close()
   })
@@ -42,6 +43,7 @@ describe('server/fastify entrypoint', () => {
 
     const channel = attachSSE(rawReq, rawRes)
 
+    expect(channel.connectionId).toBe('fastify-2')
     expect(channel.state).toBe('open')
     channel.close()
   })

@@ -20,7 +20,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
-  extractConnectionId(urlObj.searchParams) // validates presence; throws if missing
+  const connectionId = extractConnectionId(urlObj.searchParams)
 
   const lastEventId =
     options?.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
@@ -28,6 +28,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
+    connectionId,
   }
 
   const channel = createSSEChannel<TSignal>(channelOptions)

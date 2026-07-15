@@ -533,7 +533,92 @@ describe('channel-group', () => {
     expect(pubsub.getTopicSubscriberCount('shared-topic')).toBe(1)
     expect(group.size).toBe(1)
   })
-})
 
+  // --- Auto-deregister via onClose ---
+
+  it('auto-deregisters channel when it is closed after register()', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 })
+    expect(group.size).toBe(1)
+
+    ch.close()
+    expect(group.size).toBe(0)
+  })
+
+  it('auto-deregisters channel when it is disconnected', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 })
+    ch.disconnect()
+    expect(group.size).toBe(0)
+  })
+
+  it('does not wire a second onClose listener on re-registration', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel()
+
+    group.register(ch, { userId: 1 })
+    // Re-register with different meta
+    group.register(ch, { userId: 2 })
+    expect(group.size).toBe(1)
+
+    ch.close()
+    // Should be deregistered exactly once, not double-deregistered
+    expect(group.size).toBe(0)
+  })
+
+  // --- broadcastByKey ---
+
+  it('broadcastByKey delivers to channels whose metadata matches the signal key', () => {
+    const group = new SSEChannelGroup<any, { userId: number }>()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+
+    // metadata is { userId: 1 } — treated as [{ userId: 1 }] for key matching
+    group.register(ch1, { userId: 1 })
+    group.register(ch2, { userId: 2 })
+
+    // signal key [{ userId: 1 }] should match only ch1
+    group.broadcastByKey({ key: [{ userId: 1 }] })
+
+    expect(spy1).toHaveBeenCalledWith({ key: [{ userId: 1 }] }, undefined)
+    expect(spy2).not.toHaveBeenCalled()
+  })
+
+  it('broadcastByKey delivers to all channels when key matches all metadata', () => {
+    const group = new SSEChannelGroup<any, { role: string }>()
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
+
+    const spy1 = vi.spyOn(ch1, 'invalidate')
+    const spy2 = vi.spyOn(ch2, 'invalidate')
+
+    group.register(ch1, { role: 'admin' })
+    group.register(ch2, { role: 'user' })
+
+    // empty key prefix matches every channel
+    group.broadcastByKey({ key: [] })
+
+    expect(spy1).toHaveBeenCalled()
+    expect(spy2).toHaveBeenCalled()
+  })
+
+  it('broadcastByKey delivers nothing when no metadata matches', () => {
+    const group = new SSEChannelGroup<any, { userId: number }>()
+    const ch = createSSEChannel()
+    const spy = vi.spyOn(ch, 'invalidate')
+
+    group.register(ch, { userId: 5 })
+
+    group.broadcastByKey({ key: [{ userId: 99 }] })
+    expect(spy).not.toHaveBeenCalled()
+  })
+})
 
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { swrAdapter, type SWRMutator } from './adapter.js'
+import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
 
 describe('swrAdapter', () => {
   it('invokes mutate with filter function for invalidate action', () => {
@@ -46,6 +46,20 @@ describe('swrAdapter', () => {
     const filter = (mutate as any).mock.calls[0][0]
     expect(filter(undefined)).toBe(false)
     expect(filter('not-an-array')).toBe(false)
+  })
+})
+
+describe('useSwrAdapter', () => {
+  it('returns a callback that delegates to swrAdapter', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const cb = useSwrAdapter(mutate)
+
+    cb({ key: ['todos'] })
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const filter = (mutate as any).mock.calls[0][0]
+    expect(filter(['todos'])).toBe(true)
+    expect(filter(['other'])).toBe(false)
   })
 })
 

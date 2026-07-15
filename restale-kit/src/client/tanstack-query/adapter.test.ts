@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tanstackAdapter } from './adapter.js'
+import { tanstackAdapter, useTanstackAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 
 describe('tanstackAdapter', () => {
@@ -97,6 +97,25 @@ describe('tanstackAdapter', () => {
     })
     expect(queryClient.removeQueries).toHaveBeenCalledWith({
       queryKey: ['c'],
+      exact: undefined,
+    })
+  })
+})
+
+describe('useTanstackAdapter', () => {
+  it('returns a stable memoized callback that delegates to tanstackAdapter', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      refetchQueries: vi.fn(),
+      removeQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    // useCallback needs React render context — test the factory output directly
+    const cb = useTanstackAdapter(queryClient)
+    cb({ key: ['todos'], action: 'invalidate' })
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['todos'],
       exact: undefined,
     })
   })

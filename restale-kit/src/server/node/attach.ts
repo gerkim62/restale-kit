@@ -26,13 +26,14 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const rawUrl = req.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  extractConnectionId(searchParams) // validates presence; throws if missing
+  const connectionId = extractConnectionId(searchParams)
 
   const lastEventId = options?.lastEventId ?? extractLastEventId((name) => req.headers[name])
 
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
+    connectionId,
   }
 
   const channel = createSSEChannel<TSignal>(channelOptions)
