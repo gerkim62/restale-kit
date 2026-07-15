@@ -128,6 +128,38 @@ describe('channel-group', () => {
     expect(spyNo).not.toHaveBeenCalled()
   })
 
+  it('omitting meta is equivalent to passing {} — revokeMany cannot match it by criteria', async () => {
+    // Omitting meta stores undefined internally, which is treated as {} semantically.
+    // However, undefined is not a JSONValue, so channelMatchesCriteria returns false
+    // for any criteria — revokeMany cannot revoke these channels by metadata match.
+    // Use revokeOne(connectionId) instead.
+    const group = new SSEChannelGroup()
+    const ch = createSSEChannel()
+
+    group.register(ch) // no meta — equivalent to {}
+    expect(group.size).toBe(1)
+
+    const result = await group.revokeMany({})
+    expect(result.localClosed).toBe(0) // {} criteria does NOT match undefined meta
+    expect(ch.state).toBe('open')
+    expect(group.size).toBe(1)
+  })
+
+  it('channels with undefined meta can still be revoked via revokeOne(connectionId)', async () => {
+    // revokeOne looks up by connectionId directly, bypassing metadata matching,
+    // so it works regardless of whether meta was provided.
+    const group = new SSEChannelGroup()
+    const ch = createSSEChannel({ connectionId: 'no-meta-conn' })
+
+    group.register(ch)
+    expect(group.size).toBe(1)
+
+    const result = await group.revokeOne(ch.connectionId)
+    expect(result.closed).toBe(true)
+    expect(ch.state).toBe('closed')
+    expect(group.size).toBe(0)
+  })
+
   it('allows omitting meta even with metaSchema if default satisfies schema', () => {
     const metaSchema = createValidSchema()
     const group = new SSEChannelGroup<any, any>({ metaSchema })

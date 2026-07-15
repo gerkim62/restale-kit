@@ -439,6 +439,10 @@ export class SSEChannelGroup<
    * Revokes connections by matching channel metadata (and connectionId) against the criteria.
    *
    * Closes all matching channels locally and broadcasts the criteria to the cluster-wide control topic.
+   *
+   * **Note:** Channels registered without metadata (i.e. `meta` omitted or `undefined`) are treated
+   * as `{}` semantically, but `undefined` is not a JSON value so they are **excluded** from
+   * criteria-based matching. To revoke such channels, use `revokeOne(connectionId)` instead.
    */
   async revokeMany(criteria: JSONValue): Promise<{ localClosed: number }> {
     const localClosed = this.closeLocalMatches(criteria)
