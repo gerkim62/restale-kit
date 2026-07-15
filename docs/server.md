@@ -282,15 +282,24 @@ When a pub/sub adapter is configured, `revokeWhere()` automatically broadcasts c
 
 ## Reconnection & Event History Replay
 
-To prevent missed invalidation signals during momentary network drops, configure `eventBufferCapacity`:
+To prevent missed invalidation signals during momentary network drops, create a shared `eventStore` and pass it to both `SSEChannelGroup` and your transport helper (`attachSSE` / `toSSEResponse`):
 
 ```ts
-const group = new SSEChannelGroup({
-  eventBufferCapacity: 100, // Retain the last 100 invalidation events
+import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
+import { attachSSE } from 'restale-kit/express'
+
+// Shared event store (retains history for Last-Event-ID replay)
+const eventStore = createEventStore({ capacity: 100 })
+const group = new SSEChannelGroup({ eventStore })
+
+app.get('/sse', (req, res) => {
+  // Pass eventStore to transport helper so reconnecting channels replay missed history
+  const channel = attachSSE(req, res, { eventStore })
+  group.register(channel, { userId: req.user.id })
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header, `restale-kit` automatically queries the `eventStore` and replays all missed invalidation events in sequence before resuming live stream comments.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header, `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
 
 ---
 

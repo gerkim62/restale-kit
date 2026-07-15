@@ -461,7 +461,6 @@ export class SSEChannelGroup<
     return { localClosed }
   }
 
-
   /**
    * Revokes a specific client connection by its unique connection ID.
    *
@@ -514,7 +513,6 @@ export class SSEChannelGroup<
 
     return { closed }
   }
-
 
   /**
    * Tears down the control topic subscription idempotently.
