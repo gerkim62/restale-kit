@@ -97,7 +97,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
     })
 
     return () => {
-      client.close()
+      client.closeWithUnmount()
     }
   }, [client, disabled])
 

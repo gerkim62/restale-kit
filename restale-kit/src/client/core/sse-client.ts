@@ -125,6 +125,21 @@ export class SSEInvalidatorClient<
     }
   }
 
+  /**
+   * Closes the connection with reason `'unmount'`.
+   * Called by the React hook on component unmount.
+   * Behaves identically to `close()` but the resulting status reason is `'unmount'`
+   * instead of `'manual'`, matching the documented contract.
+   */
+  closeWithUnmount(): void {
+    this.teardown()
+    this.setStatus({ status: 'closed', reason: 'unmount' })
+    if (this.connectPromise) {
+      this.connectPromise.reject(new Event('close'))
+      this.connectPromise = null
+    }
+  }
+
   // --- Typed addEventListener / removeEventListener overloads ---
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(

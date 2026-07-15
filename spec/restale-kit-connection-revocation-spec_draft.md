@@ -1,93 +1,40 @@
-# Connection Revocation — Design Spec
+# Connection Revocation Specification
 
 **Package:** restale-kit
-**Status:** Core design decided. All open items resolved (§5).
 
-## 1. Problem
+## 1. Overview
 
-An open SSE connection has no way to learn its session ended (logout, ban, revoke) unless the server actively closes it. In a multi-instance deployment, the instance that needs to close it may not be the instance holding it. Neither capability exists today.
+An open SSE connection must be actively closed by the server when its underlying session or authentication state terminates (logout, session expiration, ban, or security revocation). In a distributed multi-instance deployment, the server instance receiving the logout request may be different from the instance maintaining the active SSE transport stream.
 
-## 2. The meta-shape bug: `userId` alone isn't enough
+`restale-kit` provides connection revocation capabilities across single-instance and cluster-wide deployments.
 
-Registering channels with only `{ userId }` (as the current examples do) makes per-login revocation impossible — browser A and browser B, same user, are indistinguishable. Revoking by `userId` closes both. That's correct for "sign out everywhere" / a ban, wrong for a normal logout.
+## 2. Revocation Granularity & Connection Metadata
 
-**Required fix:** meta must carry an identifier unique per connection/login — `connectionId` — alongside `userId`.
+Connections can be revoked either per individual client connection or across all connections matching a criteria predicate (e.g. all sessions for a user).
 
-| Intent | Call | Effect |
+| Intent | API Call | Scope & Behavior |
 |---|---|---|
-| Log out this browser only | `revoke({ userId, sessionId, connectionId })` | Closes exactly one connection within the authenticated scope |
-| Sign out everywhere / ban | `revoke({ userId })` | Closes every session for that user |
+| Revoke specific connection | `revokeByConnectionId(connectionId, { userId, sessionId })` | Closes the single connection matching `connectionId` within the authenticated scope |
+| Revoke all user connections | `revokeWhere({ userId })` | Closes every active connection for that user across the cluster |
 
-This falls directly out of the subset-match semantics already used for cache keys (`matchesJSONValue`) — no new matching logic needed, just meta granular enough to use it correctly.
+### 2.1 `connectionId` Generation and Extraction
 
-### 2.1 Populating `connectionId`
+- **Client side**: `SSEInvalidatorClient` generates a unique UUID (`connectionId`) per connection instance and automatically appends it as `__restale_cid__` in the SSE connection URL.
+- **Server side**: Transport helpers (`attachSSE`, `toSSEResponse`) extract `__restale_cid__` from the request URL and assign it to `channel.connectionId`. If `__restale_cid__` is missing or empty, `attachSSE`/`toSSEResponse` throw synchronously.
+- **Security**: `connectionId` is an opaque transport correlation value, not an authorization token. Production handlers combining `revokeByConnectionId` with trusted server-side identity (e.g. `{ userId, sessionId }`) ensure callers cannot revoke unauthorized connections.
 
-The client package generates an id once per connection and appends it to the SSE connection URL as a query param — the only option, since native `EventSource` can't send custom headers. By default, `crypto.randomUUID()` is used as the secure generator. If custom generators are provided via public overrides (e.g. `idGenerator`), they must produce collision-resistant, non-predictable values, avoiding predictable or enumerable identifiers (such as counters, timestamps, or short random strings). This ID is an opaque connection-correlation value, not authorization: an HTTP client can submit an arbitrary value. Production request handlers must combine it with trusted metadata such as an authenticated `userId` and server-authenticated `sessionId`; unguessability is not authorization. This is fully automatic by default; the app developer never touches it unless supplying custom configuration options.
+## 3. Revocation APIs
 
-On the server, `attachSSE(req, res, options)` and `toSSEResponse(request, options)` read the internal `restaleKitRequestId` query param off the incoming request and expose it as `connectionId` — the app developer does not extract it manually:
+- **`revokeWhere(criteria: JSONValue)`**: Closes all local channels whose metadata subset-matches `criteria`. When a `PubSubAdapter` is configured, broadcasts a control message to `controlTopic` to close matching channels across all cluster instances. Channels whose stored metadata is `undefined` are excluded from criteria matching.
+- **`revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>)`**: Closes the channel matching `connectionId` locally if its metadata satisfies `scope`. Broadcasts a control revocation message across the cluster when pub/sub is configured.
 
-```ts
-app.get('/sse', (req, res) => {
-  const userId = UserIdSchema.parse(req.query.userId)     // manual — app-defined identity
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId, connectionId }) // spread the extracted id in
-})
-```
+## 4. Control Communication & Subscriptions
 
-`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revoke()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revoke({ userId, sessionId, connectionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `restaleKitRequestId` query parameter is transport-level protocol identity, not the app's session concept.
+- **Control Messages**: `PubSubMessage` is a discriminated union (`kind: 'signal' | 'control'`). Control messages carry revocation payloads across instances.
+- **Lifecycle & Teardown**: `SSEChannelGroup` subscribes to `controlTopic` (default: `'__restale_control__'`) upon initialization. Calling `group.dispose()` unsubscribes from the control topic idempotently without force-closing registered client connections.
 
-The query param name is deliberately namespaced (`restaleKitRequestId`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
+## 5. Non-Goals
 
-`attachSSE` returns `{ channel, connectionId }` instead of a bare `SSEChannel`; `toSSEResponse` returns `{ response, channel, connectionId }`. If the query param is missing or malformed, both throw synchronously before the channel is created (same failure timing as an invalid `signalSchema`), rather than falling back to `undefined` — a channel silently registered without a `connectionId` cannot be revoked with per-connection precision, which defeats the fix in §2.
-
-There's no `groupId`. `controlTopic` stays a plain optional string, same pattern as ordinary topics.
-
-## 3. `broadcast()` vs `revoke()` — different defaults, both correct
-
-`broadcast(signal, predicate)` needs no change. It's *supposed* to be broad: if user 42 edits something from their phone, every open tab of theirs should refresh — not just the one that made the edit.
-
-`revoke()` defaults the opposite way: scope to one session unless the caller deliberately widens to `userId`. Same matching mechanism, opposite default blast radius.
-
-## 4. API
-
-- **`revoke(criteria: JSONValue): Promise<{ localClosed: number }>`** — the only public entry point. Subset-matches `criteria` against meta (§2 table), closes local matches immediately via an internal deregister step, then publishes to every other instance. There's no separate public "local-only" method — one name to learn.
-
-**`PubSubAdapter`:** `publish`/`subscribe` carry a discriminated union payload, so a single pair of methods handles both invalidation signals and control messages with full type safety via the discriminant:
-
-```ts
-type PubSubMessage<TSignal extends InvalidateSignal> =
-  | { kind: 'signal'; data: TSignal | TSignal[] }
-  | { kind: 'control'; data: JSONValue }
-
-interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
-  publish(topic: string, message: PubSubMessage<TSignal>): Promise<void>
-  subscribe(topic: string, onMessage: (message: PubSubMessage<TSignal>) => void): Promise<() => void | Promise<void>>
-  onError?(handler: (error: unknown) => void): void
-}
-```
-
-Scope of the break: this hits adapter *implementors* only (redis/ably/pusher, or any custom `PubSubAdapter`). `SSEChannelGroup`'s own public methods (`register`, `broadcast`, `publish`, `revoke`) are unchanged — it wraps/unwraps `PubSubMessage` internally at this one boundary.
-
-Per-adapter work needed:
-- Redis / Ably: replace the `isSignalPayload`-only check with a `kind` branch. `control` payloads validate against the already-existing `isJSONValue` guard — no new validator to write.
-- Pusher: `handleWebhook` currently only dispatches events named `'invalidate'`. `publish` now triggers `'invalidate'` or `'control'` depending on `message.kind`; `handleWebhook` gains the matching branch. Same channel, two event names.
-
-**Control-topic subscription lifecycle:** `SSEChannelGroup` opens the control subscription via `pubsub.subscribe(controlTopic, ...)` directly, outside `TopicManager`'s per-topic refcounting — `TopicManager` only opens a topic once some channel registers on it, and tears it down at zero, which is the opposite of "permanent, can arrive with zero connections open." This is what actually makes it durable, not the widened type on its own.
-
-**`dispose()`:** unsubscribes the control-topic subscription only. Idempotent. Does not close registered channels.
-- Codebase precedent — blanket effects are always separately, explicitly named (`broadcast` vs `broadcastToAll`), never a hidden side effect of a narrower call.
-- Ownership — the control subscription is the one resource the group itself creates; registered channels are created by the transport layer and merely indexed by the group.
-- Composability — a real process shutdown already drains connections via the HTTP server; a `dispose()` that also force-closed channels would race with or duplicate that.
-
-**Control-topic naming:** `controlTopic?: string`, optional, defaulting to a fixed collision-resistant string (e.g. `__restale_control__`) — same pattern as any other topic string passed to `register()`.
-
-## 5. Status of previous open items
-
-1. Partial-failure handling — local revoke succeeds but broker publish fails: propagate the error (consistent with `publish()` today). Resolved.
-2. `attachSSE`/`toSSEResponse` return-shape widening (§2.1): accepted and implemented for current 0.x releases as explicit return shape `{ channel, connectionId }` and `{ response, channel, connectionId }`. Resolved.
-
-## 6. Non-goals
-
-- Not a ban mechanism — doesn't block reconnection; that's the app's own auth check.
-- Not guaranteed-delivery beyond what the broker provides.
-- Not an authorization system for who may call `revoke()`.
+- Not a firewall/auth gateway — does not prevent subsequent reconnect attempts (auth middleware handles connection rejection).
+- Not guaranteed delivery beyond underlying pub/sub broker capabilities.
+- Not an authorization framework for API endpoint access controls.

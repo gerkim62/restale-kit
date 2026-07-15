@@ -12,7 +12,7 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
  * Sets the required SSE headers, pipes the channel's `ReadableStream` into
  * the response via `Readable.fromWeb()`, and wires up disconnect detection.
  *
- * Throws an Error synchronously if the required `restaleKitRequestId` query
+ * Throws an Error synchronously if the required `__restale_cid__` query
  * parameter is missing or invalid.
  *
  * Works with Express (`req, res`) and Fastify (`request.raw, reply.raw` —

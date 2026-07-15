@@ -120,10 +120,10 @@ class SSEChannelGroup<
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
   ): void
-  // Omitting meta (or passing undefined) is equivalent to registering with {}.
+  // Omitting meta (or passing undefined) sets metadata to undefined.
   // Channels without metadata are included in broadcastToAll and broadcast(),
-  // excluded from broadcastByKey(), and cannot be targeted by revokeMany().
-  // Use revokeOne(connectionId) to revoke them.
+  // excluded from broadcastByKey(), and cannot be targeted by revokeWhere().
+  // Use revokeByConnectionId(connectionId) to revoke them.
 
   deregister(channel: SSEChannel<TSignal>): void
 
@@ -138,15 +138,15 @@ class SSEChannelGroup<
 
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
-  revokeMany(criteria: JSONValue): Promise<{ localClosed: number }>
-  // Channels registered without metadata cannot be matched by revokeMany().
-  // Use revokeOne(connectionId) to revoke those channels instead.
-  revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
+  revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
+  // Channels registered without metadata cannot be matched by revokeWhere().
+  // Use revokeByConnectionId(connectionId) to revoke those channels instead.
+  revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
   dispose(): Promise<void>
 }
 ```
 
-### `revokeMany(criteria)` security
+### `revokeWhere(criteria)` security
 
 `criteria` subset-matches connection metadata. If a criterion includes a client-supplied `connectionId`, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A connection ID is an opaque correlation value, not proof that a caller is authorized to revoke that connection.
 
@@ -182,7 +182,9 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
-// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
+// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
+// The returned channel's `connectionId` property is populated from the
+// `__restale_cid__` query parameter extracted from the request URL.
 ```
 
 ```ts
@@ -223,7 +225,8 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
-// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
+// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
+// `channel.connectionId` is populated from the `__restale_cid__` query parameter.
 ```
 
 ---
@@ -301,6 +304,9 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
   disabled?: boolean                // default false
   onInvalidate: (signal: TSignal | TSignal[]) => void  // required
 }
+// Option stability: autoReconnect, reconnect, signalSchema, and withCredentials are
+// applied only at client creation time. Changing them after mount has no effect until
+// the url prop changes (which recreates the SSEInvalidatorClient).
 
 interface UseReStaleResult {
   connectionId: string
@@ -321,6 +327,15 @@ import type { QueryClient } from '@tanstack/react-query'
 function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): (signal: TSignal | TSignal[]) => void
+
+/**
+ * Memoized hook variant of tanstackAdapter.
+ * Call at the component top level; returns a stable callback across renders.
+ * Equivalent to useCallback(tanstackAdapter(queryClient), [queryClient]).
+ */
+function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  queryClient: QueryClient
+): (signal: TSignal | TSignal[]) => void
 ```
 
 ---
@@ -333,6 +348,16 @@ import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
 import type { Arguments } from 'swr'
 
 function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  mutate: SWRMutator,
+  options?: SWRAdapterOptions<TSignal>
+): (signal: TSignal | TSignal[]) => void
+
+/**
+ * Memoized hook variant of swrAdapter.
+ * Call at the component top level; stores options in a ref so they update on re-render
+ * without breaking referential stability.
+ */
+function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): (signal: TSignal | TSignal[]) => void
@@ -374,11 +399,24 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 ```ts
 import { redisPubSubAdapter } from 'restale-kit/redis'
-import type Redis from 'ioredis'
+import type { RedisClient } from 'restale-kit/redis'
+
+// Minimal structural interface compatible with ioredis and node-redis legacy mode (event-emitter format):
+interface RedisClient {
+  publish(topic: string, message: string): unknown
+  subscribe(topic: string): unknown
+  unsubscribe(topic: string): unknown
+  duplicate(): RedisClient
+  on(event: 'error', listener: (err: unknown) => void): unknown
+  on(event: 'message', listener: (channel: string, message: string) => void): unknown
+}
 
 function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Redis
+  client: RedisClient,
+  options?: { subscribeClient?: RedisClient }
 ): PubSubAdapter<TSignal>
+// Pass a single client — the adapter calls client.duplicate() internally for subscriptions.
+// Or pass a pre-created subscribeClient to use your own separate connection.
 ```
 
 ---
@@ -387,12 +425,33 @@ function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>
 
 ```ts
 import { ablyPubSubAdapter } from 'restale-kit/ably'
-import type * as Ably from 'ably'
+import type { AblyClient, AblyChannel } from 'restale-kit/ably'
+
+// Minimal structural interfaces compatible with the Ably SDK:
+interface AblyChannel {
+  publish(name: string, data: unknown): unknown
+  subscribe(listener: (message: { data: unknown }) => void): unknown
+  unsubscribe(listener: (message: { data: unknown }) => void): unknown
+  on?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
+  off?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
+}
+
+interface AblyClient {
+  options?: { echoMessages?: boolean }
+  connection?: {
+    on(event: 'error', listener: (err: unknown) => void): unknown
+  }
+  channels: {
+    get(name: string): AblyChannel
+  }
+}
 
 function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Ably.Realtime,
+  client: AblyClient,
   options?: { useNativeEchoSuppression?: boolean }
 ): PubSubAdapter<TSignal>
+// When useNativeEchoSuppression is true, the Ably client must be instantiated with
+// echoMessages: false — otherwise the adapter throws at construction time.
 ```
 
 ---
@@ -401,10 +460,21 @@ function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { pusherPubSubAdapter } from 'restale-kit/pusher'
-import type Pusher from 'pusher'
+import type { PusherClient, PusherWebhook } from 'restale-kit/pusher'
+
+// Minimal structural interfaces compatible with the pusher npm package:
+interface PusherWebhook {
+  isValid(): boolean
+  getEvents(): Array<{ channel: string; name: string; data: string | object }>
+}
+
+interface PusherClient {
+  trigger(channel: string, event: string, data: unknown): unknown
+  webhook(options: { headers: Record<string, string>; rawBody: string }): PusherWebhook
+}
 
 function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Pusher
+  pusherServerClient: PusherClient
 ): PubSubAdapter<TSignal> & {
   // Required: call from your Pusher webhook route
   handleWebhook(rawBody: string, headers: Record<string, string>): boolean

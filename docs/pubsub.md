@@ -63,7 +63,7 @@ async function onGlobalChange() {
 // Revoke one connection cluster-wide. userId/sessionId are obtained from
 // authenticated server state, not from the client request body.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revokeConnection(connectionId, { userId, sessionId })
+  await group.revokeByConnectionId(connectionId, { userId, sessionId })
 }
 ```
 
@@ -105,11 +105,25 @@ import { ablyPubSubAdapter } from 'restale-kit/ably'
 
 const ably = new Ably.Realtime({
   key: process.env.ABLY_API_KEY,
-  echoMessages: false, // suppress self-echo at the Ably level
 })
 
 const group = new SSEChannelGroup({
   pubsub: ablyPubSubAdapter(ably),
+})
+```
+
+Self-echo suppression is handled automatically via an internal envelope tag — you don't need to configure anything special on the Ably client.
+
+If you prefer to use Ably's native echo suppression instead, pass `useNativeEchoSuppression: true` **and** configure `echoMessages: false` on your Ably client:
+
+```ts
+const ably = new Ably.Realtime({
+  key: process.env.ABLY_API_KEY,
+  echoMessages: false, // required when useNativeEchoSuppression: true
+})
+
+const group = new SSEChannelGroup({
+  pubsub: ablyPubSubAdapter(ably, { useNativeEchoSuppression: true }),
 })
 ```
 
@@ -208,5 +222,5 @@ Topics are plain strings — design them to match your invalidation granularity:
 ## Delivery guarantees
 
 - **At most once per currently-subscribed instance.** If an instance loses its broker connection while a signal is published, that signal is dropped for that instance's clients.
-- **No message replay.** Clients that were disconnected when a signal fired do not receive it on reconnect — same as SSE's native behavior.
-- This is intentional: invalidation signals are cheap to re-emit on the next mutation.
+- **Event history replay:** Pass a shared `eventStore` (or `eventBufferCapacity`) to both `SSEChannelGroup` and your transport helper (`attachSSE` / `toSSEResponse`) to enable `Last-Event-ID` event replay for reconnecting clients. Without an event store passed to the transport helper, clients that were disconnected when a signal fired do not receive missed events upon reconnect.
+- Invalidation signals without replay configured are cheap to re-emit on subsequent mutations.

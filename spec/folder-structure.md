@@ -7,7 +7,7 @@ restale-kit/
     ├── server/
     │   ├── core/           # channels and channel groups
     │   ├── node/           # Node HTTP helper
-    │   └── fetch/          # Fetch API helper
+    │   ├── fetch/          # Fetch API helper
     │   ├── express/        # Express adapter
     │   ├── fastify/        # Fastify adapter
     │   └── hono/           # Hono adapter

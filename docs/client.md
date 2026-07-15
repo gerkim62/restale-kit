@@ -60,6 +60,8 @@ useReStale(url: string, options: {
 })
 ```
 
+> **Option stability note:** `autoReconnect`, `reconnect`, `signalSchema`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
+
 ### Return value
 
 ```ts
@@ -205,6 +207,24 @@ useReStale('/sse', {
 
 Batch signals (arrays) are processed one-by-one in order.
 
+### `useTanstackQueryAdapter` — memoized hook variant
+
+```ts
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+```
+
+Equivalent to `tanstackAdapter(queryClient)` but wrapped in `useCallback` for referential stability across renders. Call it at the top level of your component and pass the result to `useReStale`:
+
+```tsx
+function App() {
+  const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient) // called as a hook, at top level
+  useReStale('/sse', { onInvalidate })
+}
+```
+
+Note: `useTanstackQueryAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need memoization (e.g. `queryClient` is module-level), use `tanstackAdapter` directly instead.
+
 ---
 
 ## SWR adapter
@@ -254,6 +274,22 @@ swrAdapter(mutate, {
     return undefined // skip unrecognized keys
   },
 })
+```
+
+### `useSwrAdapter` — memoized hook variant
+
+```ts
+import { useSwrAdapter } from 'restale-kit/swr'
+```
+
+Equivalent to `swrAdapter(mutate, options)` but memoized. The options object is stored in a ref, so changing options on re-render works correctly without breaking referential stability:
+
+```tsx
+function App() {
+  const { mutate } = useSWRConfig()
+  const onInvalidate = useSwrAdapter(mutate) // called as a hook, at top level
+  useReStale('/sse', { onInvalidate })
+}
 ```
 
 ---

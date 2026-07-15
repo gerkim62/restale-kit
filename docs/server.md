@@ -155,7 +155,7 @@ group.deregister(channel)
 ```
 
 - `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
-- Omitting `meta` (or passing `undefined`) is equivalent to registering with `{}` — an empty metadata object. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
+- Omitting `meta` (or passing `undefined`) registers `undefined` as metadata, meaning the channel has no metadata properties. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
@@ -204,23 +204,17 @@ The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i
 
 ### `broadcastByKey(signal)` — automatic key-based matching
 
-Broadcasts to channels whose metadata matches the signal's key using the same hierarchical prefix/exact matching semantics as the wire protocol. This eliminates the need to write manual predicate functions that mirror what the signal key already expresses.
+Broadcasts to channels whose registered metadata matches the signal's key using hierarchical prefix/exact matching semantics.
 
 ```ts
-// Instead of:
-group.broadcast({ key: ['todos', { userId }] }, (meta) => meta[0] === 'todos' && meta[1]?.userId === userId)
-
-// You can write:
 group.broadcastByKey({ key: ['todos', { userId }] })
 ```
 
-For `broadcastByKey` to match, the channels must be registered with array-shaped metadata representing their cached queries (e.g. `TMeta = JSONValue[]`).
-
-The signal's `key` is matched against each channel's metadata (which must be a JSON array key). A channel receives the signal when its registered metadata array has the signal's key array as a prefix.
+The signal's `key` is matched against each channel's registered metadata (which can be a JSON array key or an object/scalar value automatically matched against the signal key). A channel receives the signal when its registered metadata matches or extends the signal key (when `exact: true`, keys must match exactly).
 
 ### Broadcasting without metadata
 
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) are treated as having `{}` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
 
 ---
 
@@ -228,75 +222,84 @@ Channels registered without metadata (`group.register(channel)`, no `meta` argum
 
 To actively close client connections (e.g., on logout, session expiration, or user ban), the group provides two dedicated APIs.
 
-### Criteria-Based Revocation (`revokeMany()`)
+### Criteria-Based Revocation (`revokeWhere()`)
 
 Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
 
 ```ts
 // Close all connections for user-42 across the entire cluster
-await group.revokeMany({ userId: 'user-42' })
+await group.revokeWhere({ userId: 'user-42' })
 ```
 
 Returns `{ localClosed: number }`.
 
-### Connection-Specific Revocation (`revokeOne()`)
+### Connection-Specific Revocation (`revokeByConnectionId()`)
 
 Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
 
-When a pub/sub adapter is configured, `revokeOne` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
+When a pub/sub adapter is configured, `revokeByConnectionId` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
 
 ```ts
 // Close one specific connection, scoped to the requesting user
-const result = await group.revokeOne(connectionId, { userId: req.user.id })
+const result = await group.revokeByConnectionId(connectionId, { userId: req.user.id })
 // result: { closed: boolean }
 ```
 
 ### Revocation without metadata
 
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeMany()`**. Omitting metadata is semantically equivalent to `{}`, but `undefined` is not a JSON value, so `revokeMany` criteria matching is skipped entirely for those channels — even `revokeMany({})` returns `localClosed: 0` for them.
+Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeWhere()`**. Omitting metadata registers `undefined` as metadata. Because `undefined` is not a valid JSON value, criteria matching is skipped entirely for those channels — even `revokeWhere({})` returns `localClosed: 0` for them.
 
-To revoke a channel that has no metadata, use `revokeOne(connectionId)` instead:
+To revoke a channel that has no metadata, use `revokeByConnectionId(connectionId)` instead:
 
 ```ts
-// ❌ Does not work — revokeMany cannot match channels with undefined meta
-await group.revokeMany({})
+// ❌ Does not work — revokeWhere cannot match channels with undefined meta
+await group.revokeWhere({})
 
-// ✅ Works — revokeOne looks up by connectionId, bypassing metadata matching
-await group.revokeOne(channel.connectionId)
+// ✅ Works — revokeByConnectionId looks up by connectionId, bypassing metadata matching
+await group.revokeByConnectionId(channel.connectionId)
 ```
 
 If you need criteria-based revocation, always register channels with explicit metadata.
 
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeOne(connectionId)` call in a request handler.
+`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
 
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeOne(...)` or in the criteria of `revokeMany(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization.
+Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeByConnectionId(...)` or in the criteria of `revokeWhere(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization. Always pass `scope` with trusted server-side identity (e.g. `{ userId: req.user.id }`) so that a forged or leaked `connectionId` cannot close another user's connection.
 
-If the client does not send a per-connection request ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
+If the client does not send a connection ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
 
 ```ts
-await group.revokeMany({
+await group.revokeWhere({
   userId: req.user.id,
   sessionId: req.session.id,
 })
 ```
 
-When a pub/sub adapter is configured, `revokeMany()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
+When a pub/sub adapter is configured, `revokeWhere()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
 
 ---
 
 ## Reconnection & Event History Replay
 
-To prevent missed invalidation signals during momentary network drops, configure `eventBufferCapacity`:
+To prevent missed invalidation signals during momentary network drops, create a shared `eventStore` and pass it to both `SSEChannelGroup` and your transport helper (`attachSSE` / `toSSEResponse`):
 
 ```ts
-const group = new SSEChannelGroup({
-  eventBufferCapacity: 100, // Retain the last 100 invalidation events
+import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
+import { attachSSE } from 'restale-kit/express'
+
+// Shared event store (retains history for Last-Event-ID replay)
+const eventStore = createEventStore({ capacity: 100 })
+const group = new SSEChannelGroup({ eventStore })
+
+app.get('/sse', (req, res) => {
+  // Pass eventStore to transport helper so reconnecting channels replay missed history
+  const channel = attachSSE(req, res, { eventStore })
+  group.register(channel, { userId: req.user.id })
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header, `restale-kit` automatically queries the `eventStore` and replays all missed invalidation events in sequence before resuming live stream comments.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header, `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
 
 ---
 

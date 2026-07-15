@@ -1,4 +1,4 @@
-# restale-kit — contract document (v2)
+# restale-kit — contract specification
 
 ## Purpose
 
@@ -11,16 +11,13 @@ maps those operations to a specific library's API. If you removed every adapter,
 `client` would still compile and function — it just wouldn't do anything useful with the
 signals.
 
-v1 ships: React + TanStack Query on the client, Node and any Fetch-API runtime (Hono, Bun, Deno,
-edge) on the server. The design keeps two seams open — one per axis below — so other frameworks and
-cache libraries can be added later without changing `core`, but nothing beyond v1's scope is built
-or specced now.
+First-class support includes: React + TanStack Query / SWR on the client, Node and Fetch-API runtimes (Hono, Bun, Deno, Fastify, Express, edge) on the server. The design keeps seams open so other frameworks and cache libraries can be added without changing `core`.
 
-| Axis | v1 | Open seam for later |
+| Axis | Standard Adapters | Extensibility Seam |
 |---|---|---|
-| Server I/O runtime | Node, Fetch API | any runtime that can produce a byte stream |
-| UI framework | React | any framework — wrap `client` the way `client/react` does |
-| Cache library | TanStack Query | any library — write a `(signal) => void` integration like `client/tanstack-query` |
+| Server I/O runtime | Node, Fetch API, Express, Fastify, Hono | Any runtime that can produce a byte stream |
+| UI framework | React | Any framework — wrap `client` the way `client/react` does |
+| Cache library | TanStack Query, SWR | Any library — write a `(signal) => void` integration like `client/tanstack-query` |
 
 ---
 
@@ -90,7 +87,8 @@ restale-kit/
   zero React-related anything.
 
 Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
-`restale-kit/fastify` respectively (Fastify needs `reply.hijack()` first — see below). Hono, Bun,
+`restale-kit/fastify` respectively (the Fastify adapter auto-calls `reply.hijack()` when passed
+Fastify objects — see below). Hono, Bun,
 Deno, and edge runtimes speak `Request`/`Response`, so Hono uses `restale-kit/hono`;
 `restale-kit/fetch` remains available for other Fetch API runtimes.
 
@@ -230,9 +228,11 @@ type ChannelState = 'open' | 'closed'
 interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
+  readonly connectionId: string
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void
   disconnect(): void   // called by a transport adapter when it detects the peer disconnected
+  onClose(callback: () => void): void
 }
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
@@ -360,7 +360,17 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
    * If metaSchema was provided, validates metadata synchronously.
    * Throws SchemaValidationError if validation fails or is asynchronous.
    */
-  register(channel: SSEChannel<TSignal>, meta: TMeta, options?: { topics?: string[] }): void
+  register(
+    channel: SSEChannel<TSignal>,
+    ...args: undefined extends TMeta
+      ? [meta?: TMeta, options?: { topics?: string[] }]
+      : [meta: TMeta, options?: { topics?: string[] }]
+  ): void
+  // meta is optional only when TMeta accepts undefined.
+  // Omitting meta is equivalent to registering with undefined as metadata.
+  // Such channels are included in broadcastToAll and broadcast(), excluded from
+  // broadcastByKey(), and cannot be targeted by revokeWhere().
+  // Use revokeByConnectionId(connectionId) to revoke them.
 
   /** Deregisters a channel from the group */
   deregister(channel: SSEChannel<TSignal>): void
@@ -381,20 +391,42 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   broadcastToAll(signal: TSignal | TSignal[]): void
 
   /**
+   * Broadcasts to channels whose metadata matches the signal's key using the
+   * same hierarchical prefix/exact matching semantics as the wire protocol.
+   * Eliminates the need to write manual predicate functions for key-based routing.
+   */
+  broadcastByKey(signal: TSignal): void
+
+  /**
    * Publishes a signal to a topic.
-   * 1. Delivers synchronously to any locally-held channels registered on that topic.
+   * 1. Delivers to any locally-held channels registered on that topic.
    * 2. If a pub/sub adapter is configured, also publishes to the broker.
+   *
+   * Unlike broadcast(), delivery errors to individual channels are logged
+   * but not thrown — publish() only propagates errors from the broker publish call.
    */
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   /**
-   * Revokes channels whose registered metadata subset-matches criteria.
+   * Revokes all channels whose registered metadata subset-matches `criteria`.
    * 1. Closes and deregisters matching local channels immediately.
    * 2. If a pub/sub adapter is configured, publishes the revocation criteria to
    *    controlTopic so other instances can close their matching local channels.
    * Returns { localClosed } — the number of local channels closed.
+   *
+   * Note: channels registered without metadata cannot be matched and are skipped.
+   * Use revokeByConnectionId(connectionId) to revoke those channels instead.
    */
-  revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+  revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
+
+  /**
+   * Revokes the single channel identified by connectionId.
+   * Pass `scope` (a partial metadata object) to verify ownership before closing.
+   * If the channel's metadata does not match `scope`, nothing is closed.
+   * If a pub/sub adapter is configured, broadcasts a control message to the cluster.
+   * Returns { closed: boolean }.
+   */
+  revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
 
   /**
    * Tears down the control topic subscription idempotently.
@@ -420,10 +452,9 @@ synchronous.
 
 #### Backpressure
 
-v1: unbounded internal buffer. If the client can't consume fast enough, frames accumulate in the
-`ReadableStream`'s internal queue. This is acceptable for the expected payload sizes (small JSON
-objects at low frequency). A future version may add a `maxBufferSize` option with a configurable
-overflow strategy.
+Unbounded internal buffer. If the client can't consume fast enough, frames accumulate in the
+`ReadableStream`'s internal queue. This is acceptable for expected payload sizes (small JSON
+objects at low frequency).
 
 ---
 
@@ -434,11 +465,11 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): { channel: SSEChannel<TSignal>; connectionId: string }
+): SSEChannel<TSignal>
 ```
 
-Extracts the `restaleKitRequestId` query parameter from the request URL and returns it as
-`connectionId`. Throws synchronously if the parameter is missing or empty — a channel registered
+Extracts the `__restale_cid__` query parameter from the request URL and assigns it to the channel's
+`connectionId` property. Throws synchronously if the parameter is missing or empty — a channel registered
 without a `connectionId` cannot be revoked with per-connection precision.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
@@ -448,8 +479,9 @@ Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 Extracts the `Last-Event-ID` header from the request and passes it to `createSSEChannel` for
 event replay (when an `eventStore` is configured).
 
-For Fastify: pass `request.raw` / `reply.raw`, and call `reply.hijack()` first — otherwise Fastify
-sends its own response on top of the streamed one and throws.
+For Fastify: the `restale-kit/fastify` adapter accepts either Fastify's wrapped `request`/`reply`
+objects or raw `IncomingMessage`/`ServerResponse`. When Fastify objects are passed, `reply.hijack()`
+is called automatically. If you pass raw Node objects directly, call `reply.hijack()` yourself first.
 
 ### `restale-kit/fetch` and `restale-kit/hono`
 
@@ -457,10 +489,10 @@ sends its own response on top of the streamed one and throws.
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
+): { response: Response; channel: SSEChannel<TSignal> }
 ```
 
-Extracts `connectionId` from the `restaleKitRequestId` query parameter and `Last-Event-ID` from
+Extracts `connectionId` from the `__restale_cid__` query parameter and `Last-Event-ID` from
 request headers. Throws synchronously if the query parameter is missing.
 
 Constructs `new Response(channel.stream, { headers })`, wires
@@ -696,14 +728,17 @@ Each subpath export has a defined public API. Only these symbols are exported:
 |---|---|
 | `restale-kit` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `createEventStore`, `EventStoreOptions` |
-| `restale-kit/node`, `restale-kit/express`, `restale-kit/fastify` | `attachSSE` |
+| `restale-kit/node`, `restale-kit/express` | `attachSSE` |
+| `restale-kit/fastify` | `attachSSE`, `FastifyRequestLike`, `FastifyReplyLike` |
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
-| `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus` |
+| `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `SSEInvalidatorClientEventMap`, `InvalidateSignal` |
 | `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
-| `restale-kit/tanstack-query` | `tanstackAdapter` |
-| `restale-kit/swr` | `swrAdapter` |
+| `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
+| `restale-kit/swr` | `swrAdapter`, `useSwrAdapter`, `SWRAdapterOptions`, `SWRMutator` |
 | `restale-kit/pubsub` | `PubSubAdapter` |
-| `restale-kit/{redis,ably,pusher}` | provider-specific PubSub adapters |
+| `restale-kit/redis` | `redisPubSubAdapter`, `RedisClient` |
+| `restale-kit/ably` | `ablyPubSubAdapter`, `AblyClient`, `AblyChannel` |
+| `restale-kit/pusher` | `pusherPubSubAdapter`, `PusherClient`, `PusherWebhook` |
 
 `InvalidateSignal` is available from `restale-kit` and re-exported from `restale-kit/client`
 for direct client users.
@@ -738,13 +773,8 @@ const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
   
-  // Register the channel in the group
+  // Register the channel in the group — auto-deregisters on disconnect
   group.register(channel, { userId: req.user.id, roles: req.user.roles })
-
-  // Clean up when the client disconnects
-  req.on('close', () => {
-    group.deregister(channel)
-  })
 })
 ```
 

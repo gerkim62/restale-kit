@@ -3,15 +3,15 @@ import { extractConnectionId, extractLastEventId } from './transport-utils.js'
 
 describe('transport-utils', () => {
   describe('extractConnectionId', () => {
-    it('extracts restaleKitRequestId successfully', () => {
-      const searchParams = new URLSearchParams('restaleKitRequestId=conn-12345')
+    it('extracts __restale_cid__ successfully', () => {
+      const searchParams = new URLSearchParams('__restale_cid__=conn-12345')
       expect(extractConnectionId(searchParams)).toBe('conn-12345')
     })
 
-    it('throws error when restaleKitRequestId query param is missing', () => {
+    it('throws error when __restale_cid__ query param is missing', () => {
       const searchParams = new URLSearchParams('other=value')
       expect(() => extractConnectionId(searchParams)).toThrow(
-        'Missing or invalid restaleKitRequestId'
+        'Missing or invalid __restale_cid__'
       )
     })
   })

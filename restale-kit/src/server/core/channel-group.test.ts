@@ -128,25 +128,24 @@ describe('channel-group', () => {
     expect(spyNo).not.toHaveBeenCalled()
   })
 
-  it('omitting meta is equivalent to passing {} — revokeMany cannot match it by criteria', async () => {
-    // Omitting meta stores undefined internally, which is treated as {} semantically.
-    // However, undefined is not a JSONValue, so channelMatchesCriteria returns false
-    // for any criteria — revokeMany cannot revoke these channels by metadata match.
-    // Use revokeOne(connectionId) instead.
+  it('omitting meta sets metadata to undefined — revokeWhere cannot match it by criteria', async () => {
+    // Omitting meta stores undefined internally. Because undefined is not a valid JSONValue,
+    // channelMatchesCriteria returns false for any criteria — revokeWhere cannot revoke
+    // these channels by metadata match. Use revokeByConnectionId(connectionId) instead.
     const group = new SSEChannelGroup()
     const ch = createSSEChannel()
 
-    group.register(ch) // no meta — equivalent to {}
+    group.register(ch) // no meta — meta is undefined
     expect(group.size).toBe(1)
 
-    const result = await group.revokeMany({})
+    const result = await group.revokeWhere({})
     expect(result.localClosed).toBe(0) // {} criteria does NOT match undefined meta
     expect(ch.state).toBe('open')
     expect(group.size).toBe(1)
   })
 
-  it('channels with undefined meta can still be revoked via revokeOne(connectionId)', async () => {
-    // revokeOne looks up by connectionId directly, bypassing metadata matching,
+  it('channels with undefined meta can still be revoked via revokeByConnectionId(connectionId)', async () => {
+    // revokeByConnectionId looks up by connectionId directly, bypassing metadata matching,
     // so it works regardless of whether meta was provided.
     const group = new SSEChannelGroup()
     const ch = createSSEChannel({ connectionId: 'no-meta-conn' })
@@ -154,7 +153,7 @@ describe('channel-group', () => {
     group.register(ch)
     expect(group.size).toBe(1)
 
-    const result = await group.revokeOne(ch.connectionId)
+    const result = await group.revokeByConnectionId(ch.connectionId)
     expect(result.closed).toBe(true)
     expect(ch.state).toBe('closed')
     expect(group.size).toBe(0)
@@ -165,7 +164,7 @@ describe('channel-group', () => {
     const group = new SSEChannelGroup<any, any>({ metaSchema })
     const channel = createSSEChannel()
 
-    // Empty object should pass validation
+    // Omitted metadata (undefined) passes validation
     group.register(channel)
     expect(group.size).toBe(1)
   })
@@ -353,7 +352,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 100 })
     group.register(ch2, { userId: 200 })
 
-    const result = await group.revokeMany({ userId: 100 })
+    const result = await group.revokeWhere({ userId: 100 })
 
     expect(result.localClosed).toBe(1)
     expect(ch1.state).toBe('closed')
@@ -608,7 +607,7 @@ describe('channel-group', () => {
       throw new Error('Already closed stream')
     })
 
-    const closed = await group.revokeMany({ userId: 777 })
+    const closed = await group.revokeWhere({ userId: 777 })
     expect(closed.localClosed).toBe(1)
     expect(group.size).toBe(0)
   })
@@ -849,9 +848,9 @@ describe('channel-group', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  // --- revokeOne ---
+  // --- revokeByConnectionId ---
 
-  it('revokeOne closes matching connection locally and publishes control message', async () => {
+  it('revokeByConnectionId closes matching connection locally and publishes control message', async () => {
     const pubsub = new MemoryPubSubAdapter()
     const publishSpy = vi.spyOn(pubsub, 'publish')
 
@@ -859,7 +858,7 @@ describe('channel-group', () => {
     const ch = createSSEChannel({ connectionId: 'conn-1' })
 
     group.register(ch, { userId: 100 })
-    const result = await group.revokeOne(ch.connectionId)
+    const result = await group.revokeByConnectionId(ch.connectionId)
 
     expect(result.closed).toBe(true)
     expect(ch.state).toBe('closed')
@@ -868,33 +867,34 @@ describe('channel-group', () => {
     expect(publishSpy).toHaveBeenCalledWith(group.controlTopic, {
       kind: 'control',
       data: {
-        revokeOne: {
+        type: 'revokeByConnectionId',
+        revokeByConnectionId: {
           connectionId: ch.connectionId
         }
       }
     })
   })
 
-  it('revokeOne enforces scope checks', async () => {
+  it('revokeByConnectionId enforces scope checks', async () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const ch = createSSEChannel({ connectionId: 'conn-2' })
 
     group.register(ch, { userId: 100, role: 'admin' })
 
     // Non-matching scope
-    const result1 = await group.revokeOne(ch.connectionId, { userId: 200 })
+    const result1 = await group.revokeByConnectionId(ch.connectionId, { userId: 200 })
     expect(result1.closed).toBe(false)
     expect(ch.state).toBe('open')
     expect(group.size).toBe(1)
 
     // Matching scope
-    const result2 = await group.revokeOne(ch.connectionId, { userId: 100, role: 'admin' })
+    const result2 = await group.revokeByConnectionId(ch.connectionId, { userId: 100, role: 'admin' })
     expect(result2.closed).toBe(true)
     expect(ch.state).toBe('closed')
     expect(group.size).toBe(0)
   })
 
-  it('handles remote revokeOne messages via pubsub', async () => {
+  it('handles remote revokeByConnectionId messages via pubsub', async () => {
     const pubsub = new MemoryPubSubAdapter()
     const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
     const ch = createSSEChannel({ connectionId: 'conn-3' })
@@ -906,7 +906,8 @@ describe('channel-group', () => {
     await pubsub.publish(group.controlTopic, {
       kind: 'control',
       data: {
-        revokeOne: {
+        type: 'revokeByConnectionId',
+        revokeByConnectionId: {
           connectionId: ch.connectionId,
           scope: { userId: 100 }
         }
@@ -917,7 +918,7 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('revokeOne scope matching uses structural equality, not reference equality', async () => {
+  it('revokeByConnectionId scope matching uses structural equality, not reference equality', async () => {
     // Regression: scope comparison previously used !== (reference equality), so
     // nested objects/arrays in scope would never match — even locally.
     interface NestedMeta { userId: number; address: { city: string } }
@@ -928,15 +929,15 @@ describe('channel-group', () => {
 
     // Scope built independently — different object reference, same structure
     const scope = { address: { city: 'London' } }
-    const result = await group.revokeOne(ch.connectionId, scope)
+    const result = await group.revokeByConnectionId(ch.connectionId, scope)
 
     expect(result.closed).toBe(true)
     expect(ch.state).toBe('closed')
     expect(group.size).toBe(0)
   })
 
-  it('revokeOne scope matching works structurally after JSON round-trip (remote pubsub path)', async () => {
-    // Regression: the remote revokeOne path serializes scope to JSON and back.
+  it('revokeByConnectionId scope matching works structurally after JSON round-trip (remote pubsub path)', async () => {
+    // Regression: the remote revokeByConnectionId path serializes scope to JSON and back.
     // With reference equality this would always fail for nested objects.
     interface NestedMeta { userId: number; permissions: { admin: boolean } }
     const pubsub = new MemoryPubSubAdapter()
@@ -946,12 +947,13 @@ describe('channel-group', () => {
     group.register(ch, { userId: 7, permissions: { admin: true } })
     await group['controlPendingOp']
 
-    // Simulate a remote node publishing the revokeOne control message.
+    // Simulate a remote node publishing the revokeByConnectionId control message.
     // The scope object is a fresh deserialized value — different reference.
     await pubsub.publish(group.controlTopic, {
       kind: 'control',
       data: {
-        revokeOne: {
+        type: 'revokeByConnectionId',
+        revokeByConnectionId: {
           connectionId: ch.connectionId,
           scope: { permissions: { admin: true } }
         }
@@ -977,12 +979,13 @@ describe('channel-group', () => {
     group.deregister(ch1)
     expect(group.size).toBe(1)
 
-    // revokeOne for 'shared-id' should still be able to find and revoke ch2
-    const result = await group.revokeOne('shared-id')
+    // revokeByConnectionId for 'shared-id' should still be able to find and revoke ch2
+    const result = await group.revokeByConnectionId('shared-id')
     expect(result.closed).toBe(true)
     expect(ch2.state).toBe('closed')
     expect(group.size).toBe(0)
   })
+
 })
 
 

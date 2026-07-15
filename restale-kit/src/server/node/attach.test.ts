@@ -18,7 +18,7 @@ function createMockResponse(): ServerResponse {
 describe('node attachSSE', () => {
   it('attaches SSE channel to Node req/res, sets headers, and exposes connectionId on channel', () => {
     const req = Object.assign(new EventEmitter(), {
-      url: '/sse?restaleKitRequestId=req-999',
+      url: '/sse?__restale_cid__=req-999',
       headers: {},
     }) as unknown as IncomingMessage
 
@@ -33,7 +33,7 @@ describe('node attachSSE', () => {
 
   it('triggers disconnect on request close event', () => {
     const req = Object.assign(new EventEmitter(), {
-      url: '/sse?restaleKitRequestId=req-888',
+      url: '/sse?__restale_cid__=req-888',
       headers: {},
     }) as unknown as IncomingMessage
 
@@ -54,7 +54,7 @@ describe('node attachSSE', () => {
     const res = createMockResponse()
 
     expect(() => attachSSE(reqWithoutUrl, res)).toThrow(
-      'Missing or invalid restaleKitRequestId query parameter in request URL'
+      'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })
 })

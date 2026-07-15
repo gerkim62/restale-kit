@@ -23,7 +23,7 @@ function createMockExpressResponse(): ServerResponse {
 
 describe('server/express entrypoint', () => {
   it('attaches SSE headers and exposes connectionId on the returned channel', () => {
-    const req = createMockExpressRequest('/sse?restaleKitRequestId=express-123')
+    const req = createMockExpressRequest('/sse?__restale_cid__=express-123')
     const res = createMockExpressResponse()
 
     const channel = attachSSE(req, res)
@@ -38,12 +38,12 @@ describe('server/express entrypoint', () => {
     channel.close()
   })
 
-  it('throws Error synchronously when restaleKitRequestId is missing', () => {
+  it('throws Error synchronously when __restale_cid__ is missing', () => {
     const req = createMockExpressRequest('/sse')
     const res = createMockExpressResponse()
 
     expect(() => attachSSE(req, res)).toThrow(
-      'Missing or invalid restaleKitRequestId query parameter in request URL'
+      'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })
 })
