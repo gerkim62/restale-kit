@@ -100,7 +100,6 @@ app.get('/sse', (req, res) => {
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId: channel.connectionId,
   })
 })
 
@@ -163,7 +162,7 @@ const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
   const { response, channel } = toSSEResponse(c.req.raw)
-  group.register(channel, { connectionId: channel.connectionId })
+  group.register(channel, {})
   return response
 })
 ```
@@ -176,7 +175,7 @@ import { attachSSE } from 'restale-kit/fastify'
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
   const channel = attachSSE(request, reply)
-  group.register(channel, { connectionId: channel.connectionId })
+  group.register(channel, {})
 })
 ```
 
@@ -189,7 +188,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
     const channel = attachSSE(req, res)
-    group.register(channel, { connectionId: channel.connectionId })
+    group.register(channel, {})
   }
 })
 ```
@@ -289,7 +288,7 @@ const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { connectionId: channel.connectionId })
+  group.register(channel, {})
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
@@ -325,7 +324,6 @@ app.get('/sse', (req, res) => {
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId: channel.connectionId,
   }, {
     topics: [`user:${req.user.id}`],
   })

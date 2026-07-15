@@ -24,7 +24,7 @@ const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
-  group.register(channel, { userId: req.user?.id, connectionId: channel.connectionId })
+  group.register(channel, { userId: req.user?.id })
 })
 ```
 
@@ -41,7 +41,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
     const channel = attachSSE(req, res)
-    group.register(channel, { connectionId: channel.connectionId })
+    group.register(channel, {})
   }
 })
 ```
@@ -64,7 +64,7 @@ const app = Fastify()
 // Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
   const channel = attachSSE(request, reply)
-  group.register(channel, { connectionId: channel.connectionId })
+  group.register(channel, {})
 })
 ```
 
@@ -74,8 +74,7 @@ If you need to use the raw Node objects (e.g. in a middleware context), you must
 app.get('/sse', (request, reply) => {
   reply.hijack() // required when passing .raw objects directly
   const channel = attachSSE(request.raw, reply.raw)
-  group.register(channel, { connectionId: channel.connectionId })
-})
+  group.register(channel, {})
 })
 ```
 
@@ -93,7 +92,7 @@ const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
   const { response, channel } = toSSEResponse(c.req.raw)
-  group.register(channel, { connectionId: channel.connectionId })
+  group.register(channel, {})
   return response // hand it back to Hono
 })
 ```
@@ -123,7 +122,6 @@ const group = new SSEChannelGroup()
 // With typed metadata
 interface ClientMeta {
   userId: string
-  connectionId: string
   roles: string[]
 }
 const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
@@ -150,7 +148,7 @@ group.register(channel, meta, { topics: ['user:42', 'global'] }) // for pub/sub 
 group.deregister(channel)
 ```
 
-- `meta` can be any value; its type is inferred from the group's `TMeta` generic. Include `connectionId: channel.connectionId` when you need to support targeted connection revocation.
+- `meta` can be any value; its type is inferred from the group's `TMeta` generic.
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.

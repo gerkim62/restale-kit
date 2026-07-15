@@ -46,7 +46,7 @@ app.get('/sse', (req, res) => {
   const sessionId = req.session.id
 
   // Register with metadata and topics this connection cares about
-  group.register(channel, { userId, sessionId, connectionId: channel.connectionId }, {
+  group.register(channel, { userId, sessionId }, {
     topics: [`user:${userId}`, 'global'],
   })
 })

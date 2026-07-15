@@ -46,7 +46,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    *
    * @example
    * const channel = attachSSE(req, res)
-   * group.register(channel, { userId, connectionId: channel.connectionId })
+   * group.register(channel, { userId })
    */
   readonly connectionId: string
   /** The SSE byte stream to pipe into a response. */
