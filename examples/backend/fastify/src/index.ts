@@ -13,7 +13,8 @@ const userId = (query: unknown) => (query as { userId: string }).userId
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — attachSSE calls reply.hijack() automatically
-  const { channel, connectionId } = attachSSE(request, reply)
+  const channel = attachSSE(request, reply)
+  const connectionId = (request.query as { restaleKitRequestId: string }).restaleKitRequestId
   group.register(channel, { userId: userId(request.query), connectionId })
   request.raw.once('close', () => group.deregister(channel))
 })

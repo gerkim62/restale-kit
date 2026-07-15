@@ -1,5 +1,4 @@
-import type { InvalidateSignal, EventStore, JSONValue, PubSubMessage } from '@/types/protocol.js'
-import { isJSONValue, matchesJSONValue } from '@/types/protocol.js'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
@@ -330,6 +329,11 @@ export class SSEChannelGroup<
         topicManager.add(channel)
       }
     }
+
+    // Auto-deregister when the channel closes. Only wire once (new channels only).
+    if (!existingEntry) {
+      channel.onClose(() => { this.deregister(channel) })
+    }
   }
 
   /** Deregisters a channel from the group. */
@@ -443,6 +447,32 @@ export class SSEChannelGroup<
    */
   broadcastToAll(signal: TSignal | TSignal[]): void {
     this.broadcast(signal, () => true)
+  }
+
+  /**
+   * Broadcasts to channels whose metadata matches the signal's key using the
+   * same hierarchical prefix/exact matching semantics as the wire protocol.
+   *
+   * The signal's `key` is matched against channel metadata treated as a
+   * `JSONValue`. A channel receives the signal when its metadata is a JSON
+   * object whose fields are a superset of the signal's key objects.
+   *
+   * This eliminates the need to write manual predicate functions that mirror
+   * what the signal key already expresses.
+   *
+   * @example
+   * // Instead of:
+   * group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
+   * // You can write:
+   * group.broadcastByKey({ key: ['todos', { userId }] })
+   */
+  broadcastByKey(signal: TSignal): void {
+    this.broadcast(signal, (meta) => {
+      if (!isJSONValue(meta)) return false
+      // Wrap scalar/array meta in an array to match against the signal key
+      const metaKey = Array.isArray(meta) ? meta : [meta]
+      return matchesInvalidateSignalKey(metaKey, signal)
+    })
   }
 
   /**

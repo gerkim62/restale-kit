@@ -18,9 +18,9 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; connectionId: string } {
+): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
-  const connectionId = extractConnectionId(urlObj.searchParams)
+  extractConnectionId(urlObj.searchParams) // validates presence; throws if missing
 
   const lastEventId =
     options?.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
@@ -41,6 +41,6 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
     channel.disconnect()
   })
 
-  return { response, channel, connectionId }
+  return { response, channel }
 }
 

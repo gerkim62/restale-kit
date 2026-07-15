@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { toSSEResponse } from './index.js'
 
 describe('server/hono entrypoint', () => {
-  it('creates an SSE Response object and extracts connectionId from Hono Request', () => {
+  it('creates an SSE Response object from a Hono Request', () => {
     const req = new Request('https://example.com/sse?restaleKitRequestId=hono-789')
-    const { response, channel, connectionId } = toSSEResponse(req)
+    const { response, channel } = toSSEResponse(req)
 
-    expect(connectionId).toBe('hono-789')
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(response.headers.get('cache-control')).toBe('no-cache')
     expect(channel.state).toBe('open')

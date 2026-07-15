@@ -52,6 +52,12 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * Same effect as `close()`. Idempotent.
    */
   disconnect(): void
+  /**
+   * Registers a one-shot callback invoked when the channel transitions to `'closed'`
+   * (whether via `close()`, `disconnect()`, or stream cancellation).
+   * If the channel is already closed the callback fires synchronously.
+   */
+  onClose(callback: () => void): void
 }
 
 /**
@@ -78,6 +84,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   let state: ChannelState = 'open'
   let controller: ReadableStreamDefaultController<Uint8Array>
   let keepaliveTimer: ReturnType<typeof setInterval>
+  const closeCallbacks: Array<() => void> = []
 
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
@@ -117,6 +124,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         "\n  error:", error.stack || error.message
       )
     }
+    // Fire one-shot close callbacks
+    for (const cb of closeCallbacks) {
+      try { cb() } catch { /* ignore errors in close callbacks */ }
+    }
+    closeCallbacks.length = 0
   }
 
   function invalidate(signal: TSignal | TSignal[], customId?: string): string {
@@ -151,5 +163,12 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     invalidate,
     close: closeInternal,
     disconnect: closeInternal,
+    onClose(callback: () => void): void {
+      if (state === 'closed') {
+        callback()
+      } else {
+        closeCallbacks.push(callback)
+      }
+    },
   }
 }

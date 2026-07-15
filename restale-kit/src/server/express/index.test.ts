@@ -26,9 +26,8 @@ describe('server/express entrypoint', () => {
     const req = createMockExpressRequest('/sse?restaleKitRequestId=express-123')
     const res = createMockExpressResponse()
 
-    const { channel, connectionId } = attachSSE(req, res)
+    const channel = attachSSE(req, res)
 
-    expect(connectionId).toBe('express-123')
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',

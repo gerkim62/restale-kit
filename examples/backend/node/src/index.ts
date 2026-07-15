@@ -28,7 +28,6 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/sse') {
       const channel = attachSSE(req, res)
       group.register(channel, { userId })
-      req.once('close', () => group.deregister(channel))
       return
     }
     if (req.method === 'GET' && url.pathname === '/todos') return sendJson(res, 200, todos.getTodos(userId))

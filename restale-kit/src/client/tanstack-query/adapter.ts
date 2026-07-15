@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import type { InvalidateSignal } from '@/types/protocol.js'
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -37,4 +38,21 @@ export function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSig
       }
     }
   }
+}
+
+/**
+ * React hook that returns a stable `onInvalidate` callback for TanStack Query.
+ *
+ * Equivalent to `tanstackAdapter(queryClient)` but memoized — safe to pass
+ * directly to `useReStale` without creating a new function on every render.
+ *
+ * @example
+ * const onInvalidate = useTanstackAdapter(queryClient)
+ * useReStale('/api/sse', { onInvalidate })
+ */
+export function useTanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  queryClient: QueryClient
+): (signal: TSignal | TSignal[]) => void {
+  // queryClient is stable by convention; memoize so identity is preserved across renders.
+  return useCallback(tanstackAdapter<TSignal>(queryClient), [queryClient])
 }

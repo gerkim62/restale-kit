@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import useSWR, { mutate } from 'swr'
 import { useReStale } from 'restale-kit/react'
-import { swrAdapter } from 'restale-kit/swr'
+import { useSwrAdapter } from 'restale-kit/swr'
 import { DemoUsers, type DemoUser, type Todo } from '@restale-kit-example/shared'
 import './App.css'
 
@@ -16,7 +16,7 @@ function TodoApp({ user, signOut }: { user: DemoUser; signOut: () => void }) {
     return response.json()
   }, { revalidateOnFocus: false })
   const { connection } = useReStale(`/api/sse?userId=${user.id}`, {
-    onInvalidate: swrAdapter(mutate),
+    onInvalidate: useSwrAdapter(mutate),
   })
 
   async function addTodo(event: FormEvent) {

@@ -29,10 +29,9 @@ describe('server/fastify entrypoint', () => {
     const mockRequest = { raw: rawReq }
     const mockReply = { raw: rawRes, hijack: vi.fn() }
 
-    const { channel, connectionId } = attachSSE(mockRequest, mockReply)
+    const channel = attachSSE(mockRequest, mockReply)
 
     expect(mockReply.hijack).toHaveBeenCalledTimes(1)
-    expect(connectionId).toBe('fastify-1')
     expect(channel.state).toBe('open')
     channel.close()
   })
@@ -41,9 +40,8 @@ describe('server/fastify entrypoint', () => {
     const rawReq = createMockNodeRequest('/sse?restaleKitRequestId=fastify-2')
     const rawRes = createMockNodeResponse()
 
-    const { channel, connectionId } = attachSSE(rawReq, rawRes)
+    const channel = attachSSE(rawReq, rawRes)
 
-    expect(connectionId).toBe('fastify-2')
     expect(channel.state).toBe('open')
     channel.close()
   })
