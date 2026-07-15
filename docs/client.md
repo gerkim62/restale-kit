@@ -170,11 +170,11 @@ client.close()
 | State | `connect()` result |
 |---|---|
 | `'open'` | No-op, returns resolved promise |
-| `'connecting'` | Returns the same pending promise (does not start a second connection) |
+| `'connecting'` (active attempt) | Returns the same pending promise |
+| `'connecting'` (backoff) | Cancels the pending retry timer, opens a new connection, resets backoff |
 | `'closed'` (manual) | Opens a new connection, resets backoff |
 | `'closed'` (unmount) | Same as manual — allows reuse after re-mount |
 | `'error'` | Cancels pending retry timer, opens a new connection, resets backoff |
-| `'error'` + autoReconnect actively backing off | Cancels the pending retry timer, immediately attempts, resets backoff |
 
 ---
 
