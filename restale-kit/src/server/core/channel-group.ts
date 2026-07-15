@@ -279,9 +279,23 @@ export class SSEChannelGroup<
    * The channel is automatically deregistered when it closes — no manual cleanup required.
    * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
    */
-  register(channel: SSEChannel<TSignal>, meta?: TMeta, options?: { topics?: string[] }): void {
-    if (this.metaSchema && meta !== undefined) {
-      validateStandardSchema(meta, this.metaSchema)
+  register(
+    channel: SSEChannel<TSignal>,
+    ...args: undefined extends TMeta
+      ? [meta?: TMeta, options?: { topics?: string[] }]
+      : [meta: TMeta, options?: { topics?: string[] }]
+  ): void {
+    const meta = args[0]
+    const options = args[1]
+
+    const container = { value: meta }
+    if (meta === undefined) {
+      Object.assign(container, { value: {} })
+    }
+
+    let validatedMeta = container.value
+    if (this.metaSchema) {
+      validatedMeta = validateStandardSchema(container.value, this.metaSchema)
     }
 
     const topicsList = options?.topics || []
@@ -304,7 +318,7 @@ export class SSEChannelGroup<
     }
 
     const connectionId = channel.connectionId
-    this.channels.set(channel, { meta, topics: topicsSet, connectionId })
+    this.channels.set(channel, { meta: validatedMeta, topics: topicsSet, connectionId })
     if (connectionId) {
       this.connectionIndex.set(connectionId, channel)
     }
@@ -454,7 +468,7 @@ export class SSEChannelGroup<
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
-  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -466,6 +480,9 @@ export class SSEChannelGroup<
     // Deletions of already-visited or current keys do not impact the iterator loop, and
     // deregistration side effects (like topic cleanup) are localized to the deregistered channel.
     for (const [channel, entry] of this.channels) {
+      // register() always stores a defined meta (at least {}), so this guard
+      // only serves as a TypeScript narrowing hint — it never fires at runtime.
+      if (entry.meta === undefined) continue
       const shouldInclude = predicate(entry.meta)
       
       if (!shouldInclude) continue

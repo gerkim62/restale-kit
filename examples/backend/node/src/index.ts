@@ -6,7 +6,7 @@ import { createTodoApi } from '@restale-kit-example/shared'
 
 const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>()
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta?.userId === userId)
+  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {

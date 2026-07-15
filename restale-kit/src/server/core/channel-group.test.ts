@@ -52,6 +52,89 @@ describe('channel-group', () => {
     expect(group.size).toBe(1)
   })
 
+  it('defaults omitted meta to empty object {} when registering', () => {
+    const group = new SSEChannelGroup<any, any>()
+    const channel = createSSEChannel()
+    group.register(channel)
+
+    const entry = (group as any).channels.get(channel)
+    expect(entry.meta).toEqual({})
+  })
+
+  it('respects metaSchema and triggers validation error if omitted meta (defaulting to {}) does not satisfy schema', () => {
+    const metaSchema = createInvalidSchema('Metadata is required')
+    const group = new SSEChannelGroup<any, any>({ metaSchema })
+    const channel = createSSEChannel()
+
+    expect(() => {
+      group.register(channel)
+    }).toThrow(SchemaValidationError)
+  })
+
+  it('stores the coerced/transformed metadata returned by the schema when metaSchema is defined', () => {
+    const metaSchema = createValidSchema((val: any) => {
+      const obj = val && typeof val === 'object' ? val : {}
+      return {
+        userId: Number(obj.userId || 42),
+        role: String(obj.role || 'guest')
+      }
+    })
+    const group = new SSEChannelGroup<any, { userId?: number; role?: string } | undefined>({ metaSchema })
+    const channel = createSSEChannel()
+
+    group.register(channel)
+
+    const entry = (group as any).channels.get(channel)
+    expect(entry.meta).toEqual({ userId: 42, role: 'guest' })
+  })
+
+  it('enforces meta to be required at compile-time when TMeta does not accept undefined', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const channel = createSSEChannel()
+
+    // @ts-expect-error - meta is required because TestMeta does not accept undefined
+    group.register(channel)
+
+    // @ts-expect-error - meta must match TestMeta type (userId must be number)
+    group.register(channel, { userId: 'not-a-number' })
+
+    // Should compile when meta is provided
+    group.register(channel, { userId: 1 })
+  })
+
+  it('enforces metaSchema output type to match TMeta at compile-time', () => {
+    const stringSchema = createValidSchema((_val: unknown) => 'hello')
+    
+    // @ts-expect-error - metaSchema output (string) does not match TMeta (TestMeta)
+    new SSEChannelGroup<any, TestMeta>({ metaSchema: stringSchema })
+  })
+
+  it('statically verifies register parameter requirement constraints', () => {
+    // 1. When TMeta does not accept undefined, meta parameter must be required
+    type ParamsRequired = Parameters<SSEChannelGroup<any, TestMeta>['register']>
+    type IsRequiredOptional = 1 extends ParamsRequired['length'] ? true : false
+    const checkRequired: IsRequiredOptional = false
+    expect(checkRequired).toBe(false)
+
+    // 2. When TMeta accepts undefined, meta parameter must be optional
+    type ParamsOptional = Parameters<SSEChannelGroup<any, TestMeta | undefined>['register']>
+    type IsOptionalOptional = 1 extends ParamsOptional['length'] ? true : false
+    const checkOptional: IsOptionalOptional = true
+    expect(checkOptional).toBe(true)
+  })
+
+  it('broadcast predicate receives TMeta (not TMeta | undefined) so no optional chaining is needed', () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const channel = createSSEChannel()
+    group.register(channel, { userId: 1 })
+
+    // Static check: meta.userId compiles without optional chaining
+    group.broadcast({ key: ['test'] }, (meta) => {
+      const _userId: number = meta.userId
+      return _userId > 0
+    })
+  })
+
   it('registers channel and handles topic updates on re-registration', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const channel = createSSEChannel()
@@ -75,7 +158,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
+    group.broadcast({ key: ['admin-data'] }, (meta) => meta.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
