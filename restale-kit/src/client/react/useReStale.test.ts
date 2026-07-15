@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useReStale } from './useReStale.js'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 
 describe('useReStale', () => {
@@ -19,6 +20,7 @@ describe('useReStale', () => {
   })
 
   it('opens connection on mount and closes on unmount', () => {
+    const spy = vi.spyOn(SSEInvalidatorClient.prototype, 'closeWithUnmount')
     const onInvalidate = vi.fn()
     const { unmount } = renderHook(() =>
       useReStale('/sse', { onInvalidate })
@@ -32,6 +34,8 @@ describe('useReStale', () => {
 
     unmount()
     expect(instance.readyState).toBe(MockEventSource.CLOSED)
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
   })
 
   it('does not open connection when disabled is true', () => {

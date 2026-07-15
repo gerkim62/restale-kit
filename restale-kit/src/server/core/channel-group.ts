@@ -206,7 +206,14 @@ export class SSEChannelGroup<
           const unsub = await pubsub.subscribe(this.controlTopic, (msg) => {
             if (msg.kind === 'control') {
               const dataObj = msg.data
-              if (dataObj && typeof dataObj === 'object' && !Array.isArray(dataObj) && 'revokeByConnectionId' in dataObj) {
+              if (
+                dataObj &&
+                typeof dataObj === 'object' &&
+                !Array.isArray(dataObj) &&
+                'type' in dataObj &&
+                dataObj.type === 'revokeByConnectionId' &&
+                'revokeByConnectionId' in dataObj
+              ) {
                 const revokePayload = dataObj.revokeByConnectionId
                 if (revokePayload && typeof revokePayload === 'object' && !Array.isArray(revokePayload)) {
                   if ('connectionId' in revokePayload && typeof revokePayload.connectionId === 'string') {
@@ -455,6 +462,14 @@ export class SSEChannelGroup<
   }
 
   /**
+   * @deprecated Renamed to `revokeWhere`. Use `revokeWhere` instead.
+   */
+  async revokeMany(criteria: JSONValue): Promise<{ localClosed: number }> {
+    console.warn('[restale-kit] `revokeMany` is deprecated and will be removed in a future release. Use `revokeWhere` instead.')
+    return this.revokeWhere(criteria)
+  }
+
+  /**
    * Revokes a specific client connection by its unique connection ID.
    *
    * Use this for per-connection precision: closing exactly one browser tab on logout, invalidating
@@ -497,11 +512,22 @@ export class SSEChannelGroup<
       }
       await this.pubsub.publish(this.controlTopic, {
         kind: 'control',
-        data: { revokeByConnectionId: revokePayload }
+        data: {
+          type: 'revokeByConnectionId',
+          revokeByConnectionId: revokePayload,
+        },
       })
     }
 
     return { closed }
+  }
+
+  /**
+   * @deprecated Renamed to `revokeByConnectionId`. Use `revokeByConnectionId` instead.
+   */
+  async revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }> {
+    console.warn('[restale-kit] `revokeOne` is deprecated and will be removed in a future release. Use `revokeByConnectionId` instead.')
+    return this.revokeByConnectionId(connectionId, scope)
   }
 
   /**

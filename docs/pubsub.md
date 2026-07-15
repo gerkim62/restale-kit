@@ -105,12 +105,27 @@ import { ablyPubSubAdapter } from 'restale-kit/ably'
 
 const ably = new Ably.Realtime({
   key: process.env.ABLY_API_KEY,
-  echoMessages: false, // suppress self-echo at the Ably level
 })
 
 const group = new SSEChannelGroup({
   pubsub: ablyPubSubAdapter(ably),
 })
+```
+
+Self-echo suppression is handled automatically via an internal envelope tag — you don't need to configure anything special on the Ably client.
+
+If you prefer to use Ably's native echo suppression instead, pass `useNativeEchoSuppression: true` **and** configure `echoMessages: false` on your Ably client:
+
+```ts
+const ably = new Ably.Realtime({
+  key: process.env.ABLY_API_KEY,
+  echoMessages: false, // required when useNativeEchoSuppression: true
+})
+
+const group = new SSEChannelGroup({
+  pubsub: ablyPubSubAdapter(ably, { useNativeEchoSuppression: true }),
+})
+```
 ```
 
 ---

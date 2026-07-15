@@ -72,39 +72,17 @@ connection revocation) with full type safety via the `kind` discriminant.
   dropped broker connection) that aren't tied to a specific `publish()` call and
   therefore have no caller to reject.
 
-## `SSEChannelGroup` changes
+## `SSEChannelGroup` pub/sub integration
 
 - Constructor accepts optional `pubsub?: PubSubAdapter<TSignal>`.
-- `register(channel, meta, { topics? })` — `topics` is a new optional list of topic
-  strings this connection cares about, used for pub/sub routing. Existing predicate-
-  based `broadcast()` is unaffected/unchanged for local-only use.
-- **Per-channel topic membership must be tracked, not just per-topic refcounts.**
-  The existing `channels` map (`Map<SSEChannel, TMeta>`) has nowhere to record which
-  topics a given channel registered on, and `deregister(channel)` takes no `topics`
-  argument — so without a second index there is no way to know, at deregister time,
-  which topic refcounts to decrement. `SSEChannelGroup` must additionally maintain
-  `Map<SSEChannel, Set<topic>>` (or fold topic membership into the existing per-channel
-  entry) alongside the topic-level refcount map described below.
-- Internally maintains `Map<topic, { refcount, unsubscribe }>`. First local
-  registration on a topic calls `pubsub.subscribe(topic, handler)` once; last
-  deregistration on that topic calls `unsubscribe()`. Multiple local connections on
-  the same topic never create duplicate broker subscriptions.
-  - **Race on concurrent register/unsubscribe:** `subscribe()`/`unsubscribe()` may be
-    async. The refcount must be incremented/decremented synchronously, before the
-    corresponding broker call is awaited, so that a `register()` arriving while an
-    `unsubscribe()` for the same topic is still in flight correctly cancels the
-    teardown (refcount goes 1 → 0 → 1, not 1 → 0 with the topic entry already removed).
-- New method: `publish(topic, signal)`.
-  1. Delivers to any locally-held channels registered on `topic` (same as
-     `broadcast` today) — works identically with zero `pubsub` configured.
-  2. If `pubsub` is configured, **always** also calls `pubsub.publish(topic, signal)`,
-     regardless of whether there are any local subscribers on `topic` — remote
-     instances may have local subscribers this instance can't see, and the group has
-     no way to know that in advance.
-- `publish()` to a topic with no local subscribers **and** no `pubsub` configured is a
-  no-op, not an error (matches existing `broadcast()` behavior when predicate matches
-  nothing). With `pubsub` configured, `publish()` still forwards to the broker per the
-  rule above even if locally a no-op.
+- `register(channel, meta, { topics? })` — `topics` is an optional list of topic strings this connection subscribes to, used for pub/sub routing. Predicate-based `broadcast()` is unaffected for local-only use.
+- **Per-channel topic membership is tracked alongside a topic-level manager.** The internal `channels` map records each channel's topics set. `deregister(channel)` uses this to clean up topic subscriptions when a channel leaves.
+- Internally, each topic is managed by a `TopicManager` that maintains a `Set` of channels and a single broker subscription. The first channel registered on a topic creates the broker subscription; the last channel leaving a topic triggers unsubscription. Multiple local channels on the same topic never create duplicate broker subscriptions.
+  - **Race on concurrent register/unsubscribe** is handled via a sequential `pendingOp` promise chain — the async subscribe/unsubscribe operations are serialized so that a `register()` arriving while an `unsubscribe()` is still in flight correctly restores the subscription.
+- `publish(topic, signal)`:
+  1. Delivers synchronously to any locally-held channels registered on that topic.
+  2. If a `pubsub` adapter is configured, also calls `pubsub.publish(topic, signal)` — even if there are no local subscribers on the topic, because remote instances may hold matching channels.
+- `publish()` to a topic with no local subscribers and no `pubsub` configured is a no-op, not an error.
 
 ## Adapter packages (subpath exports, each importing only its own broker's client lib)
 
@@ -129,25 +107,12 @@ const group = new SSEChannelGroup<Signal, Meta>({
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res)
   group.register(channel, { userId }, { topics: [`user:${userId}`] })
-  req.on('close', () => group.deregister(channel))
+  // No manual cleanup needed — channel auto-deregisters from the group on disconnect
 })
 
 // From any instance, with or without a live connection of its own:
 await group.publish(`user:${userId}`, { key: ['todos'] })
 ```
-
-## Open questions (resolve before a second adapter is written)
-
-- **Subpath `exports` map**: `package.json` config for `restale-kit/redis` etc.
-  isn't specified here — needs a pointer to where that lives once implemented.
-- **Generic typing across adapter factories**: the relationship between `TSignal` on
-  `SSEChannelGroup<TSignal, TMeta>` and on `redisPubSubAdapter<TSignal>(client)` isn't
-  pinned down. Left implicit, a mismatch produces a confusing generic error at the
-  call site rather than a clear one.
-- **Reconnect-window behavior**: adapters own broker reconnect (see above), but it's
-  unspecified whether signals published by other instances during an adapter's
-  reconnect gap are dropped or buffered. Likely "dropped," consistent with the
-  "at most once" non-goal below — worth stating explicitly rather than leaving silent.
 
 ## Non-goals (v1)
 

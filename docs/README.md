@@ -23,7 +23,7 @@
 restale-kit/server         → SSEChannelGroup, createSSEChannel
 restale-kit/node           → attachSSE  (Express, Fastify, raw Node)
 restale-kit/express        → attachSSE  (re-exports from /node)
-restale-kit/fastify        → attachSSE  (re-exports from /node, needs reply.hijack())
+restale-kit/fastify        → attachSSE  (auto-calls reply.hijack() when passed Fastify objects)
 restale-kit/fetch          → toSSEResponse  (Bun, Deno, Cloudflare Workers)
 restale-kit/hono           → toSSEResponse  (re-exports from /fetch)
 restale-kit/client         → SSEInvalidatorClient  (vanilla JS)

@@ -399,11 +399,24 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 ```ts
 import { redisPubSubAdapter } from 'restale-kit/redis'
-import type Redis from 'ioredis'
+import type { RedisClient } from 'restale-kit/redis'
+
+// Minimal structural interface compatible with ioredis and node-redis:
+interface RedisClient {
+  publish(topic: string, message: string): unknown
+  subscribe(topic: string): unknown
+  unsubscribe(topic: string): unknown
+  duplicate(): RedisClient
+  on(event: 'error', listener: (err: unknown) => void): unknown
+  on(event: 'message', listener: (channel: string, message: string) => void): unknown
+}
 
 function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Redis
+  client: RedisClient,
+  options?: { subscribeClient?: RedisClient }
 ): PubSubAdapter<TSignal>
+// Pass a single client — the adapter calls client.duplicate() internally for subscriptions.
+// Or pass a pre-created subscribeClient to use your own separate connection.
 ```
 
 ---
@@ -412,12 +425,33 @@ function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>
 
 ```ts
 import { ablyPubSubAdapter } from 'restale-kit/ably'
-import type * as Ably from 'ably'
+import type { AblyClient, AblyChannel } from 'restale-kit/ably'
+
+// Minimal structural interfaces compatible with the Ably SDK:
+interface AblyChannel {
+  publish(name: string, data: unknown): unknown
+  subscribe(listener: (message: { data: unknown }) => void): unknown
+  unsubscribe(listener: (message: { data: unknown }) => void): unknown
+  on?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
+  off?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
+}
+
+interface AblyClient {
+  options?: { echoMessages?: boolean }
+  connection?: {
+    on(event: 'error', listener: (err: unknown) => void): unknown
+  }
+  channels: {
+    get(name: string): AblyChannel
+  }
+}
 
 function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Ably.Realtime,
+  client: AblyClient,
   options?: { useNativeEchoSuppression?: boolean }
 ): PubSubAdapter<TSignal>
+// When useNativeEchoSuppression is true, the Ably client must be instantiated with
+// echoMessages: false — otherwise the adapter throws at construction time.
 ```
 
 ---
@@ -426,10 +460,21 @@ function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { pusherPubSubAdapter } from 'restale-kit/pusher'
-import type Pusher from 'pusher'
+import type { PusherClient, PusherWebhook } from 'restale-kit/pusher'
+
+// Minimal structural interfaces compatible with the pusher npm package:
+interface PusherWebhook {
+  isValid(): boolean
+  getEvents(): Array<{ channel: string; name: string; data: string | object }>
+}
+
+interface PusherClient {
+  trigger(channel: string, event: string, data: unknown): unknown
+  webhook(options: { headers: Record<string, string>; rawBody: string }): PusherWebhook
+}
 
 function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: Pusher
+  pusherServerClient: PusherClient
 ): PubSubAdapter<TSignal> & {
   // Required: call from your Pusher webhook route
   handleWebhook(rawBody: string, headers: Record<string, string>): boolean

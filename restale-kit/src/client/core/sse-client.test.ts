@@ -146,6 +146,19 @@ describe('SSEInvalidatorClient', () => {
     expect(es.readyState).toBe(MockEventSource.CLOSED)
   })
 
+  it('closeWithUnmount closes connection and sets status to closed with reason unmount', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const p = client.connect()
+    const es = MockEventSource.instances[0]
+    es.emitOpen()
+    await p
+
+    client.closeWithUnmount()
+
+    expect(client.status).toEqual({ status: 'closed', reason: 'unmount' })
+    expect(es.readyState).toBe(MockEventSource.CLOSED)
+  })
+
   it('clears active retryTimer when disconnect() or close() is called', () => {
     const client = new SSEInvalidatorClient('/sse', {
       autoReconnect: true,

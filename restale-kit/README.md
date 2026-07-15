@@ -72,8 +72,8 @@ npm install pusher                        # Pusher pub/sub
 | `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient` |
 | `restale-kit/react` | `useReStale` |
-| `restale-kit/tanstack-query` | `tanstackAdapter` |
-| `restale-kit/swr` | `swrAdapter` |
+| `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
+| `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` |
 | `restale-kit/pubsub` | `PubSubAdapter` interface |
 | `restale-kit/redis` | `redisPubSubAdapter` |
 | `restale-kit/ably` | `ablyPubSubAdapter` |
@@ -112,7 +112,7 @@ app.post('/api/todos', async (req, res) => {
 // Revoke one connection. Scope the client-supplied request ID with trusted
 // identity/session values from authentication middleware.
 app.post('/api/logout', async (req, res) => {
-  await group.revokeConnection(req.body.connectionId, {
+  await group.revokeByConnectionId(req.body.connectionId, {
     userId: req.user.id,
     sessionId: req.session.id,
   })
@@ -334,11 +334,11 @@ await group.publish(`user:${userId}`, { key: ['todos'] })
 // Revoke one connection across the cluster. `userId` and `sessionId` come
 // from authenticated server state; `connectionId` is the client correlation value.
 async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revokeConnection(connectionId, { userId, sessionId })
+  await group.revokeByConnectionId(connectionId, { userId, sessionId })
 }
 
 // Revoke all sessions across cluster (ban / logout everywhere)
-await group.revoke({ userId: 'user-123' })
+await group.revokeWhere({ userId: 'user-123' })
 ```
 
 Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
