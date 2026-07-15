@@ -25,7 +25,7 @@ Connections can be revoked either per individual client connection or across all
 
 ## 3. Revocation APIs
 
-- **`revokeWhere(criteria: JSONValue)`**: Closes all local channels whose metadata subset-matches `criteria`. When a `PubSubAdapter` is configured, broadcasts a control message to `controlTopic` to close matching channels across all cluster instances. Channels registered without metadata (`undefined`) are excluded from criteria matching.
+- **`revokeWhere(criteria: JSONValue)`**: Closes all local channels whose metadata subset-matches `criteria`. When a `PubSubAdapter` is configured, broadcasts a control message to `controlTopic` to close matching channels across all cluster instances. Channels whose stored metadata is `undefined` are excluded from criteria matching.
 - **`revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>)`**: Closes the channel matching `connectionId` locally if its metadata satisfies `scope`. Broadcasts a control revocation message across the cluster when pub/sub is configured.
 
 ## 4. Control Communication & Subscriptions
