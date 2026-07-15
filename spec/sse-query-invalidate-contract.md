@@ -407,9 +407,9 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
    * Returns { localClosed } — the number of local channels closed.
    *
    * Note: channels registered without metadata cannot be matched and are skipped.
-   * Use revokeOne(connectionId) to revoke those channels instead.
+   * Use revokeByConnectionId(connectionId) to revoke those channels instead.
    */
-  revokeMany(criteria: JSONValue): Promise<{ localClosed: number }>
+  revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
 
   /**
    * Revokes the single channel identified by connectionId.
@@ -418,7 +418,7 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
    * If a pub/sub adapter is configured, broadcasts a control message to the cluster.
    * Returns { closed: boolean }.
    */
-  revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
+  revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
 
   /**
    * Tears down the control topic subscription idempotently.

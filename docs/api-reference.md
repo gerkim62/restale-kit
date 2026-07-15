@@ -122,8 +122,8 @@ class SSEChannelGroup<
   ): void
   // Omitting meta (or passing undefined) is equivalent to registering with {}.
   // Channels without metadata are included in broadcastToAll and broadcast(),
-  // excluded from broadcastByKey(), and cannot be targeted by revokeMany().
-  // Use revokeOne(connectionId) to revoke them.
+  // excluded from broadcastByKey(), and cannot be targeted by revokeWhere().
+  // Use revokeByConnectionId(connectionId) to revoke them.
 
   deregister(channel: SSEChannel<TSignal>): void
 
@@ -138,15 +138,15 @@ class SSEChannelGroup<
 
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
-  revokeMany(criteria: JSONValue): Promise<{ localClosed: number }>
-  // Channels registered without metadata cannot be matched by revokeMany().
-  // Use revokeOne(connectionId) to revoke those channels instead.
-  revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
+  revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
+  // Channels registered without metadata cannot be matched by revokeWhere().
+  // Use revokeByConnectionId(connectionId) to revoke those channels instead.
+  revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
   dispose(): Promise<void>
 }
 ```
 
-### `revokeMany(criteria)` security
+### `revokeWhere(criteria)` security
 
 `criteria` subset-matches connection metadata. If a criterion includes a client-supplied `connectionId`, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A connection ID is an opaque correlation value, not proof that a caller is authorized to revoke that connection.
 

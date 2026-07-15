@@ -15,8 +15,8 @@ Registering channels with only `{ userId }` (as the current examples do) makes p
 
 | Intent | Call | Effect |
 |---|---|---|
-| Log out this browser only | `revokeOne(channel.connectionId, { userId, sessionId })` | Closes exactly one connection within the authenticated scope |
-| Sign out everywhere / ban | `revokeMany({ userId })` | Closes every session for that user |
+| Log out this browser only | `revokeByConnectionId(channel.connectionId, { userId, sessionId })` | Closes exactly one connection within the authenticated scope |
+| Sign out everywhere / ban | `revokeWhere({ userId })` | Closes every session for that user |
 
 This falls directly out of the subset-match semantics already used for cache keys (`matchesJSONValue`) — no new matching logic needed, just meta granular enough to use it correctly.
 
@@ -36,7 +36,7 @@ app.get('/sse', (req, res) => {
 })
 ```
 
-`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revokeMany()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revokeOne(channel.connectionId, { userId, sessionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `restaleKitRequestId` query parameter is transport-level protocol identity, not the app's session concept.
+`userId` (and any other app-defined identity — session id, roles, tenant id, etc.) stays manual: the package has no way to know an app's auth model, so it can't and shouldn't guess how to extract or shape that data. `connectionId` is different in kind — it's not app auth state, it's *connection* identity that `revokeWhere()`'s own correctness depends on. Leaving it manual would mean a developer who forgets to wire it silently reintroduces the exact bug this feature exists to fix — with no error, just a scoped `revokeByConnectionId(channel.connectionId, { userId, sessionId })` that matches nothing. The package owns the one field its own core feature requires; it still owns none of the fields the app defines. The internal `restaleKitRequestId` query parameter is transport-level protocol identity, not the app's session concept.
 
 The query param name is deliberately namespaced (`restaleKitRequestId`, not `sessionId` or `sid`) and fixed, not configurable — this avoids colliding with an app's own query params or session cookie/id naming, and guarantees client-side generation and server-side extraction agree without a matching config option on both ends.
 
@@ -52,14 +52,14 @@ There's no `groupId`. `controlTopic` stays a plain optional string, same pattern
 
 ## 4. API
 
-- **`revokeMany(criteria: JSONValue): Promise<{ localClosed: number }>`** — closes all channels whose metadata subset-matches `criteria` (§2 table) locally, then broadcasts to the cluster. Channels registered without metadata are excluded from criteria matching — use `revokeOne` for those.
-- **`revokeOne(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>`** — closes the single channel identified by `connectionId`. Pass `scope` to verify ownership against the channel's registered metadata before closing. Broadcasts a control message to the cluster if a pub/sub adapter is configured.
+- **`revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>`** — closes all channels whose metadata subset-matches `criteria` (§2 table) locally, then broadcasts to the cluster. Channels registered without metadata are excluded from criteria matching — use `revokeByConnectionId` for those.
+- **`revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>`** — closes the single channel identified by `connectionId`. Pass `scope` to verify ownership against the channel's registered metadata before closing. Broadcasts a control message to the cluster if a pub/sub adapter is configured.
 
 **`PubSubAdapter`:** `publish`/`subscribe` carry a discriminated union payload, so a single pair of methods handles both invalidation signals and control messages with full type safety via the discriminant:
 
 > See `pubsub-adapter-contract.md` for the full `PubSubAdapter` and `PubSubMessage` interface definitions. The `PubSubMessage` discriminated union (`kind: 'signal' | 'control'`) is what allows a single `publish`/`subscribe` pair to carry both invalidation signals and revocation control messages.
 
-Scope of the break: this hits adapter *implementors* only (redis/ably/pusher, or any custom `PubSubAdapter`). `SSEChannelGroup`'s own public methods (`register`, `broadcast`, `publish`, `revokeMany`, `revokeOne`) are unchanged — it wraps/unwraps `PubSubMessage` internally at this one boundary.
+Scope of the break: this hits adapter *implementors* only (redis/ably/pusher, or any custom `PubSubAdapter`). `SSEChannelGroup`'s own public methods (`register`, `broadcast`, `publish`, `revokeWhere`, `revokeByConnectionId`) are unchanged — it wraps/unwraps `PubSubMessage` internally at this one boundary.
 
 Per-adapter work needed:
 - Redis / Ably: replace the `isSignalPayload`-only check with a `kind` branch. `control` payloads validate against the already-existing `isJSONValue` guard — no new validator to write.
