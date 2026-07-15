@@ -341,10 +341,19 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   constructor(options?: {
     metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
+    eventStore?: EventStore<TSignal>
+    eventBufferCapacity?: number              // auto-creates an EventStore with this capacity
+    controlTopic?: string                     // default '__restale_control__'
   })
 
   /** Number of active channels in the group */
   readonly size: number
+
+  /** The pub/sub control topic name used for cross-cluster revocations. */
+  readonly controlTopic: string
+
+  /** The event store, if one was provided or auto-created via eventBufferCapacity. */
+  readonly eventStore?: EventStore<TSignal>
 
   /**
    * Registers a channel with its associated metadata and optional routing topics.
@@ -377,6 +386,22 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
    * 2. If a pub/sub adapter is configured, also publishes to the broker.
    */
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+
+  /**
+   * Revokes channels whose registered metadata subset-matches criteria.
+   * 1. Closes and deregisters matching local channels immediately.
+   * 2. If a pub/sub adapter is configured, publishes the revocation criteria to
+   *    controlTopic so other instances can close their matching local channels.
+   * Returns { localClosed } — the number of local channels closed.
+   */
+  revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+
+  /**
+   * Tears down the control topic subscription idempotently.
+   * Does NOT close registered client channels.
+   * Call during graceful server shutdown.
+   */
+  dispose(): Promise<void>
 }
 ```
 
@@ -670,7 +695,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 | Subpath | Exported symbols |
 |---|---|
 | `restale-kit` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
-| `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup` |
+| `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `createEventStore`, `EventStoreOptions` |
 | `restale-kit/node`, `restale-kit/express`, `restale-kit/fastify` | `attachSSE` |
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus` |

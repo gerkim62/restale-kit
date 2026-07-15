@@ -142,6 +142,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
 ): { channel: SSEChannel<TSignal>; connectionId: string }
+// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
 ```
 
 > **Fastify:** Call `reply.hijack()` before passing `request.raw` / `reply.raw`.
@@ -161,6 +162,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
+// Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
 ```
 
 ---
