@@ -1,7 +1,7 @@
 import type { InvalidateSignal, ChannelState, EventStore } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
-import { formatInvalidateFrame, formatKeepalive } from '@/server/core/framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
@@ -69,8 +69,20 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   disconnect(): void
   /**
+   * Sends a terminal `revoke` SSE event frame to the client and then closes the channel.
+   *
+   * The client uses this event to distinguish an intentional server-initiated revocation
+   * (logout, session expiry, security kick) from a transient network error, and will
+   * NOT automatically reconnect. The resulting client status is `{ status: 'closed', reason: 'revoked' }`.
+   *
+   * Idempotent — if the channel is already closed, this is a no-op.
+   *
+   * @param reason - Human-readable reason string included in the event payload. Default: `'revoked'`.
+   */
+  revoke(reason?: string): void
+  /**
    * Registers a one-shot callback invoked when the channel transitions to `'closed'`
-   * (whether via `close()`, `disconnect()`, or stream cancellation).
+   * (whether via `close()`, `disconnect()`, `revoke()`, or stream cancellation).
    * If the channel is already closed the callback fires synchronously.
    */
   onClose(callback: () => void): void
@@ -181,6 +193,15 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     invalidate,
     close: closeInternal,
     disconnect: closeInternal,
+    revoke(reason: string = 'revoked'): void {
+      if (state === 'closed') return
+      try {
+        controller.enqueue(formatRevokeFrame(reason))
+      } catch {
+        // If the stream controller is already unusable, skip the frame and just close.
+      }
+      closeInternal()
+    },
     onClose(callback: () => void): void {
       if (state === 'closed') {
         callback()

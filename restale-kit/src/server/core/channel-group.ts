@@ -257,7 +257,7 @@ export class SSEChannelGroup<
     for (const [ch, entry] of channelEntries) {
       if (channelMatchesCriteria(ch, entry.meta, criteria)) {
         try {
-          ch.close()
+          ch.revoke()
         } catch {
           // Ignore close errors on already closed channels
         }
@@ -286,7 +286,7 @@ export class SSEChannelGroup<
       }
 
       try {
-        channel.close()
+        channel.revoke()
       } catch {
         // already closed
       }

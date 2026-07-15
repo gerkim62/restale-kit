@@ -36,3 +36,27 @@ export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | 
 export function formatKeepalive(): Uint8Array {
   return encoder.encode(': keepalive\n\n')
 }
+
+/**
+ * Formats a terminal revocation event frame.
+ *
+ * Produces exactly:
+ * ```
+ * event: revoke\n
+ * data: {"reason":"<reason>"}\n
+ * \n
+ * ```
+ *
+ * Sent by the server immediately before closing a connection intentionally
+ * (e.g. logout, session expiry, ban). The client uses this to distinguish
+ * an intentional server-initiated close from a transient network error,
+ * suppressing automatic reconnection.
+ */
+export function formatRevokeFrame(reason: string): Uint8Array {
+  const sanitizedReason = reason.replace(/[\r\n"\\]/g, (c) => {
+    if (c === '"') return '\\"'
+    if (c === '\\') return '\\\\'
+    return ''
+  })
+  return encoder.encode(`event: revoke\ndata: {"reason":"${sanitizedReason}"}\n\n`)
+}
