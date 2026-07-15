@@ -96,13 +96,12 @@ app.use(express.json())
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
+  const channel = attachSSE(req, res)
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId,
+    connectionId: channel.connectionId,
   })
-  req.on('close', () => group.deregister(channel))
 })
 
 app.post('/api/todos', async (req, res) => {
@@ -163,9 +162,8 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel, connectionId } = toSSEResponse(c.req.raw)
-  group.register(channel, { connectionId })
-  c.req.raw.signal.addEventListener('abort', () => group.deregister(channel))
+  const { response, channel } = toSSEResponse(c.req.raw)
+  group.register(channel, { connectionId: channel.connectionId })
   return response
 })
 ```
@@ -177,9 +175,8 @@ import { attachSSE } from 'restale-kit/fastify'
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
-  const { channel, connectionId } = attachSSE(request, reply)
-  group.register(channel, { connectionId })
-  request.raw.on('close', () => group.deregister(channel))
+  const channel = attachSSE(request, reply)
+  group.register(channel, { connectionId: channel.connectionId })
 })
 ```
 
@@ -191,9 +188,8 @@ import { attachSSE } from 'restale-kit/node'
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const { channel, connectionId } = attachSSE(req, res)
-    group.register(channel, { connectionId })
-    req.on('close', () => group.deregister(channel))
+    const channel = attachSSE(req, res)
+    group.register(channel, { connectionId: channel.connectionId })
   }
 })
 ```
@@ -229,6 +225,22 @@ Given cache key `['todos', { userId: 4, type: 'active' }]`:
 | `'invalidate'` (default) | `invalidateQueries` | `mutate(filter)` |
 | `'refetch'` | `refetchQueries` | `mutate(filter)` |
 | `'remove'` | `removeQueries` | `mutate(filter, undefined, false)` |
+
+**Broadcasting:**
+
+```ts
+// Broadcast to all connected clients
+group.broadcastToAll({ key: ['todos'] })
+
+// Broadcast to clients matching a predicate
+group.broadcast(
+  { key: ['todos', { userId: 42 }] },
+  (meta) => meta.userId === 42
+)
+
+// Broadcast using automatic key-based matching (metadata matched against signal key)
+group.broadcastByKey({ key: ['todos', { userId: 42 }] })
+```
 
 ---
 
@@ -276,9 +288,8 @@ type AppSignal = z.infer<typeof AppSignalSchema>
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { connectionId })
-  req.on('close', () => group.deregister(channel))
+  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  group.register(channel, { connectionId: channel.connectionId })
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
@@ -310,15 +321,14 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const { channel, connectionId } = attachSSE(req, res)
+  const channel = attachSSE(req, res)
   group.register(channel, {
     userId: req.user.id,
     sessionId: req.session.id,
-    connectionId,
+    connectionId: channel.connectionId,
   }, {
     topics: [`user:${req.user.id}`],
   })
-  req.on('close', () => group.deregister(channel))
 })
 
 // Publish invalidations across cluster
@@ -372,8 +382,8 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `attachSSE(req, res, options?)` | `{ channel, connectionId }` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
-| `toSSEResponse(request, options?)` | `{ response, channel, connectionId }` | Creates Fetch API SSE response object. |
+| `attachSSE(req, res, options?)` | `SSEChannel<TSignal>` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
+| `toSSEResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Creates Fetch API SSE response object. |
 
 ### `channel.invalidate(signal, customId?)`
 

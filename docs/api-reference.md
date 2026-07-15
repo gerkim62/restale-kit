@@ -72,6 +72,7 @@ interface SSEChannelOptions<TSignal> {
 
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
+  readonly connectionId: string                       // unique connection ID from client
   readonly stream: ReadableStream<Uint8Array>
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
@@ -89,6 +90,7 @@ interface SSEChannel<TSignal> {
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void                                       // server-initiated close; idempotent
   disconnect(): void                                  // called by transport on peer disconnect; idempotent
+  onClose(callback: () => void): void                 // register callback for when channel closes
 }
 ```
 
@@ -109,6 +111,7 @@ class SSEChannelGroup<
 
   readonly size: number
   readonly controlTopic: string
+  readonly eventStore?: EventStore<TSignal>
 
   register(
     channel: SSEChannel<TSignal>,
@@ -125,9 +128,12 @@ class SSEChannelGroup<
 
   broadcastToAll(signal: TSignal | TSignal[]): void
 
+  broadcastByKey(signal: TSignal): void
+
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   revoke(criteria: JSONValue): Promise<{ localClosed: number }>
+  revoke(connectionId: string, scope?: Partial<TMeta>): Promise<{ closed: boolean }>
 
   dispose(): Promise<void>
 }
@@ -168,7 +174,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options?: SSEChannelOptions<TSignal>
-): { channel: SSEChannel<TSignal>; connectionId: string }
+): SSEChannel<TSignal>
 // Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
 ```
 
@@ -181,7 +187,7 @@ function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
   options?: SSEChannelOptions<TSignal>
-): { channel: SSEChannel<TSignal>; connectionId: string }
+): SSEChannel<TSignal>
 
 interface FastifyRequestLike {
   raw: IncomingMessage
@@ -209,7 +215,7 @@ import { toSSEResponse } from 'restale-kit/hono'
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options?: SSEChannelOptions<TSignal>
-): { response: Response; channel: SSEChannel<TSignal>; connectionId: string }
+): { response: Response; channel: SSEChannel<TSignal> }
 // Throws synchronously if the `restaleKitRequestId` query parameter is missing or empty.
 ```
 
