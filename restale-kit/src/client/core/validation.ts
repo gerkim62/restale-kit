@@ -13,20 +13,22 @@ import type { InvalidateSignal, JSONValue } from '@/types/protocol.js'
  *
  * Returns the validated signal(s) or throws an Error with a descriptive message.
  */
-export function validatePayload(data: string): InvalidateSignal | InvalidateSignal[] {
-  // Step 1: JSON.parse
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(data)
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err))
-    // The raw string payload from the SSE connection that failed JSON parsing
-    console.error(
-      "[ERROR][validatePayload] Failed to parse SSE payload as JSON",
-      "\n  rawData:", data.slice(0, 500),
-      "\n  error:", error.stack || error.message
-    )
-    throw new Error(`Failed to parse SSE payload as JSON: ${error.message}`, { cause: err })
+export function validatePayload(data: unknown): InvalidateSignal | InvalidateSignal[] {
+  // Step 1: JSON.parse if data is a string
+  let parsed: unknown = data
+  if (typeof data === 'string') {
+    try {
+      parsed = JSON.parse(data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      // The raw string payload from the SSE connection that failed JSON parsing
+      console.error(
+        "[ERROR][validatePayload] Failed to parse SSE payload as JSON",
+        "\n  rawData:", data.slice(0, 500),
+        "\n  error:", error.stack || error.message
+      )
+      throw new Error(`Failed to parse SSE payload as JSON: ${error.message}`, { cause: err })
+    }
   }
 
   // Step 2: Must be a plain object or array of plain objects

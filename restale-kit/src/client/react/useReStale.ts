@@ -92,7 +92,9 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   useEffect(() => {
     if (disabled) return
 
-    void client.connect()
+    void client.connect().catch((e: unknown) => {
+      console.error('Failed to connect to SSE server:', e)
+    })
 
     return () => {
       client.close()

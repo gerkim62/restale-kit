@@ -20,6 +20,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run validate
-      - run: pnpm --filter restale-kit run test
-      - run: pnpm run test:package
+      - run: pnpm --filter restale-kit run test:coverage
+      - run: pnpm run build
+      - run: node scripts/verify-package.mjs
       - run: cd restale-kit && npm pack --dry-run
