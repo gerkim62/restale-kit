@@ -205,54 +205,67 @@ describe('Issue 3 — client-side validatePayload rejects non-finite numbers in 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted IDs', () => {
-  it('returns [] for a completely unknown lastEventId', () => {
+  it('returns stale:true with empty events for a completely unknown lastEventId', () => {
     const store = createEventStore()
     store.add({ key: ['a'] }) // id '1'
     store.add({ key: ['b'] }) // id '2'
 
-    expect(store.getEventsAfter('nonexistent')).toEqual([])
+    const result = store.getEventsAfter('nonexistent')
+    expect(result.stale).toBe(true)
+    expect(result.events).toEqual([])
   })
 
-  it('returns [] for an evicted lastEventId (fell off ring buffer)', () => {
+  it('returns stale:true with empty events for an evicted lastEventId (fell off ring buffer)', () => {
     const store = createEventStore({ capacity: 2 })
     store.add({ key: ['1'] }, 'id-1')
     store.add({ key: ['2'] }, 'id-2')
     store.add({ key: ['3'] }, 'id-3') // id-1 evicted
 
-    // Previously this returned ['id-2', 'id-3'] — now returns [] to avoid event leakage
-    expect(store.getEventsAfter('id-1')).toEqual([])
+    const result = store.getEventsAfter('id-1')
+    expect(result.stale).toBe(true)
+    expect(result.events).toEqual([])
   })
 
-  it('returns [] for empty-string lastEventId (never a valid ID)', () => {
+  it('returns stale:true with empty events for empty-string lastEventId (never a valid ID)', () => {
     const store = createEventStore()
     store.add({ key: ['x'] })
 
-    expect(store.getEventsAfter('')).toEqual([])
+    const result = store.getEventsAfter('')
+    expect(result.stale).toBe(true)
+    expect(result.events).toEqual([])
   })
 
-  it('still returns correct events for a known, in-buffer lastEventId', () => {
+  it('still returns correct events (stale:false) for a known, in-buffer lastEventId', () => {
     const store = createEventStore({ capacity: 3 })
     store.add({ key: ['a'] }, 'id-1')
     store.add({ key: ['b'] }, 'id-2')
     store.add({ key: ['c'] }, 'id-3')
 
-    const events = store.getEventsAfter('id-1')
+    const { events, stale } = store.getEventsAfter('id-1')
+    expect(stale).toBe(false)
     expect(events.map((e) => e.id)).toEqual(['id-2', 'id-3'])
   })
 
-  it('channel does not replay frames when lastEventId is evicted', () => {
+  it('channel sends a full-invalidate frame when lastEventId is evicted (stale cursor)', async () => {
     const store = createEventStore({ capacity: 2 })
     store.add({ key: ['old1'] }, 'id-1')
     store.add({ key: ['old2'] }, 'id-2')
     store.add({ key: ['old3'] }, 'id-3') // id-1 evicted
 
-    // Creating the channel should not alter the store contents
-    const storeSizeBefore = store.getEventsAfter('id-2').length // 1 item after id-2
+    // Channel should enqueue a full-invalidate signal, not silently do nothing
     const ch = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
+    const reader = ch.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
     ch.close()
 
-    // Store unchanged — no phantom adds from replay
-    expect(store.getEventsAfter('id-2').length).toBe(storeSizeBefore)
+    const text = new TextDecoder().decode(value)
+    expect(text).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+
+    // Store not mutated by the replay path
+    const { events, stale } = store.getEventsAfter('id-2')
+    expect(stale).toBe(false)
+    expect(events.map((e) => e.id)).toEqual(['id-3'])
   })
 })
 

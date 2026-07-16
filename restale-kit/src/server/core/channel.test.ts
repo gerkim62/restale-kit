@@ -102,11 +102,13 @@ describe('channel', () => {
     const id = channel.invalidate({ key: ['test-store'] })
     expect(id).toBeDefined()
     expect(id).not.toBe('')
-    // Verify the event was recorded: getEventsAfter with a preceding id returns the event
-    expect(store.getEventsAfter(id).length).toBe(0) // nothing after the last recorded event
-    // And getEventsAfter with a prior id (empty string not in store → empty; check via returned id)
-    const r = store.getEventsAfter('0')
-    expect(r.length).toBe(0) // '0' unknown → empty (new behaviour)
+    // Verify the event was recorded: getEventsAfter with the returned id finds nothing after it
+    const { events: afterId, stale: staleAfter } = store.getEventsAfter(id)
+    expect(staleAfter).toBe(false)
+    expect(afterId).toEqual([]) // nothing after the last recorded event
+    // Unknown id returns stale: true
+    const { stale: staleMiss } = store.getEventsAfter('0')
+    expect(staleMiss).toBe(true)
 
     const customGen = vi.fn().mockReturnValue('custom-id-123')
     const customChannel = createSSEChannel({ eventBufferCapacity: 10, idGenerator: customGen })
@@ -155,24 +157,30 @@ describe('channel', () => {
     expect(schemaSpy).not.toHaveBeenCalled()
   })
 
-  it('does NOT replay events when lastEventId is evicted or unknown (no stale catchup)', () => {
+  it('sends a full-invalidate frame when lastEventId is evicted or unknown (stale cursor)', async () => {
     const store = createEventStore({ capacity: 2 })
     store.add({ key: ['evt1'] }, 'id-1')
     store.add({ key: ['evt2'] }, 'id-2')
     store.add({ key: ['evt3'] }, 'id-3') // id-1 is evicted
 
-    // Verify the store confirms no events after the evicted id
-    expect(store.getEventsAfter('id-1').length).toBe(0)
+    // Verify the store marks id-1 as stale
+    expect(store.getEventsAfter('id-1').stale).toBe(true)
 
-    // Creating a channel with the evicted lastEventId should not replay anything.
-    // We verify this indirectly: after creating the channel with a stream that will be
-    // immediately closed, there are still only 2 events in the store (no new adds from replay).
+    // A channel created with an evicted lastEventId should emit a full-invalidate
+    // signal (key: []) so the client knows to refetch everything.
     const channel = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
+    const reader = channel.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
     channel.close()
 
-    // Store still has the same 2 events (id-2, id-3) — no phantom entries added by replay
-    expect(store.getEventsAfter('id-2').map((e) => e.id)).toEqual(['id-3'])
-    expect(store.getEventsAfter('id-3')).toEqual([])
+    // The frame should be an invalidate event with key: [] — no id prefix (not recorded)
+    expect(decoder.decode(value)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+
+    // Store is not mutated by the stale-replay path (no phantom adds)
+    const { events, stale } = store.getEventsAfter('id-2')
+    expect(stale).toBe(false)
+    expect(events.map((e) => e.id)).toEqual(['id-3'])
   })
 
   it('warns when controller.close throws an error in closeInternal', () => {

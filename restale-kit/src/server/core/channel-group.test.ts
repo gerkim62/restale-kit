@@ -481,21 +481,17 @@ describe('channel-group', () => {
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
     group.broadcast({ key: ['broadcast-event'] }, () => true)
-    // Verify the event was recorded by checking getEventsAfter returns nothing
-    // after the first recorded event id, and that there's exactly one event in buffer
-    // (we can't use getEventsAfter('') since unknown IDs now return empty — use id chain instead)
-    const r1 = store.add({ key: ['probe'] }) // adds a 2nd item to probe position
-    expect(store.getEventsAfter(r1.id).length).toBe(0) // nothing after probe
-    // There is 1 event before the probe
-    expect(store.getEventsAfter('0').length).toBe(0) // '0' unknown → empty
+    // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
+    const r1 = store.add({ key: ['probe'] }) // id '2'
+    expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
+    expect(store.getEventsAfter('0').stale).toBe(true) // '0' unknown → stale
 
     await group.publish('chat', { key: ['publish-event'] })
     const r3 = store.add({ key: ['probe2'] })
-    // r3 should follow broadcast-event, probe, publish-event — i.e. 3 events before it
-    // We verify by chaining: getEventsAfter the publish-event id returns nothing
-    // (publish-event is the item just before probe2)
-    const allEvents = store.getEventsAfter('1') // id '1' is the broadcast-event
-    // '1' is known — returns everything after it (probe, publish-event, probe2)
+    // broadcast-event='1', probe='2', publish-event='3', probe2='4'
+    // getEventsAfter('1') → [probe, publish-event, probe2]
+    const { events: allEvents, stale } = store.getEventsAfter('1')
+    expect(stale).toBe(false)
     expect(allEvents.length).toBe(3)
   })
 

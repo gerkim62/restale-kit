@@ -59,15 +59,21 @@ describe('formatRevokeFrame', () => {
     expect(str).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
   })
 
-  it('sanitizes CR/LF characters from reason', () => {
+  it('sanitizes control characters in reason via JSON.stringify', () => {
     const bytes = formatRevokeFrame('bad\r\nreason\n')
     const str = decoder.decode(bytes)
 
-    // CR/LF stripped — would otherwise break SSE framing
-    expect(str).toBe('event: revoke\ndata: {"reason":"badreason"}\n\n')
+    // JSON.stringify encodes \r as \r and \n as \n — produces valid JSON
+    // The client parses this correctly; the SSE frame itself is a single data: line
+    expect(str).toBe('event: revoke\ndata: {"reason":"bad\\r\\nreason\\n"}\n\n')
+
+    // Verify the client can parse it back
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const parsed: unknown = JSON.parse(dataLine.slice('data: '.length))
+    expect(parsed).toEqual({ reason: 'bad\r\nreason\n' })
   })
 
-  it('escapes quotes and backslashes in reason', () => {
+  it('escapes quotes and backslashes in reason via JSON.stringify', () => {
     const bytes = formatRevokeFrame('reason with "quotes" and \\backslash')
     const str = decoder.decode(bytes)
 

@@ -85,7 +85,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
     expect(MockEventSource.instances.length).toBe(instancesAfterMount)
   })
 
-  it('closes the old client before creating a new one when the URL changes', () => {
+  it('closes the old client after commit when the URL changes (deferred to effect)', () => {
     const closeSpy = vi.spyOn(SSEInvalidatorClient.prototype, 'close')
     const onInvalidate = vi.fn()
     let url = '/api/sse-a'
@@ -96,9 +96,12 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
 
     expect(closeSpy).not.toHaveBeenCalled()
 
-    // Changing the URL should close the old client before constructing the new one
-    url = '/api/sse-b'
-    rerender()
+    // The close happens in a useEffect after commit, not during render.
+    // act() flushes the effects synchronously in the test environment.
+    act(() => {
+      url = '/api/sse-b'
+      rerender()
+    })
 
     expect(closeSpy).toHaveBeenCalledTimes(1)
 
