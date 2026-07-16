@@ -266,7 +266,7 @@ describe('channel', () => {
   it('revoke() is idempotent — no-op when already closed', () => {
     const channel = createSSEChannel()
     channel.close()
-    expect(() => channel.revoke()).not.toThrow()
+    expect(() => { channel.revoke() }).not.toThrow()
     expect(channel.state).toBe('closed')
   })
 

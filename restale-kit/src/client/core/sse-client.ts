@@ -321,10 +321,12 @@ export class SSEInvalidatorClient<
           parsed !== null &&
           typeof parsed === 'object' &&
           !Array.isArray(parsed) &&
-          'reason' in parsed &&
-          typeof (parsed as { reason: unknown }).reason === 'string'
+          'reason' in parsed
         ) {
-          reason = (parsed as { reason: string }).reason
+          const { reason: parsedReason } = parsed
+          if (typeof parsedReason === 'string') {
+            reason = parsedReason
+          }
         }
       } catch {
         // malformed revoke payload — use default reason

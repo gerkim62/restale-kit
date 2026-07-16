@@ -50,8 +50,8 @@ export function extractLastEventId(
 
   if (value.length > MAX_LAST_EVENT_ID_LENGTH) {
     console.warn(
-      `[WARN][extractLastEventId] Last-Event-ID header exceeds maximum length of ${MAX_LAST_EVENT_ID_LENGTH} bytes ` +
-      `(got ${value.length}). Ignoring to prevent buffer scan DoS.`
+      `[WARN][extractLastEventId] Last-Event-ID header exceeds maximum length of ${String(MAX_LAST_EVENT_ID_LENGTH)} bytes ` +
+      `(got ${String(value.length)}). Ignoring to prevent buffer scan DoS.`
     )
     return undefined
   }
