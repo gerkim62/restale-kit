@@ -57,15 +57,30 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   const onRevokeRef = useRef(opts.onRevoke)
   onRevokeRef.current = opts.onRevoke
 
-  // Stable client reference — only recreated when url changes
+  // Stable client reference — only recreated when url changes.
+  // Stored as a ref-of-ref to keep the value stable across renders without
+  // causing re-renders itself. The factory function is only called when
+  // the url changes (i.e. when a new client must be created), not on every render.
+  const urlRef = useRef<string | null>(null)
   const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
-  if (!clientRef.current || clientRef.current.endpointUrl !== url) {
+
+  // Lazily create the client. We intentionally do this outside of useEffect so
+  // that the client is available synchronously for useSyncExternalStore on the
+  // first render. However, we guard with urlRef so the constructor only runs
+  // when the url actually changes — not on every render pass — which prevents
+  // the double-instantiation problem in React Strict Mode.
+  if (clientRef.current === null || urlRef.current !== url) {
+    // Close the previous client if url changed mid-lifecycle
+    if (clientRef.current !== null) {
+      clientRef.current.close()
+    }
     clientRef.current = new SSEInvalidatorClient<TSignal>(url, {
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
       signalSchema: opts.signalSchema,
       withCredentials: opts.withCredentials,
     })
+    urlRef.current = url
   }
 
   const client = clientRef.current

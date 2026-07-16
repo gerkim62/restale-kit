@@ -49,8 +49,11 @@ export function createEventStore<TSignal extends InvalidateSignal = InvalidateSi
   function getEventsAfter(lastEventId: string): EventRecord<TSignal>[] {
     const index = records.findIndex((rec) => rec.id === lastEventId)
     if (index === -1) {
-      // If lastEventId is not found (or fell off the ring buffer), return all stored records
-      return [...records]
+      // lastEventId not found — it either never existed or fell off the ring buffer.
+      // Return an empty array rather than the full buffer to avoid replaying potentially
+      // large event history to clients that reconnect with a stale or fabricated ID.
+      // The caller should treat an empty result as "no catchup possible; refetch instead."
+      return []
     }
     return records.slice(index + 1)
   }

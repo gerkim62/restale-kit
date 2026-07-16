@@ -66,6 +66,13 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
       topic: string,
       onMessage: (message: PubSubMessage<TSignal>) => void
     ): Promise<() => Promise<void>> {
+      if (callbacks.has(topic)) {
+        throw new Error(
+          `[redisPubSubAdapter] Topic "${topic}" is already subscribed. ` +
+          'Unsubscribe the existing subscription before subscribing again. ' +
+          'Subscribing twice to the same topic would silently drop the first callback.'
+        )
+      }
       callbacks.set(topic, onMessage)
       await subscribeClient.subscribe(topic)
 

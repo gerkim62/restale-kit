@@ -61,15 +61,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /**
  * Type guard: value is a JSONValue.
  * JSON.parse output always satisfies this, but we verify to satisfy the type system.
+ * Explicitly rejects non-finite numbers (NaN, Infinity, -Infinity) which are not
+ * valid JSON — JSON.stringify(NaN) produces "null", causing silent data corruption.
  */
 function isJSONValue(value: unknown): value is JSONValue {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return true
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
   }
   if (Array.isArray(value)) {
     return value.every(isJSONValue)

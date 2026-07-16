@@ -31,10 +31,17 @@ describe('event-store', () => {
     store.add({ key: ['1'] })
     store.add({ key: ['2'] })
     store.add({ key: ['3'] })
-    store.add({ key: ['4'] }) // Evicts '1'
+    const r4 = store.add({ key: ['4'] }) // Evicts '1'
 
-    const events = store.getEventsAfter('0')
-    expect(events.map((e) => e.id)).toEqual(['2', '3', '4'])
+    // '0' was never added — returns empty because unknown IDs return empty
+    expect(store.getEventsAfter('0').map((e) => e.id)).toEqual([])
+
+    // Use a known ID that is still in the buffer to verify catchup
+    const r2 = store.getEventsAfter('2')
+    expect(r2.map((e) => e.id)).toEqual(['3', '4'])
+
+    // Using the last known ID returns nothing after it
+    expect(store.getEventsAfter(r4.id)).toEqual([])
   })
 
   it('getEventsAfter returns events strictly following lastEventId', () => {
@@ -50,16 +57,19 @@ describe('event-store', () => {
     expect(afterThree).toEqual([])
   })
 
-  it('getEventsAfter returns all stored records if lastEventId is missing or evicted', () => {
+  it('getEventsAfter returns empty array if lastEventId is missing or evicted', () => {
     const store = createEventStore({ capacity: 2 })
     store.add({ key: ['1'] })
     store.add({ key: ['2'] })
     store.add({ key: ['3'] }) // '1' is evicted
 
-    // '1' was evicted, so it returns all currently retained records (2 and 3)
-    expect(store.getEventsAfter('1').map((e) => e.id)).toEqual(['2', '3'])
-    // Unknown ID
-    expect(store.getEventsAfter('nonexistent').map((e) => e.id)).toEqual(['2', '3'])
+    // '1' was evicted — returns empty (caller should refetch rather than replay stale events)
+    expect(store.getEventsAfter('1').map((e) => e.id)).toEqual([])
+    // Unknown ID — also returns empty
+    expect(store.getEventsAfter('nonexistent').map((e) => e.id)).toEqual([])
+
+    // Known ID still in buffer — returns correctly
+    expect(store.getEventsAfter('2').map((e) => e.id)).toEqual(['3'])
   })
 
   it('clear removes all events from store', () => {

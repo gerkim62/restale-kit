@@ -106,7 +106,12 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const connectionId = options?.connectionId ?? ''
 
   let eventStore: EventStore<TSignal> | undefined = options?.eventStore
-  if (eventStore === undefined && options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+  // Track whether this channel owns its eventStore (created internally) or was given an
+  // external one. When the store is external (shared with a group), the group is responsible
+  // for recording signals before calling invalidate() with a customId — the channel must not
+  // call eventStore.add() a second time for the same event.
+  const ownsEventStore = eventStore === undefined
+  if (ownsEventStore && options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
     eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity, idGenerator })
   }
 
@@ -174,8 +179,13 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
     let eventId = customId
     if (eventStore !== undefined) {
-      const record = eventStore.add(signal, customId)
-      eventId = record.id
+      if (ownsEventStore || customId === undefined) {
+        // Channel owns its store, or no id was provided — record it now.
+        const record = eventStore.add(signal, customId)
+        eventId = record.id
+      }
+      // When customId is provided and the store is external (shared with a group),
+      // the group has already recorded this signal — skip add() to prevent double-recording.
       controller.enqueue(formatInvalidateFrame(signal, eventId))
     } else {
       controller.enqueue(formatInvalidateFrame(signal, undefined))
