@@ -58,23 +58,17 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   onRevokeRef.current = opts.onRevoke
 
   // Stable client reference — only recreated when url changes.
-  // Stored as a ref-of-ref to keep the value stable across renders without
-  // causing re-renders itself. The factory function is only called when
-  // the url changes (i.e. when a new client must be created), not on every render.
+  // We keep a separate pendingClientRef so the render phase never closes the committed
+  // client. The swap is deferred to useEffect so an aborted/suspended render in
+  // Concurrent Mode cannot tear down the live SSE connection.
   const urlRef = useRef<string | null>(null)
   const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
+  const pendingClientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
 
-  // Lazily create the client. We intentionally do this outside of useEffect so
-  // that the client is available synchronously for useSyncExternalStore on the
-  // first render. However, we guard with urlRef so the constructor only runs
-  // when the url actually changes — not on every render pass — which prevents
-  // the double-instantiation problem in React Strict Mode.
-  if (clientRef.current === null || urlRef.current !== url) {
-    // Close the previous client if url changed mid-lifecycle
-    if (clientRef.current !== null) {
-      clientRef.current.close()
-    }
-    clientRef.current = new SSEInvalidatorClient<TSignal>(url, {
+  // On the first render, or when the url changes, build a new client and stage it in
+  // pendingClientRef. The committed clientRef is left intact until the effect runs.
+  if (urlRef.current !== url) {
+    pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
       signalSchema: opts.signalSchema,
@@ -83,7 +77,18 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
     urlRef.current = url
   }
 
+  // For the very first render clientRef is still null — initialise it immediately so
+  // useSyncExternalStore has a valid client on the first pass.
+  if (clientRef.current === null) {
+    clientRef.current = pendingClientRef.current
+    pendingClientRef.current = null
+  }
+
   const client = clientRef.current
+
+  if(!client) {
+    throw new Error('SSEInvalidatorClient is not initialized')
+  }
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(
@@ -101,6 +106,25 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   const getServerSnapshot = useCallback(() => CLOSED_UNMOUNT, [])
 
   const connection = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+
+  // Commit the pending client swap after render. This runs after the browser has painted,
+  // so an aborted concurrent render never closes the committed connection.
+  useEffect(() => {
+    const pending = pendingClientRef.current
+    if (pending === null) return // no swap needed this cycle
+
+    const previous = clientRef.current
+    clientRef.current = pending
+    pendingClientRef.current = null
+
+    // Close the previous client only after the new one is committed.
+    if (previous !== null && previous !== pending) {
+      previous.close()
+    }
+    // Note: connect() for the new client is handled by the open/unmount effect below,
+    // which also depends on `client`. Because clientRef is a plain ref (not state),
+    // we trigger a re-render manually via the statuschange listener wired in subscribe().
+  }, [url])
 
   // Wire up onInvalidate
   useEffect(() => {

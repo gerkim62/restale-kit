@@ -1,4 +1,4 @@
-import type { InvalidateSignal, EventRecord, EventStore } from '@/types/protocol.js'
+import type { InvalidateSignal, EventRecord, EventStore, EventStoreResult } from '@/types/protocol.js'
 
 /**
  * Options for configuring an in-memory `EventStore`.
@@ -46,16 +46,15 @@ export function createEventStore<TSignal extends InvalidateSignal = InvalidateSi
     return record
   }
 
-  function getEventsAfter(lastEventId: string): EventRecord<TSignal>[] {
+  function getEventsAfter(lastEventId: string): EventStoreResult<TSignal> {
     const index = records.findIndex((rec) => rec.id === lastEventId)
     if (index === -1) {
       // lastEventId not found — it either never existed or fell off the ring buffer.
-      // Return an empty array rather than the full buffer to avoid replaying potentially
-      // large event history to clients that reconnect with a stale or fabricated ID.
-      // The caller should treat an empty result as "no catchup possible; refetch instead."
-      return []
+      // Return stale: true so callers can distinguish "cursor missed" from "nothing new".
+      // The channel uses this to send a full-invalidate signal, prompting the client to refetch.
+      return { events: [], stale: true }
     }
-    return records.slice(index + 1)
+    return { events: records.slice(index + 1), stale: false }
   }
 
   function clear(): void {

@@ -93,11 +93,25 @@ export interface EventRecord<TSignal extends InvalidateSignal = InvalidateSignal
 }
 
 /**
+ * The result of an `EventStore.getEventsAfter` lookup.
+ *
+ * - `events`: the ordered list of events recorded after `lastEventId`.
+ * - `stale`: `true` when `lastEventId` was not found — either because it
+ *   was evicted from the ring buffer or was never a valid ID. When `stale`
+ *   is `true`, `events` is always empty; the caller should treat this as
+ *   "too much missed, trigger a full refetch" rather than "nothing missed".
+ */
+export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateSignal> {
+  events: EventRecord<TSignal>[]
+  stale: boolean
+}
+
+/**
  * An event history store interface for storing past events and replaying missed signals.
  */
 export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
   add(signal: TSignal | TSignal[], customId?: string): EventRecord<TSignal>
-  getEventsAfter(lastEventId: string): EventRecord<TSignal>[]
+  getEventsAfter(lastEventId: string): EventStoreResult<TSignal>
   clear(): void
 }
 

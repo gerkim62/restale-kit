@@ -74,7 +74,13 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
         )
       }
       callbacks.set(topic, onMessage)
-      await subscribeClient.subscribe(topic)
+      try {
+        await subscribeClient.subscribe(topic)
+      } catch (err) {
+        // Roll back the callback registration so the caller can retry cleanly.
+        callbacks.delete(topic)
+        throw err
+      }
 
       return async () => {
         callbacks.delete(topic)

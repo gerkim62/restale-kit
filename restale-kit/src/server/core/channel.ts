@@ -126,9 +126,16 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
       // Replay missed historical events if lastEventId and eventStore are present
       if (lastEventId !== undefined && eventStore !== undefined) {
-        const missed = eventStore.getEventsAfter(lastEventId)
-        for (const record of missed) {
-          controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+        const { events: missed, stale } = eventStore.getEventsAfter(lastEventId)
+        if (stale) {
+          // The cursor fell off the ring buffer or was never valid — the client missed
+          // an unknown number of events. Send a full-invalidate signal (key: []) so the
+          // client refetches everything rather than silently displaying stale data.
+          controller.enqueue(formatInvalidateFrame({ key: [] }))
+        } else {
+          for (const record of missed) {
+            controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+          }
         }
       }
 

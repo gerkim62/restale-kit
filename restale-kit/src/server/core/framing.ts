@@ -61,10 +61,6 @@ export function formatKeepalive(): Uint8Array {
  * suppressing automatic reconnection.
  */
 export function formatRevokeFrame(reason: string): Uint8Array {
-  const sanitizedReason = reason.replace(/[\r\n"\\]/g, (c) => {
-    if (c === '"') return '\\"'
-    if (c === '\\') return '\\\\'
-    return ''
-  })
-  return encoder.encode(`event: revoke\ndata: {"reason":"${sanitizedReason}"}\n\n`)
+  const payload = JSON.stringify({ reason })
+  return encoder.encode(`event: revoke\ndata: ${payload}\n\n`)
 }
