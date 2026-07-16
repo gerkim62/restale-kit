@@ -38,6 +38,7 @@ export class SSEInvalidatorClient<
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
   private attempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private revoked = false
   private connectPromise: {
     promise: Promise<void>
     resolve: () => void
@@ -64,6 +65,11 @@ export class SSEInvalidatorClient<
   /** The unique ID generated for this SSE connection instance. */
   get connectionId(): string {
     return this.currentConnectionId
+  }
+
+  /** The URL this client connects to (excluding the injected `__restale_cid__` parameter). */
+  get endpointUrl(): string {
+    return this.url
   }
 
   /** Current connection status. */
@@ -103,8 +109,9 @@ export class SSEInvalidatorClient<
       this.retryTimer = null
     }
 
-    // Reset backoff counter for a fresh connect attempt
+    // Reset backoff counter and revoked flag for a fresh connect attempt
     this.attempt = 0
+    this.revoked = false
 
     return this.createConnection()
   }
@@ -230,7 +237,7 @@ export class SSEInvalidatorClient<
       this.teardown()
       this.dispatchEvent(new CustomEvent('error', { detail: event }))
 
-      if (this.autoReconnect && this.attempt < this.maxRetries) {
+      if (!this.revoked && this.autoReconnect && this.attempt < this.maxRetries) {
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         this.attempt++
         this.setStatus({ status: 'connecting' })
@@ -253,8 +260,9 @@ export class SSEInvalidatorClient<
   }
 
   /**
-   * Wires the `invalidate` event listener on an EventSource instance.
+   * Wires the `invalidate` and `revoke` event listeners on an EventSource instance.
    * Runs the validation pipeline (steps 1–7) and emits either `invalidate` or `error`.
+   * On `revoke`, suppresses auto-reconnect and transitions to `{ status: 'closed', reason: 'revoked' }`.
    */
   private wireInvalidateListener(es: EventSource): void {
     es.addEventListener('invalidate', (event: MessageEvent<string>) => {
@@ -303,6 +311,37 @@ export class SSEInvalidatorClient<
           new CustomEvent('error', { detail })
         )
       }
+    })
+
+    es.addEventListener('revoke', (event: MessageEvent<string>) => {
+      let reason = 'revoked'
+      try {
+        const parsed: unknown = JSON.parse(event.data)
+        if (
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed) &&
+          'reason' in parsed &&
+          typeof (parsed as { reason: unknown }).reason === 'string'
+        ) {
+          reason = (parsed as { reason: string }).reason
+        }
+      } catch {
+        // malformed revoke payload — use default reason
+      }
+
+      // Mark revoked so onerror (which fires after the stream closes) does not retry.
+      this.revoked = true
+      this.teardown()
+      const status: ConnectionStatus = { status: 'closed', reason: 'revoked' }
+      this.setStatus(status)
+
+      if (this.connectPromise) {
+        this.connectPromise.reject(new Event('revoke'))
+        this.connectPromise = null
+      }
+
+      this.dispatchEvent(new CustomEvent('revoke', { detail: { reason } }))
     })
   }
 

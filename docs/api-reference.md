@@ -91,6 +91,12 @@ interface SSEChannel<TSignal> {
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void                                       // server-initiated close; idempotent
   disconnect(): void                                  // called by transport on peer disconnect; idempotent
+  /**
+   * Sends a terminal `revoke` SSE event to the client, then closes the channel.
+   * The client will NOT auto-reconnect after receiving this frame.
+   * Idempotent — no-op if the channel is already closed.
+   */
+  revoke(reason?: string): void                       // default reason: 'revoked'
   onClose(callback: () => void): void                 // register callback for when channel closes
 }
 ```
@@ -139,9 +145,12 @@ class SSEChannelGroup<
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
+  // Sends a terminal revoke SSE frame to each matched client before closing.
+  // Client receives { status: 'closed', reason: 'revoked' } and does NOT auto-reconnect.
   // Channels registered without metadata cannot be matched by revokeWhere().
   // Use revokeByConnectionId(connectionId) to revoke those channels instead.
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
+  // Also sends a terminal revoke frame before closing. Same client-side behavior as revokeWhere.
   dispose(): Promise<void>
 }
 ```
@@ -247,10 +256,12 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
 {
   constructor(url: string, options?: ClientOptions<TSignal>)
   get connectionId(): string
+  get endpointUrl(): string      // the URL passed to the constructor (without __restale_cid__)
   get status(): ConnectionStatus
   get lastEventId(): string | null
   connect(): Promise<void>
-  close(): void
+  close(): void                  // closes with reason 'manual'
+  closeWithUnmount(): void       // closes with reason 'unmount'; used by the React hook on unmount
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
     type: K,
@@ -277,13 +288,18 @@ interface ReconnectOptions {
 type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
-  | { status: 'closed'; reason: 'manual' | 'unmount' }
+  | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
   | { status: 'error'; error: Event }
+// reason: 'manual'  — caller called client.close()
+// reason: 'unmount' — React hook unmounted
+// reason: 'revoked' — server sent a terminal revoke frame; auto-reconnect suppressed
 
 interface SSEInvalidatorClientEventMap<TSignal> {
   invalidate: CustomEvent<TSignal | TSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
+  /** Fired when the server sends a terminal `revoke` frame. Auto-reconnect is suppressed. */
+  revoke: CustomEvent<{ reason: string }>
 }
 ```
 
@@ -303,6 +319,12 @@ function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
 interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
   disabled?: boolean                // default false
   onInvalidate: (signal: TSignal | TSignal[]) => void  // required
+  /**
+   * Called when the server sends a terminal `revoke` frame.
+   * The connection is already closed; auto-reconnect is suppressed.
+   * Use this to log out the user, show a notice, or redirect.
+   */
+  onRevoke?: (reason: string) => void
 }
 // Option stability: autoReconnect, reconnect, signalSchema, and withCredentials are
 // applied only at client creation time. Changing them after mount has no effect until

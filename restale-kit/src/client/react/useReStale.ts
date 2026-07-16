@@ -12,6 +12,15 @@ export interface UseReStaleOptions<TSignal extends InvalidateSignal = Invalidate
   disabled?: boolean
   /** Called on every received invalidation event. Typed by schema if provided. */
   onInvalidate: (signal: TSignal | TSignal[]) => void
+  /**
+   * Called when the server sends a terminal revocation frame.
+   *
+   * At this point the connection is already closed and auto-reconnect is suppressed.
+   * Use this to log out the user, show a UI notice, or redirect.
+   *
+   * @param reason - The reason string from the revoke payload (e.g. `'logout'`, `'banned'`).
+   */
+  onRevoke?: (reason: string) => void
 }
 
 /**
@@ -45,10 +54,12 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   const disabled = opts.disabled ?? false
   const onInvalidateRef = useRef(opts.onInvalidate)
   onInvalidateRef.current = opts.onInvalidate
+  const onRevokeRef = useRef(opts.onRevoke)
+  onRevokeRef.current = opts.onRevoke
 
   // Stable client reference — only recreated when url changes
   const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
-  if (!clientRef.current || clientRef.current['url'] !== url) {
+  if (!clientRef.current || clientRef.current.endpointUrl !== url) {
     clientRef.current = new SSEInvalidatorClient<TSignal>(url, {
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
@@ -85,6 +96,18 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
     client.addEventListener('invalidate', handler)
     return () => {
       client.removeEventListener('invalidate', handler)
+    }
+  }, [client])
+
+  // Wire up onRevoke
+  useEffect(() => {
+    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['revoke']) => {
+      onRevokeRef.current?.(event.detail.reason)
+    }
+
+    client.addEventListener('revoke', handler)
+    return () => {
+      client.removeEventListener('revoke', handler)
     }
   }, [client])
 

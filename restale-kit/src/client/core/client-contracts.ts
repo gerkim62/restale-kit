@@ -3,11 +3,20 @@ import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
 /**
  * Discriminated union representing the SSE client's connection state.
+ *
+ * - `connecting` — actively establishing or waiting to retry.
+ * - `open` — stream is live and delivering events.
+ * - `closed` — stream has been shut down:
+ *   - `reason: 'manual'` — caller called `client.close()`.
+ *   - `reason: 'unmount'` — React hook unmounted the component.
+ *   - `reason: 'revoked'` — server sent a terminal `revoke` frame (e.g. logout, ban).
+ *     Auto-reconnect is suppressed until `connect()` is called explicitly.
+ * - `error` — connection failed and retry limit was reached (or `autoReconnect` is off).
  */
 export type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
-  | { status: 'closed'; reason: 'manual' | 'unmount' }
+  | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
   | { status: 'error'; error: Event }
 
 /**
@@ -51,4 +60,6 @@ export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> 
   invalidate: CustomEvent<TSignal | TSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
+  /** Emitted when the server sends a terminal `revoke` frame. Does not auto-reconnect. */
+  revoke: CustomEvent<{ reason: string }>
 }
