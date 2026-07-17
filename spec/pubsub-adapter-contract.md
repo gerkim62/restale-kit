@@ -77,8 +77,8 @@ Every PubSub adapter factory function (Redis, Ably, Pusher) requires explicit `P
 
 ```ts
 export type PubSubEncryptionOptions =
-  | { encrypt: false }
-  | { encryptionKey: string; encrypt?: true }
+  | { encrypt: false; encryptionKey?: never }
+  | { encrypt?: true; encryptionKey: string }
 ```
 
 - **Explicit configuration mandatory:** Either `{ encrypt: false }` or `{ encryptionKey: string }` must be provided. Passing neither throws an error at initialization time.

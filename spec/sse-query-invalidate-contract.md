@@ -132,6 +132,7 @@ interface RTKQuerySignal {
   target: 'rtk-query'
   tags: Array<string | { type: string; id?: string | number }>
 }
+// Note: RTKQuerySignal is a wire protocol seam reserved for tag-based query invalidations. Standard adapters are provided for TanStack Query and SWR; custom/userland handlers process RTK Query signals.
 
 interface GenericInvalidateSignal {
   target?: 'generic'
@@ -790,7 +791,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` | `JSONValue`, `ReStaleSignal`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, `SIGNAL_TARGETS`, `isJSONValue`, `isJSONValueArray`, `matchesInvalidateSignalKey`, `validateStandardSchema`, `StandardSchemaV1`, `ChannelClosedError`, `SchemaValidationError` |
+| `restale-kit` | `JSONValue`, `ReStaleSignal`, `InvalidateSignal`, `TanStackQuerySignal`, `TanStackQueryAction`, `SWRSignal`, `SWRAction`, `RTKQuerySignal`, `GenericInvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, `SIGNAL_TARGETS`, `isJSONValue`, `isJSONValueArray`, `matchesInvalidateSignalKey`, `validateStandardSchema`, `StandardSchemaV1`, `ChannelClosedError`, `SchemaValidationError` |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `createEventStore`, `EventStoreOptions` |
 | `restale-kit/node`, `restale-kit/express` | `attachSSE` |
 | `restale-kit/fastify` | `attachSSE`, `FastifyRequestLike`, `FastifyReplyLike` |
@@ -799,7 +800,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 | `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
 | `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter`, `SWRAdapterOptions`, `SWRMutator` |
-| `restale-kit/pubsub` | `PubSubAdapter` |
+| `restale-kit/pubsub` | `PubSubAdapter`, `PubSubEncryptionOptions`, `PubSubDecryptionError` |
 | `restale-kit/redis` | `redisPubSubAdapter`, `RedisClient` |
 | `restale-kit/ably` | `ablyPubSubAdapter`, `AblyClient`, `AblyChannel` |
 | `restale-kit/pusher` | `pusherPubSubAdapter`, `PusherClient`, `PusherWebhook` |
