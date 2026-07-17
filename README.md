@@ -34,6 +34,11 @@ pnpm run validate
 pnpm run test:package
 ```
 
+To replicate the exact CI test run (with coverage):
+```sh
+pnpm run test:ci
+```
+
 ### Interactive examples
 ```sh
 pnpm example

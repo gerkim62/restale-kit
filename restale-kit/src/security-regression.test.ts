@@ -396,6 +396,14 @@ describe('Issue 7 — formatInvalidateFrame handles embedded newlines in JSON', 
   })
 
   it('multi-line JSON payload is split across multiple data: lines per SSE spec', () => {
+    // NOTE: This code path (multi-line JSON split across data: lines) is UNREACHABLE from
+    // the public API via normal signals. JSON.stringify never emits raw newline characters
+    // for standard objects — embedded strings like "\n" are escaped to "\\n", so
+    // formatInvalidateFrame will always produce a single data: line for any signal that
+    // goes through the normal broadcast path. This test verifies the algorithm definition
+    // only, not a live path. The meaningful security regression in this describe block is
+    // the ID newline-injection sanitisation test below.
+
     // To exercise the split path we need a signal whose JSON.stringify output contains
     // a raw newline. JSON.stringify escapes \n inside strings to \\n, so we cannot get
     // there through normal values. We simulate it via a custom replacer that produces

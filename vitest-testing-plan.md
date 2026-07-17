@@ -81,6 +81,14 @@ Remove `build:test` once nothing uses it. Also update `restale-kit/tsconfig.buil
 }
 ```
 
+> **✅ Done** — `src/test-fixtures/**` has been added to the exclude list. Current `tsconfig.build.json` reads:
+> ```json
+> {
+>   "extends": "./tsconfig.json",
+>   "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "src/test-fixtures/**"]
+> }
+> ```
+
 ## Test layout and shared fixtures
 
 Migrate progressively to this shape:
@@ -96,7 +104,7 @@ src/
   pubsub/{redis,ably,pusher}/index.test.ts
   types/{protocol,standard-schema}.test.ts
   utils/{id,url}.test.ts
-test/fixtures/{event-source,schemas,pubsub}.ts
+  test-fixtures/{event-source,schemas,pubsub}.ts   ← actual location (was test/fixtures/ in early draft)
 ```
 
 Use a controllable `MockEventSource` fixture for client tests, a deferred-promise helper for subscription races, a small Standard Schema v1 double, and an in-memory `PubSubAdapter` bus. Restore globals and timers in `afterEach`; use fake timers for all retry and keepalive tests. Framework re-export files need only a smoke test for their actual exports: `attachSSE` for Express/Fastify and `toSSEResponse` for Hono/fetch.

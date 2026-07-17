@@ -12,10 +12,29 @@ Every incoming SSE payload is structurally validated before being emitted as an 
 
 1. `JSON.parse` must succeed.
 2. Result must be a plain object or array of plain objects.
-3. Each object must have a `key` property that is an `Array`.
-4. `exact` (if present) must be `boolean`.
-5. `action` (if present) must be `'invalidate' | 'refetch' | 'remove'`.
-6. Unknown fields are ignored (forward-compatible).
+3. Each object must be a valid `InvalidateSignal` shape for its detected target. The rules differ per target:
+
+   **`TanStackQuerySignal`** (`target: 'tanstack-query'`):
+   - `queryKey` must be present and be an `Array`.
+   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'`.
+   - `exact` (if present) must be `boolean`.
+   - `type` (if present) must be `'all' | 'active' | 'inactive'`.
+
+   **`SWRSignal`** (`target: 'swr'`):
+   - `key` must be present and be a `string` or `Array`.
+   - `action` (if present) must be one of `'revalidate' | 'purge'`.
+   - `match` (if present) must be `'exact' | 'prefix'`.
+   - `revalidate` (if present) must be `boolean`.
+
+   **`RTKQuerySignal`** (`target: 'rtk-query'`):
+   - `tags` must be present and be an `Array`.
+
+   **`GenericInvalidateSignal`** (`target: 'generic'` or `target` absent):
+   - `key` must be present and be an `Array`.
+   - `exact` (if present) must be `boolean`.
+   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'remove'`.
+
+4. Unknown fields are ignored (forward-compatible).
 
 If any of the above fail, the client emits an `error` event instead of `invalidate`.
 

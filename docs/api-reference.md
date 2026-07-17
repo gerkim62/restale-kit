@@ -115,8 +115,9 @@ class SchemaValidationError extends Error {
 ## `restale-kit/server`
 
 ```ts
-import { createSSEChannel, SSEChannelGroup } from 'restale-kit/server'
+import { createSSEChannel, SSEChannelGroup, createEventStore } from 'restale-kit/server'
 import type { SSEChannel, SSEChannelOptions } from 'restale-kit/server'
+import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
 ```
 
 ### `createSSEChannel(options?)`
