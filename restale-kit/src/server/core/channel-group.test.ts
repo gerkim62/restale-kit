@@ -481,10 +481,18 @@ describe('channel-group', () => {
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
     group.broadcast({ key: ['broadcast-event'] }, () => true)
-    expect(store.getEventsAfter('').length).toBe(1)
+    // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
+    const r1 = store.add({ key: ['probe'] }) // id '2'
+    expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
+    expect(store.getEventsAfter('0').stale).toBe(true) // '0' unknown → stale
 
     await group.publish('chat', { key: ['publish-event'] })
-    expect(store.getEventsAfter('').length).toBe(2)
+    const r3 = store.add({ key: ['probe2'] })
+    // broadcast-event='1', probe='2', publish-event='3', probe2='4'
+    // getEventsAfter('1') → [probe, publish-event, probe2]
+    const { events: allEvents, stale } = store.getEventsAfter('1')
+    expect(stale).toBe(false)
+    expect(allEvents.length).toBe(3)
   })
 
   // --- Broadcast: non-ChannelClosedError does NOT deregister ---

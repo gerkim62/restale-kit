@@ -226,6 +226,8 @@ To actively close client connections (e.g., on logout, session expiration, or us
 
 Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
 
+Before closing each channel, `revokeWhere` sends a terminal `revoke` SSE event frame to the client. The client receives this frame, sets its status to `{ status: 'closed', reason: 'revoked' }`, suppresses automatic reconnection, and calls `onRevoke` if provided. This distinguishes an intentional server kick from a transient network error.
+
 ```ts
 // Close all connections for user-42 across the entire cluster
 await group.revokeWhere({ userId: 'user-42' })
@@ -236,6 +238,8 @@ Returns `{ localClosed: number }`.
 ### Connection-Specific Revocation (`revokeByConnectionId()`)
 
 Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
+
+Like `revokeWhere`, this sends a terminal `revoke` SSE event frame to the client before closing the channel. The client will not auto-reconnect after receiving it.
 
 When a pub/sub adapter is configured, `revokeByConnectionId` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
 

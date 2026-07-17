@@ -1,7 +1,7 @@
 import type { InvalidateSignal, ChannelState, EventStore } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
-import { formatInvalidateFrame, formatKeepalive } from '@/server/core/framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
@@ -69,8 +69,20 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   disconnect(): void
   /**
+   * Sends a terminal `revoke` SSE event frame to the client and then closes the channel.
+   *
+   * The client uses this event to distinguish an intentional server-initiated revocation
+   * (logout, session expiry, security kick) from a transient network error, and will
+   * NOT automatically reconnect. The resulting client status is `{ status: 'closed', reason: 'revoked' }`.
+   *
+   * Idempotent — if the channel is already closed, this is a no-op.
+   *
+   * @param reason - Human-readable reason string included in the event payload. Default: `'revoked'`.
+   */
+  revoke(reason?: string): void
+  /**
    * Registers a one-shot callback invoked when the channel transitions to `'closed'`
-   * (whether via `close()`, `disconnect()`, or stream cancellation).
+   * (whether via `close()`, `disconnect()`, `revoke()`, or stream cancellation).
    * If the channel is already closed the callback fires synchronously.
    */
   onClose(callback: () => void): void
@@ -94,7 +106,12 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const connectionId = options?.connectionId ?? ''
 
   let eventStore: EventStore<TSignal> | undefined = options?.eventStore
-  if (eventStore === undefined && options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+  // Track whether this channel owns its eventStore (created internally) or was given an
+  // external one. When the store is external (shared with a group), the group is responsible
+  // for recording signals before calling invalidate() with a customId — the channel must not
+  // call eventStore.add() a second time for the same event.
+  const ownsEventStore = eventStore === undefined
+  if (ownsEventStore && options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
     eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity, idGenerator })
   }
 
@@ -109,9 +126,16 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
       // Replay missed historical events if lastEventId and eventStore are present
       if (lastEventId !== undefined && eventStore !== undefined) {
-        const missed = eventStore.getEventsAfter(lastEventId)
-        for (const record of missed) {
-          controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+        const { events: missed, stale } = eventStore.getEventsAfter(lastEventId)
+        if (stale) {
+          // The cursor fell off the ring buffer or was never valid — the client missed
+          // an unknown number of events. Send a full-invalidate signal (key: []) so the
+          // client refetches everything rather than silently displaying stale data.
+          controller.enqueue(formatInvalidateFrame({ key: [] }))
+        } else {
+          for (const record of missed) {
+            controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+          }
         }
       }
 
@@ -162,8 +186,22 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
     let eventId = customId
     if (eventStore !== undefined) {
-      const record = eventStore.add(signal, customId)
-      eventId = record.id
+      if (ownsEventStore || customId === undefined) {
+        // Channel owns its store, or no id was provided — record it now.
+        const record = eventStore.add(signal, customId)
+        eventId = record.id
+      } else {
+        // External store with a customId provided: only skip add() when the record already
+        // exists (i.e. the group pre-recorded it). If it is absent (standalone usage or an
+        // unexpected call order), fall back to add() so the event is not silently lost.
+        const { stale } = eventStore.getEventsAfter(customId)
+        const alreadyRecorded = !stale
+        if (!alreadyRecorded) {
+          const record = eventStore.add(signal, customId)
+          eventId = record.id
+        }
+        // When stale is false the record exists — skip add() to prevent double-recording.
+      }
       controller.enqueue(formatInvalidateFrame(signal, eventId))
     } else {
       controller.enqueue(formatInvalidateFrame(signal, undefined))
@@ -181,6 +219,15 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     invalidate,
     close: closeInternal,
     disconnect: closeInternal,
+    revoke(reason: string = 'revoked'): void {
+      if (state === 'closed') return
+      try {
+        controller.enqueue(formatRevokeFrame(reason))
+      } catch {
+        // If the stream controller is already unusable, skip the frame and just close.
+      }
+      closeInternal()
+    },
     onClose(callback: () => void): void {
       if (state === 'closed') {
         callback()

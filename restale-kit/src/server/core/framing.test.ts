@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatInvalidateFrame, formatKeepalive } from './framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame } from './framing.js'
 
 const decoder = new TextDecoder()
 
@@ -41,5 +41,42 @@ describe('framing', () => {
     const str = decoder.decode(bytes)
 
     expect(str).toBe(': keepalive\n\n')
+  })
+})
+
+describe('formatRevokeFrame', () => {
+  it('formats revoke frame with default reason', () => {
+    const bytes = formatRevokeFrame('revoked')
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe('event: revoke\ndata: {"reason":"revoked"}\n\n')
+  })
+
+  it('formats revoke frame with custom reason', () => {
+    const bytes = formatRevokeFrame('logout')
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
+  })
+
+  it('sanitizes control characters in reason via JSON.stringify', () => {
+    const bytes = formatRevokeFrame('bad\r\nreason\n')
+    const str = decoder.decode(bytes)
+
+    // JSON.stringify encodes \r as \r and \n as \n — produces valid JSON
+    // The client parses this correctly; the SSE frame itself is a single data: line
+    expect(str).toBe('event: revoke\ndata: {"reason":"bad\\r\\nreason\\n"}\n\n')
+
+    // Verify the client can parse it back
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const parsed: unknown = JSON.parse(dataLine.slice('data: '.length))
+    expect(parsed).toEqual({ reason: 'bad\r\nreason\n' })
+  })
+
+  it('escapes quotes and backslashes in reason via JSON.stringify', () => {
+    const bytes = formatRevokeFrame('reason with "quotes" and \\backslash')
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe('event: revoke\ndata: {"reason":"reason with \\"quotes\\" and \\\\backslash"}\n\n')
   })
 })

@@ -101,7 +101,19 @@ describe('channel', () => {
 
     const id = channel.invalidate({ key: ['test-store'] })
     expect(id).toBeDefined()
-    expect(store.getEventsAfter('').length).toBe(1)
+    expect(id).not.toBe('')
+    // Positively verify the event was recorded: a subsequent event added after id must appear
+    const subsequentId = channel.invalidate({ key: ['subsequent'] })
+    const { events: afterFirst, stale: staleAfterFirst } = store.getEventsAfter(id)
+    expect(staleAfterFirst).toBe(false)
+    expect(afterFirst.map((e) => e.id)).toContain(subsequentId) // subsequent event is visible after id
+    // Nothing after the last recorded event
+    const { events: afterId, stale: staleAfter } = store.getEventsAfter(subsequentId)
+    expect(staleAfter).toBe(false)
+    expect(afterId).toEqual([]) // nothing after the last recorded event
+    // Unknown id returns stale: true
+    const { stale: staleMiss } = store.getEventsAfter('0')
+    expect(staleMiss).toBe(true)
 
     const customGen = vi.fn().mockReturnValue('custom-id-123')
     const customChannel = createSSEChannel({ eventBufferCapacity: 10, idGenerator: customGen })
@@ -150,21 +162,30 @@ describe('channel', () => {
     expect(schemaSpy).not.toHaveBeenCalled()
   })
 
-  it('replays all retained events if lastEventId is not found in eventStore', async () => {
+  it('sends a full-invalidate frame when lastEventId is evicted or unknown (stale cursor)', async () => {
     const store = createEventStore({ capacity: 2 })
     store.add({ key: ['evt1'] }, 'id-1')
     store.add({ key: ['evt2'] }, 'id-2')
     store.add({ key: ['evt3'] }, 'id-3') // id-1 is evicted
 
-    // lastEventId is 'id-1' which was evicted
+    // Verify the store marks id-1 as stale
+    expect(store.getEventsAfter('id-1').stale).toBe(true)
+
+    // A channel created with an evicted lastEventId should emit a full-invalidate
+    // signal (key: []) so the client knows to refetch everything.
     const channel = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
     const reader = channel.stream.getReader()
-    const { value: v1 } = await reader.read()
-    const { value: v2 } = await reader.read()
-    reader.releaseLock()
+    const { value } = await reader.read()
 
-    expect(decoder.decode(v1)).toBe('id: id-2\nevent: invalidate\ndata: {"key":["evt2"]}\n\n')
-    expect(decoder.decode(v2)).toBe('id: id-3\nevent: invalidate\ndata: {"key":["evt3"]}\n\n')
+    // The frame should be an invalidate event with key: [] — no id prefix (not recorded)
+    expect(decoder.decode(value)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+
+    // Close the channel and verify the stream is done — no extra frames emitted
+    channel.close()
+    const { done, value: trailing } = await reader.read()
+    reader.releaseLock()
+    expect(done).toBe(true)
+    expect(trailing).toBeUndefined()
   })
 
   it('warns when controller.close throws an error in closeInternal', () => {
@@ -227,6 +248,49 @@ describe('channel', () => {
   it('connectionId defaults to empty string when not provided', () => {
     const channel = createSSEChannel()
     expect(channel.connectionId).toBe('')
+  })
+
+  it('revoke() sends a revoke frame then closes the channel', async () => {
+    const channel = createSSEChannel()
+    const reader = channel.stream.getReader()
+
+    channel.revoke()
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    expect(decoder.decode(value)).toBe('event: revoke\ndata: {"reason":"revoked"}\n\n')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('revoke() sends a revoke frame with a custom reason', async () => {
+    const channel = createSSEChannel()
+    const reader = channel.stream.getReader()
+
+    channel.revoke('logout')
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    expect(decoder.decode(value)).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('revoke() is idempotent — no-op when already closed', () => {
+    const channel = createSSEChannel()
+    channel.close()
+    expect(() => { channel.revoke() }).not.toThrow()
+    expect(channel.state).toBe('closed')
+  })
+
+  it('revoke() fires onClose callbacks', () => {
+    const channel = createSSEChannel()
+    const cb = vi.fn()
+    channel.onClose(cb)
+
+    channel.revoke()
+
+    expect(cb).toHaveBeenCalledTimes(1)
   })
 
   it('onClose fires callback when channel is closed', () => {

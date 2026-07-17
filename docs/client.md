@@ -42,6 +42,9 @@ useReStale(url: string, options: {
   // Required
   onInvalidate: (signal: InvalidateSignal | InvalidateSignal[]) => void
 
+  // Revocation (optional)
+  onRevoke?: (reason: string) => void  // called when server sends a terminal revoke frame
+
   // Connection
   autoReconnect?: boolean       // default true
   withCredentials?: boolean     // default false — send cookies cross-origin
@@ -79,9 +82,46 @@ useReStale(url: string, options: {
 type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
-  | { status: 'closed'; reason: 'manual' | 'unmount' }
+  | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
   | { status: 'error'; error: Event }
 ```
+
+| Reason | When |
+|---|---|
+| `'manual'` | Caller invoked `close()` |
+| `'unmount'` | React component unmounted |
+| `'revoked'` | Server sent a terminal `revoke` frame — auto-reconnect is suppressed |
+
+### Server-initiated revocation
+
+When the server calls `channel.revoke()` (e.g. on logout or session expiry), it sends a terminal `revoke` SSE event before closing the stream. The client:
+
+1. Sets status to `{ status: 'closed', reason: 'revoked' }`
+2. Suppresses automatic reconnection
+3. Calls `onRevoke` with the reason string
+
+```tsx
+useReStale('/api/sse', {
+  onInvalidate: tanstackAdapter(queryClient),
+  onRevoke: (reason) => {
+    // Server intentionally closed this connection.
+    // reason is e.g. 'logout', 'banned', 'session-expired'
+    auth.logout()
+  },
+})
+```
+
+On the server side:
+
+```ts
+// Revoke a specific connection (e.g. on logout)
+await group.revokeByConnectionId(connectionId, { userId: req.user.id })
+
+// Revoke all connections for a user (e.g. password change)
+await group.revokeWhere({ userId: req.user.id })
+```
+
+To reconnect after a revocation (e.g. after the user re-authenticates), call `reconnect()` — this resets the revoked flag and opens a fresh connection.
 
 ### Conditional connection (e.g. unauthenticated users)
 
@@ -105,6 +145,9 @@ function SSEStatus() {
 
   if (connection.status === 'error') {
     return <button onClick={reconnect}>Reconnect</button>
+  }
+  if (connection.status === 'closed' && connection.reason === 'revoked') {
+    return <span>Session ended by server</span>
   }
   return <span className={`status-${connection.status}`}>{connection.status}</span>
 }
@@ -147,13 +190,27 @@ client.addEventListener('invalidate', (event) => {
   // call your own cache library here
 })
 
+// Handle server-initiated revocation (logout, ban, session expiry)
+// The connection is already closed when this fires — do NOT reconnect automatically.
+client.addEventListener('revoke', (event) => {
+  const { reason } = event.detail // e.g. 'logout', 'banned', 'session-expired'
+  console.warn('Connection revoked by server:', reason)
+  // e.g. redirect to login, clear session state
+})
+
 // Access client properties
 console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
+console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
 console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 
 // Track connection state changes
 client.addEventListener('statuschange', (event) => {
-  console.log(event.detail.status) // 'connecting' | 'open' | 'closed' | 'error'
+  const s = event.detail
+  if (s.status === 'closed' && s.reason === 'revoked') {
+    // server-initiated — do not auto-reconnect
+  } else {
+    console.log(s.status) // 'connecting' | 'open' | 'closed' | 'error'
+  }
 })
 
 // Optionally catch validation errors (when signalSchema is set)
@@ -163,8 +220,12 @@ client.addEventListener('error', (event) => {
 
 await client.connect()
 
-// Later
+// Manual close (reason: 'manual')
 client.close()
+
+// Called by framework wrappers on component unmount (reason: 'unmount')
+// Behaves like close() but sets reason to 'unmount' — use close() in non-React code.
+// client.closeWithUnmount()
 ```
 
 ### `connect()` behavior by state
@@ -176,6 +237,7 @@ client.close()
 | `'connecting'` (backoff) | Cancels the pending retry timer, opens a new connection, resets backoff |
 | `'closed'` (manual) | Opens a new connection, resets backoff |
 | `'closed'` (unmount) | Same as manual — allows reuse after re-mount |
+| `'closed'` (revoked) | Same as manual — resets the revoked flag and opens a fresh connection |
 | `'error'` | Cancels pending retry timer, opens a new connection, resets backoff |
 
 ---
@@ -291,6 +353,32 @@ function App() {
   useReStale('/sse', { onInvalidate })
 }
 ```
+
+---
+
+## What the frontend sees on disconnect
+
+When the SSE connection drops, `EventSource.onerror` fires internally. The client tears down the current `EventSource` and dispatches an `'error'` event, then decides what to do based on `autoReconnect` and the retry count.
+
+**With `autoReconnect: true` (default) and retries remaining:**
+
+The status immediately transitions to `{ status: 'connecting' }`, and `statuschange` fires. The client schedules a retry after an exponential backoff delay. Each subsequent attempt also stays in `'connecting'`. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
+
+```text
+'open' → 'connecting'   ← disconnect detected
+'connecting' → 'connecting'  ← each retry attempt (while waiting / retrying)
+'connecting' → 'open'   ← successful reconnect
+```
+
+**With `autoReconnect: false`, or when retries are exhausted:**
+
+The status transitions to `{ status: 'error', error: Event }`. No further reconnection is attempted automatically. Call `reconnect()` (hook) or `client.connect()` to try again manually.
+
+```text
+'open' → 'error'   ← immediate, no retries
+```
+
+**Without an event store, signals fired while the client was offline are not replayed.** See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.
 
 ---
 
