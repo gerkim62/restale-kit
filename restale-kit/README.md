@@ -213,7 +213,7 @@ type TanStackQuerySignal = {
 type SWRSignal = {
   target: 'swr'
   key: string | JSONValue[]
-  action?: 'revalidate' | 'purge'  // default 'revalidate'
+  action?: 'revalidate' | 'purge' | 'remove'  // default 'revalidate'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
 }
@@ -277,6 +277,7 @@ Given cache key `['todos', { userId: 4, type: 'active' }]`:
 |---|---|
 | `'revalidate'` (default) | `mutate(filter)` |
 | `'purge'` | `mutate(filter, undefined, { revalidate: false })` |
+| `'remove'` | `mutate(filter, undefined, { revalidate: false })` — alias for `'purge'`, clears matching keys without revalidating |
 
 **Broadcasting:**
 

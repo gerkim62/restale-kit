@@ -92,7 +92,7 @@ export type PubSubEncryptionOptions =
     payload: PubSubMessage<T> | string // encrypted string if key configured
   }
   ```
-- **Decryption failures:** Failed decryption attempts emit a `PubSubDecryptionError` via `onError` (throttled to avoid log flooding) and ignore the malformed message without throwing or breaking the subscription loop.
+- **Decryption failures:** Failed decryption attempts are handled by a throttled internal handler that logs a `console.warn` directly (at most once per minute) and ignores the malformed message without throwing or breaking the subscription loop. The `onError` callback is **not** invoked for decryption failures — it receives only unrelated adapter errors (e.g. dropped broker connections).
 
 
 ## `SSEChannelGroup` pub/sub integration
@@ -124,7 +124,7 @@ import { SSEChannelGroup } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const group = new SSEChannelGroup<Signal, Meta>({
-  pubsub: redisPubSubAdapter(redisClient), // omit entirely = single-instance mode
+  pubsub: redisPubSubAdapter(redisClient, { encrypt: false }), // omit entirely = single-instance mode
 })
 
 app.get('/sse', (req, res) => {

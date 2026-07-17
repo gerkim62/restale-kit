@@ -57,7 +57,7 @@ interface TanStackQuerySignal {
 interface SWRSignal {
   target: 'swr'
   key: string | JSONValue[]
-  action?: 'revalidate' | 'purge'
+  action?: 'revalidate' | 'purge' | 'remove'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
 }

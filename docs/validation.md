@@ -22,7 +22,7 @@ Every incoming SSE payload is structurally validated before being emitted as an 
 
    **`SWRSignal`** (`target: 'swr'`):
    - `key` must be present and be a `string` or `Array`.
-   - `action` (if present) must be one of `'revalidate' | 'purge'`.
+   - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove'`.
    - `match` (if present) must be `'exact' | 'prefix'`.
    - `revalidate` (if present) must be `boolean`.
 
