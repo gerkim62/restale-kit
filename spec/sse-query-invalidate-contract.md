@@ -114,7 +114,7 @@ export const SIGNAL_TARGETS = {
 interface TanStackQuerySignal {
   target: 'tanstack-query'
   queryKey: JSONValue[]
-  exact?: boolean
+  exact?: QueryFilters['exact']
   type?: 'active' | 'inactive' | 'all'
   action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
   stale?: boolean
@@ -247,6 +247,8 @@ immediately. The first `invalidate` event arrives whenever `channel.invalidate()
 
 **`[]` as a key:** matches everything. Intentional — useful for "invalidate everything after a
 deploy." Adapters must not guard against it; the sender is trusted to mean it.
+
+**Scalar string cache keys:** Supported for target-discriminated framework signals (`TanStackQuerySignal`, `SWRSignal`). For generic signals (`GenericInvalidateSignal`), scalar string cache keys return `false` because generic signals require array cache keys for hierarchical prefix evaluation.
 
 **Event naming:** named SSE event `event: invalidate`, not the default `message` event, for clean
 filtering.
@@ -788,7 +790,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` | `JSONValue`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, shared errors and schema helpers |
+| `restale-kit` | `JSONValue`, `ReStaleSignal`, `InvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, `SIGNAL_TARGETS`, `isJSONValue`, `isJSONValueArray`, `matchesInvalidateSignalKey`, `validateStandardSchema`, `StandardSchemaV1`, `ChannelClosedError`, `SchemaValidationError` |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `createEventStore`, `EventStoreOptions` |
 | `restale-kit/node`, `restale-kit/express` | `attachSSE` |
 | `restale-kit/fastify` | `attachSSE`, `FastifyRequestLike`, `FastifyReplyLike` |
@@ -805,8 +807,8 @@ Each subpath export has a defined public API. Only these symbols are exported:
 `InvalidateSignal` is available from `restale-kit` and re-exported from `restale-kit/client`
 for direct client users.
 
-`StandardSchemaV1` is **not** re-exported — the type interface is inlined in the library's source
-(per the [Standard Schema spec's recommendation](https://github.com/standard-schema/standard-schema)).
+`StandardSchemaV1` is re-exported as a type-only export from `restale-kit` (the type interface
+is inlined per the [Standard Schema spec's recommendation](https://github.com/standard-schema/standard-schema)).
 Users import schema constructors from their own library (Zod, Valibot, ArkType, etc.).
 
 ---

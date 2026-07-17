@@ -15,6 +15,7 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   SchemaValidationError,
+  SIGNAL_TARGETS,
   validateStandardSchema,
 } from './types/index.js'
 
@@ -44,5 +45,6 @@ describe('Entrypoint Re-exports', () => {
     expect(isJSONValue).toBeDefined()
     expect(isJSONValueArray).toBeDefined()
     expect(matchesInvalidateSignalKey).toBeDefined()
+    expect(SIGNAL_TARGETS).toBeDefined()
   })
 })

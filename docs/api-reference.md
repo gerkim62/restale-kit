@@ -17,6 +17,7 @@ import type {
   GenericInvalidateSignal,
   SSEInvalidateEvent,
   ChannelState,
+  StandardSchemaV1,
 } from 'restale-kit'
 import {
   ChannelClosedError,
@@ -127,7 +128,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 interface SSEChannelOptions<TSignal> {
   keepaliveIntervalMs?: number                        // default 30_000
-  signalSchema?: StandardSchema<unknown, TSignal>
+  signalSchema?: StandardSchemaV1<unknown, TSignal>
   lastEventId?: string
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
@@ -173,7 +174,7 @@ class SSEChannelGroup<
   TMeta = unknown
 > {
   constructor(options?: {
-    metaSchema?: StandardSchema<unknown, TMeta>
+    metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
@@ -339,7 +340,7 @@ interface ClientOptions<TSignal> {
   autoReconnect?: boolean           // default true
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
-  signalSchema?: StandardSchema<unknown, TSignal>
+  signalSchema?: StandardSchemaV1<unknown, TSignal>
 }
 
 interface ReconnectOptions {

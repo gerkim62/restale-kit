@@ -364,7 +364,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
 | `autoReconnect` | `boolean` | `true` | Auto-reconnect on disconnect. |
-| `signalSchema` | `StandardSchema` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
+| `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |

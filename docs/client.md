@@ -59,7 +59,7 @@ useReStale(url: string, options: {
   }
 
   // Validation (optional)
-  signalSchema?: StandardSchema // validate incoming signals at runtime
+  signalSchema?: StandardSchemaV1 // validate incoming signals at runtime
 })
 ```
 
