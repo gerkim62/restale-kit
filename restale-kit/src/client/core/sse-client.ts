@@ -35,6 +35,7 @@ export class SSEInvalidatorClient<
   private readonly withCredentials: boolean
   private readonly currentConnectionId: string
 
+  private opened = false
   private eventSource: EventSource | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
   private attempt = 0
@@ -217,6 +218,7 @@ export class SSEInvalidatorClient<
    */
   private establishConnection(): void {
     const existingPromise = this.connectPromise
+    this.opened = false
 
     this.setStatus({ status: 'connecting' })
 
@@ -224,6 +226,7 @@ export class SSEInvalidatorClient<
     this.eventSource = es
 
     es.onopen = () => {
+      this.opened = true
       this.attempt = 0 // Reset on successful open
       this.setStatus({ status: 'open' })
       if (existingPromise) {
@@ -235,8 +238,19 @@ export class SSEInvalidatorClient<
     }
 
     es.onerror = (event: Event) => {
-      this.teardown()
       this.dispatchEvent(new CustomEvent('error', { detail: event }))
+
+      if (this.opened && es.readyState === EventSource.CONNECTING) {
+        // Connection was established and dropped mid-stream (temporary network drop).
+        // Native EventSource is actively auto-reconnecting on the same instance (readyState === CONNECTING),
+        // preserving native Last-Event-ID HTTP headers.
+        this.setStatus({ status: 'connecting' })
+        return
+      }
+
+      // Initial connection failure or fatal response (e.g. HTTP 500/502/503 where readyState === CLOSED):
+      // Native EventSource will not auto-reconnect. Fall back to JS backoff retries.
+      this.teardown()
 
       if (!this.revoked && this.autoReconnect && this.attempt < this.maxRetries) {
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
@@ -354,6 +368,7 @@ export class SSEInvalidatorClient<
   }
 
   private teardown(): void {
+    this.opened = false
     if (this.eventSource) {
       this.eventSource.onopen = null
       this.eventSource.onerror = null

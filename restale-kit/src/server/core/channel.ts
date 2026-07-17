@@ -1,7 +1,7 @@
 import type { InvalidateSignal, ChannelState, EventStore } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
-import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame } from '@/server/core/framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
@@ -11,6 +11,8 @@ import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /** Keepalive comment interval in milliseconds. Default: 30_000 (30 seconds). */
   keepaliveIntervalMs?: number
+  /** Optional initial retry delay in milliseconds to send as a `retry: <ms>` frame on start. */
+  initialRetryMs?: number
   /** Optional Standard Schema for runtime signal validation. No schema = no validation. */
   signalSchema?: StandardSchemaV1<unknown, TSignal>
   /** Last event ID received from the client (e.g. from standard Last-Event-ID HTTP header). */
@@ -100,6 +102,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 ): SSEChannel<TSignal> {
   const keepaliveIntervalMs =
     options?.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
+  const initialRetryMs = options?.initialRetryMs
   const signalSchema = options?.signalSchema
   const lastEventId = options?.lastEventId
   const idGenerator = options?.idGenerator
@@ -124,24 +127,42 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     start(ctrl) {
       controller = ctrl
 
+      if (initialRetryMs !== undefined) {
+        try {
+          controller.enqueue(formatRetryFrame(initialRetryMs))
+        } catch {
+          closeInternal()
+          return
+        }
+      }
+
       // Replay missed historical events if lastEventId and eventStore are present
       if (lastEventId !== undefined && eventStore !== undefined) {
-        const { events: missed, stale } = eventStore.getEventsAfter(lastEventId)
-        if (stale) {
-          // The cursor fell off the ring buffer or was never valid — the client missed
-          // an unknown number of events. Send a full-invalidate signal (key: []) so the
-          // client refetches everything rather than silently displaying stale data.
-          controller.enqueue(formatInvalidateFrame({ key: [] }))
-        } else {
-          for (const record of missed) {
-            controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+        try {
+          const { events: missed, stale } = eventStore.getEventsAfter(lastEventId)
+          if (stale) {
+            // The cursor fell off the ring buffer or was never valid — the client missed
+            // an unknown number of events. Send a full-invalidate signal (key: []) so the
+            // client refetches everything rather than silently displaying stale data.
+            controller.enqueue(formatInvalidateFrame({ key: [] }))
+          } else {
+            for (const record of missed) {
+              controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+            }
           }
+        } catch {
+          closeInternal()
+          return
         }
       }
 
       keepaliveTimer = setInterval(() => {
         if (state === 'open') {
-          controller.enqueue(formatKeepalive())
+          try {
+            controller.enqueue(formatKeepalive())
+          } catch {
+            closeInternal()
+          }
         }
       }, keepaliveIntervalMs)
     },
@@ -202,9 +223,19 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         }
         // When stale is false the record exists — skip add() to prevent double-recording.
       }
-      controller.enqueue(formatInvalidateFrame(signal, eventId))
+      try {
+        controller.enqueue(formatInvalidateFrame(signal, eventId))
+      } catch {
+        closeInternal()
+        throw new ChannelClosedError()
+      }
     } else {
-      controller.enqueue(formatInvalidateFrame(signal, undefined))
+      try {
+        controller.enqueue(formatInvalidateFrame(signal, undefined))
+      } catch {
+        closeInternal()
+        throw new ChannelClosedError()
+      }
     }
 
     return eventId ?? ''

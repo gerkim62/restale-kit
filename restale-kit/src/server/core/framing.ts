@@ -65,3 +65,20 @@ export function formatRevokeFrame(reason: string): Uint8Array {
   const payload = JSON.stringify({ reason })
   return encoder.encode(`event: ${SSE_EVENTS.REVOKE}\ndata: ${payload}\n\n`)
 }
+
+/**
+ * Formats a standard SSE retry frame.
+ *
+ * Produces:
+ * ```
+ * retry: <retryMs>\n
+ * \n
+ * ```
+ *
+ * Instructs standard EventSource clients to set their native reconnection delay.
+ */
+export function formatRetryFrame(retryMs: number): Uint8Array {
+  const sanitizedMs = Math.max(0, Math.floor(retryMs))
+  return encoder.encode(`retry: ${String(sanitizedMs)}\n\n`)
+}
+
