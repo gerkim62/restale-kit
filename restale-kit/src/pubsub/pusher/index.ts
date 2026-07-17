@@ -1,7 +1,8 @@
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
+import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
 import { generateInstanceId } from '@/utils/id.js'
-import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
+import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
 import { PUBSUB_EVENTS } from '@/utils/constants.js'
 
 /**
@@ -24,12 +25,17 @@ export interface PusherClient {
  * Creates a Pub/Sub adapter for Pusher using a webhook-based subscription model.
  *
  * @param pusherServerClient A PusherClient instance (`pusher` on npm) used to trigger/publish events.
+ * @param options Configuration options.
+ * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
+ * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
  */
 export function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  pusherServerClient: PusherClient
+  pusherServerClient: PusherClient,
+  options: PubSubEncryptionOptions
 ): PubSubAdapter<TSignal> & {
   handleWebhook(body: string, headers: Record<string, string>): boolean
 } {
+  const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
 
   let errorHandler: (err: unknown) => void = (err) => {
@@ -39,10 +45,13 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
   // Map of topic (channel) to the active callback
   const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
 
+  let lastDecryptionErrorTime = 0
+  const WARN_THROTTLE_MS = 60000 // 1 minute
+
   return {
     async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
       const eventName = message.kind === 'control' ? PUBSUB_EVENTS.CONTROL : PUBSUB_EVENTS.INVALIDATE
-      const envelope = wrapEnvelope(instanceId, message)
+      const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
       await pusherServerClient.trigger(topic, eventName, envelope)
     },
 
@@ -82,11 +91,24 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
             const onMessage = callbacks.get(event.channel)
             if (onMessage) {
               try {
-                const unwrapped = unwrapEnvelope<TSignal>(event.data, instanceId)
+                const unwrapped = unwrapEnvelope<TSignal>(event.data, instanceId, encryptionKey, event.channel)
                 if (unwrapped) {
                   onMessage(unwrapped)
                 }
               } catch (err) {
+                if (err instanceof PubSubDecryptionError) {
+                  const now = Date.now()
+                  if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
+                    lastDecryptionErrorTime = now
+                    console.warn(
+                      `[WARN][pusherPubSubAdapter] Decryption failed for channel "${event.channel}". ` +
+                      'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
+                      'Further warnings will be throttled for 1 minute.',
+                      err
+                    )
+                  }
+                  continue // Drop message and continue loop
+                }
                 errorHandler(err)
               }
             }
@@ -100,5 +122,6 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
     },
   }
 }
+
 
 

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from './index.js'
+import { wrapEnvelope, encryptPayload } from '@/pubsub/core/envelope.js'
+
 
 function createMockAblyClient(echoMessages = true): {
   client: AblyClient
@@ -28,14 +30,14 @@ function createMockAblyClient(echoMessages = true): {
 describe('ablyPubSubAdapter', () => {
   it('throws error when useNativeEchoSuppression is enabled but echoMessages is not false', () => {
     const { client } = createMockAblyClient(true)
-    expect(() => ablyPubSubAdapter(client, { useNativeEchoSuppression: true })).toThrow(
+    expect(() => ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encrypt: false })).toThrow(
       'echoMessages must be explicitly set to false'
     )
   })
 
   it('publishes wrapped envelope by default', async () => {
     const { client } = createMockAblyClient()
-    const adapter = ablyPubSubAdapter(client)
+    const adapter = ablyPubSubAdapter(client, { encrypt: false })
 
     await adapter.publish('channel-1', { kind: 'signal', data: { key: ['test'] } })
 
@@ -51,7 +53,7 @@ describe('ablyPubSubAdapter', () => {
 
   it('unwraps and delivers remote messages', async () => {
     const { client, channelListeners } = createMockAblyClient()
-    const adapter = ablyPubSubAdapter(client)
+    const adapter = ablyPubSubAdapter(client, { encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('channel-1', callback)
@@ -69,7 +71,7 @@ describe('ablyPubSubAdapter', () => {
 
   it('supports native echo suppression when enabled', async () => {
     const { client, channelListeners } = createMockAblyClient(false)
-    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true })
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('channel-1', callback)
@@ -106,7 +108,7 @@ describe('ablyPubSubAdapter', () => {
       channels: { get: () => channel },
     }
 
-    const adapter = ablyPubSubAdapter(client)
+    const adapter = ablyPubSubAdapter(client, { encrypt: false })
     const errorHandler = vi.fn()
     if (adapter.onError) {
       adapter.onError(errorHandler)
@@ -139,7 +141,7 @@ describe('ablyPubSubAdapter', () => {
       },
     }
 
-    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true })
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encrypt: false })
     const throwingCallback = vi.fn().mockImplementation(() => {
       throw new Error('Listener error')
     })
@@ -173,7 +175,7 @@ describe('ablyPubSubAdapter', () => {
       channels: { get: () => channel },
     }
 
-    const adapter = ablyPubSubAdapter(client)
+    const adapter = ablyPubSubAdapter(client, { encrypt: false })
     const unsub = await adapter.subscribe('channel-clean', vi.fn())
 
     await unsub()
@@ -185,7 +187,7 @@ describe('ablyPubSubAdapter', () => {
 
   it('normalizes un-enveloped raw signal payload when native echo suppression is active', async () => {
     const { client, channelListeners } = createMockAblyClient(false)
-    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true })
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('channel-raw', callback)
@@ -194,6 +196,99 @@ describe('ablyPubSubAdapter', () => {
     listener({ data: { key: ['raw-signal-key'] } })
 
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['raw-signal-key'] } })
+  })
+
+  it('encrypts published envelope payload when encryptionKey is configured', async () => {
+    const { client } = createMockAblyClient()
+    const key = 'test-passphrase'
+    const adapter = ablyPubSubAdapter(client, { encryptionKey: key })
+
+    await adapter.publish('channel-encrypted', { kind: 'signal', data: { key: ['todos'] } })
+
+    const channel = client.channels.get('channel-encrypted')
+    expect(channel.publish).toHaveBeenCalledWith(
+      'invalidate',
+      expect.objectContaining({
+        origin: expect.any(String),
+        payload: expect.any(String),
+      })
+    )
+
+    const publishedEnvelope = (channel.publish as any).mock.calls[0][1]
+    expect(publishedEnvelope.payload).not.toContain('todos')
+    expect(publishedEnvelope.payload.split(':').length).toBe(3)
+  })
+
+  it('encrypts raw message when encryptionKey and useNativeEchoSuppression are configured', async () => {
+    const { client } = createMockAblyClient(false)
+    const key = 'test-passphrase'
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: key })
+
+    await adapter.publish('channel-encrypted', { kind: 'signal', data: { key: ['todos'] } })
+
+    const channel = client.channels.get('channel-encrypted')
+    expect(channel.publish).toHaveBeenCalledWith('invalidate', expect.any(String))
+
+    const publishedData = (channel.publish as any).mock.calls[0][1]
+    expect(publishedData).not.toContain('todos')
+    expect(publishedData.split(':').length).toBe(3)
+  })
+
+  it('decrypts encrypted payload correctly under standard mode', async () => {
+    const { client, channelListeners } = createMockAblyClient()
+    const key = 'test-passphrase'
+    const adapter = ablyPubSubAdapter(client, { encryptionKey: key })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-encrypted', callback)
+
+    const env = wrapEnvelope('remote-id', { kind: 'signal', data: { key: ['todos'] } }, key, 'channel-encrypted')
+
+    const listener = channelListeners[0]
+    listener({ data: env })
+
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
+  })
+
+  it('decrypts encrypted raw message correctly under native echo suppression mode', async () => {
+    const { client, channelListeners } = createMockAblyClient(false)
+    const key = 'test-passphrase'
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: key })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-encrypted', callback)
+
+    const encrypted = encryptPayload({ kind: 'signal', data: { key: ['todos'] } }, key, 'channel-encrypted')
+
+    const listener = channelListeners[0]
+    listener({ data: encrypted })
+
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
+  })
+
+  it('throttles decryption failure warnings and drops messages on key mismatch', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { client, channelListeners } = createMockAblyClient()
+    const key = 'key-1'
+    const wrongKey = 'key-2'
+    const adapter = ablyPubSubAdapter(client, { encryptionKey: key })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-encrypted', callback)
+
+    const env = wrapEnvelope('remote-id', { kind: 'signal', data: { key: ['todos'] } }, wrongKey, 'channel-encrypted')
+
+    const listener = channelListeners[0]
+    listener({ data: env })
+
+    expect(callback).not.toHaveBeenCalled()
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+    expect(consoleWarnSpy.mock.calls[0][0]).toContain('Decryption failed')
+
+    listener({ data: env })
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+
+    consoleWarnSpy.mockRestore()
   })
 })
 

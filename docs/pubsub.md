@@ -26,6 +26,20 @@ Client ──SSE──► Instance 1 ──subscribe──► Broker ◄──pu
 
 ---
 
+## Encryption
+
+Since message payloads are sent to third-party providers (Ably, Pusher, hosted Redis), they should be encrypted to prevent the provider from being able to read mutation keys and metadata in plain text.
+
+All pub/sub adapters require configuring encryption options: you must either pass `{ encrypt: false }` to disable encryption, or pass a valid, non-empty `{ encryptionKey: string }` (optionally with `{ encrypt: true }`) to enable AES-256-GCM symmetric encryption.
+
+> [!IMPORTANT]
+> **Security Recommendation**: Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded, e.g., `openssl rand -base64 32`), not a human-chosen passphrase.
+>
+> **Key Rotation & Rollout**: There is no multi-key support or key-rotation mechanism. If you rotate the key, decryption of any in-flight or previously-published messages encrypted under the old key will fail. Decryption failures are caught safely (logged as warnings, dropping the message, and continuing processing). A coordinated/drained deploy is recommended for any key configuration updates.
+
+
+---
+
 ## Setup pattern
 
 ```ts
@@ -37,7 +51,9 @@ import Redis from 'ioredis'
 const redis = new Redis(process.env.REDIS_URL)
 
 const group = new SSEChannelGroup({
-  pubsub: redisPubSubAdapter(redis),
+  pubsub: redisPubSubAdapter(redis, {
+    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
+  }),
 })
 
 app.get('/sse', (req, res) => {
@@ -85,7 +101,9 @@ import { redisPubSubAdapter } from 'restale-kit/redis'
 const redis = new Redis(process.env.REDIS_URL)
 
 const group = new SSEChannelGroup({
-  pubsub: redisPubSubAdapter(redis),
+  pubsub: redisPubSubAdapter(redis, {
+    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
+  }),
 })
 ```
 
@@ -108,7 +126,9 @@ const ably = new Ably.Realtime({
 })
 
 const group = new SSEChannelGroup({
-  pubsub: ablyPubSubAdapter(ably),
+  pubsub: ablyPubSubAdapter(ably, {
+    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
+  }),
 })
 ```
 
@@ -123,7 +143,10 @@ const ably = new Ably.Realtime({
 })
 
 const group = new SSEChannelGroup({
-  pubsub: ablyPubSubAdapter(ably, { useNativeEchoSuppression: true }),
+  pubsub: ablyPubSubAdapter(ably, {
+    useNativeEchoSuppression: true,
+    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
+  }),
 })
 ```
 
@@ -148,7 +171,9 @@ const pusher = new Pusher({
   cluster: process.env.PUSHER_CLUSTER,
 })
 
-const pubsub = pusherPubSubAdapter(pusher)
+const pubsub = pusherPubSubAdapter(pusher, {
+  encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
+})
 
 const group = new SSEChannelGroup({ pubsub })
 

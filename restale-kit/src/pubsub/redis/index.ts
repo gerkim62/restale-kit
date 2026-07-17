@@ -1,7 +1,8 @@
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
+import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
 import { generateInstanceId } from '@/utils/id.js'
-import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
+import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
 
 /**
  * Minimal structural interface for a Redis client (compatible with ioredis and node-redis).
@@ -21,13 +22,16 @@ export interface RedisClient {
  * @param client A RedisClient instance used for publishing.
  * @param options Configuration options.
  * @param options.subscribeClient An optional separate client instance to handle subscriptions. If omitted, `client.duplicate()` is called automatically.
+ * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
+ * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
  */
 export function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: RedisClient,
-  options?: { subscribeClient?: RedisClient }
+  options: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal> {
+  const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
-  const subscribeClient = options?.subscribeClient || client.duplicate()
+  const subscribeClient = options.subscribeClient || client.duplicate()
 
   // Delegate error handler to prevent Node crash on unhandled subscriber client error events
   let errorHandler: (err: unknown) => void = (err) => {
@@ -41,24 +45,40 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   // Map of topic to the onMessage callback
   const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
 
+  let lastDecryptionErrorTime = 0
+  const WARN_THROTTLE_MS = 60000 // 1 minute
+
   // Set up a single message listener on the subscription client
   subscribeClient.on('message', (channel: string, message: string) => {
     const onMessage = callbacks.get(channel)
     if (!onMessage) return
 
     try {
-      const unwrapped = unwrapEnvelope<TSignal>(message, instanceId)
+      const unwrapped = unwrapEnvelope<TSignal>(message, instanceId, encryptionKey, channel)
       if (unwrapped) {
         onMessage(unwrapped)
       }
     } catch (err) {
+      if (err instanceof PubSubDecryptionError) {
+        const now = Date.now()
+        if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
+          lastDecryptionErrorTime = now
+          console.warn(
+            `[WARN][redisPubSubAdapter] Decryption failed for topic "${channel}". ` +
+            'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
+            'Further warnings will be throttled for 1 minute.',
+            err
+          )
+        }
+        return // Drop message and continue
+      }
       errorHandler(err)
     }
   })
 
   return {
     async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
-      const envelope = wrapEnvelope(instanceId, message)
+      const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
       await client.publish(topic, JSON.stringify(envelope))
     },
 
@@ -98,5 +118,6 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     },
   }
 }
+
 
 

@@ -278,7 +278,7 @@ describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted 
 describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () => {
   it('throws when subscribing to the same topic twice without unsubscribing', async () => {
     const { client } = makeMockRedisClient()
-    const adapter = redisPubSubAdapter(client)
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
 
     await adapter.subscribe('topic-a', vi.fn())
 
@@ -289,7 +289,7 @@ describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () =>
 
   it('allows re-subscription after explicit unsubscribe', async () => {
     const { client } = makeMockRedisClient()
-    const adapter = redisPubSubAdapter(client)
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
 
     const unsub = await adapter.subscribe('topic-a', vi.fn())
     await unsub()
@@ -300,7 +300,7 @@ describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () =>
 
   it('different topics can be subscribed independently', async () => {
     const { client } = makeMockRedisClient()
-    const adapter = redisPubSubAdapter(client)
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
 
     await adapter.subscribe('topic-a', vi.fn())
     await expect(adapter.subscribe('topic-b', vi.fn())).resolves.toBeTypeOf('function')
@@ -310,7 +310,7 @@ describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () =>
     const { client, messageListeners } = makeMockRedisClient()
     const firstCallback = vi.fn()
     const secondCallback = vi.fn()
-    const adapter = redisPubSubAdapter(client)
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
 
     await adapter.subscribe('topic-a', firstCallback)
 
