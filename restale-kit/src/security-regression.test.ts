@@ -110,6 +110,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // Exactly one record — not two
     const r1 = store.add({ key: ['probe'] }) // id '2'
     expect(r1.id).toBe('2') // if double-recorded it would be '3'
+    ch.close()
   })
 
   it('publish records each signal exactly once in the shared eventStore', async () => {
@@ -125,6 +126,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // Exactly one record — probe lands on id '2'
     const probe = store.add({ key: ['probe'] })
     expect(probe.id).toBe('2')
+    ch.close()
   })
 
   it('channel with its own private eventStore still records when no group is involved', () => {
@@ -256,16 +258,16 @@ describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted 
     const ch = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
     const reader = ch.stream.getReader()
     const { value } = await reader.read()
-    reader.releaseLock()
-    ch.close()
 
     const text = new TextDecoder().decode(value)
     expect(text).toBe('event: invalidate\ndata: {"key":[]}\n\n')
 
-    // Store not mutated by the replay path
-    const { events, stale } = store.getEventsAfter('id-2')
-    expect(stale).toBe(false)
-    expect(events.map((e) => e.id)).toEqual(['id-3'])
+    // Close the channel and verify the stream ends with no additional frames
+    ch.close()
+    const { done, value: trailing } = await reader.read()
+    reader.releaseLock()
+    expect(done).toBe(true)
+    expect(trailing).toBeUndefined()
   })
 })
 

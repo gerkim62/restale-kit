@@ -190,9 +190,18 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         // Channel owns its store, or no id was provided — record it now.
         const record = eventStore.add(signal, customId)
         eventId = record.id
+      } else {
+        // External store with a customId provided: only skip add() when the record already
+        // exists (i.e. the group pre-recorded it). If it is absent (standalone usage or an
+        // unexpected call order), fall back to add() so the event is not silently lost.
+        const { stale } = eventStore.getEventsAfter(customId)
+        const alreadyRecorded = !stale
+        if (!alreadyRecorded) {
+          const record = eventStore.add(signal, customId)
+          eventId = record.id
+        }
+        // When stale is false the record exists — skip add() to prevent double-recording.
       }
-      // When customId is provided and the store is external (shared with a group),
-      // the group has already recorded this signal — skip add() to prevent double-recording.
       controller.enqueue(formatInvalidateFrame(signal, eventId))
     } else {
       controller.enqueue(formatInvalidateFrame(signal, undefined))

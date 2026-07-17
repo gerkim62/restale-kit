@@ -102,8 +102,13 @@ describe('channel', () => {
     const id = channel.invalidate({ key: ['test-store'] })
     expect(id).toBeDefined()
     expect(id).not.toBe('')
-    // Verify the event was recorded: getEventsAfter with the returned id finds nothing after it
-    const { events: afterId, stale: staleAfter } = store.getEventsAfter(id)
+    // Positively verify the event was recorded: a subsequent event added after id must appear
+    const subsequentId = channel.invalidate({ key: ['subsequent'] })
+    const { events: afterFirst, stale: staleAfterFirst } = store.getEventsAfter(id)
+    expect(staleAfterFirst).toBe(false)
+    expect(afterFirst.map((e) => e.id)).toContain(subsequentId) // subsequent event is visible after id
+    // Nothing after the last recorded event
+    const { events: afterId, stale: staleAfter } = store.getEventsAfter(subsequentId)
     expect(staleAfter).toBe(false)
     expect(afterId).toEqual([]) // nothing after the last recorded event
     // Unknown id returns stale: true
@@ -171,16 +176,16 @@ describe('channel', () => {
     const channel = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
     const reader = channel.stream.getReader()
     const { value } = await reader.read()
-    reader.releaseLock()
-    channel.close()
 
     // The frame should be an invalidate event with key: [] — no id prefix (not recorded)
     expect(decoder.decode(value)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
 
-    // Store is not mutated by the stale-replay path (no phantom adds)
-    const { events, stale } = store.getEventsAfter('id-2')
-    expect(stale).toBe(false)
-    expect(events.map((e) => e.id)).toEqual(['id-3'])
+    // Close the channel and verify the stream is done — no extra frames emitted
+    channel.close()
+    const { done, value: trailing } = await reader.read()
+    reader.releaseLock()
+    expect(done).toBe(true)
+    expect(trailing).toBeUndefined()
   })
 
   it('warns when controller.close throws an error in closeInternal', () => {

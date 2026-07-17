@@ -364,7 +364,7 @@ When the SSE connection drops, `EventSource.onerror` fires internally. The clien
 
 The status immediately transitions to `{ status: 'connecting' }`, and `statuschange` fires. The client schedules a retry after an exponential backoff delay. Each subsequent attempt also stays in `'connecting'`. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
 
-```
+```text
 'open' → 'connecting'   ← disconnect detected
 'connecting' → 'connecting'  ← each retry attempt (while waiting / retrying)
 'connecting' → 'open'   ← successful reconnect
@@ -374,28 +374,11 @@ The status immediately transitions to `{ status: 'connecting' }`, and `statuscha
 
 The status transitions to `{ status: 'error', error: Event }`. No further reconnection is attempted automatically. Call `reconnect()` (hook) or `client.connect()` to try again manually.
 
-```
+```text
 'open' → 'error'   ← immediate, no retries
 ```
 
-**Invalidation events fired during the disconnected window are replayed automatically on reconnect — if you configure an event store on the server.** The client tracks the last received event ID and sends it as the standard `Last-Event-ID` request header on reconnect. `restale-kit` detects this header and replays any missed signals in order before resuming the live stream.
-
-To enable replay, pass a shared `eventStore` to both `SSEChannelGroup` and your transport helper:
-
-```ts
-import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
-
-const eventStore = createEventStore({ capacity: 100 })
-const group = new SSEChannelGroup({ eventStore })
-
-app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { eventStore })
-  group.register(channel, { userId: req.user.id })
-})
-```
-
-Without an event store, signals fired while the client was offline are not replayed. See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.
+**Without an event store, signals fired while the client was offline are not replayed.** See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.
 
 ---
 
