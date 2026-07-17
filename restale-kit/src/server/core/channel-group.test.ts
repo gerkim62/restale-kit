@@ -65,6 +65,21 @@ describe('channel-group', () => {
     expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
   })
 
+  it('enqueues framed SSE bytes with id line when group has eventBufferCapacity', async () => {
+    const group = new SSEChannelGroup({ eventBufferCapacity: 50 })
+    const ch = createSSEChannel()
+    group.register(ch)
+
+    group.broadcastToAll({ key: ['todos'] })
+
+    const decoder = new TextDecoder()
+    const reader = ch.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"key":["todos"]}\n\n')
+  })
+
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
     // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
     // undefined, the predicate receives undefined (not skipped) and can act on it.

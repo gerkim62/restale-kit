@@ -206,10 +206,14 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     }
 
     let eventId = customId
+    if (eventId === undefined && idGenerator !== undefined) {
+      eventId = idGenerator()
+    }
+
     if (eventStore !== undefined) {
       if (ownsEventStore || customId === undefined) {
         // Channel owns its store, or no id was provided — record it now.
-        const record = eventStore.add(signal, customId)
+        const record = eventStore.add(signal, eventId)
         eventId = record.id
       } else {
         // External store with a customId provided: only skip add() when the record already
@@ -231,7 +235,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
     } else {
       try {
-        controller.enqueue(formatInvalidateFrame(signal, undefined))
+        controller.enqueue(formatInvalidateFrame(signal, eventId))
       } catch {
         closeInternal()
         throw new ChannelClosedError()
