@@ -94,13 +94,32 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     expect(matchesInvalidateSignalKey(['users', 1], signalPrefix)).toBe(true)
   })
 
-  it('matches SWRSignal key', () => {
+  it('matches SWRSignal key with scalar string cache keys and array cache keys', () => {
+    const signalExact = { target: 'swr' as const, key: '/api/user', match: 'exact' as const }
+    expect(matchesInvalidateSignalKey('/api/user', signalExact)).toBe(true)
+    expect(matchesInvalidateSignalKey('/api/user/123', signalExact)).toBe(false)
+    expect(matchesInvalidateSignalKey(['/api/user'], signalExact)).toBe(true)
+    expect(matchesInvalidateSignalKey(['/api/user', 'extra'], signalExact)).toBe(false)
+
+    const signalPrefix = { target: 'swr' as const, key: '/api/user', match: 'prefix' as const }
+    expect(matchesInvalidateSignalKey('/api/user/123', signalPrefix)).toBe(true)
+    expect(matchesInvalidateSignalKey('/api/other', signalPrefix)).toBe(false)
+    expect(matchesInvalidateSignalKey(['/api/user/123'], signalPrefix)).toBe(true)
+
     const signalArray = { target: 'swr' as const, key: ['todos', 1], match: 'exact' as const }
     expect(matchesInvalidateSignalKey(['todos', 1], signalArray)).toBe(true)
     expect(matchesInvalidateSignalKey(['todos', 1, 'sub'], signalArray)).toBe(false)
 
     const signalString = { target: 'swr' as const, key: 'todos', match: 'prefix' as const }
     expect(matchesInvalidateSignalKey(['todos', 1], signalString)).toBe(true)
+  })
+
+  it('matches scalar string cache keys for TanStack and SWR signals, but rejects for generic array signals', () => {
+    const tanstackSignal = { target: 'tanstack-query' as const, queryKey: ['/api/user'] }
+    expect(matchesInvalidateSignalKey('/api/user', tanstackSignal)).toBe(true)
+
+    const genericSignal = { key: ['/api/user'] }
+    expect(matchesInvalidateSignalKey('/api/user', genericSignal)).toBe(false)
   })
 
   it('handles primitive type mismatches in matchesJSONValue', () => {

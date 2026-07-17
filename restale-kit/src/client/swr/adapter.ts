@@ -7,6 +7,7 @@ import {
   type JSONValue,
 } from '../../types/protocol.js'
 import { isObject } from '../../pubsub/core/pubsub-utils.js'
+import { SIGNAL_TARGETS } from '../../utils/constants.js'
 
 export interface SWRAdapterOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /**
@@ -38,8 +39,14 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 
     for (const item of list) {
       if (!isObject(item)) continue
+      const target = item.target
+      if (target !== undefined && target !== SIGNAL_TARGETS.SWR && target !== SIGNAL_TARGETS.GENERIC) {
+        continue
+      }
+
       const action = item.action
       const isPurge = action === 'purge' || action === 'remove'
+      const isRevalidateFalse = item.revalidate === false
 
       const filter = (key?: Arguments) => {
         if (key === undefined || key === null) return false
@@ -55,7 +62,7 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
             return item.match === 'exact' ? key === item.key : key.startsWith(item.key)
           }
           if (Array.isArray(key) && typeof key[0] === 'string') {
-            return item.match === 'exact' ? key[0] === item.key : key[0].startsWith(item.key)
+            return item.match === 'exact' ? (key.length === 1 && key[0] === item.key) : key[0].startsWith(item.key)
           }
           return false
         }
@@ -65,7 +72,7 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
         return invalidateKey !== undefined && matchesInvalidateSignalKey(invalidateKey, item)
       }
 
-      if (isPurge) {
+      if (isPurge || isRevalidateFalse) {
         void mutate(filter, undefined, false)
       } else {
         void mutate(filter)

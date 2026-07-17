@@ -99,6 +99,20 @@ describe('tanstackQueryAdapter', () => {
     })
   })
 
+  it('ignores signals targeting other frameworks', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      removeQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    const adapter = tanstackQueryAdapter(queryClient)
+    adapter({ target: 'swr', key: ['todos'] } as any)
+    adapter({ target: 'rtk-query', tags: ['todos'] } as any)
+
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
+    expect(queryClient.removeQueries).not.toHaveBeenCalled()
+  })
+
   it('supports legacy/generic signals with key property', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),

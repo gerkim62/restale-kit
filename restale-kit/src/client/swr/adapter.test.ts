@@ -62,6 +62,34 @@ describe('swrAdapter', () => {
     expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
   })
 
+  it('ignores signals targeting other frameworks', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'tanstack-query', queryKey: ['todos'] } as any)
+    adapter({ target: 'rtk-query', tags: ['todos'] } as any)
+
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('enforces exact tuple length matching when matching array key against string signal key', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'swr', key: '/api/user', match: 'exact' })
+    const exactFilter = (mutate as any).mock.calls[0][0]
+    expect(exactFilter(['/api/user'])).toBe(true)
+    expect(exactFilter(['/api/user', 'extra'])).toBe(false)
+  })
+
+  it('honors revalidate: false by passing false to mutate', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'swr', key: '/api/user', revalidate: false })
+    expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
+  })
+
   it('handles signal batches, undefined key, and non-array default key fallback', () => {
     const mutate = vi.fn() as unknown as SWRMutator
     const adapter = swrAdapter(mutate)

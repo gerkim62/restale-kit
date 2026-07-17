@@ -90,15 +90,35 @@ function matchKeyArray(cacheKey: JSONValue[], signalKey: JSONValue[], exact: boo
  * Supports TanStackQuerySignal (queryKey), SWRSignal (key), and Generic signals.
  */
 export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSignal): boolean {
+  if (typeof cacheKey === 'string') {
+    if ('target' in signal && signal.target === SIGNAL_TARGETS.SWR) {
+      if (typeof signal.key === 'string') {
+        return signal.match === 'exact' ? cacheKey === signal.key : cacheKey.startsWith(signal.key)
+      }
+      return matchKeyArray([cacheKey], signal.key, signal.match === 'exact')
+    }
+    if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
+      return matchKeyArray([cacheKey], signal.queryKey, signal.exact === true)
+    }
+    return false
+  }
+
   if (!isJSONValueArray(cacheKey)) return false
 
-  if ('target' in signal && signal.target === 'tanstack-query') {
+  if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
     return matchKeyArray(cacheKey, signal.queryKey, signal.exact === true)
   }
 
-  if ('target' in signal && signal.target === 'swr') {
-    const signalKey = Array.isArray(signal.key) ? signal.key : [signal.key]
-    return matchKeyArray(cacheKey, signalKey, signal.match === 'exact')
+  if ('target' in signal && signal.target === SIGNAL_TARGETS.SWR) {
+    if (typeof signal.key === 'string') {
+      if (typeof cacheKey[0] === 'string') {
+        return signal.match === 'exact'
+          ? cacheKey.length === 1 && cacheKey[0] === signal.key
+          : cacheKey[0].startsWith(signal.key)
+      }
+      return false
+    }
+    return matchKeyArray(cacheKey, signal.key, signal.match === 'exact')
   }
 
   if ('key' in signal && Array.isArray(signal.key)) {

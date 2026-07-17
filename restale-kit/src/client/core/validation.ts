@@ -101,8 +101,11 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if ('exact' in value && typeof value.exact !== 'boolean') {
       throw new Error('Signal "exact" field must be a boolean')
     }
-    if ('type' in value && typeof value.type !== 'string') {
-      throw new Error('TanStack Query signal "type" field must be a string')
+    if ('type' in value && (typeof value.type !== 'string' || (value.type !== 'active' && value.type !== 'inactive' && value.type !== 'all'))) {
+      throw new Error('TanStack Query signal "type" field must be one of \'active\', \'inactive\', \'all\'')
+    }
+    if ('stale' in value && typeof value.stale !== 'boolean') {
+      throw new Error('TanStack Query signal "stale" field must be a boolean')
     }
     if ('action' in value && !isTanStackQueryAction(value.action)) {
       throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
@@ -132,6 +135,9 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if ('match' in value && value.match !== 'exact' && value.match !== 'prefix') {
       throw new Error(`SWR signal "match" field must be 'exact' or 'prefix'`)
     }
+    if ('revalidate' in value && typeof value.revalidate !== 'boolean') {
+      throw new Error('SWR signal "revalidate" field must be a boolean')
+    }
     const signal: SWRSignal = {
       target: SIGNAL_TARGETS.SWR,
       key: value.key,
@@ -146,13 +152,18 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
 
   if (target === SIGNAL_TARGETS.RTK) {
     if (!('tags' in value) || !isRTKTags(value.tags)) {
-      throw new Error('RTK Query signal must have a "tags" property that is an array')
+      throw new Error('RTK Query signal "tags" property must be an array of strings or tag objects')
     }
     const signal: RTKQuerySignal = {
       target: SIGNAL_TARGETS.RTK,
       tags: value.tags,
     }
     return signal
+  }
+
+  if ('target' in value && value.target !== undefined && value.target !== SIGNAL_TARGETS.GENERIC) {
+    const targetStr = typeof value.target === 'string' ? value.target : JSON.stringify(value.target)
+    throw new Error(`Signal "target" field must be 'generic' when present on generic signals — got '${targetStr}'`)
   }
 
   // Generic or default signal format
