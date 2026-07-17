@@ -1,5 +1,5 @@
 import type { QueryFilters } from '@tanstack/react-query'
-import type { Arguments } from 'swr'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
 
 /**
  * A value that survives a JSON.stringify → JSON.parse round trip losslessly.
@@ -18,7 +18,7 @@ export type TanStackQueryAction = (typeof TANSTACK_QUERY_ACTIONS)[number]
 
 /** Native TanStack Query invalidation signal payload */
 export interface TanStackQuerySignal {
-  target: 'tanstack-query'
+  target: typeof SIGNAL_TARGETS.TANSTACK
   queryKey: JSONValue[]
   exact?: QueryFilters['exact']
   type?: QueryFilters['type']
@@ -31,7 +31,7 @@ export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */
 export interface SWRSignal {
-  target: 'swr'
+  target: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
   action?: SWRAction
   revalidate?: boolean
@@ -40,7 +40,7 @@ export interface SWRSignal {
 
 /** Native RTK Query invalidation signal payload */
 export interface RTKQuerySignal {
-  target: 'rtk-query'
+  target: typeof SIGNAL_TARGETS.RTK
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -49,7 +49,7 @@ export type GenericAction = (typeof GENERIC_ACTIONS)[number]
 
 /** Generic fallback signal for raw SSE listeners */
 export interface GenericInvalidateSignal {
-  target?: 'generic'
+  target?: typeof SIGNAL_TARGETS.GENERIC
   key: JSONValue[]
   exact?: boolean
   action?: GenericAction

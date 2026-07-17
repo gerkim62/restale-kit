@@ -1,5 +1,4 @@
 import {
-  type InvalidateSignal,
   type JSONValue,
   type ReStaleSignal,
   type TanStackQuerySignal,
@@ -12,7 +11,10 @@ import {
   TANSTACK_QUERY_ACTIONS,
   SWR_ACTIONS,
   GENERIC_ACTIONS,
+  isJSONValueArray,
 } from '@/types/protocol.js'
+import { isObject } from '@/pubsub/core/pubsub-utils.js'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
 
 /**
  * Validates an incoming SSE payload against the built-in structural rules.
@@ -52,42 +54,48 @@ export function validatePayload(data: unknown): ReStaleSignal | ReStaleSignal[] 
   return validateSingleSignal(parsed)
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+const validTanStackActions: ReadonlySet<string> = new Set(TANSTACK_QUERY_ACTIONS)
+const validSWRActions: ReadonlySet<string> = new Set(SWR_ACTIONS)
+const validGenericActions: ReadonlySet<string> = new Set(GENERIC_ACTIONS)
+
+function isTanStackQueryAction(val: unknown): val is TanStackQueryAction {
+  return typeof val === 'string' && validTanStackActions.has(val)
 }
 
-function isJSONValue(value: unknown): value is JSONValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return true
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value)
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJSONValue)
-  }
-  if (typeof value === 'object') {
-    return Object.values(value).every(isJSONValue)
+function isSWRAction(val: unknown): val is SWRAction {
+  return typeof val === 'string' && validSWRActions.has(val)
+}
+
+function isGenericAction(val: unknown): val is GenericAction {
+  return typeof val === 'string' && validGenericActions.has(val)
+}
+
+function isSWRKey(val: unknown): val is string | JSONValue[] {
+  return typeof val === 'string' || isJSONValueArray(val)
+}
+
+function isRTKTag(val: unknown): val is string | { type: string; id?: string | number } {
+  if (typeof val === 'string') return true
+  if (isObject(val) && typeof val.type === 'string') {
+    const id = val.id
+    return id === undefined || typeof id === 'string' || typeof id === 'number'
   }
   return false
 }
 
-const validTanStackActions: ReadonlySet<string> = new Set(TANSTACK_QUERY_ACTIONS)
-
-const validSWRActions: ReadonlySet<string> = new Set(SWR_ACTIONS)
-
-const validGenericActions: ReadonlySet<string> = new Set(GENERIC_ACTIONS)
-
+function isRTKTags(val: unknown): val is RTKQuerySignal['tags'] {
+  return Array.isArray(val) && val.every(isRTKTag)
+}
 
 function validateSingleSignal(value: unknown): ReStaleSignal {
-  if (!isPlainObject(value)) {
+  if (!isObject(value)) {
     throw new Error('Each signal must be a plain object')
   }
 
   const target = value.target
 
-  if (target === 'tanstack-query') {
-    if (!('queryKey' in value) || !Array.isArray(value.queryKey) || !value.queryKey.every(isJSONValue)) {
+  if (target === SIGNAL_TARGETS.TANSTACK) {
+    if (!('queryKey' in value) || !isJSONValueArray(value.queryKey)) {
       throw new Error('TanStack Query signal must have a "queryKey" property that is an array of JSON-serialisable values')
     }
     if ('exact' in value && typeof value.exact !== 'boolean') {
@@ -96,62 +104,59 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if ('type' in value && typeof value.type !== 'string') {
       throw new Error('TanStack Query signal "type" field must be a string')
     }
-    if ('action' in value && (typeof value.action !== 'string' || !validTanStackActions.has(value.action))) {
+    if ('action' in value && !isTanStackQueryAction(value.action)) {
       throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
     }
     const signal: TanStackQuerySignal = {
-      target: 'tanstack-query',
+      target: SIGNAL_TARGETS.TANSTACK,
       queryKey: value.queryKey,
     }
     if (typeof value.exact === 'boolean') signal.exact = value.exact
     if (typeof value.type === 'string' && (value.type === 'active' || value.type === 'inactive' || value.type === 'all')) {
       signal.type = value.type
     }
-    if (typeof value.action === 'string' && validTanStackActions.has(value.action)) {
-      signal.action = value.action as TanStackQueryAction
+    if (isTanStackQueryAction(value.action)) {
+      signal.action = value.action
     }
     if (typeof value.stale === 'boolean') signal.stale = value.stale
     return signal
   }
 
-  if (target === 'swr') {
-    const hasValidKey =
-      ('key' in value) &&
-      (typeof value.key === 'string' || (Array.isArray(value.key) && value.key.every(isJSONValue)))
-    if (!hasValidKey) {
+  if (target === SIGNAL_TARGETS.SWR) {
+    if (!('key' in value) || !isSWRKey(value.key)) {
       throw new Error('SWR signal must have a "key" property that is a string or an array of JSON-serialisable values')
     }
-    if ('action' in value && (typeof value.action !== 'string' || !validSWRActions.has(value.action))) {
+    if ('action' in value && !isSWRAction(value.action)) {
       throw new Error(`SWR signal "action" field must be one of 'revalidate', 'purge'`)
     }
     if ('match' in value && value.match !== 'exact' && value.match !== 'prefix') {
       throw new Error(`SWR signal "match" field must be 'exact' or 'prefix'`)
     }
     const signal: SWRSignal = {
-      target: 'swr',
-      key: value.key as string | JSONValue[],
+      target: SIGNAL_TARGETS.SWR,
+      key: value.key,
     }
-    if (typeof value.action === 'string' && validSWRActions.has(value.action)) {
-      signal.action = value.action as SWRAction
+    if (isSWRAction(value.action)) {
+      signal.action = value.action
     }
     if (typeof value.revalidate === 'boolean') signal.revalidate = value.revalidate
     if (value.match === 'exact' || value.match === 'prefix') signal.match = value.match
     return signal
   }
 
-  if (target === 'rtk-query') {
-    if (!('tags' in value) || !Array.isArray(value.tags)) {
+  if (target === SIGNAL_TARGETS.RTK) {
+    if (!('tags' in value) || !isRTKTags(value.tags)) {
       throw new Error('RTK Query signal must have a "tags" property that is an array')
     }
     const signal: RTKQuerySignal = {
-      target: 'rtk-query',
-      tags: value.tags as RTKQuerySignal['tags'],
+      target: SIGNAL_TARGETS.RTK,
+      tags: value.tags,
     }
     return signal
   }
 
   // Generic or default signal format
-  if (!('key' in value) || !Array.isArray(value.key) || !value.key.every(isJSONValue)) {
+  if (!('key' in value) || !isJSONValueArray(value.key)) {
     throw new Error('Signal must have a "key" property that is an array of JSON-serialisable values')
   }
 
@@ -159,16 +164,16 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     throw new Error('Signal "exact" field must be a boolean')
   }
 
-  if ('action' in value && (typeof value.action !== 'string' || !validGenericActions.has(value.action))) {
+  if ('action' in value && !isGenericAction(value.action)) {
     const actionStr = typeof value.action === 'string' ? value.action : JSON.stringify(value.action)
     throw new Error(`Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${actionStr}'`)
   }
 
   const signal: GenericInvalidateSignal = { key: value.key }
-  if (target === 'generic') signal.target = 'generic'
+  if (target === SIGNAL_TARGETS.GENERIC) signal.target = SIGNAL_TARGETS.GENERIC
   if (typeof value.exact === 'boolean') signal.exact = value.exact
-  if (typeof value.action === 'string' && validGenericActions.has(value.action)) {
-    signal.action = value.action as GenericInvalidateSignal['action']
+  if (isGenericAction(value.action)) {
+    signal.action = value.action
   }
   return signal
 }

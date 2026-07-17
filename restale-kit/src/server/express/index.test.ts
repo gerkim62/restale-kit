@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { attachSSE } from './index.js'
+import { SSE_HEADERS } from '@/utils/constants.js'
 
 function createMockExpressRequest(url: string): IncomingMessage {
   return Object.assign(new EventEmitter(), {
@@ -29,11 +30,7 @@ describe('server/express entrypoint', () => {
     const channel = attachSSE(req, res)
 
     expect(channel.connectionId).toBe('express-123')
-    expect(res.writeHead).toHaveBeenCalledWith(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    })
+    expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
     expect(channel.state).toBe('open')
     channel.close()
   })

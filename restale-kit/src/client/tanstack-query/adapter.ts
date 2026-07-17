@@ -1,6 +1,11 @@
 import { useCallback } from 'react'
-import type { TanStackQuerySignal, InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 import type { QueryClient, QueryFilters, InvalidateQueryFilters } from '@tanstack/react-query'
+import { isObject } from '@/pubsub/core/pubsub-utils.js'
+
+function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
+  return val === 'active' || val === 'inactive' || val === 'all'
+}
 
 /**
  * Creates an `onInvalidate` callback that maps wire signals to TanStack Query
@@ -16,14 +21,14 @@ export function tanstackQueryAdapter<TSignal extends InvalidateSignal = Invalida
     const list = Array.isArray(signal) ? signal : [signal]
 
     for (const s of list) {
-      const raw = s as unknown as Record<string, unknown>
-      const queryKey = (raw.queryKey ?? raw.key) as QueryFilters['queryKey']
+      if (!isObject(s)) continue
+      const queryKey = s.queryKey ?? s.key
       if (!Array.isArray(queryKey)) continue
 
-      const exact = (typeof raw.exact === 'boolean' ? raw.exact : undefined) as QueryFilters['exact']
-      const type = (typeof raw.type === 'string' ? raw.type : undefined) as QueryFilters['type']
-      const stale = typeof raw.stale === 'boolean' ? raw.stale : undefined
-      const action = typeof raw.action === 'string' ? raw.action : 'invalidate'
+      const exact = typeof s.exact === 'boolean' ? s.exact : undefined
+      const type = isQueryTypeFilter(s.type) ? s.type : undefined
+      const stale = typeof s.stale === 'boolean' ? s.stale : undefined
+      const action = typeof s.action === 'string' ? s.action : 'invalidate'
 
       const filters: QueryFilters = { queryKey }
       if (exact !== undefined) filters.exact = exact

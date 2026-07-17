@@ -4,9 +4,9 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   type InvalidateSignal,
-  type SWRSignal,
   type JSONValue,
 } from '../../types/protocol.js'
+import { isObject } from '../../pubsub/core/pubsub-utils.js'
 
 export interface SWRAdapterOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /**
@@ -37,11 +37,9 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
     const list = Array.isArray(signal) ? signal : [signal]
 
     for (const item of list) {
-      const raw = item as unknown as Record<string, unknown>
-      const action = raw.action
+      if (!isObject(item)) continue
+      const action = item.action
       const isPurge = action === 'purge' || action === 'remove'
-
-
 
       const filter = (key?: Arguments) => {
         if (key === undefined || key === null) return false
@@ -52,12 +50,12 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
         }
 
         // Native SWR string key matching
-        if (typeof raw.key === 'string') {
+        if (typeof item.key === 'string') {
           if (typeof key === 'string') {
-            return raw.match === 'exact' ? key === raw.key : key.startsWith(raw.key)
+            return item.match === 'exact' ? key === item.key : key.startsWith(item.key)
           }
           if (Array.isArray(key) && typeof key[0] === 'string') {
-            return raw.match === 'exact' ? key[0] === raw.key : key[0].startsWith(raw.key)
+            return item.match === 'exact' ? key[0] === item.key : key[0].startsWith(item.key)
           }
           return false
         }

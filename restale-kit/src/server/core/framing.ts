@@ -1,4 +1,5 @@
 import type { SSEInvalidateEvent } from '@/types/protocol.js'
+import { SSE_EVENTS } from '@/utils/constants.js'
 
 const encoder = new TextEncoder()
 
@@ -26,7 +27,7 @@ export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | 
   // JSON.stringify does not emit raw newlines for standard values, but a custom .toJSON()
   // could — splitting ensures the frame is always structurally valid.
   const dataLines = json.split(/\r\n|\r|\n/).map((line) => `data: ${line}`).join('\n')
-  return encoder.encode(`${idPrefix}event: invalidate\n${dataLines}\n\n`)
+  return encoder.encode(`${idPrefix}event: ${SSE_EVENTS.INVALIDATE}\n${dataLines}\n\n`)
 }
 
 /**
@@ -42,7 +43,7 @@ export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | 
  * Used to prevent proxies/load balancers from dropping idle connections.
  */
 export function formatKeepalive(): Uint8Array {
-  return encoder.encode(': keepalive\n\n')
+  return encoder.encode(`: ${SSE_EVENTS.KEEPALIVE}\n\n`)
 }
 
 /**
@@ -62,5 +63,5 @@ export function formatKeepalive(): Uint8Array {
  */
 export function formatRevokeFrame(reason: string): Uint8Array {
   const payload = JSON.stringify({ reason })
-  return encoder.encode(`event: revoke\ndata: ${payload}\n\n`)
+  return encoder.encode(`event: ${SSE_EVENTS.REVOKE}\ndata: ${payload}\n\n`)
 }

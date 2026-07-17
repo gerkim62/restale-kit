@@ -10,7 +10,8 @@ import { calculateBackoff } from '@/client/core/backoff.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
-import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SSE_EVENTS } from '@/utils/constants.js'
+
 
 /**
  * Client-side SSE invalidation client built on native `EventSource`.
@@ -265,7 +266,7 @@ export class SSEInvalidatorClient<
    * On `revoke`, suppresses auto-reconnect and transitions to `{ status: 'closed', reason: 'revoked' }`.
    */
   private wireInvalidateListener(es: EventSource): void {
-    es.addEventListener('invalidate', (event: MessageEvent<string>) => {
+    es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
       let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
         // Steps 1–6: structural validation
@@ -283,10 +284,10 @@ export class SSEInvalidatorClient<
 
           // Step 8: emit validated, typed payload
           const payload = Array.isArray(validated) ? results : results[0]
-          this.dispatchEvent(new CustomEvent('invalidate', { detail: payload }))
+          this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: payload }))
         } else {
           // No schema — emit as-is after structural validation
-          this.dispatchEvent(new CustomEvent('invalidate', { detail: validated }))
+          this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
         }
 
         if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
@@ -313,7 +314,7 @@ export class SSEInvalidatorClient<
       }
     })
 
-    es.addEventListener('revoke', (event: MessageEvent<string>) => {
+    es.addEventListener(SSE_EVENTS.REVOKE, (event: MessageEvent<string>) => {
       let reason = 'revoked'
       try {
         const parsed: unknown = JSON.parse(event.data)
@@ -339,11 +340,11 @@ export class SSEInvalidatorClient<
       this.setStatus(status)
 
       if (this.connectPromise) {
-        this.connectPromise.reject(new Event('revoke'))
+        this.connectPromise.reject(new Event(SSE_EVENTS.REVOKE))
         this.connectPromise = null
       }
 
-      this.dispatchEvent(new CustomEvent('revoke', { detail: { reason } }))
+      this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: { reason } }))
     })
   }
 
