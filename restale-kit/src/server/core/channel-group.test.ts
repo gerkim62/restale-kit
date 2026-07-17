@@ -338,7 +338,48 @@ describe('channel-group', () => {
     expect(publishSpy).toHaveBeenCalledWith('notifications', {
       kind: 'signal',
       data: { key: ['alert'] },
+      id: undefined,
     })
+  })
+
+  it('includes eventId in pubsub.publish payload when group has eventBufferCapacity', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const publishSpy = vi.spyOn(pubsub, 'publish')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub, eventBufferCapacity: 10 })
+    const ch = createSSEChannel()
+    group.register(ch, { userId: 10 }, { topics: ['notifications'] })
+
+    await group.publish('notifications', { key: ['alert'] })
+
+    expect(publishSpy).toHaveBeenCalledWith(
+      'notifications',
+      expect.objectContaining({
+        kind: 'signal',
+        data: { key: ['alert'] },
+        id: expect.any(String),
+      })
+    )
+  })
+
+  it('delivers pubsub signal with id to subscribed channels', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+    const invalidateSpy = vi.spyOn(ch, 'invalidate')
+
+    group.register(ch, { userId: 10 }, { topics: ['notifications'] })
+
+    // Flush async TopicManager subscription
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    await pubsub.publish('notifications', {
+      kind: 'signal',
+      data: { key: ['alert'] },
+      id: 'pubsub-evt-100',
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, 'pubsub-evt-100')
   })
 
   it('revokes matching channels locally and publishes control message to pubsub', async () => {

@@ -204,8 +204,9 @@ function myCustomAdapter(options: PubSubEncryptionOptions): PubSubAdapter {
     async publish(topic, message) {
       // Send PubSubMessage envelope to broker on topic.
       // message is a discriminated union:
-      // - Signals: { kind: 'signal', data: TSignal | TSignal[] }
-      //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB] }
+      // - Signals: { kind: 'signal', data: TSignal | TSignal[], id?: string }
+      //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }
+      //   When an eventStore is configured, id carries the sequence event ID for Last-Event-ID replay across instances.
       // - Control: { kind: 'control', data: JSONValue }
     },
 
