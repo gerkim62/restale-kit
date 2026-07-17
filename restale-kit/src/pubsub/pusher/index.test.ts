@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { pusherPubSubAdapter, type PusherClient, type PusherWebhook } from './index.js'
+import { wrapEnvelope } from '@/pubsub/core/envelope.js'
+
 
 function createMockPusherClient(validWebhook = true, events: any[] = []): PusherClient {
   return {
@@ -14,7 +16,7 @@ function createMockPusherClient(validWebhook = true, events: any[] = []): Pusher
 describe('pusherPubSubAdapter', () => {
   it('triggers pusher invalidate event on publish', async () => {
     const client = createMockPusherClient()
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
 
     await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
 
@@ -30,7 +32,7 @@ describe('pusherPubSubAdapter', () => {
 
   it('triggers pusher control event on publish control payload', async () => {
     const client = createMockPusherClient()
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
 
     await adapter.publish('my-channel', { kind: 'control', data: { userId: 42 } })
 
@@ -46,7 +48,7 @@ describe('pusherPubSubAdapter', () => {
 
   it('returns false when handleWebhook signature validation fails', () => {
     const client = createMockPusherClient(false)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
 
     const result = adapter.handleWebhook('raw-body', {})
     expect(result).toBe(false)
@@ -60,7 +62,7 @@ describe('pusherPubSubAdapter', () => {
     const events = [{ channel: 'my-channel', name: 'invalidate', data: remoteEnvelope }]
 
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('my-channel', callback)
@@ -86,7 +88,7 @@ describe('pusherPubSubAdapter', () => {
     ]
 
     const client = createMockPusherClient(true, validEnvelopeEvents)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
 
     // Subscribe with callback that throws an error
     const throwingCallback = vi.fn().mockImplementation(() => {
@@ -128,7 +130,7 @@ describe('pusherPubSubAdapter', () => {
     const events = [{ channel: 'my-channel', name: 'control', data: controlEnvelope }]
 
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('my-channel', callback)
@@ -142,7 +144,7 @@ describe('pusherPubSubAdapter', () => {
   it('ignores webhooks with unrecognized event names', async () => {
     const events = [{ channel: 'my-channel', name: 'client-event', data: {} }]
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
     const callback = vi.fn()
 
     await adapter.subscribe('my-channel', callback)
@@ -161,10 +163,75 @@ describe('pusherPubSubAdapter', () => {
       },
     ]
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client)
+    const adapter = pusherPubSubAdapter(client, { encrypt: false })
 
     const success = adapter.handleWebhook('valid-body', {})
     expect(success).toBe(true)
+  })
+
+  const validKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+  const wrongKey = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'
+
+  it('encrypts published envelope payload when encryptionKey is configured', async () => {
+    const client = createMockPusherClient()
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
+
+    await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
+
+    expect(client.trigger).toHaveBeenCalledWith(
+      'my-channel',
+      'invalidate',
+      expect.objectContaining({
+        origin: expect.any(String),
+        payload: expect.any(String),
+      })
+    )
+
+    const publishedEnvelope = (client.trigger as any).mock.calls[0][2]
+    expect(publishedEnvelope.payload).not.toContain('todos')
+    expect(publishedEnvelope.payload.split(':').length).toBe(3)
+  })
+
+  it('decrypts encrypted webhook payload correctly', async () => {
+    const message = { kind: 'signal' as const, data: { key: ['posts'] } }
+    const encryptedEnvelope = wrapEnvelope('remote-pusher-id', message, validKey, 'my-channel')
+    const events = [{ channel: 'my-channel', name: 'invalidate', data: encryptedEnvelope }]
+
+    const client = createMockPusherClient(true, events)
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
+    const callback = vi.fn()
+
+    await adapter.subscribe('my-channel', callback)
+
+    const success = adapter.handleWebhook('valid-body', { 'x-pusher-signature': 'sig' })
+
+    expect(success).toBe(true)
+    expect(callback).toHaveBeenCalledWith(message)
+  })
+
+  it('throttles decryption failure warnings and drops messages on key mismatch', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const message = { kind: 'signal' as const, data: { key: ['posts'] } }
+    const encryptedEnvelope = wrapEnvelope('remote-pusher-id', message, wrongKey, 'my-channel')
+    const events = [{ channel: 'my-channel', name: 'invalidate', data: encryptedEnvelope }]
+
+    const client = createMockPusherClient(true, events)
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
+    const callback = vi.fn()
+
+    await adapter.subscribe('my-channel', callback)
+
+    const success1 = adapter.handleWebhook('valid-body', {})
+    expect(success1).toBe(true)
+    expect(callback).not.toHaveBeenCalled()
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+    expect(consoleWarnSpy.mock.calls[0][0]).toContain('Decryption failed')
+
+    const success2 = adapter.handleWebhook('valid-body', {})
+    expect(success2).toBe(true)
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+
+    consoleWarnSpy.mockRestore()
   })
 })
 

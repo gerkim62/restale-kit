@@ -9,7 +9,12 @@ if (!redisUrl) throw new Error('REDIS_URL is required.')
 // Module scope lets warm Vercel functions reuse connections and subscriptions.
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1 })
 redis.on('error', (error) => console.error('[redis]', error))
-const group = new SSEChannelGroup({ pubsub: redisPubSubAdapter(redis) })
+const group = new SSEChannelGroup({
+  pubsub: redisPubSubAdapter(redis, process.env.PUBSUB_ENCRYPTION_KEY !== undefined
+    ? { encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY }
+    : { encrypt: false }
+  )
+})
 
 const todosKey = (userId) => `restale:vercel-example:todos:${userId}`
 export const topic = (userId) => `restale:vercel-example:todos:${userId}`

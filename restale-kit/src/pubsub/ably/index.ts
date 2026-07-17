@@ -1,8 +1,15 @@
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
+import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
 import { isPubSubMessage, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
-import { wrapEnvelope, unwrapEnvelope } from '@/pubsub/core/envelope.js'
+import {
+  wrapEnvelope,
+  unwrapEnvelope,
+  validateEncryptionOptions,
+  encryptPayload,
+  decryptPayload
+} from '@/pubsub/core/envelope.js'
 
 /**
  * Minimal structural interface for an Ably Channel.
@@ -36,13 +43,16 @@ export interface AblyClient {
  * @param client An AblyRealtime client instance.
  * @param options Configuration options.
  * @param options.useNativeEchoSuppression If true, the adapter skips envelope wrapping/parsing and relies on Ably client's native self-echo suppression. The Ably client must be instantiated with `echoMessages: false`.
+ * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
+ * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
  */
 export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: AblyClient,
-  options?: { useNativeEchoSuppression?: boolean }
+  options: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal> {
+  const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
-  const useNativeEchoSuppression = !!options?.useNativeEchoSuppression
+  const useNativeEchoSuppression = !!options.useNativeEchoSuppression
 
   if (useNativeEchoSuppression) {
     const echoMessages = client.options?.echoMessages
@@ -64,13 +74,21 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     })
   }
 
+  let lastDecryptionErrorTime = 0
+  const WARN_THROTTLE_MS = 60000 // 1 minute
+
   return {
     async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
       const channel = client.channels.get(topic)
       if (useNativeEchoSuppression) {
-        await channel.publish('invalidate', message)
+        if (encryptionKey) {
+          const encrypted = encryptPayload(message, encryptionKey, topic)
+          await channel.publish('invalidate', encrypted)
+        } else {
+          await channel.publish('invalidate', message)
+        }
       } else {
-        const envelope = wrapEnvelope(instanceId, message)
+        const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
         await channel.publish('invalidate', envelope)
       }
     },
@@ -85,18 +103,38 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
         try {
           const data = msg.data
           if (useNativeEchoSuppression) {
-            if (isPubSubMessage<TSignal>(data)) {
-              onMessage(data)
-            } else if (isSignalPayload<TSignal>(data)) {
-              onMessage({ kind: 'signal', data })
+            let payload = data
+            if (encryptionKey) {
+              if (typeof data !== 'string') {
+                throw new PubSubDecryptionError('Expected encrypted payload to be a string.')
+              }
+              payload = decryptPayload(data, encryptionKey, topic)
+            }
+            if (isPubSubMessage<TSignal>(payload)) {
+              onMessage(payload)
+            } else if (isSignalPayload<TSignal>(payload)) {
+              onMessage({ kind: 'signal', data: payload })
             }
           } else {
-            const unwrapped = unwrapEnvelope<TSignal>(data, instanceId)
+            const unwrapped = unwrapEnvelope<TSignal>(data, instanceId, encryptionKey, topic)
             if (unwrapped) {
               onMessage(unwrapped)
             }
           }
         } catch (err) {
+          if (err instanceof PubSubDecryptionError) {
+            const now = Date.now()
+            if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
+              lastDecryptionErrorTime = now
+              console.warn(
+                `[WARN][ablyPubSubAdapter] Decryption failed for topic "${topic}". ` +
+                'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
+                'Further warnings will be throttled for 1 minute.',
+                err
+              )
+            }
+            return // Drop message and continue
+          }
           errorHandler(err)
         }
       }
@@ -133,5 +171,6 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     },
   }
 }
+
 
 

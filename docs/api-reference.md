@@ -402,7 +402,7 @@ interface SWRMutator {
 ## `restale-kit/pubsub`
 
 ```ts
-import type { PubSubAdapter } from 'restale-kit/pubsub'
+import type { PubSubAdapter, PubSubEncryptionOptions, PubSubDecryptionError } from 'restale-kit/pubsub'
 import type { PubSubMessage, JSONValue, InvalidateSignal } from 'restale-kit'
 
 interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
@@ -413,6 +413,15 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
   ): Promise<() => void | Promise<void>>
   onError?(handler: (error: unknown) => void): void
 }
+
+type PubSubEncryptionOptions =
+  | { encrypt: false; encryptionKey?: never }
+  | { encrypt?: true; encryptionKey: string }
+
+class PubSubDecryptionError extends Error {
+  readonly cause?: unknown
+}
+
 ```
 
 ---
@@ -435,10 +444,12 @@ interface RedisClient {
 
 function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: RedisClient,
-  options?: { subscribeClient?: RedisClient }
+  options: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal>
 // Pass a single client — the adapter calls client.duplicate() internally for subscriptions.
 // Or pass a pre-created subscribeClient to use your own separate connection.
+// Requires providing either `{ encrypt: false }` or `{ encryptionKey: string }`.
+
 ```
 
 ---
@@ -470,10 +481,12 @@ interface AblyClient {
 
 function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: AblyClient,
-  options?: { useNativeEchoSuppression?: boolean }
+  options: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal>
 // When useNativeEchoSuppression is true, the Ably client must be instantiated with
 // echoMessages: false — otherwise the adapter throws at construction time.
+// Requires providing either `{ encrypt: false }` or `{ encryptionKey: string }`.
+
 ```
 
 ---
@@ -496,9 +509,11 @@ interface PusherClient {
 }
 
 function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  pusherServerClient: PusherClient
+  pusherServerClient: PusherClient,
+  options: PubSubEncryptionOptions
 ): PubSubAdapter<TSignal> & {
   // Required: call from your Pusher webhook route
   handleWebhook(rawBody: string, headers: Record<string, string>): boolean
 }
+
 ```
