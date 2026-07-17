@@ -1,3 +1,8 @@
+import type { QueryFilters } from '@tanstack/react-query'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
+
+export { SIGNAL_TARGETS }
+
 /**
  * A value that survives a JSON.stringify → JSON.parse round trip losslessly.
  * Intentionally excludes Date, Map, Set, class instances, functions, etc.
@@ -10,18 +15,57 @@ export type JSONValue =
   | JSONValue[]
   | { [key: string]: JSONValue }
 
-/**
- * A cache-library-agnostic invalidation signal sent over the SSE wire.
- *
- * - `key`: hierarchical cache key — e.g. `["todos", { userId: 4 }]`
- * - `exact`: when true, match the key exactly; when false (default), prefix match
- * - `action`: the cache operation to perform (default `'invalidate'`)
- */
-export interface InvalidateSignal {
+export const TANSTACK_QUERY_ACTIONS = ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const
+export type TanStackQueryAction = (typeof TANSTACK_QUERY_ACTIONS)[number]
+
+/** Native TanStack Query invalidation signal payload */
+export interface TanStackQuerySignal {
+  target: typeof SIGNAL_TARGETS.TANSTACK
+  queryKey: JSONValue[]
+  exact?: QueryFilters['exact']
+  type?: QueryFilters['type']
+  action?: TanStackQueryAction
+  stale?: boolean
+}
+
+export const SWR_ACTIONS = ['revalidate', 'purge'] as const
+export type SWRAction = (typeof SWR_ACTIONS)[number]
+
+/** Native SWR invalidation signal payload */
+export interface SWRSignal {
+  target: typeof SIGNAL_TARGETS.SWR
+  key: string | JSONValue[]
+  action?: SWRAction
+  revalidate?: boolean
+  match?: 'exact' | 'prefix'
+}
+
+/** Native RTK Query invalidation signal payload */
+export interface RTKQuerySignal {
+  target: typeof SIGNAL_TARGETS.RTK
+  tags: Array<string | { type: string; id?: string | number }>
+}
+
+export const GENERIC_ACTIONS = ['invalidate', 'refetch', 'remove'] as const
+export type GenericAction = (typeof GENERIC_ACTIONS)[number]
+
+/** Generic fallback signal for raw SSE listeners */
+export interface GenericInvalidateSignal {
+  target?: typeof SIGNAL_TARGETS.GENERIC
   key: JSONValue[]
   exact?: boolean
-  action?: 'invalidate' | 'refetch' | 'remove'
+  action?: GenericAction
 }
+
+/** Discriminated union of all supported wire signals */
+export type ReStaleSignal =
+  | TanStackQuerySignal
+  | SWRSignal
+  | RTKQuerySignal
+  | GenericInvalidateSignal
+
+/** Alias for default generic parameter bounds across channels & pubsub */
+export type InvalidateSignal = ReStaleSignal
 
 /** Returns whether a value can be used as a serializable ReStale key component. */
 export function isJSONValue(value: unknown): value is JSONValue {
@@ -38,19 +82,54 @@ export function isJSONValueArray(value: unknown): value is JSONValue[] {
   return Array.isArray(value) && value.every(isJSONValue)
 }
 
-/**
- * Matches a cache key against the core invalidation contract.
- *
- * Non-exact signals match a key prefix and allow a signal's object fields to
- * be a subset of the cache-key object. Exact signals require structural
- * equality. This gives every cache adapter the same matching semantics.
- */
-export function matchesInvalidateSignalKey(cacheKey: unknown, signal: InvalidateSignal): boolean {
-  if (!isJSONValueArray(cacheKey)) return false
-  if (signal.exact ? cacheKey.length !== signal.key.length : cacheKey.length < signal.key.length) return false
-
-  return signal.key.every((part, index) => matchesJSONValue(cacheKey[index], part, signal.exact === true))
+function matchKeyArray(cacheKey: JSONValue[], signalKey: JSONValue[], exact: boolean): boolean {
+  if (exact ? cacheKey.length !== signalKey.length : cacheKey.length < signalKey.length) return false
+  return signalKey.every((part, index) => matchesJSONValue(cacheKey[index], part, exact))
 }
+
+/**
+ * Matches a cache key against an invalidation signal.
+ * Supports TanStackQuerySignal (queryKey), SWRSignal (key), and Generic signals.
+ */
+export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSignal): boolean {
+  if (typeof cacheKey === 'string') {
+    if ('target' in signal && signal.target === SIGNAL_TARGETS.SWR) {
+      if (typeof signal.key === 'string') {
+        return signal.match === 'exact' ? cacheKey === signal.key : cacheKey.startsWith(signal.key)
+      }
+      return matchKeyArray([cacheKey], signal.key, signal.match === 'exact')
+    }
+    if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
+      return matchKeyArray([cacheKey], signal.queryKey, signal.exact === true)
+    }
+    return false
+  }
+
+  if (!isJSONValueArray(cacheKey)) return false
+
+  if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
+    return matchKeyArray(cacheKey, signal.queryKey, signal.exact === true)
+  }
+
+  if ('target' in signal && signal.target === SIGNAL_TARGETS.SWR) {
+    if (typeof signal.key === 'string') {
+      if (typeof cacheKey[0] === 'string') {
+        return signal.match === 'exact'
+          ? cacheKey.length === 1 && cacheKey[0] === signal.key
+          : cacheKey[0].startsWith(signal.key)
+      }
+      return false
+    }
+    return matchKeyArray(cacheKey, signal.key, signal.match === 'exact')
+  }
+
+  if ('key' in signal && Array.isArray(signal.key)) {
+    return matchKeyArray(cacheKey, signal.key, signal.exact === true)
+  }
+
+  return false
+}
+
 
 export function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: boolean): boolean {
   if (actual === expected) return true
@@ -82,7 +161,7 @@ export type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
 /**
  * The payload of a single SSE `invalidate` event — one signal or a batch.
  */
-export type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
+export type SSEInvalidateEvent<TSignal extends InvalidateSignal = InvalidateSignal> = TSignal | TSignal[]
 
 /**
  * A recorded invalidation event with a unique sequence ID.
@@ -94,12 +173,6 @@ export interface EventRecord<TSignal extends InvalidateSignal = InvalidateSignal
 
 /**
  * The result of an `EventStore.getEventsAfter` lookup.
- *
- * - `events`: the ordered list of events recorded after `lastEventId`.
- * - `stale`: `true` when `lastEventId` was not found — either because it
- *   was evicted from the ring buffer or was never a valid ID. When `stale`
- *   is `true`, `events` is always empty; the caller should treat this as
- *   "too much missed, trigger a full refetch" rather than "nothing missed".
  */
 export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateSignal> {
   events: EventRecord<TSignal>[]
@@ -119,4 +192,5 @@ export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal>
  * The two states of an SSE channel's lifecycle.
  */
 export type ChannelState = 'open' | 'closed'
+
 

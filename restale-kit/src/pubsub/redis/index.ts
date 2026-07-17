@@ -1,6 +1,6 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
 import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
 
@@ -45,8 +45,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   // Map of topic to the onMessage callback
   const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
 
-  let lastDecryptionErrorTime = 0
-  const WARN_THROTTLE_MS = 60000 // 1 minute
+  const handleDecryptionError = createDecryptionErrorHandler('redisPubSubAdapter')
 
   // Set up a single message listener on the subscription client
   subscribeClient.on('message', (channel: string, message: string) => {
@@ -59,17 +58,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
         onMessage(unwrapped)
       }
     } catch (err) {
-      if (err instanceof PubSubDecryptionError) {
-        const now = Date.now()
-        if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
-          lastDecryptionErrorTime = now
-          console.warn(
-            `[WARN][redisPubSubAdapter] Decryption failed for topic "${channel}". ` +
-            'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
-            'Further warnings will be throttled for 1 minute.',
-            err
-          )
-        }
+      if (handleDecryptionError(err, channel)) {
         return // Drop message and continue
       }
       errorHandler(err)

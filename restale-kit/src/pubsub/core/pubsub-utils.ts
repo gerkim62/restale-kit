@@ -53,3 +53,31 @@ export function isEnvelope(val: unknown): val is Envelope {
   return typeof val['origin'] === 'string' && 'payload' in val
 }
 
+const WARN_THROTTLE_MS = 60_000 // 1 minute
+
+/**
+ * Creates a rate-limited decryption error handler for Pub/Sub adapters.
+ * Returns a function that handles PubSubDecryptionError instances by throttling warnings to once per minute.
+ */
+export function createDecryptionErrorHandler(adapterName: string) {
+  let lastDecryptionErrorTime = 0
+
+  return (err: unknown, topic: string): boolean => {
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'PubSubDecryptionError') {
+      const now = Date.now()
+      if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
+        lastDecryptionErrorTime = now
+        console.warn(
+          `[WARN][${adapterName}] Decryption failed for topic "${topic}". ` +
+            'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
+            'Further warnings will be throttled for 1 minute.',
+          err
+        )
+      }
+      return true
+    }
+    return false
+  }
+}
+
+

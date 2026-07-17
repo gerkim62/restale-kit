@@ -1,19 +1,28 @@
-import type { InvalidateSignal, JSONValue } from '@/types/protocol.js'
+import {
+  type JSONValue,
+  type ReStaleSignal,
+  type TanStackQuerySignal,
+  type SWRSignal,
+  type RTKQuerySignal,
+  type GenericInvalidateSignal,
+  type TanStackQueryAction,
+  type SWRAction,
+  type GenericAction,
+  TANSTACK_QUERY_ACTIONS,
+  SWR_ACTIONS,
+  GENERIC_ACTIONS,
+  isJSONValueArray,
+} from '@/types/protocol.js'
+import { isObject } from '@/pubsub/core/pubsub-utils.js'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
 
 /**
  * Validates an incoming SSE payload against the built-in structural rules.
  *
- * This implements steps 1–6 from the spec's validation pipeline:
- * 1. JSON.parse must succeed
- * 2. Result must be a plain object or array of plain objects
- * 3. Each object must have a `key` property that is an Array
- * 4. If `exact` is present, it must be boolean
- * 5. If `action` is present, it must be one of 'invalidate' | 'refetch' | 'remove'
- * 6. Extra unknown fields are ignored (forward-compatible)
- *
- * Returns the validated signal(s) or throws an Error with a descriptive message.
+ * Supports discriminated signals (`target: 'tanstack-query'`, `target: 'swr'`, `target: 'rtk-query'`, `target: 'generic'`)
+ * as well as legacy/generic key-based signals.
  */
-export function validatePayload(data: unknown): InvalidateSignal | InvalidateSignal[] {
+export function validatePayload(data: unknown): ReStaleSignal | ReStaleSignal[] {
   // Step 1: JSON.parse if data is a string
   let parsed: unknown = data
   if (typeof data === 'string') {
@@ -21,7 +30,6 @@ export function validatePayload(data: unknown): InvalidateSignal | InvalidateSig
       parsed = JSON.parse(data)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      // The raw string payload from the SSE connection that failed JSON parsing
       console.error(
         "[ERROR][validatePayload] Failed to parse SSE payload as JSON",
         "\n  rawData:", data.slice(0, 500),
@@ -46,71 +54,138 @@ export function validatePayload(data: unknown): InvalidateSignal | InvalidateSig
   return validateSingleSignal(parsed)
 }
 
-type ValidAction = InvalidateSignal['action']
+const validTanStackActions: ReadonlySet<string> = new Set(TANSTACK_QUERY_ACTIONS)
+const validSWRActions: ReadonlySet<string> = new Set(SWR_ACTIONS)
+const validGenericActions: ReadonlySet<string> = new Set(GENERIC_ACTIONS)
 
-/** Type predicate: value is one of the three valid action strings. */
-function isValidAction(value: unknown): value is ValidAction {
-  return value === 'invalidate' || value === 'refetch' || value === 'remove'
+function isTanStackQueryAction(val: unknown): val is TanStackQueryAction {
+  return typeof val === 'string' && validTanStackActions.has(val)
 }
 
-/** Type guard: value is a non-null plain object (not an array). */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function isSWRAction(val: unknown): val is SWRAction {
+  return typeof val === 'string' && validSWRActions.has(val)
 }
 
-/**
- * Type guard: value is a JSONValue.
- * JSON.parse output always satisfies this, but we verify to satisfy the type system.
- * Explicitly rejects non-finite numbers (NaN, Infinity, -Infinity) which are not
- * valid JSON — JSON.stringify(NaN) produces "null", causing silent data corruption.
- */
-function isJSONValue(value: unknown): value is JSONValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
-    return true
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value)
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJSONValue)
-  }
-  if (typeof value === 'object') {
-    return Object.values(value).every(isJSONValue)
+function isGenericAction(val: unknown): val is GenericAction {
+  return typeof val === 'string' && validGenericActions.has(val)
+}
+
+function isSWRKey(val: unknown): val is string | JSONValue[] {
+  return typeof val === 'string' || isJSONValueArray(val)
+}
+
+function isRTKTag(val: unknown): val is string | { type: string; id?: string | number } {
+  if (typeof val === 'string') return true
+  if (isObject(val) && typeof val.type === 'string') {
+    const id = val.id
+    return id === undefined || typeof id === 'string' || typeof id === 'number'
   }
   return false
 }
 
-function validateSingleSignal(value: unknown): InvalidateSignal {
-  if (!isPlainObject(value)) {
+function isRTKTags(val: unknown): val is RTKQuerySignal['tags'] {
+  return Array.isArray(val) && val.every(isRTKTag)
+}
+
+function validateSingleSignal(value: unknown): ReStaleSignal {
+  if (!isObject(value)) {
     throw new Error('Each signal must be a plain object')
   }
 
-  // Step 3: Must have a `key` property that is an Array of JSONValues
-  if (!('key' in value) || !Array.isArray(value.key) || !value.key.every(isJSONValue)) {
+  const target = value.target
+
+  if (target === SIGNAL_TARGETS.TANSTACK) {
+    if (!('queryKey' in value) || !isJSONValueArray(value.queryKey)) {
+      throw new Error('TanStack Query signal must have a "queryKey" property that is an array of JSON-serialisable values')
+    }
+    if ('exact' in value && typeof value.exact !== 'boolean') {
+      throw new Error('Signal "exact" field must be a boolean')
+    }
+    if ('type' in value && (typeof value.type !== 'string' || (value.type !== 'active' && value.type !== 'inactive' && value.type !== 'all'))) {
+      throw new Error('TanStack Query signal "type" field must be one of \'active\', \'inactive\', \'all\'')
+    }
+    if ('stale' in value && typeof value.stale !== 'boolean') {
+      throw new Error('TanStack Query signal "stale" field must be a boolean')
+    }
+    if ('action' in value && !isTanStackQueryAction(value.action)) {
+      throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
+    }
+    const signal: TanStackQuerySignal = {
+      target: SIGNAL_TARGETS.TANSTACK,
+      queryKey: value.queryKey,
+    }
+    if (typeof value.exact === 'boolean') signal.exact = value.exact
+    if (typeof value.type === 'string' && (value.type === 'active' || value.type === 'inactive' || value.type === 'all')) {
+      signal.type = value.type
+    }
+    if (isTanStackQueryAction(value.action)) {
+      signal.action = value.action
+    }
+    if (typeof value.stale === 'boolean') signal.stale = value.stale
+    return signal
+  }
+
+  if (target === SIGNAL_TARGETS.SWR) {
+    if (!('key' in value) || !isSWRKey(value.key)) {
+      throw new Error('SWR signal must have a "key" property that is a string or an array of JSON-serialisable values')
+    }
+    if ('action' in value && !isSWRAction(value.action)) {
+      throw new Error(`SWR signal "action" field must be one of 'revalidate', 'purge'`)
+    }
+    if ('match' in value && value.match !== 'exact' && value.match !== 'prefix') {
+      throw new Error(`SWR signal "match" field must be 'exact' or 'prefix'`)
+    }
+    if ('revalidate' in value && typeof value.revalidate !== 'boolean') {
+      throw new Error('SWR signal "revalidate" field must be a boolean')
+    }
+    const signal: SWRSignal = {
+      target: SIGNAL_TARGETS.SWR,
+      key: value.key,
+    }
+    if (isSWRAction(value.action)) {
+      signal.action = value.action
+    }
+    if (typeof value.revalidate === 'boolean') signal.revalidate = value.revalidate
+    if (value.match === 'exact' || value.match === 'prefix') signal.match = value.match
+    return signal
+  }
+
+  if (target === SIGNAL_TARGETS.RTK) {
+    if (!('tags' in value) || !isRTKTags(value.tags)) {
+      throw new Error('RTK Query signal "tags" property must be an array of strings or tag objects')
+    }
+    const signal: RTKQuerySignal = {
+      target: SIGNAL_TARGETS.RTK,
+      tags: value.tags,
+    }
+    return signal
+  }
+
+  if ('target' in value && value.target !== undefined && value.target !== SIGNAL_TARGETS.GENERIC) {
+    const targetStr = typeof value.target === 'string' ? value.target : JSON.stringify(value.target)
+    throw new Error(`Signal "target" field must be 'generic' when present on generic signals — got '${targetStr}'`)
+  }
+
+  // Generic or default signal format
+  if (!('key' in value) || !isJSONValueArray(value.key)) {
     throw new Error('Signal must have a "key" property that is an array of JSON-serialisable values')
   }
-  const key: JSONValue[] = value.key
 
-  // Step 4: If `exact` is present, it must be boolean
   if ('exact' in value && typeof value.exact !== 'boolean') {
     throw new Error('Signal "exact" field must be a boolean')
   }
 
-  // Step 5: If `action` is present, it must be one of the valid values
-  if ('action' in value && !isValidAction(value.action)) {
+  if ('action' in value && !isGenericAction(value.action)) {
     const actionStr = typeof value.action === 'string' ? value.action : JSON.stringify(value.action)
-    throw new Error(
-      `Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${actionStr}'`
-    )
+    throw new Error(`Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${actionStr}'`)
   }
 
-  // Step 6: Extra unknown fields are ignored — forward-compatible
-  const signal: InvalidateSignal = { key }
-  if (typeof value.exact === 'boolean') {
-    signal.exact = value.exact
-  }
-  if (isValidAction(value.action)) {
+  const signal: GenericInvalidateSignal = { key: value.key }
+  if (target === SIGNAL_TARGETS.GENERIC) signal.target = SIGNAL_TARGETS.GENERIC
+  if (typeof value.exact === 'boolean') signal.exact = value.exact
+  if (isGenericAction(value.action)) {
     signal.action = value.action
   }
   return signal
 }
+

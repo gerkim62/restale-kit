@@ -4,7 +4,15 @@ export type { StandardSchemaV1 } from './standard-schema.js'
 export type {
   JSONValue,
   InvalidateSignal,
+  TanStackQuerySignal,
+  TanStackQueryAction,
+  SWRSignal,
+  SWRAction,
+  RTKQuerySignal,
+  GenericInvalidateSignal,
+  ReStaleSignal,
   SSEInvalidateEvent,
   ChannelState,
 } from './protocol.js'
-export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey } from './protocol.js'
+export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey, SIGNAL_TARGETS } from './protocol.js'
+

@@ -26,3 +26,23 @@ export const PUBSUB_EVENTS = {
   INVALIDATE: 'invalidate',
   CONTROL: 'control',
 } as const
+
+/**
+ * Event names emitted over SSE streams.
+ */
+export const SSE_EVENTS = {
+  INVALIDATE: 'invalidate',
+  REVOKE: 'revoke',
+  KEEPALIVE: 'keepalive',
+} as const
+
+/**
+ * Standard signal target discriminators.
+ */
+export const SIGNAL_TARGETS = {
+  TANSTACK: 'tanstack-query',
+  SWR: 'swr',
+  RTK: 'rtk-query',
+  GENERIC: 'generic',
+} as const
+

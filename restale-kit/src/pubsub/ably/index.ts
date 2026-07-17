@@ -1,7 +1,7 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
 import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
-import { isPubSubMessage, isSignalPayload } from '@/pubsub/core/pubsub-utils.js'
+import { isPubSubMessage, isSignalPayload, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
 import {
   wrapEnvelope,
@@ -74,8 +74,7 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     })
   }
 
-  let lastDecryptionErrorTime = 0
-  const WARN_THROTTLE_MS = 60000 // 1 minute
+  const handleDecryptionError = createDecryptionErrorHandler('ablyPubSubAdapter')
 
   return {
     async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
@@ -122,17 +121,7 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
             }
           }
         } catch (err) {
-          if (err instanceof PubSubDecryptionError) {
-            const now = Date.now()
-            if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
-              lastDecryptionErrorTime = now
-              console.warn(
-                `[WARN][ablyPubSubAdapter] Decryption failed for topic "${topic}". ` +
-                'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
-                'Further warnings will be throttled for 1 minute.',
-                err
-              )
-            }
+          if (handleDecryptionError(err, topic)) {
             return // Drop message and continue
           }
           errorHandler(err)

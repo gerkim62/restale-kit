@@ -102,6 +102,115 @@ describe('client validatePayload', () => {
     })
   })
 
+  it('validates tanstack-query signal correctly', () => {
+    const raw = JSON.stringify({
+      target: 'tanstack-query',
+      queryKey: ['todos', 1],
+      exact: true,
+      action: 'reset',
+      type: 'active',
+      stale: true,
+    })
+    const validated = validatePayload(raw)
+    expect(validated).toEqual({
+      target: 'tanstack-query',
+      queryKey: ['todos', 1],
+      exact: true,
+      action: 'reset',
+      type: 'active',
+      stale: true,
+    })
+  })
+
+  it('validates swr signal with string and array keys', () => {
+    const rawString = JSON.stringify({
+      target: 'swr',
+      key: '/api/todos',
+      action: 'purge',
+      match: 'prefix',
+    })
+    expect(validatePayload(rawString)).toEqual({
+      target: 'swr',
+      key: '/api/todos',
+      action: 'purge',
+      match: 'prefix',
+    })
+
+    const rawArray = JSON.stringify({
+      target: 'swr',
+      key: ['todos', 1],
+      action: 'revalidate',
+      match: 'exact',
+    })
+    expect(validatePayload(rawArray)).toEqual({
+      target: 'swr',
+      key: ['todos', 1],
+      action: 'revalidate',
+      match: 'exact',
+    })
+  })
+
+  it('throws error for invalid tanstack-query signal fields', () => {
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: 'not-an-array' })).toThrow(
+      'TanStack Query signal must have a "queryKey" property'
+    )
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: ['a'], exact: 'yes' })).toThrow(
+      'Signal "exact" field must be a boolean'
+    )
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: ['a'], type: 123 })).toThrow(
+      "TanStack Query signal \"type\" field must be one of 'active', 'inactive', 'all'"
+    )
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: ['a'], type: 'invalid' })).toThrow(
+      "TanStack Query signal \"type\" field must be one of 'active', 'inactive', 'all'"
+    )
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: ['a'], stale: 'yes' })).toThrow(
+      'TanStack Query signal "stale" field must be a boolean'
+    )
+    expect(() => validatePayload({ target: 'tanstack-query', queryKey: ['a'], action: 'unknown' })).toThrow(
+      "TanStack Query signal \"action\" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'"
+    )
+  })
+
+  it('throws error for invalid swr signal fields', () => {
+    expect(() => validatePayload({ target: 'swr', key: 123 })).toThrow(
+      'SWR signal must have a "key" property that is a string or an array'
+    )
+    expect(() => validatePayload({ target: 'swr', key: '/todos', action: 'invalid' })).toThrow(
+      "SWR signal \"action\" field must be one of 'revalidate', 'purge'"
+    )
+    expect(() => validatePayload({ target: 'swr', key: '/todos', match: 'contains' })).toThrow(
+      "SWR signal \"match\" field must be 'exact' or 'prefix'"
+    )
+    expect(() => validatePayload({ target: 'swr', key: '/todos', revalidate: 'no' })).toThrow(
+      'SWR signal "revalidate" field must be a boolean'
+    )
+  })
+
+  it('throws error for invalid rtk-query signal fields', () => {
+    expect(() => validatePayload({ target: 'rtk-query', tags: 'not-an-array' })).toThrow(
+      'RTK Query signal "tags" property must be an array'
+    )
+    expect(() => validatePayload({ target: 'rtk-query', tags: [123] })).toThrow(
+      'RTK Query signal "tags" property must be an array'
+    )
+    expect(() => validatePayload({ target: 'rtk-query', tags: [{ type: 123 }] })).toThrow(
+      'RTK Query signal "tags" property must be an array'
+    )
+    expect(() => validatePayload({ target: 'rtk-query', tags: [{ type: 'a', id: true }] })).toThrow(
+      'RTK Query signal "tags" property must be an array'
+    )
+    expect(validatePayload({ target: 'rtk-query', tags: ['str', { type: 'a', id: 1 }, { type: 'b' }] })).toEqual({
+      target: 'rtk-query',
+      tags: ['str', { type: 'a', id: 1 }, { type: 'b' }],
+    })
+  })
+
+  it('throws error for invalid generic signal target', () => {
+    expect(() => validatePayload({ key: ['a'], target: 'invalid' })).toThrow(
+      "Signal \"target\" field must be 'generic' when present on generic signals — got 'invalid'"
+    )
+  })
+
   it('throws error when signal key array contains non-JSON-serialisable elements', () => {
     // isJSONValue false branch for function / symbol / bigint
     expect(() => validatePayload(JSON.stringify({ key: [1, null] }))).not.toThrow()
@@ -115,5 +224,6 @@ describe('client validatePayload', () => {
     )
   })
 })
+
 
 
