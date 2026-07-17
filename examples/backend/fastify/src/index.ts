@@ -7,7 +7,8 @@ import { createTodoApi } from '@restale-kit-example/shared'
 const app = Fastify()
 const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>()
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta?.userId === userId)
+  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
+
 })
 const userId = (query: unknown) => (query as { userId: string }).userId
 

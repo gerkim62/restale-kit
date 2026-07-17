@@ -303,7 +303,8 @@ app.get('/sse', (req, res) => {
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header, `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+
 
 ---
 

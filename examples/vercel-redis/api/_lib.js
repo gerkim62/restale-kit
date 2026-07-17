@@ -31,5 +31,5 @@ export async function saveTodos(userId, todos) {
 export function openSse(req, res, userId) {
   const channel = attachSSE(req, res)
   group.register(channel, undefined, { topics: [topic(userId)] })
-  req.once('close', () => group.deregister(channel))
 }
+

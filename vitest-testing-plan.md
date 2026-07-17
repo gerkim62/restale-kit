@@ -111,9 +111,10 @@ Use a controllable `MockEventSource` fixture for client tests, a deferred-promis
 
 ### Server core
 
-- `event-store.ts`: generated/custom IDs, overflow, clear, and `getEventsAfter`. A missing or evicted ID deliberately returns **all current records**.
+- `event-store.ts`: generated/custom IDs, overflow, clear, and `getEventsAfter`. A missing or evicted ID returns `{ events: [], stale: true }` to trigger full-invalidation frame `{ key: [] }`.
 - `framing.ts`: exact bytes for keepalives and invalidation frames, numeric IDs, and CR/LF removal from IDs.
-- `channel.ts`: close/cancel idempotency; validation before enqueue (including an invalid item in a batch); IDs and event stores; replay; and fake-timer keepalives. Since `EventStore.getEventsAfter` falls back to all records, a channel constructed with a missing `lastEventId` must replay all retained records, not no records.
+- `channel.ts`: close/cancel idempotency; validation before enqueue (including an invalid item in a batch); IDs and event stores; replay; and fake-timer keepalives. When `EventStore.getEventsAfter` returns `stale: true`, a channel constructed with a missing or evicted `lastEventId` emits a full-invalidation frame (`{ key: [] }`).
+
 - `channel-group.ts`: metadata validation, re-registration/topic cleanup, local filtering, closed-channel cleanup, aggregate failures, event-ID sharing, local-before-broker publish order, and revocation/control messages. Cover subscription races through public registration/deregistration behavior.
 
 For topic and control subscription retries, assert five total attempts and waits of **100, 200, 400, and 800 ms** between them. The source doubles the delay after each wait, but it gives up on the fifth failure; there is no 1,600 ms wait. `TopicManager` currently polls using `setInterval` plus `Date.now`, so fake-time tests must advance both timers and clock. If this is awkward, first refactor the sleep helper to an injectable/simple timeout, then test the behavior.

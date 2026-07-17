@@ -19,6 +19,13 @@ Every incoming SSE payload is structurally validated before being emitted as an 
 
 If any of the above fail, the client emits an `error` event instead of `invalidate`.
 
+### Key matching rules (`matchesInvalidateSignalKey`)
+
+When matching a local cache key against an invalidation signal:
+- **Array cache keys (e.g. `['todos', { userId: '1' }]`):** Matched hierarchically against signal `key` or `queryKey`. For generic signals, array keys match by prefix (or exact match when `exact: true`).
+- **Scalar string cache keys (e.g. `'/api/user'`):** When `cacheKey` is a scalar string, `matchesInvalidateSignalKey` evaluates `true` for framework-specific `TanStackQuerySignal` and `SWRSignal` targets that supply matching `queryKey` or `key`. For `GenericInvalidateSignal`, scalar cache keys return `false` because generic signals require array cache keys for hierarchical prefix evaluation.
+
+
 ---
 
 ## Schema validation (optional)

@@ -104,24 +104,63 @@ type JSONValue =
   | JSONValue[]
   | { [key: string]: JSONValue }
 
-interface InvalidateSignal {
+export const SIGNAL_TARGETS = {
+  TANSTACK: 'tanstack-query',
+  SWR: 'swr',
+  RTK: 'rtk-query',
+  GENERIC: 'generic',
+} as const
+
+interface TanStackQuerySignal {
+  target: 'tanstack-query'
+  queryKey: JSONValue[]
+  exact?: boolean
+  type?: 'active' | 'inactive' | 'all'
+  action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
+  stale?: boolean
+}
+
+interface SWRSignal {
+  target: 'swr'
+  key: string | JSONValue[]
+  action?: 'revalidate' | 'purge'
+  revalidate?: boolean
+  match?: 'exact' | 'prefix'
+}
+
+interface RTKQuerySignal {
+  target: 'rtk-query'
+  tags: Array<string | { type: string; id?: string | number }>
+}
+
+interface GenericInvalidateSignal {
+  target?: 'generic'
   key: JSONValue[]          // hierarchical key — e.g. ["todos", { userId: 4 }]
   exact?: boolean           // default false: prefix match
   action?: 'invalidate' | 'refetch' | 'remove'   // default 'invalidate'
 }
 
+type ReStaleSignal =
+  | TanStackQuerySignal
+  | SWRSignal
+  | RTKQuerySignal
+  | GenericInvalidateSignal
+
+type InvalidateSignal = ReStaleSignal
+
 type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
 ```
 
-These types are **cache-library-agnostic**. The three actions map to generic cache operations:
+These types are **cache-library-agnostic** while supporting target-specific framework signals natively over SSE. The generic actions map to standard cache operations:
 
-| Wire action | Meaning (generic) | TanStack Query mapping |
-|---|---|---|
-| `'invalidate'` (default) | Mark matching entries as stale; refetch if observed | `queryClient.invalidateQueries()` |
-| `'refetch'` | Force immediate refetch of matching entries | `queryClient.refetchQueries()` |
-| `'remove'` | Purge matching entries from cache entirely | `queryClient.removeQueries()` |
+| Wire action | Meaning (generic) | TanStack Query mapping | SWR mapping |
+|---|---|---|---|
+| `'invalidate'` (default) | Mark matching entries as stale; refetch if observed | `queryClient.invalidateQueries()` | `revalidate()` |
+| `'refetch'` | Force immediate refetch of matching entries | `queryClient.refetchQueries()` | `revalidate({ force: true })` |
+| `'remove'` | Purge matching entries from cache entirely | `queryClient.removeQueries()` | `mutate(key, undefined, { revalidate: false })` |
 
-Other adapters (SWR, Apollo, custom) would map the same three actions to their own equivalents.
+Target-discriminated signals allow framework adapters (`tanstackQueryAdapter`, `swrAdapter`) to execute target-native methods directly.
+
 
 ### Exact SSE frame format
 
@@ -231,6 +270,7 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly connectionId: string
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void
+  revoke(reason?: string): void   // sends a terminal event: revoke frame (default reason: 'revoked') before closing
   disconnect(): void   // called by a transport adapter when it detects the peer disconnected
   onClose(callback: () => void): void
 }
@@ -264,16 +304,18 @@ that doesn't pass a schema compiles unchanged.
 
 #### Event history and replay
 
-When `eventStore` is provided (or `eventBufferCapacity > 0` is set, which auto-creates one),
-every `invalidate()` call records the signal in the store with a unique event ID. The SSE frame
-includes an `id:` field so that `EventSource` tracks the `Last-Event-ID`.
+When `eventStore` is provided (or `eventBufferCapacity > 0` is set on the channel options, which auto-creates one),
+every `invalidate()` call records the signal in the store with a unique event ID. Note that to support event replay across reconnecting clients registered with an `SSEChannelGroup`, the same `eventStore` instance must be explicitly passed into both `SSEChannelGroup` and the transport options (`attachSSE`/`toSSEResponse`).
+
+The SSE frame includes an `id:` field so that `EventSource` tracks the `Last-Event-ID`.
 
 On reconnect, if the transport adapter extracts a `lastEventId` from the incoming request's
 `Last-Event-ID` header, the channel replays all events stored after that ID into the stream
 before starting keepalives. If the `lastEventId` is not found in the store (e.g., it fell off
-the ring buffer), all currently stored events are replayed.
+the ring buffer or was evicted), `eventStore.getEventsAfter` returns `{ events: [], stale: true }`, prompting the channel to emit a full-invalidation frame `{ key: [] }` to ensure client cache consistency.
 
 The default `EventStore` is an in-memory bounded ring buffer (default capacity: 100).
+
 
 `core` handles SSE framing and keepalives. It does not detect disconnects or set response headers —
 that's the transport adapter's job.
@@ -343,7 +385,7 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number              // auto-creates an EventStore with this capacity
-    controlTopic?: string                     // default '__restale_control__'
+    controlTopic?: string                     // default '__restale_control__' (must be a non-empty, non-whitespace string)
   })
 
   /** Number of active channels in the group */
@@ -393,9 +435,12 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   /**
    * Broadcasts to channels whose metadata matches the signal's key using the
    * same hierarchical prefix/exact matching semantics as the wire protocol.
+   * If a channel's registered metadata is a scalar or plain object, it is auto-wrapped
+   * into a single-element array `[meta]` during key matching.
    * Eliminates the need to write manual predicate functions for key-based routing.
    */
   broadcastByKey(signal: TSignal): void
+
 
   /**
    * Publishes a signal to a topic.
@@ -476,8 +521,8 @@ Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 `Connection: keep-alive`), pipes `channel.stream` into `res` via
 `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
 
-Extracts the `Last-Event-ID` header from the request and passes it to `createSSEChannel` for
-event replay (when an `eventStore` is configured).
+Extracts the `Last-Event-ID` header from the request (enforcing a maximum length limit of 512 bytes to protect against DoS attacks) and passes it to `createSSEChannel` for event replay (when an `eventStore` is configured). Header values exceeding 512 bytes are safely ignored (`undefined`).
+
 
 For Fastify: the `restale-kit/fastify` adapter accepts either Fastify's wrapped `request`/`reply`
 objects or raw `IncomingMessage`/`ServerResponse`. When Fastify objects are passed, `reply.hijack()`
@@ -522,7 +567,7 @@ No UI framework, no cache library dependency.
 type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
-  | { status: 'closed'; reason: 'manual' | 'unmount' }
+  | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
   | { status: 'error'; error: Event }
 
 interface ReconnectOptions {
@@ -537,10 +582,12 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
+  onRevoke?: (reason: string) => void  // callback invoked on terminal connection revocation
 }
 
 interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
   invalidate: CustomEvent<TSignal | TSignal[]>
+  revoke: CustomEvent<{ reason: string }>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
 }
@@ -677,46 +724,61 @@ queries or caches — it only forwards `invalidate` events to `onInvalidate`.
 
 ### `restale-kit/tanstack-query`
 
-The one shipped adapter, and the pattern to copy for any other cache library later:
+Adapter that maps incoming signals to TanStack `QueryClient` cache operations:
 
 ```ts
-function tanstackAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void {
-  return (signal) => {
-    const list = Array.isArray(signal) ? signal : [signal]
-    for (const s of list) {
-      const filters = { queryKey: s.key, exact: s.exact }
-      switch (s.action) {
-        case 'remove':
-          queryClient.removeQueries(filters)
-          break
-        case 'refetch':
-          queryClient.refetchQueries(filters)
-          break
-        case 'invalidate':
-        default:
-          queryClient.invalidateQueries(filters)
-          break
-      }
-    }
-  }
-}
+): (signal: TSignal | TSignal[]) => void
+
+export const tanstackAdapter = tanstackQueryAdapter
+export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  queryClient: QueryClient
+): (signal: TSignal | TSignal[]) => void
 ```
+
+Supports `TanStackQuerySignal` (and generic signals):
+- **Actions:** `'invalidate'` (default), `'refetch'`, `'reset'`, `'remove'`, `'cancel'`.
+- **Filters:** `queryKey` (or `key`), `exact`, `type` (`'active' | 'inactive' | 'all'`), and `stale` (maps `refetchType` to `'none'` when true vs `'active'` when false).
 
 Usage:
 
 ```ts
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 const queryClient = useQueryClient()
-useReStale('/sse', { onInvalidate: tanstackAdapter(queryClient) })
+const onInvalidate = useTanstackQueryAdapter(queryClient)
+useReStale('/sse', { onInvalidate })
 ```
 
-Supporting a different cache library or UI framework later means writing one function or one
-`client` wrapper in this same shape — not a change to the direct client implementation.
+---
+
+### `restale-kit/swr`
+
+Adapter that maps incoming signals to SWR's global `mutate` function:
+
+```ts
+interface SWRAdapterOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+  toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
+}
+
+function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  mutate: SWRMutator,
+  options?: SWRAdapterOptions<TSignal>
+): (signal: TSignal | TSignal[]) => void
+
+function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  mutate: SWRMutator,
+  options?: SWRAdapterOptions<TSignal>
+): (signal: TSignal | TSignal[]) => void
+```
+
+Supports `SWRSignal` (and generic signals):
+- **Actions:** `'revalidate'`, `'purge'` (or `'remove'`).
+- **Options:** `revalidate: false` (bypasses revalidation on purge), `match: 'exact' | 'prefix'`, scalar string or array keys, and custom `toInvalidateKey` mapper.
+
 
 ---
 

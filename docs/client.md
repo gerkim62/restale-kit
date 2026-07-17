@@ -259,13 +259,17 @@ useReStale('/sse', {
 })
 ```
 
-**Action mapping:**
+**Action and filter mapping:**
 
-| Signal `action` | `queryClient` call |
-|---|---|
-| `'invalidate'` (default) | `queryClient.invalidateQueries({ queryKey, exact })` |
-| `'refetch'` | `queryClient.refetchQueries({ queryKey, exact })` |
-| `'remove'` | `queryClient.removeQueries({ queryKey, exact })` |
+| Signal field | Type / Values | `queryClient` operation |
+|---|---|---|
+| `action: 'invalidate'` (default) | `'invalidate'` | `queryClient.invalidateQueries(filters)` (uses `stale` filter if provided) |
+| `action: 'refetch'` | `'refetch'` | `queryClient.refetchQueries(filters)` |
+| `action: 'reset'` | `'reset'` | `queryClient.resetQueries(filters)` |
+| `action: 'remove'` | `'remove'` | `queryClient.removeQueries(filters)` |
+| `action: 'cancel'` | `'cancel'` | `queryClient.cancelQueries(filters)` |
+| `type` | `'active' \| 'inactive' \| 'all'` | Passed as `filters.type` |
+| `stale` | `boolean` | Maps `refetchType` to `'none'` (when `stale: true`) or `'active'` |
 
 Batch signals (arrays) are processed one-by-one in order.
 
@@ -312,13 +316,15 @@ function App() {
 }
 ```
 
-**Action mapping:**
+**Action and option mapping:**
 
-| Signal `action` | SWR call |
-|---|---|
-| `'invalidate'` (default) | `mutate(filter)` — revalidate matching keys |
-| `'refetch'` | `mutate(filter)` — revalidate matching keys |
-| `'remove'` | `mutate(filter, undefined, false)` — clear without revalidate |
+| Signal field | Values | SWR `mutate` operation |
+|---|---|---|
+| `action: 'revalidate'` / `'invalidate'` | Default | `mutate(filter)` — revalidates matching keys |
+| `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, false)` — clears cache without revalidating |
+| `revalidate: false` | `boolean` | `mutate(filter, undefined, false)` — forces clear without revalidating |
+| `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
+
 
 > **Note:** SWR has no separate "mark stale" operation, so `'invalidate'` and `'refetch'` both trigger immediate revalidation.
 
