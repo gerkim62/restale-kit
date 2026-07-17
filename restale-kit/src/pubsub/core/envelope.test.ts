@@ -8,22 +8,38 @@ import {
   PubSubDecryptionError
 } from './envelope.js'
 
+const validHexKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+const wrongHexKey = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'
+const validBase64Key = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
+
 describe('pubsub envelope & encryption', () => {
   describe('validateEncryptionOptions', () => {
     it('accepts encrypt: false', () => {
       expect(validateEncryptionOptions({ encrypt: false })).toEqual({})
     })
 
-    it('accepts valid encryptionKey', () => {
-      expect(validateEncryptionOptions({ encryptionKey: 'my-secret-key' })).toEqual({
-        encryptionKey: 'my-secret-key',
+    it('accepts valid hex encryptionKey', () => {
+      expect(validateEncryptionOptions({ encryptionKey: validHexKey })).toEqual({
+        encryptionKey: validHexKey,
+      })
+    })
+
+    it('accepts valid base64 encryptionKey', () => {
+      expect(validateEncryptionOptions({ encryptionKey: validBase64Key })).toEqual({
+        encryptionKey: validBase64Key,
       })
     })
 
     it('accepts encrypt: true and valid encryptionKey', () => {
-      expect(validateEncryptionOptions({ encrypt: true, encryptionKey: 'my-secret-key' })).toEqual({
-        encryptionKey: 'my-secret-key',
+      expect(validateEncryptionOptions({ encrypt: true, encryptionKey: validHexKey })).toEqual({
+        encryptionKey: validHexKey,
       })
+    })
+
+    it('throws for raw passphrase encryptionKey', () => {
+      expect(() => validateEncryptionOptions({ encryptionKey: 'short-passphrase' })).toThrow(
+        'Invalid encryptionKey: must be a strictly encoded hex (>=64 chars) or base64 (>=44 chars) key decoding to at least 32 bytes (e.g. openssl rand -base64 32).'
+      )
     })
 
     it('throws correct message for empty options', () => {
@@ -42,7 +58,7 @@ describe('pubsub envelope & encryption', () => {
     })
 
     it('throws for mutual exclusivity', () => {
-      expect(() => validateEncryptionOptions({ encrypt: false, encryptionKey: 'some' })).toThrow(
+      expect(() => validateEncryptionOptions({ encrypt: false, encryptionKey: validHexKey })).toThrow(
         'Exclusive option error: encrypt: false and encryptionKey are mutually exclusive.'
       )
     })
@@ -61,7 +77,7 @@ describe('pubsub envelope & encryption', () => {
   })
 
   describe('encryptPayload and decryptPayload', () => {
-    const key = 'secret-passphrase'
+    const key = validHexKey
     const topic = 'my-topic'
     const data = { kind: 'signal' as const, data: { key: ['todos'] } }
 
@@ -75,7 +91,7 @@ describe('pubsub envelope & encryption', () => {
 
     it('throws PubSubDecryptionError on key mismatch (simulating key rotation)', () => {
       const encrypted = encryptPayload(data, key, topic)
-      expect(() => decryptPayload(encrypted, 'wrong-key', topic)).toThrow(PubSubDecryptionError)
+      expect(() => decryptPayload(encrypted, wrongHexKey, topic)).toThrow(PubSubDecryptionError)
     })
 
     it('throws PubSubDecryptionError on topic mismatch (AAD binding validation)', () => {
@@ -107,7 +123,7 @@ describe('pubsub envelope & encryption', () => {
 
     it('wrapEnvelope encrypts payload when key is provided', () => {
       const message = { kind: 'signal' as const, data: { key: ['todos'] } }
-      const env = wrapEnvelope('inst-100', message, 'my-key', 'my-topic')
+      const env = wrapEnvelope('inst-100', message, validHexKey, 'my-topic')
 
       expect(env.origin).toBe('inst-100')
       expect(typeof env.payload).toBe('string')
@@ -116,13 +132,13 @@ describe('pubsub envelope & encryption', () => {
 
     it('wrapEnvelope throws if key is provided but topic is missing/empty', () => {
       const message = { kind: 'signal' as const, data: { key: ['todos'] } }
-      expect(() => wrapEnvelope('inst-100', message, 'my-key')).toThrow(
+      expect(() => wrapEnvelope('inst-100', message, validHexKey)).toThrow(
         'Topic is required for encryption AAD binding.'
       )
     })
 
     it('unwrapEnvelope throws if key is provided but topic is missing/empty', () => {
-      expect(() => unwrapEnvelope({ origin: 'other', payload: 'enc' }, 'my-origin', 'my-key')).toThrow(
+      expect(() => unwrapEnvelope({ origin: 'other', payload: 'enc' }, 'my-origin', validHexKey)).toThrow(
         'Topic is required for decryption AAD binding.'
       )
     })
@@ -146,8 +162,8 @@ describe('pubsub envelope & encryption', () => {
 
     it('unwraps and decrypts encrypted envelope', () => {
       const message = { kind: 'signal' as const, data: { key: ['todos'] } }
-      const env = wrapEnvelope('other-origin', message, 'key', 'topic')
-      const result = unwrapEnvelope(env, 'my-origin', 'key', 'topic')
+      const env = wrapEnvelope('other-origin', message, validHexKey, 'topic')
+      const result = unwrapEnvelope(env, 'my-origin', validHexKey, 'topic')
       expect(result).toEqual(message)
     })
 

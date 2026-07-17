@@ -169,10 +169,12 @@ describe('pusherPubSubAdapter', () => {
     expect(success).toBe(true)
   })
 
+  const validKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+  const wrongKey = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'
+
   it('encrypts published envelope payload when encryptionKey is configured', async () => {
     const client = createMockPusherClient()
-    const key = 'test-passphrase'
-    const adapter = pusherPubSubAdapter(client, { encryptionKey: key })
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
 
     await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
 
@@ -191,13 +193,12 @@ describe('pusherPubSubAdapter', () => {
   })
 
   it('decrypts encrypted webhook payload correctly', async () => {
-    const key = 'test-passphrase'
     const message = { kind: 'signal' as const, data: { key: ['posts'] } }
-    const encryptedEnvelope = wrapEnvelope('remote-pusher-id', message, key, 'my-channel')
+    const encryptedEnvelope = wrapEnvelope('remote-pusher-id', message, validKey, 'my-channel')
     const events = [{ channel: 'my-channel', name: 'invalidate', data: encryptedEnvelope }]
 
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client, { encryptionKey: key })
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
     const callback = vi.fn()
 
     await adapter.subscribe('my-channel', callback)
@@ -210,14 +211,12 @@ describe('pusherPubSubAdapter', () => {
 
   it('throttles decryption failure warnings and drops messages on key mismatch', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const key = 'key-1'
-    const wrongKey = 'key-2'
     const message = { kind: 'signal' as const, data: { key: ['posts'] } }
     const encryptedEnvelope = wrapEnvelope('remote-pusher-id', message, wrongKey, 'my-channel')
     const events = [{ channel: 'my-channel', name: 'invalidate', data: encryptedEnvelope }]
 
     const client = createMockPusherClient(true, events)
-    const adapter = pusherPubSubAdapter(client, { encryptionKey: key })
+    const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
     const callback = vi.fn()
 
     await adapter.subscribe('my-channel', callback)

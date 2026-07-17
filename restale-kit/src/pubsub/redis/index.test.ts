@@ -126,10 +126,12 @@ describe('redisPubSubAdapter', () => {
     }).not.toThrow()
   })
 
+  const validKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+  const wrongKey = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'
+
   it('encrypts published envelope payload when encryptionKey is configured', async () => {
     const { client } = createMockRedisClient()
-    const key = 'test-key-32-chars-long-or-any-passphrase'
-    const adapter = redisPubSubAdapter(client, { encryptionKey: key })
+    const adapter = redisPubSubAdapter(client, { encryptionKey: validKey })
 
     await adapter.publish('topic-encrypted', { kind: 'signal', data: { key: ['todos'] } })
 
@@ -148,13 +150,12 @@ describe('redisPubSubAdapter', () => {
 
   it('decrypts encrypted payload correctly', async () => {
     const { client, listeners } = createMockRedisClient()
-    const key = 'test-key-32-chars-long-or-any-passphrase'
-    const adapter = redisPubSubAdapter(client, { encryptionKey: key })
+    const adapter = redisPubSubAdapter(client, { encryptionKey: validKey })
     const callback = vi.fn()
 
     await adapter.subscribe('topic-encrypted', callback)
 
-    const remoteEnvelope = wrapEnvelope('remote-origin', { kind: 'signal', data: { key: ['todos'] } }, key, 'topic-encrypted')
+    const remoteEnvelope = wrapEnvelope('remote-origin', { kind: 'signal', data: { key: ['todos'] } }, validKey, 'topic-encrypted')
 
     listeners['message']?.('topic-encrypted', JSON.stringify(remoteEnvelope))
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
@@ -163,9 +164,7 @@ describe('redisPubSubAdapter', () => {
   it('throttles decryption failure warnings and drops messages on key mismatch', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { client, listeners } = createMockRedisClient()
-    const key = 'key-1'
-    const wrongKey = 'key-2'
-    const adapter = redisPubSubAdapter(client, { encryptionKey: key })
+    const adapter = redisPubSubAdapter(client, { encryptionKey: validKey })
     const callback = vi.fn()
 
     await adapter.subscribe('topic-encrypted', callback)

@@ -33,7 +33,7 @@ Since message payloads are sent to third-party providers (Ably, Pusher, hosted R
 All pub/sub adapters require configuring encryption options: you must either pass `{ encrypt: false }` to disable encryption, or pass a valid, non-empty `{ encryptionKey: string }` (optionally with `{ encrypt: true }`) to enable AES-256-GCM symmetric encryption.
 
 > [!IMPORTANT]
-> **Security Recommendation**: Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded, e.g., `openssl rand -base64 32`), not a human-chosen passphrase.
+> **Security Recommendation**: Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded via `openssl rand -base64 32` or `openssl rand -hex 32`), not a human-chosen passphrase.
 >
 > **No Mixed-Mode Support**: You cannot mix encrypted and unencrypted publishers/subscribers in the same cluster. Mismatched messages are dropped. This constraint is critical to prevent an attacker with access to the pub/sub broker from injecting plain unencrypted payloads to bypass decryption and tamper with client invalidation states.
 >

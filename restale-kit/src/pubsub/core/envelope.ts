@@ -12,7 +12,33 @@ export class PubSubDecryptionError extends Error {
 /** Standard envelope structure wrapping a PubSubMessage with origin metadata. */
 export interface PubSubEnvelope<T extends InvalidateSignal = InvalidateSignal> {
   origin: string
-  payload: PubSubMessage<T>
+  payload: PubSubMessage<T> | string
+}
+
+/**
+ * Strictly parses and validates an encryption key string.
+ * Requires a strictly encoded hex (>=64 chars) or base64 (>=44 chars) key decoding to at least 32 bytes.
+ */
+function parseAndValidateKey(encryptionKey: string): Buffer {
+  const trimmed = encryptionKey.trim()
+  let buffer: Buffer | null = null
+
+  if (/^[0-9a-fA-F]{64,}$/.test(trimmed) && trimmed.length % 2 === 0) {
+    buffer = Buffer.from(trimmed, 'hex')
+  } else if (/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) && trimmed.length >= 44) {
+    const decoded = Buffer.from(trimmed, 'base64')
+    if (decoded.length >= 32) {
+      buffer = decoded
+    }
+  }
+
+  if (!buffer || buffer.length < 32) {
+    throw new Error(
+      'Invalid encryptionKey: must be a strictly encoded hex (>=64 chars) or base64 (>=44 chars) key decoding to at least 32 bytes (e.g. openssl rand -base64 32).'
+    )
+  }
+
+  return buffer.subarray(0, 32)
 }
 
 /**
@@ -44,6 +70,7 @@ export function validateEncryptionOptions(options: unknown): { encryptionKey?: s
   if (typeof key !== 'string' || key.trim() === '') {
     throw new Error('Invalid encryptionKey: must be a non-empty string.')
   }
+  parseAndValidateKey(key)
   return { encryptionKey: key }
 }
 
@@ -54,7 +81,7 @@ export function encryptPayload(data: unknown, encryptionKey: string, aad: string
   if (!aad || typeof aad !== 'string' || aad.trim() === '') {
     throw new Error('AAD (topic) must be a non-empty string for encryption.')
   }
-  const key = crypto.createHash('sha256').update(encryptionKey).digest()
+  const key = parseAndValidateKey(encryptionKey)
   const iv = crypto.randomBytes(12)
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
 
@@ -87,7 +114,7 @@ export function decryptPayload(encryptedString: string, encryptionKey: string, a
   }
 
   try {
-    const key = crypto.createHash('sha256').update(encryptionKey).digest()
+    const key = parseAndValidateKey(encryptionKey)
     const iv = Buffer.from(ivHex, 'hex')
     const authTag = Buffer.from(authTagHex, 'hex')
 
@@ -112,7 +139,7 @@ export function wrapEnvelope<T extends InvalidateSignal>(
   message: PubSubMessage<T>,
   encryptionKey?: string,
   topic?: string
-): { origin: string; payload: unknown } {
+): PubSubEnvelope<T> {
   if (encryptionKey) {
     if (!topic || typeof topic !== 'string' || topic.trim() === '') {
       throw new Error('Topic is required for encryption AAD binding.')
