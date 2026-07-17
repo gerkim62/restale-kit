@@ -35,6 +35,8 @@ All pub/sub adapters require configuring encryption options: you must either pas
 > [!IMPORTANT]
 > **Security Recommendation**: Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded, e.g., `openssl rand -base64 32`), not a human-chosen passphrase.
 >
+> **No Mixed-Mode Support**: You cannot mix encrypted and unencrypted publishers/subscribers in the same cluster. Mismatched messages are dropped. This constraint is critical to prevent an attacker with access to the pub/sub broker from injecting plain unencrypted payloads to bypass decryption and tamper with client invalidation states.
+>
 > **Key Rotation & Rollout**: There is no multi-key support or key-rotation mechanism. If you rotate the key, decryption of any in-flight or previously-published messages encrypted under the old key will fail. Decryption failures are caught safely (logged as warnings, dropping the message, and continuing processing). A coordinated/drained deploy is recommended for any key configuration updates.
 
 
