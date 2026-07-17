@@ -1,6 +1,8 @@
 import type { QueryFilters } from '@tanstack/react-query'
 import { SIGNAL_TARGETS } from '@/utils/constants.js'
 
+export { SIGNAL_TARGETS }
+
 /**
  * A value that survives a JSON.stringify → JSON.parse round trip losslessly.
  * Intentionally excludes Date, Map, Set, class instances, functions, etc.

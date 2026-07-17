@@ -30,6 +30,11 @@ describe('server/express entrypoint', () => {
     const channel = attachSSE(req, res)
 
     expect(channel.connectionId).toBe('express-123')
+    expect(SSE_HEADERS).toEqual({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    })
     expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
     expect(channel.state).toBe('open')
     channel.close()

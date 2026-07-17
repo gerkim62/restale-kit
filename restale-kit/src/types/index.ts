@@ -14,5 +14,5 @@ export type {
   SSEInvalidateEvent,
   ChannelState,
 } from './protocol.js'
-export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey } from './protocol.js'
+export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey, SIGNAL_TARGETS } from './protocol.js'
 
