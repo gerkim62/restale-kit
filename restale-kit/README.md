@@ -196,13 +196,50 @@ const server = http.createServer((req, res) => {
 
 ## 🎯 Invalidation Signals & Key Matching
 
+`InvalidateSignal` is a **discriminated union** — choose the shape that matches your cache client:
+
 ```ts
-interface InvalidateSignal {
-  key: JSONValue[]                              // hierarchical key
-  exact?: boolean                              // default false = prefix match
-  action?: 'invalidate' | 'refetch' | 'remove' // default 'invalidate'
+// TanStack Query — uses queryKey + rich action set
+type TanStackQuerySignal = {
+  target: 'tanstack-query'
+  queryKey: JSONValue[]
+  exact?: boolean
+  type?: 'all' | 'active' | 'inactive'
+  action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'  // default 'invalidate'
+  stale?: boolean
 }
+
+// SWR — uses key + SWR-native actions
+type SWRSignal = {
+  target: 'swr'
+  key: string | JSONValue[]
+  action?: 'revalidate' | 'purge' | 'remove'  // default 'revalidate'
+  revalidate?: boolean
+  match?: 'exact' | 'prefix'
+}
+
+// RTK Query — tag-based invalidation (wire protocol only; no shipped adapter)
+type RTKQuerySignal = {
+  target: 'rtk-query'
+  tags: Array<string | { type: string; id?: string | number }>
+}
+
+// Generic fallback — for raw SSE listeners or custom integrations
+type GenericInvalidateSignal = {
+  target?: 'generic'
+  key: JSONValue[]
+  exact?: boolean
+  action?: 'invalidate' | 'refetch' | 'remove'  // default 'invalidate'
+}
+
+type InvalidateSignal =
+  | TanStackQuerySignal
+  | SWRSignal
+  | RTKQuerySignal
+  | GenericInvalidateSignal
 ```
+
+> See [`docs/api-reference.md`](https://github.com/gerkim62/restale-kit/blob/main/docs/api-reference.md) for the full type signatures.
 
 **Key matching (prefix mode, `exact: false`):**
 
@@ -216,13 +253,31 @@ Given cache key `['todos', { userId: 4, type: 'active' }]`:
 | `['todos', { userId: 4, label: 'work' }]` | ❌ unknown property |
 | `[]` | ✅ matches everything |
 
-**Actions:**
+**`GenericInvalidateSignal` actions** (used when `target` is `'generic'` or omitted):
 
-| `action` | TanStack Query | SWR |
+| `action` | TanStack Query | Raw client |
 |---|---|---|
-| `'invalidate'` (default) | `invalidateQueries` | `mutate(filter)` |
-| `'refetch'` | `refetchQueries` | `mutate(filter)` |
-| `'remove'` | `removeQueries` | `mutate(filter, undefined, false)` |
+| `'invalidate'` (default) | `invalidateQueries` | custom handler |
+| `'refetch'` | `refetchQueries` | custom handler |
+| `'remove'` | `removeQueries` | custom handler |
+
+**`TanStackQuerySignal` actions** (additional actions available via the `target: 'tanstack-query'` shape):
+
+| `action` | TanStack Query |
+|---|---|
+| `'invalidate'` (default) | `invalidateQueries` |
+| `'refetch'` | `refetchQueries` |
+| `'reset'` | `resetQueries` |
+| `'remove'` | `removeQueries` |
+| `'cancel'` | `cancelQueries` |
+
+**`SWRSignal` actions** (used via `target: 'swr'`):
+
+| `action` | SWR |
+|---|---|
+| `'revalidate'` (default) | `mutate(filter)` |
+| `'purge'` | `mutate(filter, undefined, { revalidate: false })` |
+| `'remove'` | `mutate(filter, undefined, { revalidate: false })` — alias for `'purge'`, clears matching keys without revalidating |
 
 **Broadcasting:**
 
@@ -236,7 +291,8 @@ group.broadcast(
   (meta) => meta.userId === 42
 )
 
-// Broadcast using automatic key-based matching (metadata must be array-shaped query keys)
+// Broadcast using automatic key-based matching
+// Scalar or plain-object metadata is auto-wrapped into [meta] for key matching
 group.broadcastByKey({ key: ['todos', { userId: 42 }] })
 ```
 
@@ -257,7 +313,14 @@ client.addEventListener('invalidate', (event) => {
 })
 
 client.addEventListener('statuschange', (event) => {
-  console.log(event.detail.status) // 'connecting' | 'open' | 'closed' | 'error'
+  const status = event.detail // ConnectionStatus — a discriminated union
+  if (status.status === 'closed') {
+    console.log('closed, reason:', status.reason) // 'manual' | 'unmount' | 'revoked'
+  } else if (status.status === 'error') {
+    console.log('error event:', status.error)     // Event
+  } else {
+    console.log(status.status)                    // 'connecting' | 'open'
+  }
 })
 
 await client.connect()
@@ -363,8 +426,9 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
+| `onRevoke` | `(reason: string) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. |
 | `autoReconnect` | `boolean` | `true` | Auto-reconnect on disconnect. |
-| `signalSchema` | `StandardSchema` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
+| `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |

@@ -11,6 +11,7 @@ export type {
   RTKQuerySignal,
   GenericInvalidateSignal,
   ReStaleSignal,
+  PubSubMessage,
   SSEInvalidateEvent,
   ChannelState,
 } from './protocol.js'

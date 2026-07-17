@@ -7,8 +7,27 @@ Complete export surface for every `restale-kit` subpath. All subpaths are ESM-on
 ## `restale-kit` — core types and errors
 
 ```ts
-import type { JSONValue, InvalidateSignal, SSEInvalidateEvent, ChannelState } from 'restale-kit'
-import { ChannelClosedError, SchemaValidationError } from 'restale-kit'
+import type {
+  JSONValue,
+  ReStaleSignal,
+  InvalidateSignal,
+  TanStackQuerySignal,
+  SWRSignal,
+  RTKQuerySignal,
+  GenericInvalidateSignal,
+  SSEInvalidateEvent,
+  ChannelState,
+  StandardSchemaV1,
+} from 'restale-kit'
+import {
+  ChannelClosedError,
+  SchemaValidationError,
+  SIGNAL_TARGETS,
+  isJSONValue,
+  isJSONValueArray,
+  matchesInvalidateSignalKey,
+  validateStandardSchema,
+} from 'restale-kit'
 ```
 
 ### Types
@@ -19,18 +38,64 @@ type JSONValue =
   | JSONValue[]
   | { [key: string]: JSONValue }
 
-interface InvalidateSignal {
-  key: JSONValue[]
-  exact?: boolean                                     // default false
-  action?: 'invalidate' | 'refetch' | 'remove'       // default 'invalidate'
+const SIGNAL_TARGETS: {
+  readonly TANSTACK: 'tanstack-query'
+  readonly SWR: 'swr'
+  readonly RTK: 'rtk-query'
+  readonly GENERIC: 'generic'
 }
+
+interface TanStackQuerySignal {
+  target: 'tanstack-query'
+  queryKey: JSONValue[]
+  exact?: boolean
+  type?: 'active' | 'inactive' | 'all'
+  action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
+  stale?: boolean
+}
+
+interface SWRSignal {
+  target: 'swr'
+  key: string | JSONValue[]
+  action?: 'revalidate' | 'purge' | 'remove'
+  revalidate?: boolean
+  match?: 'exact' | 'prefix'
+}
+
+interface RTKQuerySignal {
+  target: 'rtk-query'
+  tags: Array<string | { type: string; id?: string | number }>
+}
+
+interface GenericInvalidateSignal {
+  target?: 'generic'
+  key: JSONValue[]
+  exact?: boolean
+  action?: 'invalidate' | 'refetch' | 'remove'
+}
+
+type ReStaleSignal =
+  | TanStackQuerySignal
+  | SWRSignal
+  | RTKQuerySignal
+  | GenericInvalidateSignal
+
+type InvalidateSignal = ReStaleSignal
 
 type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
 
 type ChannelState = 'open' | 'closed'
 ```
 
+### Utilities
+
+- `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
+- `isJSONValueArray(value: unknown): value is JSONValue[]`: Checks if a value is an array of JSON-serializable elements.
+- `matchesInvalidateSignalKey(cacheKey: JSONValue, signal: ReStaleSignal): boolean`: Determines whether a cache key matches a given signal.
+- `validateStandardSchema<T>(schema: StandardSchemaV1<T>, input: unknown): T`: Synchronously validates input against a Standard Schema v1 compliance object.
+
 ### Errors
+
 
 ```ts
 class ChannelClosedError extends Error {
@@ -50,8 +115,9 @@ class SchemaValidationError extends Error {
 ## `restale-kit/server`
 
 ```ts
-import { createSSEChannel, SSEChannelGroup } from 'restale-kit/server'
+import { createSSEChannel, SSEChannelGroup, createEventStore } from 'restale-kit/server'
 import type { SSEChannel, SSEChannelOptions } from 'restale-kit/server'
+import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
 ```
 
 ### `createSSEChannel(options?)`
@@ -63,7 +129,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 interface SSEChannelOptions<TSignal> {
   keepaliveIntervalMs?: number                        // default 30_000
-  signalSchema?: StandardSchema<unknown, TSignal>
+  signalSchema?: StandardSchemaV1<unknown, TSignal>
   lastEventId?: string
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
@@ -109,7 +175,7 @@ class SSEChannelGroup<
   TMeta = unknown
 > {
   constructor(options?: {
-    metaSchema?: StandardSchema<unknown, TMeta>
+    metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
@@ -275,7 +341,7 @@ interface ClientOptions<TSignal> {
   autoReconnect?: boolean           // default true
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
-  signalSchema?: StandardSchema<unknown, TSignal>
+  signalSchema?: StandardSchemaV1<unknown, TSignal>
 }
 
 interface ReconnectOptions {

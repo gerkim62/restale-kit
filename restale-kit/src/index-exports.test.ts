@@ -9,12 +9,17 @@ import { attachSSE as fastifyAttach } from './server/fastify/index.js'
 import { toSSEResponse as fetchToSSEResponse } from './server/fetch/index.js'
 import { toSSEResponse as honoToSSEResponse } from './server/hono/index.js'
 import { attachSSE as nodeAttach } from './server/node/index.js'
+import { PubSubDecryptionError } from './pubsub/core/index.js'
+import { ablyPubSubAdapter } from './pubsub/ably/index.js'
+import { pusherPubSubAdapter } from './pubsub/pusher/index.js'
+import { redisPubSubAdapter } from './pubsub/redis/index.js'
 import {
   ChannelClosedError,
   isJSONValue,
   isJSONValueArray,
   matchesInvalidateSignalKey,
   SchemaValidationError,
+  SIGNAL_TARGETS,
   validateStandardSchema,
 } from './types/index.js'
 
@@ -37,6 +42,13 @@ describe('Entrypoint Re-exports', () => {
     expect(nodeAttach).toBeDefined()
   })
 
+  it('correctly exports pubsub modules', () => {
+    expect(PubSubDecryptionError).toBeDefined()
+    expect(redisPubSubAdapter).toBeDefined()
+    expect(ablyPubSubAdapter).toBeDefined()
+    expect(pusherPubSubAdapter).toBeDefined()
+  })
+
   it('correctly exports types and protocol helpers', () => {
     expect(ChannelClosedError).toBeDefined()
     expect(SchemaValidationError).toBeDefined()
@@ -44,5 +56,6 @@ describe('Entrypoint Re-exports', () => {
     expect(isJSONValue).toBeDefined()
     expect(isJSONValueArray).toBeDefined()
     expect(matchesInvalidateSignalKey).toBeDefined()
+    expect(SIGNAL_TARGETS).toBeDefined()
   })
 })

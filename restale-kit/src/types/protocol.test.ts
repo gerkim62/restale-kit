@@ -4,7 +4,24 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   matchesJSONValue,
+  SWR_ACTIONS,
+  TANSTACK_QUERY_ACTIONS,
 } from './protocol.js'
+
+describe('protocol - action constants', () => {
+  it('SWR_ACTIONS includes remove', () => {
+    expect(SWR_ACTIONS).toContain('remove')
+  })
+
+  it('SWR_ACTIONS includes revalidate and purge', () => {
+    expect(SWR_ACTIONS).toContain('revalidate')
+    expect(SWR_ACTIONS).toContain('purge')
+  })
+
+  it('TANSTACK_QUERY_ACTIONS includes remove', () => {
+    expect(TANSTACK_QUERY_ACTIONS).toContain('remove')
+  })
+})
 
 describe('protocol - isJSONValue', () => {
   it('recognizes valid primitives', () => {
@@ -142,6 +159,11 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
 
     // Type mismatch in nested array element (array vs object)
     expect(matchesJSONValue([1, [2]], [1, { 0: 2 }], false)).toBe(false)
+  })
+
+  it('returns false for RTKQuerySignal tag-based signals', () => {
+    const rtkSignal = { target: 'rtk-query' as const, tags: ['Posts', { type: 'Posts', id: 1 }] }
+    expect(matchesInvalidateSignalKey(['Posts'], rtkSignal)).toBe(false)
   })
 })
 

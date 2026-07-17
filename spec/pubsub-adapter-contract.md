@@ -71,6 +71,30 @@ connection revocation) with full type safety via the `kind` discriminant.
   dropped broker connection) that aren't tied to a specific `publish()` call and
   therefore have no caller to reject.
 
+## Encryption & Security Contract
+
+Every PubSub adapter factory function (Redis, Ably, Pusher) requires explicit `PubSubEncryptionOptions`:
+
+```ts
+export type PubSubEncryptionOptions =
+  | { encrypt: false; encryptionKey?: never }
+  | { encrypt?: true; encryptionKey: string }
+```
+
+- **Explicit configuration mandatory:** Either `{ encrypt: false }` or `{ encryptionKey: string }` must be provided. Passing neither throws an error at initialization time.
+- **Key requirements:** `encryptionKey` must be a strictly encoded hex (>=64 chars) or base64 (>=44 chars) key that decodes to at least 32 bytes (AES-256).
+- **AES-256-GCM cipher:** When encryption is active, payloads published over the broker are encrypted using AES-256-GCM with a fresh 12-byte CSPRNG IV per message.
+- **Topic AAD Binding:** The pub/sub topic string is bound as Additional Authenticated Data (AAD) during encryption. A ciphertext published on topic A cannot be replayed onto topic B.
+- **Wire envelope format:** Encrypted envelopes wrap payloads into string format `iv:authTag:ciphertext` within the origin envelope structure:
+  ```ts
+  interface PubSubEnvelope<T extends InvalidateSignal = InvalidateSignal> {
+    origin: string
+    payload: PubSubMessage<T> | string // encrypted string if key configured
+  }
+  ```
+- **Decryption failures:** Failed decryption attempts are handled by a throttled internal handler that logs a `console.warn` directly (at most once per minute) and ignores the malformed message without throwing or breaking the subscription loop. The `onError` callback is **not** invoked for decryption failures — it receives only unrelated adapter errors (e.g. dropped broker connections).
+
+
 ## `SSEChannelGroup` pub/sub integration
 
 - Constructor accepts optional `pubsub?: PubSubAdapter<TSignal>`.
@@ -100,7 +124,7 @@ import { SSEChannelGroup } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const group = new SSEChannelGroup<Signal, Meta>({
-  pubsub: redisPubSubAdapter(redisClient), // omit entirely = single-instance mode
+  pubsub: redisPubSubAdapter(redisClient, { encrypt: false }), // omit entirely = single-instance mode
 })
 
 app.get('/sse', (req, res) => {

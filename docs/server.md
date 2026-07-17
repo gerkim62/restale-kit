@@ -131,7 +131,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 | Option | Type | Description |
 |---|---|---|
-| `metaSchema` | `StandardSchema` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
+| `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
@@ -303,7 +303,8 @@ app.get('/sse', (req, res) => {
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header, `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+
 
 ---
 

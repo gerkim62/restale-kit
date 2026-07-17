@@ -28,7 +28,7 @@ export interface TanStackQuerySignal {
   stale?: boolean
 }
 
-export const SWR_ACTIONS = ['revalidate', 'purge'] as const
+export const SWR_ACTIONS = ['revalidate', 'purge', 'remove'] as const
 export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */

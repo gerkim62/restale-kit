@@ -31,7 +31,7 @@ Connections can be revoked either per individual client connection or across all
 ## 4. Control Communication & Subscriptions
 
 - **Control Messages**: `PubSubMessage` is a discriminated union (`kind: 'signal' | 'control'`). Control messages carry revocation payloads across instances.
-- **Lifecycle & Teardown**: `SSEChannelGroup` subscribes to `controlTopic` (default: `'__restale_control__'`) upon initialization. Calling `group.dispose()` unsubscribes from the control topic idempotently without force-closing registered client connections.
+- **Lifecycle & Teardown**: `SSEChannelGroup` subscribes to `controlTopic` (default: `'__restale_control__'`) upon initialization **only when a `PubSubAdapter` is configured**. Single-instance setups without pub/sub do not subscribe to any control topic. Calling `group.dispose()` unsubscribes from the control topic idempotently without force-closing registered client connections.
 
 ## 5. Non-Goals
 

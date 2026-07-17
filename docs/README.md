@@ -21,7 +21,7 @@
 
 ```text
 restale-kit/server         → SSEChannelGroup, createSSEChannel
-restale-kit/node           → attachSSE  (Express, Fastify, raw Node)
+restale-kit/node           → attachSSE  (raw Node http.IncomingMessage / ServerResponse)
 restale-kit/express        → attachSSE  (re-exports from /node)
 restale-kit/fastify        → attachSSE  (auto-calls reply.hijack() when passed Fastify objects)
 restale-kit/fetch          → toSSEResponse  (Bun, Deno, Cloudflare Workers)

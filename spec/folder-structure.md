@@ -1,6 +1,7 @@
 ```
 restale-kit/
 ├── package.json
+
 ├── tsconfig.json
 └── src/
     ├── types/              # wire protocol types, schemas, and errors
@@ -16,12 +17,15 @@ restale-kit/
     │   ├── react/          # React hook
     │   ├── swr/            # SWR integration
     │   └── tanstack-query/ # TanStack Query integration
-    └── pubsub/
-        ├── core/           # PubSub contract and shared utilities
-        ├── redis/
-        ├── ably/
-        └── pusher/
+    ├── pubsub/
+    │   ├── core/           # PubSub contract and shared utilities
+    │   ├── redis/
+    │   ├── ably/
+    │   └── pusher/
+    ├── utils/              # internal constants, ID generation, and URL utilities
+    └── test-fixtures/     # shared test doubles and network mocks
 ```
+
 
 The package has four stable top-level domains: `types`, `server`, `client`, and
 `pubsub`. Frameworks and providers are nested under the domain they extend.
