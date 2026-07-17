@@ -6,10 +6,9 @@ Read `00_INDEX.md`, `00_PROGRESS.md`, and `SUMMARY.md` inside the audit director
 
 Step 2: Set up a fix-tracking directory, structured like the audit was
 
-Create a fixes subfolder matching the audit session (the one provided by the user, e.g. `fixes/1/`, `fixes/2/`, etc.), containing:
+Create a fixes subfolder matching the audit session index (the one provided by the user, e.g. `fixes/1/`, `fixes/2/`, etc.) — **this `fixes/{idx}/` path is the canonical location consumed by downstream verification workflows (VERIFY-FIXES.MD)**. The directory must contain:
 
-
-`00_INDEX.md` — list of fix-batches (below), each with scope, source shard(s) it addresses, and status (not started / in progress / blocked / done).
+`00_INDEX.md` — list of fix-batches (below), each with scope, source shard(s) it addresses, and status (not started / in progress / blocked / done). Also record the audit session path (e.g. `audit/1/`) and verify session path if one exists (e.g. `verify/1/`) so a cold-start reader can locate predecessor artifacts.
 `00_PROGRESS.md` — running, small, append-only log: which audit findings (by ID) have been triaged, fixed, verified, or explicitly deferred/rejected. This is the single source of truth for "is finding X done yet" — keep entries terse (one line per status change), so this file itself never needs splitting.
 
 

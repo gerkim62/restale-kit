@@ -291,7 +291,8 @@ group.broadcast(
   (meta) => meta.userId === 42
 )
 
-// Broadcast using automatic key-based matching (metadata must be array-shaped query keys)
+// Broadcast using automatic key-based matching
+// Scalar or plain-object metadata is auto-wrapped into [meta] for key matching
 group.broadcastByKey({ key: ['todos', { userId: 42 }] })
 ```
 

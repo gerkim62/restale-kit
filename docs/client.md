@@ -321,8 +321,8 @@ function App() {
 | Signal field | Values | SWR `mutate` operation |
 |---|---|---|
 | `action: 'revalidate'` / `'invalidate'` | Default | `mutate(filter)` — revalidates matching keys |
-| `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, false)` — clears cache without revalidating |
-| `revalidate: false` | `boolean` | `mutate(filter, undefined, false)` — forces clear without revalidating |
+| `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, { revalidate: false })` — clears cache without revalidating |
+| `revalidate: false` | `boolean` | `mutate(filter, undefined, { revalidate: false })` — forces clear without revalidating |
 | `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
 
 
@@ -330,7 +330,10 @@ function App() {
 
 ### SWR key format
 
-By default, the adapter expects SWR keys to be JSON-safe arrays matching the signal's key format — e.g. `['todos', { userId: '42' }]`. Non-array SWR keys are skipped.
+The adapter supports two key formats natively:
+
+- **Array keys** — JSON-safe arrays matching the signal's key format, e.g. `['todos', { userId: '42' }]`. This is the default for most setups.
+- **Scalar string keys** — plain strings like `'/api/user'`. When the signal's `key` is a string, the adapter matches against string cache keys using exact or prefix comparison (controlled by `match`), and also matches single-element array keys like `['/api/user']`.
 
 If your SWR keys use a different format, provide a `toInvalidateKey` mapping function:
 

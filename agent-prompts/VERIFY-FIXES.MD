@@ -6,18 +6,18 @@ Don't trust a batch file's "Status: done" or "Tests: pass" at face value. Re-ope
 
 Step 1: Read before checking anything
 
-Read fixes/00_INDEX.md and fixes/00_PROGRESS.md for the full list of fix entries. Where they exist, also pull up the original audit/ finding (and verify/ verdict if present) for each, so you know what was actually supposed to change.
+The fix directory uses a session index matching the audit (e.g. `fixes/1/`, `fixes/2/`). Read `fixes/{idx}/00_INDEX.md` and `fixes/{idx}/00_PROGRESS.md` for the full list of fix entries and their status. The index should also record the source audit path (`audit/{idx}/`) and verification path (`verify/{idx}/`) if one exists — pull those up for each entry too, so you know what was actually supposed to change and what was independently verified before fixing.
 
 Step 2: Set up a fix-check directory, same shape as before
 
-Create a checks/ directory containing:
+Create a `checks/{idx}/` directory (matching the same session index) containing:
 
 
-checks/00_INDEX.md — list of check batches, mirroring fixes/ batches, each with status (not started / in progress / done).
-checks/00_PROGRESS.md — small, append-only log of which fix entries have been checked and their verdict, one line each. Keep it terse so it never needs splitting.
+`checks/{idx}/00_INDEX.md` — list of check batches, mirroring `fixes/{idx}/` batches, each with status (not started / in progress / done).
+`checks/{idx}/00_PROGRESS.md` — small, append-only log of which fix entries have been checked and their verdict, one line each. Keep it terse so it never needs splitting.
 
 
-For each fixes/batch_*.md, create a corresponding checks/check_<batch-name>.md. Split a check batch if it grows large — same rule as always: nothing should exceed what's comfortably re-readable in one pass.
+For each `fixes/{idx}/batch_*.md`, create a corresponding `checks/{idx}/check_<batch-name>.md`. Split a check batch if it grows large — same rule as always: nothing should exceed what's comfortably re-readable in one pass.
 
 Step 3: Check one fix at a time
 

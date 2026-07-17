@@ -6,7 +6,7 @@ For each finding, go back to the primary sources yourself — open the actual fi
 
 Step 1: Read the audit
 
-Read audit/{idx}/00_INDEX.md and audit/{idx}/00_PROGRESS.md to get the full list of shards and findings before verifying anything.
+Read `audit/{idx}/00_INDEX.md` and `audit/{idx}/00_PROGRESS.md` first to get the list of shards. **Do not claim the audit inventory is complete based on these files alone** — they list shard filenames but not individual finding details. After reading the index and progress files, enumerate every shard listed in `00_INDEX.md` and read each one in full before creating verification batches or starting any verification. Finding IDs, evidence, and severity live in the shards, not in the index. `SUMMARY.md` (if present) is generated at the end of the audit run and may be absent or stale — do not use it as the initial finding list.
 
 Step 2: Set up a verification directory, same shape as the audit
 

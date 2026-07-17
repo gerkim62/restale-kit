@@ -4,7 +4,24 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   matchesJSONValue,
+  SWR_ACTIONS,
+  TANSTACK_QUERY_ACTIONS,
 } from './protocol.js'
+
+describe('protocol - action constants', () => {
+  it('SWR_ACTIONS includes remove', () => {
+    expect(SWR_ACTIONS).toContain('remove')
+  })
+
+  it('SWR_ACTIONS includes revalidate and purge', () => {
+    expect(SWR_ACTIONS).toContain('revalidate')
+    expect(SWR_ACTIONS).toContain('purge')
+  })
+
+  it('TANSTACK_QUERY_ACTIONS includes remove', () => {
+    expect(TANSTACK_QUERY_ACTIONS).toContain('remove')
+  })
+})
 
 describe('protocol - isJSONValue', () => {
   it('recognizes valid primitives', () => {
