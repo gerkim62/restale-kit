@@ -4,6 +4,7 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   type InvalidateSignal,
+  type SWRSignal,
   type JSONValue,
 } from '../../types/protocol.js'
 
@@ -17,9 +18,6 @@ export interface SWRAdapterOptions<TSignal extends InvalidateSignal = Invalidate
 
 /**
  * The subset of SWR's global `mutate` API required by this adapter.
- *
- * Keeping this local avoids exposing SWR's broad generic mutator surface in
- * ReStale's public API while remaining structurally compatible with it.
  */
 export interface SWRMutator {
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
@@ -29,13 +27,7 @@ export interface SWRMutator {
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *
- * By default, SWR keys must be JSON-safe arrays using the same hierarchical
- * key as the wire signal (for example `['todos', { userId: '42' }]`). This
- * lets the core's exact/prefix matching semantics work without configuration.
- *
- * Both `'invalidate'` and `'refetch'` revalidate matching SWR keys immediately:
- * SWR has no separate stale-only operation. `'remove'` clears the matching
- * cached values without revalidation.
+ * Supports `SWRSignal` (with primitive string or tuple keys) and `GenericInvalidateSignal`.
  */
 export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
@@ -45,13 +37,37 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
     const list = Array.isArray(signal) ? signal : [signal]
 
     for (const item of list) {
+      const raw = item as unknown as Record<string, unknown>
+      const action = raw.action
+      const isPurge = action === 'purge' || action === 'remove'
+
+
+
       const filter = (key?: Arguments) => {
-        if (key === undefined) return false
-        const invalidateKey = options?.toInvalidateKey?.(key, item) ?? toCanonicalKey(key)
+        if (key === undefined || key === null) return false
+
+        if (options?.toInvalidateKey) {
+          const mapped = options.toInvalidateKey(key, item)
+          return mapped !== undefined && matchesInvalidateSignalKey(mapped, item)
+        }
+
+        // Native SWR string key matching
+        if (typeof raw.key === 'string') {
+          if (typeof key === 'string') {
+            return raw.match === 'exact' ? key === raw.key : key.startsWith(raw.key)
+          }
+          if (Array.isArray(key) && typeof key[0] === 'string') {
+            return raw.match === 'exact' ? key[0] === raw.key : key[0].startsWith(raw.key)
+          }
+          return false
+        }
+
+        // Tuple key matching
+        const invalidateKey = toCanonicalKey(key)
         return invalidateKey !== undefined && matchesInvalidateSignalKey(invalidateKey, item)
       }
 
-      if (item.action === 'remove') {
+      if (isPurge) {
         void mutate(filter, undefined, false)
       } else {
         void mutate(filter)
@@ -62,14 +78,6 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 /**
  * React hook that returns a stable `onInvalidate` callback for SWR.
- *
- * Equivalent to `swrAdapter(mutate, options)` but memoized — safe to pass
- * directly to `useReStale` without creating a new function on every render.
- *
- * @example
- * import { mutate } from 'swr'
- * const onInvalidate = useSwrAdapter(mutate)
- * useReStale('/api/sse', { onInvalidate })
  */
 export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
@@ -89,3 +97,4 @@ export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSigna
 function toCanonicalKey(key: Arguments): JSONValue[] | undefined {
   return isJSONValueArray(key) ? key : undefined
 }
+

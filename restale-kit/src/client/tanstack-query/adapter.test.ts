@@ -2,19 +2,27 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackAdapter, useTanstackQueryAdapter } from './adapter.js'
+import { tanstackAdapter, tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
+import type { TanStackQuerySignal } from '@/types/protocol.js'
 
-describe('tanstackAdapter', () => {
-  it('defaults omitted action to invalidateQueries and does not invoke other methods', () => {
+describe('tanstackQueryAdapter', () => {
+  it('defaults omitted action to invalidateQueries', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       refetchQueries: vi.fn(),
       removeQueries: vi.fn(),
+      resetQueries: vi.fn(),
+      cancelQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
-    adapter({ key: ['todos', { status: 'active' }], exact: true })
+    const adapter = tanstackQueryAdapter(queryClient)
+    const signal: TanStackQuerySignal = {
+      target: 'tanstack-query',
+      queryKey: ['todos', { status: 'active' }],
+      exact: true,
+    }
+    adapter(signal)
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['todos', { status: 'active' }],
@@ -24,93 +32,91 @@ describe('tanstackAdapter', () => {
     expect(queryClient.removeQueries).not.toHaveBeenCalled()
   })
 
-  it('maps explicit action "invalidate" to invalidateQueries', () => {
+  it('maps stale: true to refetchType none for invalidate', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-      removeQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
-    adapter({ key: ['todos'], action: 'invalidate', exact: false })
+    const adapter = tanstackQueryAdapter(queryClient)
+    const signal: TanStackQuerySignal = {
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      stale: true,
+    }
+    adapter(signal)
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['todos'],
-      exact: false,
+      refetchType: 'none',
     })
   })
 
-  it('maps refetch action to queryClient.refetchQueries and does not invoke invalidate/remove', () => {
+  it('maps reset and cancel actions', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-      removeQueries: vi.fn(),
+      resetQueries: vi.fn(),
+      cancelQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
-    adapter({ key: ['users'], action: 'refetch' })
+    const adapter = tanstackQueryAdapter(queryClient)
+    adapter([
+      { target: 'tanstack-query', queryKey: ['reset-key'], action: 'reset', type: 'active' },
+      { target: 'tanstack-query', queryKey: ['cancel-key'], action: 'cancel' },
+    ])
+
+    expect(queryClient.resetQueries).toHaveBeenCalledWith({
+      queryKey: ['reset-key'],
+      type: 'active',
+    })
+    expect(queryClient.cancelQueries).toHaveBeenCalledWith({
+      queryKey: ['cancel-key'],
+    })
+  })
+
+  it('maps refetch action to queryClient.refetchQueries', () => {
+    const queryClient = {
+      refetchQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    const adapter = tanstackQueryAdapter(queryClient)
+    adapter({ target: 'tanstack-query', queryKey: ['users'], action: 'refetch' })
 
     expect(queryClient.refetchQueries).toHaveBeenCalledWith({
       queryKey: ['users'],
-      exact: undefined,
     })
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
-    expect(queryClient.removeQueries).not.toHaveBeenCalled()
   })
 
-  it('maps remove action to queryClient.removeQueries and does not invoke invalidate/refetch', () => {
+  it('maps remove action to queryClient.removeQueries', () => {
     const queryClient = {
-      invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
       removeQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
-    adapter({ key: ['posts'], action: 'remove' })
+    const adapter = tanstackQueryAdapter(queryClient)
+    adapter({ target: 'tanstack-query', queryKey: ['posts'], action: 'remove' })
 
     expect(queryClient.removeQueries).toHaveBeenCalledWith({
       queryKey: ['posts'],
-      exact: undefined,
     })
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
-    expect(queryClient.refetchQueries).not.toHaveBeenCalled()
   })
 
-  it('processes batch array of signals across different actions', () => {
+  it('supports legacy/generic signals with key property', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-      removeQueries: vi.fn(),
     } as unknown as QueryClient
 
     const adapter = tanstackAdapter(queryClient)
-    adapter([
-      { key: ['a'] },
-      { key: ['b'], action: 'refetch' },
-      { key: ['c'], action: 'remove' },
-    ])
+    adapter({ key: ['legacy'] })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['a'],
-      exact: undefined,
-    })
-    expect(queryClient.refetchQueries).toHaveBeenCalledWith({
-      queryKey: ['b'],
-      exact: undefined,
-    })
-    expect(queryClient.removeQueries).toHaveBeenCalledWith({
-      queryKey: ['c'],
-      exact: undefined,
+      queryKey: ['legacy'],
     })
   })
 })
 
 describe('useTanstackQueryAdapter', () => {
-  it('returns a stable memoized callback that delegates to tanstackAdapter', () => {
+  it('returns a stable memoized callback that delegates to tanstackQueryAdapter', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-      removeQueries: vi.fn(),
     } as unknown as QueryClient
 
     const { result, rerender } = renderHook(
@@ -119,16 +125,16 @@ describe('useTanstackQueryAdapter', () => {
     )
 
     const cb1 = result.current
-    cb1({ key: ['todos'], action: 'invalidate' })
+    cb1({ target: 'tanstack-query', queryKey: ['todos'], action: 'invalidate' })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['todos'],
-      exact: undefined,
     })
 
-    // Rerender with identical inputs and assert callback identity
     rerender({ client: queryClient })
     const cb2 = result.current
     expect(cb1).toBe(cb2)
   })
 })
+
+

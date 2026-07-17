@@ -85,6 +85,24 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     expect(matchesInvalidateSignalKey([new Date()], signal)).toBe(false)
   })
 
+  it('matches TanStackQuerySignal queryKey', () => {
+    const signal = { target: 'tanstack-query' as const, queryKey: ['users', 1], exact: true }
+    expect(matchesInvalidateSignalKey(['users', 1], signal)).toBe(true)
+    expect(matchesInvalidateSignalKey(['users', 1, 'details'], signal)).toBe(false)
+
+    const signalPrefix = { target: 'tanstack-query' as const, queryKey: ['users'] }
+    expect(matchesInvalidateSignalKey(['users', 1], signalPrefix)).toBe(true)
+  })
+
+  it('matches SWRSignal key', () => {
+    const signalArray = { target: 'swr' as const, key: ['todos', 1], match: 'exact' as const }
+    expect(matchesInvalidateSignalKey(['todos', 1], signalArray)).toBe(true)
+    expect(matchesInvalidateSignalKey(['todos', 1, 'sub'], signalArray)).toBe(false)
+
+    const signalString = { target: 'swr' as const, key: 'todos', match: 'prefix' as const }
+    expect(matchesInvalidateSignalKey(['todos', 1], signalString)).toBe(true)
+  })
+
   it('handles primitive type mismatches in matchesJSONValue', () => {
     expect(matchesJSONValue('foo', 'bar', false)).toBe(false)
     expect(matchesJSONValue(123, null, false)).toBe(false)
@@ -107,4 +125,5 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     expect(matchesJSONValue([1, [2]], [1, { 0: 2 }], false)).toBe(false)
   })
 })
+
 

@@ -39,6 +39,29 @@ describe('swrAdapter', () => {
     expect(filter('posts')).toBe(false)
   })
 
+  it('supports SWRSignal primitive string keys with prefix and exact matching', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'swr', key: '/api/user', match: 'prefix' })
+    const prefixFilter = (mutate as any).mock.calls[0][0]
+    expect(prefixFilter('/api/user/123')).toBe(true)
+    expect(prefixFilter('/api/other')).toBe(false)
+
+    adapter({ target: 'swr', key: '/api/user', match: 'exact' })
+    const exactFilter = (mutate as any).mock.calls[1][0]
+    expect(exactFilter('/api/user')).toBe(true)
+    expect(exactFilter('/api/user/123')).toBe(false)
+  })
+
+  it('supports SWRSignal action purge', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'swr', key: '/api/user', action: 'purge' })
+    expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
+  })
+
   it('handles signal batches, undefined key, and non-array default key fallback', () => {
     const mutate = vi.fn() as unknown as SWRMutator
     const adapter = swrAdapter(mutate)
@@ -51,6 +74,7 @@ describe('swrAdapter', () => {
     expect(filter('not-an-array')).toBe(false)
   })
 })
+
 
 describe('useSwrAdapter', () => {
   it('returns a stable memoized callback that delegates to swrAdapter, and updates with changed options', () => {
