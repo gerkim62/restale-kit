@@ -365,13 +365,14 @@ function App() {
 
 ---
 
-## What the frontend sees on disconnect
+When the SSE connection drops, `EventSource.onerror` fires internally.
 
-When the SSE connection drops, `EventSource.onerror` fires internally. The client tears down the current `EventSource` and dispatches an `'error'` event, then decides what to do based on `autoReconnect` and the retry count.
+- **Mid-stream network drops (`readyState === CONNECTING`)**: Native browser `EventSource` stays active and automatically handles auto-reconnection on the same instance, preserving its internal event ID state and sending the official `Last-Event-ID` HTTP header upon reconnect. Status transitions to `{ status: 'connecting' }`.
+- **Initial connection failures or fatal errors (`readyState === CLOSED`)**: When the native `EventSource` cannot reconnect automatically (e.g. initial connection failure, HTTP 500/502/503), the client tears down the instance and falls back to JavaScript exponential backoff retries.
 
 **With `autoReconnect: true` (default) and retries remaining:**
 
-The status immediately transitions to `{ status: 'connecting' }`, and `statuschange` fires. The client schedules a retry after an exponential backoff delay. Each subsequent attempt also stays in `'connecting'`. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
+The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The native browser `EventSource` (or JS backoff for initial/fatal failures) attempts to reconnect. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
 
 ```text
 'open' → 'connecting'   ← disconnect detected

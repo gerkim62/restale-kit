@@ -11,8 +11,8 @@ import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /** Keepalive comment interval in milliseconds. Default: 30_000 (30 seconds). */
   keepaliveIntervalMs?: number
-  /** Optional initial retry delay in milliseconds to send as a `retry: <ms>` frame on start. */
-  initialRetryMs?: number
+  /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
+  retryIntervalMs?: number
   /** Optional Standard Schema for runtime signal validation. No schema = no validation. */
   signalSchema?: StandardSchemaV1<unknown, TSignal>
   /** Last event ID received from the client (e.g. from standard Last-Event-ID HTTP header). */
@@ -102,7 +102,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 ): SSEChannel<TSignal> {
   const keepaliveIntervalMs =
     options?.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
-  const initialRetryMs = options?.initialRetryMs
+  const retryIntervalMs = options?.retryIntervalMs
   const signalSchema = options?.signalSchema
   const lastEventId = options?.lastEventId
   const idGenerator = options?.idGenerator
@@ -127,9 +127,9 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     start(ctrl) {
       controller = ctrl
 
-      if (initialRetryMs !== undefined) {
+      if (retryIntervalMs !== undefined) {
         try {
-          controller.enqueue(formatRetryFrame(initialRetryMs))
+          controller.enqueue(formatRetryFrame(retryIntervalMs))
         } catch {
           closeInternal()
           return

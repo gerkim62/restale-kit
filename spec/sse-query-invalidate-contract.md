@@ -232,8 +232,7 @@ Periodic SSE comment to prevent proxies/load balancers from dropping idle connec
 
 ### Initial connection
 
-No special event is sent when a client connects. The stream begins producing keepalives
-immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
+No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, the stream begins producing periodic keepalives immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
 
 ---
 
@@ -280,6 +279,7 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   keepaliveIntervalMs?: number   // default 30_000
+  retryIntervalMs?: number       // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   lastEventId?: string           // Last-Event-ID from the reconnecting client
   eventStore?: EventStore<TSignal> // shared store for recording history and replaying missed events

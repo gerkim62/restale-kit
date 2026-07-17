@@ -86,21 +86,23 @@ describe('SSEInvalidatorClient', () => {
   it('keeps same EventSource instance during native reconnect when readyState is CONNECTING', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const p = client.connect()
-    const es = MockEventSource.instances[0]!
-    es.emitOpen()
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
     await p
 
     expect(client.status.status).toBe('open')
 
     // Simulate transient mid-stream error while browser native EventSource is reconnecting (readyState CONNECTING)
-    es.readyState = MockEventSource.CONNECTING
-    es.emitError()
+    if (es) {
+      es.readyState = MockEventSource.CONNECTING
+      es.emitError()
+    }
 
     expect(client.status.status).toBe('connecting')
     expect(MockEventSource.instances).toHaveLength(1) // No new instance created
 
     // Simulate native EventSource completing reconnect
-    es.emitOpen()
+    es?.emitOpen()
     expect(client.status.status).toBe('open')
   })
 
@@ -111,13 +113,15 @@ describe('SSEInvalidatorClient', () => {
     })
 
     const p = client.connect()
-    const es = MockEventSource.instances[0]!
-    es.emitOpen()
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
     await p
 
     // Simulate fatal HTTP 500 mid-stream error where readyState becomes CLOSED
-    es.readyState = MockEventSource.CLOSED
-    es.emitError()
+    if (es) {
+      es.readyState = MockEventSource.CLOSED
+      es.emitError()
+    }
 
     expect(client.status.status).toBe('connecting')
 
