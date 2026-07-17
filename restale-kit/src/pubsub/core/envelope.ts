@@ -82,7 +82,7 @@ export function decryptPayload(encryptedString: string, encryptionKey: string, a
   }
 
   const [ivHex, authTagHex, encryptedHex] = parts
-  if (!ivHex || !authTagHex || !encryptedHex) {
+  if (!ivHex || !authTagHex || !encryptedHex || authTagHex.length !== 32) {
     throw new PubSubDecryptionError('Invalid encrypted payload format parts.')
   }
 
@@ -91,7 +91,7 @@ export function decryptPayload(encryptedString: string, encryptionKey: string, a
     const iv = Buffer.from(ivHex, 'hex')
     const authTag = Buffer.from(authTagHex, 'hex')
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
     decipher.setAAD(Buffer.from(aad, 'utf8'))
     decipher.setAuthTag(authTag)
 

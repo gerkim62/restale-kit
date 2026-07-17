@@ -196,10 +196,10 @@ app.post('/pusher/webhook', express.raw({ type: '*/*' }), (req, res) => {
 If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, etc.):
 
 ```ts
-import type { PubSubAdapter } from 'restale-kit/pubsub'
+import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
 import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
 
-function myCustomAdapter(): PubSubAdapter {
+function myCustomAdapter(options: PubSubEncryptionOptions): PubSubAdapter {
   return {
     async publish(topic, message) {
       // Send PubSubMessage envelope to broker on topic.
@@ -226,6 +226,7 @@ function myCustomAdapter(): PubSubAdapter {
 ```
 
 **Adapter contract rules:**
+- **Encryption options:** Custom adapters must require explicit `PubSubEncryptionOptions` (either `{ encrypt: false }` or `{ encryptionKey: string }`) and encrypt message payloads when encryption is configured (e.g. using `wrapEnvelope`/`unwrapEnvelope` with topic AAD binding).
 - **Preserve batches:** If `publish(topic, [a, b])` is called, `onMessage` on the receiving side must fire once with `[a, b]`, not twice separately.
 - **Self-echo suppression:** `onMessage` must not be called for messages this adapter instance published (use an internal origin tag, not a mutation of the signal).
 - **Broker reconnects:** Adapters own their own retry logic. `onError` is for observability only.

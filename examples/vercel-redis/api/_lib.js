@@ -10,7 +10,7 @@ if (!redisUrl) throw new Error('REDIS_URL is required.')
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1 })
 redis.on('error', (error) => console.error('[redis]', error))
 const group = new SSEChannelGroup({
-  pubsub: redisPubSubAdapter(redis, process.env.PUBSUB_ENCRYPTION_KEY
+  pubsub: redisPubSubAdapter(redis, process.env.PUBSUB_ENCRYPTION_KEY !== undefined
     ? { encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY }
     : { encrypt: false }
   )

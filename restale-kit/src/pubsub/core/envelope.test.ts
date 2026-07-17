@@ -86,7 +86,9 @@ describe('pubsub envelope & encryption', () => {
     it('throws PubSubDecryptionError on tampered ciphertext', () => {
       const encrypted = encryptPayload(data, key, topic)
       const parts = encrypted.split(':')
-      parts[2] = parts[2].substring(0, parts[2].length - 2) + '00' // tamper ciphertext
+      const lastByte = parseInt(parts[2].slice(-2), 16)
+      const flipped = (lastByte ^ 0xff).toString(16).padStart(2, '0')
+      parts[2] = parts[2].slice(0, -2) + flipped // tamper ciphertext
       const tampered = parts.join(':')
       expect(() => decryptPayload(tampered, key, topic)).toThrow(PubSubDecryptionError)
     })
