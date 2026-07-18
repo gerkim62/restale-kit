@@ -390,6 +390,7 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number              // auto-creates an EventStore with this capacity
     controlTopic?: string                     // default '__restale_control__' (must be a non-empty, non-whitespace string)
+    target?: SignalTarget | SignalTarget[]    // target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
   })
 
   /** Number of active channels in the group */
@@ -397,6 +398,9 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
 
   /** The pub/sub control topic name used for cross-cluster revocations. */
   readonly controlTopic: string
+
+  /** The configured target discriminator or target array. */
+  readonly target?: SignalTarget | SignalTarget[]
 
   /** The event store, if one was provided or auto-created via eventBufferCapacity. */
   readonly eventStore?: EventStore<TSignal>
@@ -543,7 +547,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
 Extracts `connectionId` from the `__restale_cid__` query parameter and `Last-Event-ID` from
 request headers. Throws synchronously if the query parameter is missing.
 
-Constructs `new Response(channel.stream, { headers })`, wires
+Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). When `options.target` is configured (`'tanstack-query'`, `'swr'`, `'rtk-query'`, or `'generic'`), also emits `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed). Constructs `new Response(channel.stream, { headers })`, wires
 `request.signal.addEventListener('abort', channel.disconnect)`. Returns a `Response` for the
 handler to `return` — inverted control flow vs. the Node adapter, because that's how Fetch-API
 frameworks work:
@@ -591,6 +595,7 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
   onRevoke?: (reason: string) => void  // callback invoked on terminal connection revocation
+  target?: SignalTarget      // optional target discriminator expected by the client
 }
 
 interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {

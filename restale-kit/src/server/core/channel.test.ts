@@ -3,6 +3,7 @@ import { createSSEChannel, processTargetSignals } from './channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import { createEventStore } from './event-store.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 
 const decoder = new TextDecoder()
 
@@ -446,20 +447,20 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: prefers queryKey over key when both present', () => {
     const result = processTargetSignals(
-      { queryKey: ['prefer-this'], key: ['not-this'] } as any,
+      { queryKey: ['prefer-this'], key: ['not-this'] },
       'swr'
     ) as any
     expect(result.key).toEqual(['prefer-this'])
   })
 
   it('builds SWR signal: preserves string key as-is', () => {
-    const result = processTargetSignals({ key: '/api/users' } as any, 'swr') as any
+    const result = processTargetSignals({ key: '/api/users' } as InvalidateSignal, 'swr') as any
     expect(result.key).toBe('/api/users')
   })
 
   it('builds SWR signal: propagates optional action field', () => {
     const result = processTargetSignals(
-      { key: ['todos'], action: 'revalidate' } as any,
+      { key: ['todos'], action: 'revalidate' } as InvalidateSignal,
       'swr'
     ) as any
     expect(result.action).toBe('revalidate')
@@ -467,7 +468,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: propagates purge action', () => {
     const result = processTargetSignals(
-      { key: ['todos'], action: 'purge' } as any,
+      { key: ['todos'], action: 'purge' } as InvalidateSignal,
       'swr'
     ) as any
     expect(result.action).toBe('purge')
@@ -475,7 +476,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: propagates remove action', () => {
     const result = processTargetSignals(
-      { key: ['todos'], action: 'remove' } as any,
+      { key: ['todos'], action: 'remove' },
       'swr'
     ) as any
     expect(result.action).toBe('remove')
@@ -483,7 +484,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: propagates revalidate: false', () => {
     const result = processTargetSignals(
-      { key: ['todos'], revalidate: false } as any,
+      { key: ['todos'], revalidate: false },
       'swr'
     ) as any
     expect(result.revalidate).toBe(false)
@@ -491,7 +492,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: propagates match field (exact)', () => {
     const result = processTargetSignals(
-      { key: ['todos'], match: 'exact' } as any,
+      { key: ['todos'], match: 'exact' } as InvalidateSignal,
       'swr'
     ) as any
     expect(result.match).toBe('exact')
@@ -499,7 +500,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: propagates match field (prefix)', () => {
     const result = processTargetSignals(
-      { key: ['todos'], match: 'prefix' } as any,
+      { key: ['todos'], match: 'prefix' } as InvalidateSignal,
       'swr'
     ) as any
     expect(result.match).toBe('prefix')
@@ -507,7 +508,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: does NOT propagate unknown action values', () => {
     const result = processTargetSignals(
-      { key: ['todos'], action: 'unknown-action' } as any,
+      { key: ['todos'], action: 'unknown-action' } as unknown as InvalidateSignal,
       'swr'
     ) as any
     expect(result.action).toBeUndefined()
@@ -515,7 +516,7 @@ describe('processTargetSignals', () => {
 
   it('builds SWR signal: does NOT propagate revalidate when it is not a boolean', () => {
     const result = processTargetSignals(
-      { key: ['todos'], revalidate: 'yes' } as any,
+      { key: ['todos'], revalidate: 'yes' } as InvalidateSignal,
       'swr'
     ) as any
     expect(result.revalidate).toBeUndefined()
@@ -531,7 +532,7 @@ describe('processTargetSignals', () => {
 
   it('builds TanStackQuerySignal: prefers queryKey source over key when both present', () => {
     const result = processTargetSignals(
-      { queryKey: ['prefer'], key: ['other'] } as any,
+      { queryKey: ['prefer'], key: ['other'] },
       'tanstack-query'
     ) as any
     expect(result.queryKey).toEqual(['prefer'])
@@ -539,7 +540,7 @@ describe('processTargetSignals', () => {
 
   it('builds TanStackQuerySignal: propagates exact boolean', () => {
     const result = processTargetSignals(
-      { key: ['todos'], exact: true } as any,
+      { key: ['todos'], exact: true },
       'tanstack-query'
     ) as any
     expect(result.exact).toBe(true)
@@ -547,21 +548,21 @@ describe('processTargetSignals', () => {
 
   it('builds TanStackQuerySignal: propagates type filter (active/inactive/all)', () => {
     for (const t of ['active', 'inactive', 'all'] as const) {
-      const result = processTargetSignals({ key: ['todos'], type: t } as any, 'tanstack-query') as any
+      const result = processTargetSignals({ key: ['todos'], type: t }, 'tanstack-query') as any
       expect(result.type).toBe(t)
     }
   })
 
   it('builds TanStackQuerySignal: propagates all valid action values', () => {
     for (const action of ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const) {
-      const result = processTargetSignals({ key: ['todos'], action } as any, 'tanstack-query') as any
+      const result = processTargetSignals({ key: ['todos'], action } as InvalidateSignal, 'tanstack-query') as any
       expect(result.action).toBe(action)
     }
   })
 
   it('builds TanStackQuerySignal: propagates stale boolean', () => {
     const result = processTargetSignals(
-      { key: ['todos'], stale: true } as any,
+      { key: ['todos'], stale: true },
       'tanstack-query'
     ) as any
     expect(result.stale).toBe(true)
@@ -569,7 +570,7 @@ describe('processTargetSignals', () => {
 
   it('builds TanStackQuerySignal: does NOT propagate non-boolean exact', () => {
     const result = processTargetSignals(
-      { key: ['todos'], exact: 'yes' } as any,
+      { key: ['todos'], exact: 'yes' } as unknown as InvalidateSignal,
       'tanstack-query'
     ) as any
     expect(result.exact).toBeUndefined()
@@ -577,7 +578,7 @@ describe('processTargetSignals', () => {
 
   it('builds TanStackQuerySignal: does NOT propagate unknown type value', () => {
     const result = processTargetSignals(
-      { key: ['todos'], type: 'unknown' } as any,
+      { key: ['todos'], type: 'unknown' } as InvalidateSignal,
       'tanstack-query'
     ) as any
     expect(result.type).toBeUndefined()
@@ -593,7 +594,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal with string tags', () => {
     const result = processTargetSignals(
-      { key: [], tags: ['Todo', 'Post'] } as any,
+      { key: [], tags: ['Todo', 'Post'] },
       'rtk-query'
     ) as any
     expect(result.tags).toEqual(['Todo', 'Post'])
@@ -601,7 +602,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal with object tags that have a numeric id', () => {
     const result = processTargetSignals(
-      { key: [], tags: [{ type: 'Todo', id: 42 }] } as any,
+      { key: [], tags: [{ type: 'Todo', id: 42 }] },
       'rtk-query'
     ) as any
     expect(result.tags).toEqual([{ type: 'Todo', id: 42 }])
@@ -609,7 +610,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal with object tags that have a string id', () => {
     const result = processTargetSignals(
-      { key: [], tags: [{ type: 'User', id: 'abc' }] } as any,
+      { key: [], tags: [{ type: 'User', id: 'abc' }] },
       'rtk-query'
     ) as any
     expect(result.tags).toEqual([{ type: 'User', id: 'abc' }])
@@ -617,7 +618,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal: omits id from tag object when id is absent', () => {
     const result = processTargetSignals(
-      { key: [], tags: [{ type: 'Post' }] } as any,
+      { key: [], tags: [{ type: 'Post' }] },
       'rtk-query'
     ) as any
     expect(result.tags).toEqual([{ type: 'Post' }])
@@ -626,7 +627,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal: skips non-string/non-record items in tags array', () => {
     const result = processTargetSignals(
-      { key: [], tags: [42, null, { type: 'Valid' }] } as any,
+      { key: [], tags: [42, null, { type: 'Valid' }] } as InvalidateSignal,
       'rtk-query'
     ) as any
     // 42 and null are skipped; only the valid object tag is included
@@ -635,7 +636,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal: skips tag objects whose type is not a string', () => {
     const result = processTargetSignals(
-      { key: [], tags: [{ type: 42 }, { type: 'Good' }] } as any,
+      { key: [], tags: [{ type: 42 }, { type: 'Good' }] } as InvalidateSignal,
       'rtk-query'
     ) as any
     expect(result.tags).toEqual([{ type: 'Good' }])
@@ -643,7 +644,7 @@ describe('processTargetSignals', () => {
 
   it('builds RTKQuerySignal: treats non-array tags as empty', () => {
     const result = processTargetSignals(
-      { key: [], tags: 'not-an-array' } as any,
+      { key: [], tags: 'not-an-array' } as InvalidateSignal,
       'rtk-query'
     ) as any
     expect(result.tags).toEqual([])
@@ -659,7 +660,7 @@ describe('processTargetSignals', () => {
 
   it('builds GenericInvalidateSignal: propagates exact boolean', () => {
     const result = processTargetSignals(
-      { key: ['todos'], exact: true } as any,
+      { key: ['todos'], exact: true },
       'generic'
     ) as any
     expect(result.exact).toBe(true)
@@ -667,7 +668,7 @@ describe('processTargetSignals', () => {
 
   it('builds GenericInvalidateSignal: does NOT propagate non-boolean exact', () => {
     const result = processTargetSignals(
-      { key: ['todos'], exact: 'yes' } as any,
+      { key: ['todos'], exact: 'yes' } as unknown as InvalidateSignal,
       'generic'
     ) as any
     expect(result.exact).toBeUndefined()
@@ -675,14 +676,14 @@ describe('processTargetSignals', () => {
 
   it('builds GenericInvalidateSignal: propagates valid action values', () => {
     for (const action of ['invalidate', 'refetch', 'remove'] as const) {
-      const result = processTargetSignals({ key: ['todos'], action } as any, 'generic') as any
+      const result = processTargetSignals({ key: ['todos'], action }, 'generic') as any
       expect(result.action).toBe(action)
     }
   })
 
   it('builds GenericInvalidateSignal: does NOT propagate unknown action', () => {
     const result = processTargetSignals(
-      { key: ['todos'], action: 'unknown' } as any,
+      { key: ['todos'], action: 'unknown' } as unknown as InvalidateSignal,
       'generic'
     ) as any
     expect(result.action).toBeUndefined()
@@ -701,7 +702,7 @@ describe('processTargetSignals', () => {
 
   it('includes RTK target in multi-target fan-out', async () => {
     const channel = createSSEChannel({ target: ['swr', 'rtk-query'] })
-    channel.invalidate({ key: [], tags: [{ type: 'Todo' }] } as any)
+    channel.invalidate({ key: [], tags: [{ type: 'Todo' }] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toContain('"target":"swr"')
     expect(text).toContain('"target":"rtk-query"')
@@ -710,7 +711,7 @@ describe('processTargetSignals', () => {
 
   it('includes generic target in multi-target fan-out', async () => {
     const channel = createSSEChannel({ target: ['generic', 'tanstack-query'] })
-    channel.invalidate({ key: ['items'] } as any)
+    channel.invalidate({ key: ['items'] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toContain('"target":"generic"')
     expect(text).toContain('"target":"tanstack-query"')

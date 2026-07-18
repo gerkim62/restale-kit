@@ -58,12 +58,13 @@ useReStale(url: string, options: {
     maxRetries?: number         // default Infinity
   }
 
-  // Validation (optional)
+  // Validation & Target (optional)
   signalSchema?: StandardSchemaV1 // validate incoming signals at runtime
+  target?: SignalTarget         // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
 })
 ```
 
-> **Option stability note:** `autoReconnect`, `reconnect`, `signalSchema`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
+> **Option stability note:** `autoReconnect`, `reconnect`, `signalSchema`, `target`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
 
 ### Return value
 

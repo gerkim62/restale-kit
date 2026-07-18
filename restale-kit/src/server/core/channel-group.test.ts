@@ -1105,7 +1105,7 @@ describe('channel-group', () => {
     )
   })
 
-  it('does NOT apply group target transform when channel has its own target set', async () => {
+  it('does NOT apply group target transform when channel has its own target set', () => {
     // When a channel already has `target` set, deliverToChannel must NOT
     // double-transform via the group target — the channel handles it itself.
     const group = new SSEChannelGroup({ target: 'swr' })
@@ -1141,7 +1141,7 @@ describe('channel-group', () => {
     )
   })
 
-  it('does not apply any target transform when group has no target configured', async () => {
+  it('does not apply any target transform when group has no target configured', () => {
     const group = new SSEChannelGroup()
     const ch = createSSEChannel()
     group.register(ch)

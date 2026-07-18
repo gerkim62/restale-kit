@@ -136,6 +136,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
+| `target` | `SignalTarget \| SignalTarget[]` | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) or target array for automatic signal tagging and multi-target fanout. |
 
 ---
 

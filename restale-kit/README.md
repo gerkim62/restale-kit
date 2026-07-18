@@ -461,6 +461,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventBufferCapacity` | Enables Last-Event-ID event history replay buffer. |
 | `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
+| `target` | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) or target array for automatic signal tagging and multi-target fanout. |
 
 ### `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
 

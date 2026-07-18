@@ -182,11 +182,13 @@ class SSEChannelGroup<
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
     controlTopic?: string                             // default '__restale_control__'
+    target?: SignalTarget | SignalTarget[]            // target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
   })
 
   readonly size: number
   readonly controlTopic: string
   readonly eventStore?: EventStore<TSignal>
+  readonly target?: SignalTarget | SignalTarget[]
 
   register(
     channel: SSEChannel<TSignal>,
