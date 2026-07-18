@@ -158,7 +158,9 @@ These types are **cache-library-agnostic** while supporting target-specific fram
 |---|---|---|---|
 | `'invalidate'` (default) | Mark matching entries as stale; refetch if observed | `queryClient.invalidateQueries()` | `revalidate()` |
 | `'refetch'` | Force immediate refetch of matching entries | `queryClient.refetchQueries()` | `revalidate({ force: true })` |
+| `'reset'` | Reset matching entries to initial state | `queryClient.resetQueries()` | — |
 | `'remove'` | Purge matching entries from cache entirely | `queryClient.removeQueries()` | `mutate(key, undefined, { revalidate: false })` |
+| `'cancel'` | Cancel in-flight queries matching filters | `queryClient.cancelQueries()` | — |
 
 Target-discriminated signals allow framework adapters (`tanstackQueryAdapter`, `swrAdapter`) to execute target-native methods directly.
 
@@ -185,7 +187,7 @@ data: <JSON payload>\n
 ```
 
 Where `<JSON payload>` is the output of `JSON.stringify(signal)` — a single object or an array.
-The entire payload is sent as one `data:` line. No splitting across multiple `data:` lines.
+Standard payloads are formatted as a single `data:` line; if a custom `.toJSON()` or stringified output contains newlines, each line is prefixed with `data:` per the W3C SSE specification to preserve stream framing.
 
 **`id:` field behavior:** By default (no `eventStore`), no `id:` field is emitted — there is
 nothing to replay, so advertising an event ID would be misleading. When an `eventStore` is

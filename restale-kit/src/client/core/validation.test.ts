@@ -176,8 +176,13 @@ describe('client validatePayload', () => {
       'SWR signal must have a "key" property that is a string or an array'
     )
     expect(() => validatePayload({ target: 'swr', key: '/todos', action: 'invalid' })).toThrow(
-      "SWR signal \"action\" field must be one of 'revalidate', 'purge'"
+      "SWR signal \"action\" field must be one of 'revalidate', 'purge', 'remove'"
     )
+    expect(validatePayload({ target: 'swr', key: '/todos', action: 'remove' })).toEqual({
+      target: 'swr',
+      key: '/todos',
+      action: 'remove',
+    })
     expect(() => validatePayload({ target: 'swr', key: '/todos', match: 'contains' })).toThrow(
       "SWR signal \"match\" field must be 'exact' or 'prefix'"
     )
