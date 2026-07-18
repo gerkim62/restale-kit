@@ -436,6 +436,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
+| `target` | `SignalTarget` | `undefined` | Optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client. |
 
 ### `createSSEChannel(options?)` / `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
 

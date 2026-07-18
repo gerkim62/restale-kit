@@ -344,6 +344,7 @@ interface ClientOptions<TSignal> {
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>
+  target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
 }
 
 interface AutoReconnectOptions {
