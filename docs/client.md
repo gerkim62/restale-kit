@@ -382,10 +382,10 @@ The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. 
 
 **With `autoReconnect: false`, or when retries are exhausted:**
 
-The status transitions to `{ status: 'error', error: Event }`. No further reconnection is attempted automatically. Call `reconnect()` (hook) or `client.connect()` to try again manually.
+The status transitions to `{ status: 'error', error: Event }`. All automatic background reconnect attempts (both native browser `EventSource` reconnects and JavaScript backoff retries) are suppressed. However, manual reconnection via `reconnect()` (hook) or `client.connect()` remains enabled and can be called explicitly at any time.
 
 ```text
-'open' → 'error'   ← immediate, no retries
+'open' → 'error'   ← immediate, no automatic retries (manual reconnect() still permitted)
 ```
 
 **Without an event store, signals fired while the client was offline are not replayed.** See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.

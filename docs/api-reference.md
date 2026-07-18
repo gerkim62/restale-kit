@@ -339,7 +339,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 interface ClientOptions<TSignal> {
-  autoReconnect?: boolean           // default true
+  autoReconnect?: boolean           // default true (disables automatic background retries when false; manual connect/reconnect still works)
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>

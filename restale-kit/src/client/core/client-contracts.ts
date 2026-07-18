@@ -37,7 +37,13 @@ export interface ReconnectOptions {
  * Configuration options for `SSEInvalidatorClient`.
  */
 export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  /** Whether to automatically reconnect on failure. Default: true. */
+  /**
+   * Whether to automatically reconnect on failure. Default: true.
+   *
+   * Setting this to `false` disables automatic background reconnects (both native
+   * EventSource mid-stream reconnects and JS backoff retries) on failure.
+   * Manual reconnection via `connect()` or `reconnect()` remains available.
+   */
   autoReconnect?: boolean
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
