@@ -1,4 +1,4 @@
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey, SignalTarget } from '@/types/protocol.js'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
@@ -146,7 +146,6 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 export interface SSEChannelGroupOptions<
   TMeta = unknown,
 > {
-  target: SignalTarget | SignalTarget[]
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   pubsub?: PubSubAdapter
   eventStore?: EventStore
@@ -171,15 +170,13 @@ export class SSEChannelGroup<
   private readonly pubsub?: PubSubAdapter
   readonly eventStore?: EventStore
   readonly controlTopic: string
-  readonly target: SignalTarget | SignalTarget[]
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TMeta>) {
+  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
-    this.target = options.target
 
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {

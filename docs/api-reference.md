@@ -128,6 +128,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): SSEChannel<TSignal>
 
 interface SSEChannelOptions<TSignal> {
+  target: SignalTarget | SignalTarget[]               // required target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
   keepaliveIntervalMs?: number                        // default 0 (disabled)
   retryIntervalMs?: number                            // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>
@@ -136,7 +137,6 @@ interface SSEChannelOptions<TSignal> {
   eventBufferCapacity?: number
   idGenerator?: () => string
   connectionId?: string                               // unique connection ID from client
-  target?: SignalTarget | SignalTarget[]              // target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
 }
 
 interface SSEChannel<TSignal> {
@@ -182,13 +182,11 @@ class SSEChannelGroup<
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
     controlTopic?: string                             // default '__restale_control__'
-    target?: SignalTarget | SignalTarget[]            // target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
   })
 
   readonly size: number
   readonly controlTopic: string
   readonly eventStore?: EventStore<TSignal>
-  readonly target?: SignalTarget | SignalTarget[]
 
   register(
     channel: SSEChannel<TSignal>,

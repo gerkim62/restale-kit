@@ -60,7 +60,7 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 
 describe('Issue 1 — revokeWhere connectionId security contract', () => {
   it('revokeWhere with connectionId as sole criteria still closes the matching channel (unsafe but functional)', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>({ target: 'swr' })
+    const group = new SSEChannelGroup<any, { userId: number }>()
     const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
@@ -72,7 +72,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
   })
 
   it('revokeByConnectionId with scope rejects a mismatched userId (safe path)', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>({ target: 'swr' })
+    const group = new SSEChannelGroup<any, { userId: number }>()
     const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
@@ -84,7 +84,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
   })
 
   it('revokeByConnectionId with correct scope closes the channel (safe path)', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>({ target: 'swr' })
+    const group = new SSEChannelGroup<any, { userId: number }>()
     const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
@@ -101,7 +101,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 describe('Issue 2 — no double-recording with shared eventStore', () => {
   it('broadcast records each signal exactly once in the shared eventStore', () => {
     const store = createEventStore()
-    const group = new SSEChannelGroup<any, { userId: number }>({ target: 'swr', eventStore: store })
+    const group = new SSEChannelGroup<any, { userId: number }>({ eventStore: store })
     const ch = createSSEChannel({ target: 'swr', eventStore: store })
     group.register(ch, { userId: 1 })
 
@@ -116,7 +116,6 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
   it('publish records each signal exactly once in the shared eventStore', async () => {
     const store = createEventStore()
     const group = new SSEChannelGroup<any, { userId: number }>({
-      target: 'swr',
       eventStore: store,
     })
     const ch = createSSEChannel({ target: 'swr', eventStore: store })
@@ -148,7 +147,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // channel has its OWN private store (via eventBufferCapacity), not the group's store.
     // Verify the group store only ever sees what the group itself recorded.
     const groupStore = createEventStore()
-    const group = new SSEChannelGroup<any, undefined>({ target: 'swr', eventStore: groupStore })
+    const group = new SSEChannelGroup<any, undefined>({ eventStore: groupStore })
     const ch = createSSEChannel({ target: 'swr', eventBufferCapacity: 10 })
     group.register(ch, undefined)
 
@@ -338,35 +337,35 @@ describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () =>
 
 describe('Issue 6 — SSEChannelGroup validates controlTopic at construction', () => {
   it('throws when controlTopic is an empty string', () => {
-    expect(() => new SSEChannelGroup({ target: 'swr', controlTopic: '' })).toThrow(
+    expect(() => new SSEChannelGroup({ controlTopic: '' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('throws when controlTopic is whitespace only', () => {
-    expect(() => new SSEChannelGroup({ target: 'swr', controlTopic: '   ' })).toThrow(
+    expect(() => new SSEChannelGroup({ controlTopic: '   ' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('throws when controlTopic is a tab character only', () => {
-    expect(() => new SSEChannelGroup({ target: 'swr', controlTopic: '\t' })).toThrow(
+    expect(() => new SSEChannelGroup({ controlTopic: '\t' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('accepts a valid custom controlTopic', () => {
-    expect(() => new SSEChannelGroup({ target: 'swr', controlTopic: '__my_control__' })).not.toThrow()
+    expect(() => new SSEChannelGroup({ controlTopic: '__my_control__' })).not.toThrow()
   })
 
   it('uses the default controlTopic when none is provided', () => {
-    const group = new SSEChannelGroup({ target: 'swr' })
+    const group = new SSEChannelGroup()
     expect(group.controlTopic).toBe('__restale_control__')
   })
 
   it('control messages on the custom controlTopic revoke channels; signals on data topics do not', async () => {
     const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, { userId: number }>({ target: 'swr', pubsub, controlTopic: '__ctrl__' })
+    const group = new SSEChannelGroup<any, { userId: number }>({ pubsub, controlTopic: '__ctrl__' })
     // Wait for control subscription to be established
     await Promise.resolve()
     await Promise.resolve()

@@ -23,7 +23,7 @@ const app = express()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'swr' })
   group.register(channel, { userId: req.user?.id })
 })
 ```
@@ -40,7 +40,7 @@ const group = new SSEChannelGroup()
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const channel = attachSSE(req, res)
+    const channel = attachSSE(req, res, { target: 'swr' })
     group.register(channel, { userId: req.user?.id })
   }
 })
@@ -63,7 +63,7 @@ const app = Fastify()
 
 // Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
-  const channel = attachSSE(request, reply)
+  const channel = attachSSE(request, reply, { target: 'swr' })
   group.register(channel, { userId: request.user?.id })
 })
 ```
@@ -73,7 +73,7 @@ If you need to use the raw Node objects (e.g. in a middleware context), you must
 ```ts
 app.get('/sse', (request, reply) => {
   reply.hijack() // required when passing .raw objects directly
-  const channel = attachSSE(request.raw, reply.raw)
+  const channel = attachSSE(request.raw, reply.raw, { target: 'swr' })
   group.register(channel, { userId: request.user?.id })
 })
 ```
@@ -91,7 +91,7 @@ const app = new Hono()
 const group = new SSEChannelGroup()
 
 app.get('/sse', (c) => {
-  const { response, channel } = toSSEResponse(c.req.raw)
+  const { response, channel } = toSSEResponse(c.req.raw, { target: 'swr' })
   group.register(channel, { userId: c.req.header('X-User-ID') })
   return response // hand it back to Hono
 })
@@ -105,7 +105,7 @@ For any other Fetch-API runtime (Bun, Deno, plain `Request`/`Response`):
 import { toSSEResponse } from 'restale-kit/fetch'
 
 // Same API as restale-kit/hono
-const { response, channel } = toSSEResponse(request)
+const { response, channel } = toSSEResponse(request, { target: 'swr' })
 ```
 
 ---
@@ -136,7 +136,6 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `target` | `SignalTarget \| SignalTarget[]` | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) or target array for automatic signal tagging and multi-target fanout. |
 
 ---
 
