@@ -441,7 +441,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `keepaliveIntervalMs` | `number` | `30000` (30s) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops. |
+| `keepaliveIntervalMs` | `number` | `0` (disabled) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops (disabled by default). |
 | `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
 | `signalSchema` | `StandardSchemaV1` | `undefined` | Standard Schema to validate signals passed to `channel.invalidate()`. |
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |

@@ -9,7 +9,7 @@ import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
  * Configuration options for `createSSEChannel`.
  */
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  /** Keepalive comment interval in milliseconds. Default: 30_000 (30 seconds). */
+  /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
   retryIntervalMs?: number
@@ -120,7 +120,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
   let state: ChannelState = 'open'
   let controller: ReadableStreamDefaultController<Uint8Array>
-  let keepaliveTimer: ReturnType<typeof setInterval>
+  let keepaliveTimer: ReturnType<typeof setInterval> | undefined
   const closeCallbacks: Array<() => void> = []
 
   const stream = new ReadableStream<Uint8Array>({
@@ -156,15 +156,17 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         }
       }
 
-      keepaliveTimer = setInterval(() => {
-        if (state === 'open') {
-          try {
-            controller.enqueue(formatKeepalive())
-          } catch {
-            closeInternal()
+      if (keepaliveIntervalMs !== undefined && keepaliveIntervalMs > 0) {
+        keepaliveTimer = setInterval(() => {
+          if (state === 'open') {
+            try {
+              controller.enqueue(formatKeepalive())
+            } catch {
+              closeInternal()
+            }
           }
-        }
-      }, keepaliveIntervalMs)
+        }, keepaliveIntervalMs)
+      }
     },
     cancel() {
       // Stream consumer cancelled — treat as disconnect
@@ -175,7 +177,9 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   function closeInternal(): void {
     if (state === 'closed') return
     state = 'closed'
-    clearInterval(keepaliveTimer)
+    if (keepaliveTimer !== undefined) {
+      clearInterval(keepaliveTimer)
+    }
     try {
       controller.close()
     } catch (err) {

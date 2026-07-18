@@ -228,13 +228,13 @@ Periodic SSE comment to prevent proxies/load balancers from dropping idle connec
 \n
 ```
 
-- Default interval: **30 seconds**.
+- Default interval: **0** (disabled by default; opt-in via `keepaliveIntervalMs`).
 - Configurable via `keepaliveIntervalMs` in `createSSEChannel` options.
 - The comment is a standard SSE comment (`:` prefix) — `EventSource` silently ignores it.
 
 ### Initial connection
 
-No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, the stream begins producing periodic keepalives immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
+No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, if `keepaliveIntervalMs > 0` is set, the stream begins producing periodic keepalives. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
 
 ---
 

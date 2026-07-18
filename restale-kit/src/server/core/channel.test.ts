@@ -64,7 +64,21 @@ describe('channel', () => {
     expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
   })
 
-  it('emits keepalives at configured interval', async () => {
+  it('does not emit keepalives by default when keepaliveIntervalMs is omitted', async () => {
+    const channel = createSSEChannel()
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(60000)
+
+    channel.close()
+    const { value, done } = await reader.read()
+    reader.releaseLock()
+
+    expect(done).toBe(true)
+    expect(value).toBeUndefined()
+  })
+
+  it('emits keepalives at configured interval when keepaliveIntervalMs is provided', async () => {
     const channel = createSSEChannel({ keepaliveIntervalMs: 5000 })
     const reader = channel.stream.getReader()
 

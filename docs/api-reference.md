@@ -128,7 +128,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): SSEChannel<TSignal>
 
 interface SSEChannelOptions<TSignal> {
-  keepaliveIntervalMs?: number                        // default 30_000
+  keepaliveIntervalMs?: number                        // default 0 (disabled)
   retryIntervalMs?: number                            // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>
   lastEventId?: string
