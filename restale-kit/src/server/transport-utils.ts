@@ -1,4 +1,6 @@
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
+import type { SignalTarget } from '@/types/protocol.js'
 
 /**
  * Maximum accepted byte length for a Last-Event-ID header value.
@@ -23,7 +25,7 @@ export function extractConnectionId(searchParams: URLSearchParams): string {
 }
 
 /**
- * Extracts the Last-Event-ID header from a header lookup callback.
+ * Extracts and validates the Last-Event-ID header from a header lookup callback.
  * Returns `undefined` if the header is absent, empty, or exceeds the maximum
  * allowed length (to prevent DoS via oversized IDs triggering expensive buffer scans).
  */
@@ -57,4 +59,24 @@ export function extractLastEventId(
   }
 
   return value
+}
+
+/** Tuple of all valid SignalTarget values, used for exhaustive narrowing without a cast. */
+const KNOWN_TARGET_VALUES: readonly SignalTarget[] = Object.values(SIGNAL_TARGETS)
+
+/**
+ * Extracts and validates the `__restale_target__` query parameter.
+ *
+ * Returns the validated `SignalTarget` value if present and recognized.
+ * Returns `undefined` if the parameter is absent — callers treat absence as
+ * "no preference; send everything."
+ * Returns `undefined` (without throwing) if the value is present but unrecognized,
+ * leaving downstream callers to decide how to handle an unknown target.
+ */
+export function extractRequestedTarget(searchParams: URLSearchParams): SignalTarget | undefined {
+  const raw = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM)
+  if (raw === null || raw === '') return undefined
+  // `includes` on a readonly SignalTarget[] narrows `raw` to SignalTarget — no cast needed.
+  const found = KNOWN_TARGET_VALUES.find((t) => t === raw)
+  return found
 }

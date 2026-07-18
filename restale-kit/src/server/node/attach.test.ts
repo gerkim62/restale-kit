@@ -28,10 +28,11 @@ describe('node attachSSE', () => {
 
     expect(channel.connectionId).toBe('req-999')
     expect(channel.state).toBe('open')
-    expect(res.writeHead).toHaveBeenCalledWith(200, {
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       ...SSE_HEADERS,
       'X-ReStale-Target': 'swr',
-    })
+      'X-ReStale-Supported': 'swr',
+    }))
   })
 
   it('triggers disconnect on request close event', () => {
@@ -71,10 +72,9 @@ describe('node attachSSE', () => {
     const channel = attachSSE(req, res, { target: 'swr' })
 
     expect(channel.target).toBe('swr')
-    expect(res.writeHead).toHaveBeenCalledWith(200, {
-      ...SSE_HEADERS,
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       'X-ReStale-Target': 'swr',
-    })
+    }))
   })
 
   it('emits comma-separated X-ReStale-Target HTTP header when target array is specified', () => {
@@ -90,6 +90,59 @@ describe('node attachSSE', () => {
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       ...SSE_HEADERS,
       'X-ReStale-Target': 'swr, tanstack-query',
+      'X-ReStale-Supported': 'swr, tanstack-query',
     })
+  })
+
+  it('emits X-ReStale-Supported header with single target', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-supported-single',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    attachSSE(req, res, { target: 'swr' })
+
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+      'X-ReStale-Supported': 'swr',
+    }))
+  })
+
+  it('emits comma-separated X-ReStale-Supported header with target array', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-supported-multi',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    attachSSE(req, res, { target: ['tanstack-query', 'swr', 'rtk-query'] })
+
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+      'X-ReStale-Supported': 'tanstack-query, swr, rtk-query',
+    }))
+  })
+
+  it('extracts __restale_target__ from URL query param and passes to channel', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-target-extract&__restale_target__=swr',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+
+    expect(channel.requestedTarget).toBe('swr')
+  })
+
+  it('requestedTarget is undefined when __restale_target__ param is absent', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-no-target',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: 'swr' })
+
+    expect(channel.requestedTarget).toBeUndefined()
   })
 })

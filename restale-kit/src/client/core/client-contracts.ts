@@ -2,6 +2,40 @@ import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
 import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
 /**
+ * A phantom brand that marks an `onInvalidate` callback as having been produced
+ * by a specific framework adapter (e.g. `useTanstackQueryAdapter`, `useSwrAdapter`).
+ *
+ * The type parameter `TTarget` records which signal target the callback handles.
+ * `useReStale` reads this brand to infer the `target` option automatically and to
+ * enforce that `target` and `onInvalidate` are consistent at compile time.
+ *
+ * You never construct this directly — adapter hooks return it for you.
+ */
+export type AdaptedInvalidateCallback<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = InvalidateSignal,
+> = ((signal: TSignal | TSignal[]) => void) & {
+  readonly __restaleTarget: TTarget
+}
+
+/**
+ * Factory that brands a plain callback with its signal target.
+ * Used internally by adapter hooks — not part of the public API.
+ *
+ * `Object.assign` merges the `__restaleTarget` property into the function object,
+ * which TypeScript verifies structurally — no cast required.
+ */
+export function makeAdaptedCallback<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = InvalidateSignal,
+>(
+  target: TTarget,
+  fn: (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<TTarget, TSignal> {
+  return Object.assign(fn, { __restaleTarget: target } as const)
+}
+
+/**
  * Discriminated union representing the SSE client's connection state.
  *
  * - `connecting` — actively establishing or waiting to retry.
@@ -80,12 +114,49 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
 }
 
 /**
+ * Payload carried by the `revoke` CustomEvent.
+ *
+ * Discriminated on `reason` so consumers can narrow the type:
+ *
+ * ```ts
+ * client.addEventListener('revoke', (e) => {
+ *   if (e.detail.reason === 'unsupported-target') {
+ *     console.warn(`Server supports: ${e.detail.supported.join(', ')}`)
+ *   }
+ * })
+ * ```
+ */
+export type RevokeEventDetail =
+  | {
+      /** The connection was rejected because the requested target is not in the server's supported set. */
+      reason: 'unsupported-target'
+      /** The target value the client requested (from `__restale_target__`). */
+      requested: string
+      /** The target values the server channel is configured to support. */
+      supported: string[]
+    }
+  | {
+      /**
+       * Any other revocation reason (e.g. `'session-expired'`, `'logout'`, `'banned'`),
+       * or `undefined` when the server sent a malformed / reason-less revoke frame.
+       */
+      reason: string | undefined
+      requested?: never
+      supported?: never
+    }
+
+/**
  * Typed event map for `SSEInvalidatorClient`.
  */
 export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
   invalidate: CustomEvent<TSignal | TSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
-  /** Emitted when the server sends a terminal `revoke` frame. Does not auto-reconnect. */
-  revoke: CustomEvent<{ reason: string }>
+  /**
+   * Emitted when the server sends a terminal `revoke` frame. Does not auto-reconnect.
+   *
+   * The `detail` is a `RevokeEventDetail` discriminated union — narrow on `detail.reason`
+   * to access the `requested`/`supported` fields for `'unsupported-target'`.
+   */
+  revoke: CustomEvent<RevokeEventDetail>
 }

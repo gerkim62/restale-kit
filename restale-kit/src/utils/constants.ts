@@ -3,6 +3,7 @@
  */
 export const PROTOCOL_CONSTANTS = {
   RESTALE_REQUEST_ID_PARAM: '__restale_cid__',
+  RESTALE_TARGET_PARAM: '__restale_target__',
   LAST_EVENT_ID_HEADER: 'last-event-id',
   TARGET_HEADER: 'x-restale-target',
   DEFAULT_CONTROL_TOPIC: '__restale_control__',
@@ -18,6 +19,14 @@ export const SSE_HEADERS = {
   'Content-Type': 'text/event-stream',
   'Cache-Control': 'no-cache',
   Connection: 'keep-alive',
+} as const
+
+/**
+ * Additional response headers used by restale-kit transport adapters.
+ */
+export const SSE_RESPONSE_HEADERS = {
+  RESTALE_TARGET: 'X-ReStale-Target',
+  RESTALE_SUPPORTED: 'X-ReStale-Supported',
 } as const
 
 /**

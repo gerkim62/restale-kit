@@ -3,6 +3,8 @@ import type { InvalidateSignal } from '@/types/protocol.js'
 import type { QueryClient, QueryFilters, InvalidateQueryFilters } from '@tanstack/react-query'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
 import { SIGNAL_TARGETS } from '@/utils/constants.js'
+import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
 
 function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
@@ -74,13 +76,20 @@ export const tanstackAdapter = tanstackQueryAdapter
 /**
  * React hook that returns a stable `onInvalidate` callback for TanStack Query.
  *
+ * The returned callback is branded as `AdaptedInvalidateCallback<'tanstack-query'>`.
+ * Pass it directly to `useReStale` as `onInvalidate` — `target` will be inferred
+ * automatically and a mismatch with an explicit `target` prop is a compile error.
+ *
  * @example
  * const onInvalidate = useTanstackQueryAdapter(queryClient)
- * useReStale('/api/sse', { onInvalidate })
+ * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
 export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void {
-  return useCallback(tanstackQueryAdapter<TSignal>(queryClient), [queryClient])
+): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
+  return makeAdaptedCallback(
+    SIGNAL_TARGETS.TANSTACK,
+    useCallback(tanstackQueryAdapter<TSignal>(queryClient), [queryClient])
+  )
 }
 

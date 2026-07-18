@@ -718,3 +718,181 @@ describe('processTargetSignals', () => {
     expect(text).toContain('"target":"tanstack-query"')
   })
 })
+
+describe('requestedTarget negotiation', () => {
+  const decoder = new TextDecoder()
+
+  async function readStreamChunkRaw(stream: ReadableStream<Uint8Array>): Promise<string> {
+    const reader = stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+    return value ? decoder.decode(value) : ''
+  }
+
+  it('exposes requestedTarget on the channel when it is a valid target', () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+    expect(channel.requestedTarget).toBe('swr')
+  })
+
+  it('requestedTarget is undefined when not provided', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expect(channel.requestedTarget).toBeUndefined()
+  })
+
+  it('emits revoke frame with unsupported-target reason and closes when requestedTarget is not in supported set', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel({
+      target: ['tanstack-query', 'swr'],
+      requestedTarget: 'rtk-query',
+      connectionId: 'test-conn',
+    })
+
+    const reader = channel.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = decoder.decode(value)
+    expect(text).toBe(
+      'event: revoke\ndata: {"reason":"unsupported-target","requested":"rtk-query","supported":["tanstack-query","swr"]}\n\n'
+    )
+    expect(channel.state).toBe('closed')
+
+    warnSpy.mockRestore()
+  })
+
+  it('logs a WARN when rejecting unsupported target', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel({
+      target: ['swr'],
+      requestedTarget: 'rtk-query',
+      connectionId: 'conn-warn',
+    })
+
+    // Drain the stream
+    const reader = channel.stream.getReader()
+    await reader.read()
+    reader.releaseLock()
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[WARN][createSSEChannel] Rejected connection')
+    )
+    expect(warnSpy.mock.calls[0][0]).toContain('rtk-query')
+    expect(warnSpy.mock.calls[0][0]).toContain('swr')
+    expect(warnSpy.mock.calls[0][0]).toContain('conn-warn')
+
+    warnSpy.mockRestore()
+  })
+
+  it('stream opens normally when requestedTarget is in the supported set (single target)', async () => {
+    const channel = createSSEChannel({ target: 'swr', requestedTarget: 'swr' })
+    expect(channel.state).toBe('open')
+
+    channel.invalidate({ key: ['items'] })
+    const text = await readStreamChunkRaw(channel.stream)
+    expect(text).toContain('"target":"swr"')
+    expect(text).toContain('"key":["items"]')
+    expect(channel.state).toBe('open')
+  })
+
+  it('stream opens normally when requestedTarget is in a supported array', () => {
+    const channel = createSSEChannel({
+      target: ['tanstack-query', 'swr'],
+      requestedTarget: 'swr',
+    })
+    expect(channel.state).toBe('open')
+  })
+
+  it('filter in invalidate: signal with wrong explicit target is dropped, returns empty string', () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+
+    // Inject a pre-tagged tanstack-query signal — should be dropped
+    const returnedId = channel.invalidate({ target: 'tanstack-query', queryKey: ['todos'] })
+    expect(returnedId).toBe('')
+  })
+
+  it('filter in invalidate: signal with matching explicit target is emitted', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+
+    channel.invalidate({ target: 'swr', key: ['todos'] })
+    const text = await readStreamChunkRaw(channel.stream)
+    expect(text).toContain('"target":"swr"')
+    expect(text).not.toContain('"target":"tanstack-query"')
+  })
+
+  it('filter in invalidate: untagged signal is stamped with requestedTarget and emitted', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+
+    // Untagged signal — processTargetSignals will produce [swr, tanstack-query]
+    // then the filter keeps only swr
+    channel.invalidate({ key: ['items'] })
+    const text = await readStreamChunkRaw(channel.stream)
+    expect(text).toContain('"target":"swr"')
+    // tanstack-query version should be filtered out (the emitted payload is a single obj not array)
+    expect(text).not.toContain('"target":"tanstack-query"')
+  })
+
+  it('filter in invalidate: batch — drops non-matching, emits matching signals', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+
+    channel.invalidate([
+      { target: 'swr', key: ['a'] },
+      { target: 'tanstack-query', queryKey: ['b'] },
+      { target: 'swr', key: ['c'] },
+    ])
+    const text = await readStreamChunkRaw(channel.stream)
+    // Should only contain swr signals
+    const parsed: unknown = JSON.parse(text.replace('event: invalidate\ndata: ', '').replace('\n\n', ''))
+    expect(Array.isArray(parsed)).toBe(true)
+    const arr = parsed as Array<{ target: string }>
+    expect(arr).toHaveLength(2)
+    expect(arr[0].target).toBe('swr')
+    expect(arr[1].target).toBe('swr')
+  })
+
+  it('filter in invalidate: batch where all items are dropped — returns empty string, no frame emitted', () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
+
+    const returnedId = channel.invalidate([
+      { target: 'tanstack-query', queryKey: ['a'] },
+      { target: 'rtk-query', tags: [] },
+    ])
+    expect(returnedId).toBe('')
+    // Channel remains open, no frame enqueued
+    expect(channel.state).toBe('open')
+  })
+
+  it('dropped signals are not recorded in eventStore', () => {
+    const store = createEventStore({ capacity: 10 })
+    const channel = createSSEChannel({
+      target: ['swr', 'tanstack-query'],
+      requestedTarget: 'swr',
+      eventStore: store,
+    })
+
+    channel.invalidate({ target: 'tanstack-query', queryKey: ['b'] })
+
+    // store should have no events recorded
+    const { events, stale } = store.getEventsAfter('0')
+    expect(stale).toBe(true) // nothing in the store means cursor is unknown
+    expect(events).toHaveLength(0)
+  })
+
+  it('matching signals ARE recorded in eventStore', () => {
+    const store = createEventStore({ capacity: 10 })
+    const channel = createSSEChannel({
+      target: 'swr',
+      requestedTarget: 'swr',
+      eventStore: store,
+    })
+
+    const id = channel.invalidate({ key: ['items'] })
+    expect(id).not.toBe('')
+
+    const { events } = store.getEventsAfter('0')
+    expect(events).toHaveLength(0) // getEventsAfter('0') returns events AFTER id '0'
+    // Verify by checking a subsequent event is visible
+    const id2 = channel.invalidate({ key: ['more'] })
+    const { events: after } = store.getEventsAfter(id)
+    expect(after.map((e) => e.id)).toContain(id2)
+  })
+})

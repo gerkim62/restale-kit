@@ -31,6 +31,13 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * and pass it here automatically. You rarely need to set this manually.
    */
   connectionId?: string
+  /**
+   * The single target requested by the client, extracted from the `__restale_target__`
+   * query parameter by transport adapters. When set, the channel will:
+   * - Reject the connection immediately if the requested target is not in `options.target`.
+   * - Filter outgoing frames to only emit signals matching this target.
+   */
+  requestedTarget?: SignalTarget
 }
 
 /**
@@ -56,6 +63,8 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
   readonly target: SignalTarget | SignalTarget[]
+  /** The single target requested by the client via query param, if any. */
+  readonly requestedTarget: SignalTarget | undefined
   /** The SSE byte stream to pipe into a response. */
   readonly stream: ReadableStream<Uint8Array>
   /**
@@ -113,6 +122,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const idGenerator = options.idGenerator
   const connectionId = options.connectionId ?? ''
   const target = options.target
+  const requestedTarget = options.requestedTarget
 
   // Track whether this channel owns its eventStore (created internally) or was given an
   // external one. When the store is external (shared with a group), the group is responsible
@@ -133,6 +143,29 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
       controller = ctrl
+
+      // Validate the requested target before doing anything else.
+      // If it is unsupported, emit a structured revoke frame and close immediately.
+      if (requestedTarget !== undefined) {
+        const supportedTargets = Array.isArray(target) ? target : [target]
+        if (!supportedTargets.includes(requestedTarget)) {
+          console.warn(
+            `[WARN][createSSEChannel] Rejected connection: requested target "${requestedTarget}" not in supported set [${supportedTargets.join(', ')}]. connectionId: ${connectionId}.`
+          )
+          try {
+            controller.enqueue(
+              formatRevokeFrame('unsupported-target', {
+                requested: requestedTarget,
+                supported: supportedTargets,
+              })
+            )
+          } catch {
+            // controller unusable — just close
+          }
+          closeInternal()
+          return
+        }
+      }
 
       if (retryIntervalMs !== undefined) {
         try {
@@ -218,6 +251,33 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
     const effectiveSignal = processTargetSignals(signal, target)
 
+    // Filter by requestedTarget: drop signals that don't match the client's requested target.
+    // This runs after processTargetSignals so signals are already target-stamped.
+    if (requestedTarget !== undefined) {
+      if (Array.isArray(effectiveSignal)) {
+        const filtered = effectiveSignal.filter((s) => {
+          const t = 'target' in s ? s.target : undefined
+          const keep = t === requestedTarget
+          return keep
+        })
+        if (filtered.length === 0) return ''
+        // Re-assign and continue with the filtered batch
+        return invalidateFiltered(filtered, customId)
+      } else {
+        const t = 'target' in effectiveSignal ? effectiveSignal.target : undefined
+        if (t !== requestedTarget) {
+          return ''
+        }
+      }
+    }
+
+    return invalidateFiltered(effectiveSignal, customId)
+  }
+
+  function invalidateFiltered(
+    effectiveSignal: InvalidateSignal | InvalidateSignal[],
+    customId?: string
+  ): string {
     if (signalSchema) {
       const signals = Array.isArray(effectiveSignal) ? effectiveSignal : [effectiveSignal]
       for (const s of signals) {
@@ -264,6 +324,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     },
     connectionId,
     target,
+    requestedTarget,
     stream,
     invalidate,
     close: closeInternal,

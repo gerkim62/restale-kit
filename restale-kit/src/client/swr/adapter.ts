@@ -8,6 +8,8 @@ import {
 } from '../../types/protocol.js'
 import { isObject } from '../../pubsub/core/pubsub-utils.js'
 import { SIGNAL_TARGETS } from '../../utils/constants.js'
+import type { AdaptedInvalidateCallback } from '../../client/core/client-contracts.js'
+import { makeAdaptedCallback } from '../../client/core/client-contracts.js'
 
 export interface SWRAdapterOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /**
@@ -83,19 +85,30 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 /**
  * React hook that returns a stable `onInvalidate` callback for SWR.
+ *
+ * The returned callback is branded as `AdaptedInvalidateCallback<'swr'>`.
+ * Pass it directly to `useReStale` as `onInvalidate` — `target` will be inferred
+ * automatically and a mismatch with an explicit `target` prop is a compile error.
+ *
+ * @example
+ * const onInvalidate = useSwrAdapter(mutate)
+ * useReStale('/api/sse', { onInvalidate }) // target inferred as 'swr'
  */
 export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void {
+): AdaptedInvalidateCallback<'swr', TSignal> {
   const optionsRef = useRef(options)
   optionsRef.current = options
 
-  return useCallback(
-    (signal: TSignal | TSignal[]) => {
-      swrAdapter<TSignal>(mutate, optionsRef.current)(signal)
-    },
-    [mutate]
+  return makeAdaptedCallback(
+    SIGNAL_TARGETS.SWR,
+    useCallback(
+      (signal: TSignal | TSignal[]) => {
+        swrAdapter<TSignal>(mutate, optionsRef.current)(signal)
+      },
+      [mutate]
+    )
   )
 }
 

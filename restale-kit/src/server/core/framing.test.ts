@@ -71,6 +71,57 @@ describe('formatRevokeFrame', () => {
     expect(str).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
   })
 
+  it('formats revoke frame with unsupported-target reason and structured details', () => {
+    const bytes = formatRevokeFrame('unsupported-target', {
+      requested: 'rtk-query',
+      supported: ['tanstack-query', 'swr'],
+    })
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe(
+      'event: revoke\ndata: {"reason":"unsupported-target","requested":"rtk-query","supported":["tanstack-query","swr"]}\n\n'
+    )
+  })
+
+  it('formats revoke frame with structured details: client can parse the data back', () => {
+    const bytes = formatRevokeFrame('unsupported-target', {
+      requested: 'rtk-query',
+      supported: ['swr'],
+    })
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const parsed: unknown = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(parsed).toEqual({
+      reason: 'unsupported-target',
+      requested: 'rtk-query',
+      supported: ['swr'],
+    })
+  })
+
+  it('formats revoke frame with empty supported array', () => {
+    const bytes = formatRevokeFrame('unsupported-target', {
+      requested: 'rtk-query',
+      supported: [],
+    })
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe(
+      'event: revoke\ndata: {"reason":"unsupported-target","requested":"rtk-query","supported":[]}\n\n'
+    )
+  })
+
+  it('omits requested/supported fields when details not provided', () => {
+    const bytes = formatRevokeFrame('session-expired')
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const parsed: unknown = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(parsed).toEqual({ reason: 'session-expired' })
+    expect(parsed).not.toHaveProperty('requested')
+    expect(parsed).not.toHaveProperty('supported')
+  })
+
   it('sanitizes control characters in reason via JSON.stringify', () => {
     const bytes = formatRevokeFrame('bad\r\nreason\n')
     const str = decoder.decode(bytes)

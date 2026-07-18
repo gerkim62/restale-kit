@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractConnectionId, extractLastEventId } from './transport-utils.js'
+import { extractConnectionId, extractLastEventId, extractRequestedTarget } from './transport-utils.js'
 
 describe('transport-utils', () => {
   describe('extractConnectionId', () => {
@@ -36,6 +36,36 @@ describe('transport-utils', () => {
       expect(extractLastEventId(() => undefined)).toBeUndefined()
       expect(extractLastEventId(() => '')).toBeUndefined()
       expect(extractLastEventId(() => [])).toBeUndefined()
+    })
+  })
+
+  describe('extractRequestedTarget', () => {
+    it('returns valid SignalTarget when __restale_target__ is a known target value', () => {
+      const cases = ['tanstack-query', 'swr', 'rtk-query', 'generic'] as const
+      for (const target of cases) {
+        const params = new URLSearchParams(`__restale_target__=${target}`)
+        expect(extractRequestedTarget(params)).toBe(target)
+      }
+    })
+
+    it('returns undefined when __restale_target__ param is absent', () => {
+      const params = new URLSearchParams('__restale_cid__=abc')
+      expect(extractRequestedTarget(params)).toBeUndefined()
+    })
+
+    it('returns undefined when __restale_target__ value is not a known target', () => {
+      const params = new URLSearchParams('__restale_target__=unknown-framework')
+      expect(extractRequestedTarget(params)).toBeUndefined()
+    })
+
+    it('returns undefined when __restale_target__ is an empty string', () => {
+      const params = new URLSearchParams('__restale_target__=')
+      expect(extractRequestedTarget(params)).toBeUndefined()
+    })
+
+    it('is case-sensitive — uppercase known target returns undefined', () => {
+      const params = new URLSearchParams('__restale_target__=SWR')
+      expect(extractRequestedTarget(params)).toBeUndefined()
     })
   })
 })

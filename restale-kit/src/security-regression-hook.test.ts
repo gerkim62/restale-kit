@@ -15,6 +15,12 @@ import { renderHook, act } from '@testing-library/react'
 import { useReStale } from '@/client/react/useReStale.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
+import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+
+/** Cast a plain function to AdaptedInvalidateCallback for test use. */
+function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback<'swr'> {
+  return fn as unknown as AdaptedInvalidateCallback<'swr'>
+}
 
 describe('Issue 9 — useReStale does not orphan clients on repeated renders', () => {
   beforeEach(() => {
@@ -29,7 +35,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
   })
 
   it('creates exactly one client per URL — not one per render', () => {
-    const onInvalidate = vi.fn()
+    const onInvalidate = asAdapter(vi.fn())
     const connectionIds = new Set<string>()
 
     const { result, rerender } = renderHook(() => {
@@ -49,7 +55,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
   })
 
   it('creates a new client (new connectionId) only when the URL changes', () => {
-    const onInvalidate = vi.fn()
+    const onInvalidate = asAdapter(vi.fn())
     let url = '/api/sse-v1'
 
     const { result, rerender } = renderHook(() =>
@@ -69,7 +75,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
   })
 
   it('does not create a new EventSource on every re-render (same URL)', () => {
-    const onInvalidate = vi.fn()
+    const onInvalidate = asAdapter(vi.fn())
 
     const { rerender } = renderHook(() =>
       useReStale('/api/sse', { onInvalidate })
@@ -87,7 +93,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
 
   it('closes the old client after commit when the URL changes (deferred to effect)', () => {
     const closeSpy = vi.spyOn(SSEInvalidatorClient.prototype, 'close')
-    const onInvalidate = vi.fn()
+    const onInvalidate = asAdapter(vi.fn())
     let url = '/api/sse-a'
 
     const { rerender, unmount } = renderHook(() =>
