@@ -132,7 +132,12 @@ export function useReStale<
       signalSchema: opts.signalSchema,
       withCredentials: opts.withCredentials,
       debug: opts.debug,
-      target: opts.target,
+      // Auto-infer target from the adapter's brand when not set explicitly.
+      // opts.onInvalidate.__restaleTarget is stamped at runtime by makeAdaptedCallback
+      // (e.g. useSwrAdapter → 'swr', useTanstackQueryAdapter → 'tanstack-query').
+      // This ensures __restale_target__ is appended to the SSE URL and server-side
+      // filtering activates automatically without requiring an explicit `target` prop.
+      target: opts.target ?? opts.onInvalidate.__restaleTarget,
     })
     urlRef.current = url
   }

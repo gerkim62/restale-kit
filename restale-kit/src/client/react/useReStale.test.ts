@@ -6,6 +6,7 @@ import { useReStale } from './useReStale.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
 import type { SignalTarget } from '@/types/protocol.js'
 
 /**
@@ -97,5 +98,46 @@ describe('useReStale', () => {
     })
 
     expect(result.current.connection).toEqual({ status: 'closed', reason: 'manual' })
+  })
+
+  // --- T-01: explicit target forwarded to EventSource URL ---
+
+  it('appends __restale_target__ to EventSource URL when target is explicitly set', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    renderHook(() =>
+      useReStale('/sse', { onInvalidate, target: 'swr' })
+    )
+
+    expect(MockEventSource.instances).toHaveLength(1)
+    const url = MockEventSource.instances[0]?.url ?? ''
+    expect(url).toContain('__restale_target__=swr')
+  })
+
+  // --- T-02: brand auto-infer — adapter brand drives __restale_target__ without explicit target ---
+
+  it('auto-infers __restale_target__ from the adapter brand when target is not explicitly set', () => {
+    // Use makeAdaptedCallback to create a properly-branded callback (mirrors what
+    // useSwrAdapter / useTanstackQueryAdapter do at runtime).
+    const brandedSwr = makeAdaptedCallback('swr', vi.fn())
+    renderHook(() =>
+      useReStale('/sse', { onInvalidate: brandedSwr })
+    )
+
+    expect(MockEventSource.instances).toHaveLength(1)
+    const url = MockEventSource.instances[0]?.url ?? ''
+    // Brand 'swr' must be read from onInvalidate.__restaleTarget and appended to URL
+    expect(url).toContain('__restale_target__=swr')
+  })
+
+  it('explicit target overrides the adapter brand', () => {
+    // Brand says 'swr' but caller explicitly passes 'tanstack-query' — explicit wins
+    const brandedSwr = makeAdaptedCallback('swr', vi.fn())
+    renderHook(() =>
+      useReStale('/sse', { onInvalidate: brandedSwr as any, target: 'tanstack-query' as any })
+    )
+
+    const url = MockEventSource.instances[0]?.url ?? ''
+    expect(url).toContain('__restale_target__=tanstack-query')
+    expect(url).not.toContain('__restale_target__=swr')
   })
 })

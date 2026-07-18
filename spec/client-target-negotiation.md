@@ -1,6 +1,6 @@
 # Client Target Negotiation
 
-**Status:** Draft (revised)
+**Status:** Implemented  
 **Date:** 2026-07-18
 
 ---
