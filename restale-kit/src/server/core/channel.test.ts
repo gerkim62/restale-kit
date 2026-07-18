@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel } from './channel.js'
+import { createSSEChannel, processTargetSignals } from './channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import { createEventStore } from './event-store.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
@@ -104,6 +104,7 @@ describe('channel', () => {
     const { value: v1 } = await reader.read()
     const { value: v2 } = await reader.read()
     reader.releaseLock()
+    
 
     expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
@@ -382,4 +383,336 @@ describe('channel', () => {
   })
 })
 
+describe('processTargetSignals', () => {
+  // ── return-value shape ──────────────────────────────────────────────────────
 
+  it('returns a single object (not an array) when given a single signal and a single target', () => {
+    const result = processTargetSignals({ key: ['todos'] }, 'swr')
+    // Must NOT be an array — mirrors the invalidate() overload contract
+    expect(Array.isArray(result)).toBe(false)
+    expect(result).toMatchObject({ target: 'swr', key: ['todos'] })
+  })
+
+  it('returns an array when given a single signal and an array of targets', () => {
+    const result = processTargetSignals({ key: ['todos'] }, ['swr', 'tanstack-query'])
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(2)
+  })
+
+  it('returns an array when given a batch of signals with a single target', () => {
+    const result = processTargetSignals(
+      [{ key: ['a'] }, { key: ['b'] }],
+      'tanstack-query'
+    )
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(2)
+  })
+
+  it('returns an array when given a batch of signals and a multi-target array', () => {
+    const result = processTargetSignals(
+      [{ key: ['a'] }, { key: ['b'] }],
+      ['swr', 'tanstack-query']
+    )
+    expect(Array.isArray(result)).toBe(true)
+    // 2 signals × 2 targets = 4 entries
+    expect(result).toHaveLength(4)
+  })
+
+  // ── already-tagged passthrough ─────────────────────────────────────────────
+
+  it('passes through a signal that already has a target property without re-wrapping', () => {
+    const tagged = { target: 'swr' as const, key: ['todos'] }
+    const result = processTargetSignals(tagged, 'tanstack-query')
+    // Should be returned as-is (no re-wrapping in an array since only one result)
+    expect(result).toEqual(tagged)
+    expect((result as any).target).toBe('swr')
+  })
+
+  it('passes through already-tagged signals in a batch', () => {
+    const t1 = { target: 'swr' as const, key: ['a'] }
+    const t2 = { key: ['b'] }
+    const result = processTargetSignals([t1, t2], 'tanstack-query') as any[]
+    expect(result[0]).toEqual(t1)
+    expect(result[1]).toMatchObject({ target: 'tanstack-query', queryKey: ['b'] })
+  })
+
+  // ── SWR target ─────────────────────────────────────────────────────────────
+
+  it('builds SWR signal with array key from generic key field', () => {
+    const result = processTargetSignals({ key: ['users', 1] }, 'swr') as any
+    expect(result.target).toBe('swr')
+    expect(result.key).toEqual(['users', 1])
+  })
+
+  it('builds SWR signal: prefers queryKey over key when both present', () => {
+    const result = processTargetSignals(
+      { queryKey: ['prefer-this'], key: ['not-this'] } as any,
+      'swr'
+    ) as any
+    expect(result.key).toEqual(['prefer-this'])
+  })
+
+  it('builds SWR signal: preserves string key as-is', () => {
+    const result = processTargetSignals({ key: '/api/users' } as any, 'swr') as any
+    expect(result.key).toBe('/api/users')
+  })
+
+  it('builds SWR signal: propagates optional action field', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], action: 'revalidate' } as any,
+      'swr'
+    ) as any
+    expect(result.action).toBe('revalidate')
+  })
+
+  it('builds SWR signal: propagates purge action', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], action: 'purge' } as any,
+      'swr'
+    ) as any
+    expect(result.action).toBe('purge')
+  })
+
+  it('builds SWR signal: propagates remove action', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], action: 'remove' } as any,
+      'swr'
+    ) as any
+    expect(result.action).toBe('remove')
+  })
+
+  it('builds SWR signal: propagates revalidate: false', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], revalidate: false } as any,
+      'swr'
+    ) as any
+    expect(result.revalidate).toBe(false)
+  })
+
+  it('builds SWR signal: propagates match field (exact)', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], match: 'exact' } as any,
+      'swr'
+    ) as any
+    expect(result.match).toBe('exact')
+  })
+
+  it('builds SWR signal: propagates match field (prefix)', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], match: 'prefix' } as any,
+      'swr'
+    ) as any
+    expect(result.match).toBe('prefix')
+  })
+
+  it('builds SWR signal: does NOT propagate unknown action values', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], action: 'unknown-action' } as any,
+      'swr'
+    ) as any
+    expect(result.action).toBeUndefined()
+  })
+
+  it('builds SWR signal: does NOT propagate revalidate when it is not a boolean', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], revalidate: 'yes' } as any,
+      'swr'
+    ) as any
+    expect(result.revalidate).toBeUndefined()
+  })
+
+  // ── TanStack Query target ──────────────────────────────────────────────────
+
+  it('builds TanStackQuerySignal with queryKey from generic key field', () => {
+    const result = processTargetSignals({ key: ['posts', 2] }, 'tanstack-query') as any
+    expect(result.target).toBe('tanstack-query')
+    expect(result.queryKey).toEqual(['posts', 2])
+  })
+
+  it('builds TanStackQuerySignal: prefers queryKey source over key when both present', () => {
+    const result = processTargetSignals(
+      { queryKey: ['prefer'], key: ['other'] } as any,
+      'tanstack-query'
+    ) as any
+    expect(result.queryKey).toEqual(['prefer'])
+  })
+
+  it('builds TanStackQuerySignal: propagates exact boolean', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], exact: true } as any,
+      'tanstack-query'
+    ) as any
+    expect(result.exact).toBe(true)
+  })
+
+  it('builds TanStackQuerySignal: propagates type filter (active/inactive/all)', () => {
+    for (const t of ['active', 'inactive', 'all'] as const) {
+      const result = processTargetSignals({ key: ['todos'], type: t } as any, 'tanstack-query') as any
+      expect(result.type).toBe(t)
+    }
+  })
+
+  it('builds TanStackQuerySignal: propagates all valid action values', () => {
+    for (const action of ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const) {
+      const result = processTargetSignals({ key: ['todos'], action } as any, 'tanstack-query') as any
+      expect(result.action).toBe(action)
+    }
+  })
+
+  it('builds TanStackQuerySignal: propagates stale boolean', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], stale: true } as any,
+      'tanstack-query'
+    ) as any
+    expect(result.stale).toBe(true)
+  })
+
+  it('builds TanStackQuerySignal: does NOT propagate non-boolean exact', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], exact: 'yes' } as any,
+      'tanstack-query'
+    ) as any
+    expect(result.exact).toBeUndefined()
+  })
+
+  it('builds TanStackQuerySignal: does NOT propagate unknown type value', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], type: 'unknown' } as any,
+      'tanstack-query'
+    ) as any
+    expect(result.type).toBeUndefined()
+  })
+
+  // ── RTK Query target ──────────────────────────────────────────────────────
+
+  it('builds RTKQuerySignal with empty tags when no tags field present', () => {
+    const result = processTargetSignals({ key: ['todos'] }, 'rtk-query') as any
+    expect(result.target).toBe('rtk-query')
+    expect(result.tags).toEqual([])
+  })
+
+  it('builds RTKQuerySignal with string tags', () => {
+    const result = processTargetSignals(
+      { key: [], tags: ['Todo', 'Post'] } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual(['Todo', 'Post'])
+  })
+
+  it('builds RTKQuerySignal with object tags that have a numeric id', () => {
+    const result = processTargetSignals(
+      { key: [], tags: [{ type: 'Todo', id: 42 }] } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual([{ type: 'Todo', id: 42 }])
+  })
+
+  it('builds RTKQuerySignal with object tags that have a string id', () => {
+    const result = processTargetSignals(
+      { key: [], tags: [{ type: 'User', id: 'abc' }] } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual([{ type: 'User', id: 'abc' }])
+  })
+
+  it('builds RTKQuerySignal: omits id from tag object when id is absent', () => {
+    const result = processTargetSignals(
+      { key: [], tags: [{ type: 'Post' }] } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual([{ type: 'Post' }])
+    expect('id' in result.tags[0]).toBe(false)
+  })
+
+  it('builds RTKQuerySignal: skips non-string/non-record items in tags array', () => {
+    const result = processTargetSignals(
+      { key: [], tags: [42, null, { type: 'Valid' }] } as any,
+      'rtk-query'
+    ) as any
+    // 42 and null are skipped; only the valid object tag is included
+    expect(result.tags).toEqual([{ type: 'Valid' }])
+  })
+
+  it('builds RTKQuerySignal: skips tag objects whose type is not a string', () => {
+    const result = processTargetSignals(
+      { key: [], tags: [{ type: 42 }, { type: 'Good' }] } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual([{ type: 'Good' }])
+  })
+
+  it('builds RTKQuerySignal: treats non-array tags as empty', () => {
+    const result = processTargetSignals(
+      { key: [], tags: 'not-an-array' } as any,
+      'rtk-query'
+    ) as any
+    expect(result.tags).toEqual([])
+  })
+
+  // ── Generic target ────────────────────────────────────────────────────────
+
+  it('builds GenericInvalidateSignal with key from key field', () => {
+    const result = processTargetSignals({ key: ['generic-key'] }, 'generic') as any
+    expect(result.target).toBe('generic')
+    expect(result.key).toEqual(['generic-key'])
+  })
+
+  it('builds GenericInvalidateSignal: propagates exact boolean', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], exact: true } as any,
+      'generic'
+    ) as any
+    expect(result.exact).toBe(true)
+  })
+
+  it('builds GenericInvalidateSignal: does NOT propagate non-boolean exact', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], exact: 'yes' } as any,
+      'generic'
+    ) as any
+    expect(result.exact).toBeUndefined()
+  })
+
+  it('builds GenericInvalidateSignal: propagates valid action values', () => {
+    for (const action of ['invalidate', 'refetch', 'remove'] as const) {
+      const result = processTargetSignals({ key: ['todos'], action } as any, 'generic') as any
+      expect(result.action).toBe(action)
+    }
+  })
+
+  it('builds GenericInvalidateSignal: does NOT propagate unknown action', () => {
+    const result = processTargetSignals(
+      { key: ['todos'], action: 'unknown' } as any,
+      'generic'
+    ) as any
+    expect(result.action).toBeUndefined()
+  })
+
+  // ── Non-plain-object signal ───────────────────────────────────────────────
+
+  it('treats non-record signal as empty raw object (key defaults to [])', () => {
+    // A signal that is somehow not an object — raw should be treated as {}
+    const result = processTargetSignals('not-an-object' as any, 'swr') as any
+    // key defaults to [] because raw has no key/queryKey
+    expect(result.key).toEqual([])
+  })
+
+  // ── Multi-target wire format on channel.invalidate ─────────────────────────
+
+  it('includes RTK target in multi-target fan-out', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'rtk-query'] })
+    channel.invalidate({ key: [], tags: [{ type: 'Todo' }] } as any)
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toContain('"target":"swr"')
+    expect(text).toContain('"target":"rtk-query"')
+    expect(text).toContain('"tags":[{"type":"Todo"}]')
+  })
+
+  it('includes generic target in multi-target fan-out', async () => {
+    const channel = createSSEChannel({ target: ['generic', 'tanstack-query'] })
+    channel.invalidate({ key: ['items'] } as any)
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toContain('"target":"generic"')
+    expect(text).toContain('"target":"tanstack-query"')
+  })
+})

@@ -322,6 +322,8 @@ export class SSEChannelGroup<
     eventId?: string
   ): void {
     try {
+      // Apply the group-level target transform only when the channel has no own target.
+      // When the channel has its own target, channel.invalidate() applies its own transform.
       const effectiveSignal = (this.target !== undefined && channel.target === undefined)
         ? processTargetSignals(signal, this.target)
         : signal
@@ -582,13 +584,11 @@ export class SSEChannelGroup<
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
-    const effectiveSignal = this.target !== undefined
-      ? processTargetSignals(signal, this.target)
-      : signal
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
-      const record = this.eventStore.add(effectiveSignal)
+      // Store the raw signal — deliverToChannel applies per-channel target transforms.
+      const record = this.eventStore.add(signal)
       eventId = record.id
     }
 
@@ -601,7 +601,7 @@ export class SSEChannelGroup<
       if (!shouldInclude) continue
 
       try {
-        this.deliverToChannel(channel, effectiveSignal, 'broadcast', undefined, eventId)
+        this.deliverToChannel(channel, signal, 'broadcast', undefined, eventId)
       } catch (error) {
         if (error instanceof ChannelClosedError) {
           this.deregister(channel)
@@ -670,12 +670,10 @@ export class SSEChannelGroup<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
-    const effectiveSignal = this.target !== undefined
-      ? processTargetSignals(signal, this.target)
-      : signal
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
-      const record = this.eventStore.add(effectiveSignal)
+      // Store the raw signal — deliverToChannel applies per-channel target transforms.
+      const record = this.eventStore.add(signal)
       eventId = record.id
     }
 
@@ -683,13 +681,13 @@ export class SSEChannelGroup<
     const topicManager = this.topics.get(topic)
     if (topicManager) {
       for (const channel of topicManager.channels) {
-        this.deliverToChannel(channel, effectiveSignal, 'publish', topic, eventId)
+        this.deliverToChannel(channel, signal, 'publish', topic, eventId)
       }
     }
 
-    // 2. Publish to the broker
+    // 2. Publish to the broker (publish the raw signal — remote instances apply their own target transform)
     if (this.pubsub) {
-      await this.pubsub.publish(topic, { kind: 'signal', data: effectiveSignal, id: eventId })
+      await this.pubsub.publish(topic, { kind: 'signal', data: signal, id: eventId })
     }
   }
 }

@@ -1085,4 +1085,70 @@ describe('channel-group', () => {
       'event: invalidate\ndata: [{"target":"swr","key":["items"]},{"target":"tanstack-query","queryKey":["items"]}]\n\n'
     )
   })
+
+  it('applies single target from group option and wraps signal correctly on broadcast', async () => {
+    const group = new SSEChannelGroup({ target: 'swr' })
+    expect(group.target).toBe('swr')
+
+    const ch = createSSEChannel()
+    group.register(ch)
+
+    const reader = ch.stream.getReader()
+    group.broadcastToAll({ key: ['todos'] })
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const decoder = new TextDecoder()
+    expect(decoder.decode(value)).toBe(
+      'event: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n'
+    )
+  })
+
+  it('does NOT apply group target transform when channel has its own target set', async () => {
+    // When a channel already has `target` set, deliverToChannel must NOT
+    // double-transform via the group target — the channel handles it itself.
+    const group = new SSEChannelGroup({ target: 'swr' })
+    // Channel has its own target: tanstack-query
+    const ch = createSSEChannel({ target: 'tanstack-query' })
+    group.register(ch)
+
+    const spy = vi.spyOn(ch, 'invalidate')
+    group.broadcastToAll({ key: ['items'] })
+
+    // The raw signal must be passed through unchanged — the channel's own invalidate()
+    // will apply processTargetSignals for tanstack-query internally.
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ key: ['items'] }), undefined)
+    // Crucially it must NOT have been called with an already-swr-tagged payload
+    const calledWith = spy.mock.calls[0][0]
+    expect((calledWith as any).target).not.toBe('swr')
+  })
+
+  it('applies group target transform on publish() to local topic subscribers', async () => {
+    const group = new SSEChannelGroup({ target: 'tanstack-query' })
+    const ch = createSSEChannel()
+    group.register(ch, undefined, { topics: ['items'] })
+
+    const reader = ch.stream.getReader()
+    await group.publish('items', { key: ['posts'] })
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const decoder = new TextDecoder()
+    expect(decoder.decode(value)).toBe(
+      'event: invalidate\ndata: {"target":"tanstack-query","queryKey":["posts"]}\n\n'
+    )
+  })
+
+  it('does not apply any target transform when group has no target configured', async () => {
+    const group = new SSEChannelGroup()
+    const ch = createSSEChannel()
+    group.register(ch)
+
+    const spy = vi.spyOn(ch, 'invalidate')
+    group.broadcastToAll({ key: ['raw'] })
+
+    expect(spy).toHaveBeenCalledWith({ key: ['raw'] }, undefined)
+  })
 })
