@@ -145,12 +145,12 @@ interface SSEChannel<TSignal> {
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
    *
-   * Returns the SSE event ID string assigned to this frame. When an
-   * `eventStore` or `eventBufferCapacity` is configured, this ID is used
-   * for Last-Event-ID replay: the client echoes it back in the
-   * `Last-Event-ID` header on reconnect, and `restale-kit` replays any
-   * events that follow it. If neither eventBufferCapacity nor eventStore is
-   * configured, the return value is an empty string and can be ignored.
+   * Returns the SSE event ID string assigned to this frame. By default without an
+   * `eventStore` or `eventBufferCapacity` configured, IDs are absent or empty (`''`).
+   * Caller-supplied `customId` or custom `idGenerator` values may still be emitted
+   * without an event store, but such IDs cannot be replayed without history.
+   * When an `eventStore` or `eventBufferCapacity` is configured, event IDs are recorded
+   * for `Last-Event-ID` replay upon reconnect.
    *
    * Throws `ChannelClosedError` when `state` is `'closed'`.
    * Throws `SchemaValidationError` when `signalSchema` validation fails.

@@ -49,6 +49,11 @@ describe('framing', () => {
 
     expect(str).toBe('retry: 5000\n\n')
   })
+
+  it('throws error for non-finite retryMs in formatRetryFrame', () => {
+    expect(() => formatRetryFrame(NaN)).toThrow('[formatRetryFrame] retryMs must be a finite number.')
+    expect(() => formatRetryFrame(Infinity)).toThrow('[formatRetryFrame] retryMs must be a finite number.')
+  })
 })
 
 describe('formatRevokeFrame', () => {

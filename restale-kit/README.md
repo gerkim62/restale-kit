@@ -447,7 +447,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
-| `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. |
+| `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport adapters (`attachSSE`, `toSSEResponse`). You never need to set or manage this parameter manually. |
 
 ### `SSEChannelGroup(options?)`

@@ -67,7 +67,7 @@ export class SSEInvalidatorClient<
 
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${this.currentConnectionId}) for URL: ${this.eventSourceUrl}`
+        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${String(this.currentConnectionId)}) for URL: ${this.eventSourceUrl}`
       )
     }
   }
@@ -105,7 +105,7 @@ export class SSEInvalidatorClient<
   connect(): Promise<void> {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${this.currentConnectionId}, currentStatus: ${this.currentStatus.status})`
+        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${String(this.currentConnectionId)}, currentStatus: ${this.currentStatus.status})`
       )
     }
 
@@ -140,7 +140,7 @@ export class SSEInvalidatorClient<
   close(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${this.currentConnectionId})`
+        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${String(this.currentConnectionId)})`
       )
     }
     this.teardown()
@@ -162,7 +162,7 @@ export class SSEInvalidatorClient<
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId})`
+        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${String(this.currentConnectionId)})`
       )
     }
     this.teardown()
@@ -251,7 +251,7 @@ export class SSEInvalidatorClient<
         ? 'First connection attempt for this client instance'
         : `Automatic reconnection attempt ${String(this.attempt)} after connection drop/error`
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}. URL: ${this.eventSourceUrl}`
+        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${String(this.currentConnectionId)}). Reason: ${reason}. URL: ${this.eventSourceUrl}`
       )
     }
 
@@ -264,7 +264,7 @@ export class SSEInvalidatorClient<
       this.setStatus({ status: 'open' })
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId}). Stream is live.`
+          `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${String(this.currentConnectionId)}). Stream is live.`
         )
       }
       if (existingPromise) {
@@ -278,10 +278,14 @@ export class SSEInvalidatorClient<
     es.onerror = (event: Event) => {
       this.dispatchEvent(new CustomEvent('error', { detail: event }))
 
-      if (this.opened && es.readyState === EventSource.CONNECTING) {
+      if (this.eventSource !== es) {
+        return
+      }
+
+      if (this.opened && this.autoReconnect && es.readyState === EventSource.CONNECTING) {
         if (this.debug) {
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${this.currentConnectionId}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
+            `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${String(this.currentConnectionId)}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
           )
         }
         // Connection was established and dropped mid-stream (temporary network drop).
@@ -299,7 +303,7 @@ export class SSEInvalidatorClient<
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         if (this.debug) {
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
+            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${String(this.currentConnectionId)}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
           )
         }
         this.attempt++
@@ -316,7 +320,7 @@ export class SSEInvalidatorClient<
             ? 'autoReconnect is disabled'
             : `Exhausted maxRetries (${String(this.maxRetries)})`
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
+            `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${String(this.currentConnectionId)}). Reason: ${reason}.`
           )
         }
         this.setStatus({ status: 'error', error: event })
@@ -408,7 +412,7 @@ export class SSEInvalidatorClient<
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${reason}"). Auto-reconnect suppressed.`
+          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${String(this.currentConnectionId)}). Reason: Server revoked connection ("${reason}"). Auto-reconnect suppressed.`
         )
       }
       this.revoked = true

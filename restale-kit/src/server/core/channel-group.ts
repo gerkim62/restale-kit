@@ -314,13 +314,8 @@ export class SSEChannelGroup<
     topic?: string,
     eventId?: string
   ): void {
-    let effectiveId = eventId
-    if (effectiveId === undefined && this.eventStore !== undefined) {
-      const record = this.eventStore.add(signal)
-      effectiveId = record.id
-    }
     try {
-      channel.invalidate(signal, effectiveId)
+      channel.invalidate(signal, eventId)
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)
@@ -406,8 +401,13 @@ export class SSEChannelGroup<
             if (msg.kind !== 'signal') return
             const currentManager = this.topics.get(topic)
             if (!currentManager) return
+            let effectiveId = msg.id
+            if (this.eventStore !== undefined) {
+              const record = this.eventStore.add(msg.data, msg.id)
+              effectiveId = record.id
+            }
             for (const ch of currentManager.channels) {
-              this.deliverToChannel(ch, msg.data, 'pubsub', topic, msg.id)
+              this.deliverToChannel(ch, msg.data, 'pubsub', topic, effectiveId)
             }
           },
           (t) => {
@@ -515,6 +515,12 @@ export class SSEChannelGroup<
       throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
     }
 
+    if (scope !== undefined) {
+      if (!scope || typeof scope !== 'object' || Array.isArray(scope) || !isJSONValue(scope)) {
+        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
+      }
+    }
+
     const localClosed = this.closeLocalConnection(connectionId, scope)
 
     if (this.pubsub) {
@@ -524,7 +530,7 @@ export class SSEChannelGroup<
           type: 'revokeByConnectionId',
           revokeByConnectionId: {
             connectionId,
-            ...(scope ? { scope } : {}),
+            ...(scope !== undefined ? { scope } : {}),
           },
         },
       })

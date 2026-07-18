@@ -292,8 +292,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): SSEChannel<TSignal>
 ```
 
-`invalidate()` returns the event ID assigned to the frame (the `customId` if provided, or the
-auto-generated ID from the `eventStore`, or `''` when no ID is assigned).
+`invalidate()` returns the event ID assigned to the frame. By default without an event store or buffer, IDs are absent or empty (`''`). Caller-supplied `customId` or custom `idGenerator` values may still be emitted without an event store, but such IDs cannot be replayed without history. When an `eventStore` or `eventBufferCapacity` is configured, IDs are recorded and used for `Last-Event-ID` replay upon reconnect.
 
 When `signalSchema` is provided, `invalidate()` validates each signal (unwrapping arrays) via
 `signalSchema['~standard'].validate(signal)` before framing. If the result contains `issues`,

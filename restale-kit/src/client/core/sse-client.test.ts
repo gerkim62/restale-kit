@@ -130,6 +130,45 @@ describe('SSEInvalidatorClient', () => {
     expect(MockEventSource.instances).toHaveLength(2)
   })
 
+  it('tears down and sets error status when autoReconnect is false even if readyState is CONNECTING', async () => {
+    const client = new SSEInvalidatorClient('/sse', { autoReconnect: false })
+    const p = client.connect()
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    expect(client.status.status).toBe('open')
+
+    if (es) {
+      es.readyState = MockEventSource.CONNECTING
+      es.emitError()
+    }
+
+    expect(client.status.status).toBe('error')
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
+  it('does not schedule retry if error listener calls close()', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 100 },
+    })
+
+    client.addEventListener('error', () => {
+      client.close()
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+
+    MockEventSource.instances[0]?.emitError()
+
+    await vi.advanceTimersByTimeAsync(500)
+    // No new instances created because close() replaced/tore down connection in listener
+    expect(MockEventSource.instances).toHaveLength(1)
+    expect(client.status.status).toBe('closed')
+  })
+
   it('validates incoming SSE invalidate event and updates lastEventId', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const invalidateSpy = vi.fn()

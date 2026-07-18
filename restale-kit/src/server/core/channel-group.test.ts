@@ -958,6 +958,23 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
+  it('revokeByConnectionId rejects invalid non-plain-object scope values', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-scope-val' })
+    group.register(ch, { userId: 100, role: 'admin' })
+
+    await expect(group.revokeByConnectionId(ch.connectionId, null as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    await expect(group.revokeByConnectionId(ch.connectionId, [] as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    await expect(group.revokeByConnectionId(ch.connectionId, 123 as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    expect(ch.state).toBe('open')
+  })
+
   it('handles remote revokeByConnectionId messages via pubsub', async () => {
     const pubsub = new MemoryPubSubAdapter()
     const group = new SSEChannelGroup<any, TestMeta>({ pubsub })

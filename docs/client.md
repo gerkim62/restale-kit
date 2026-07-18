@@ -367,12 +367,12 @@ function App() {
 
 When the SSE connection drops, `EventSource.onerror` fires internally.
 
-- **Mid-stream network drops (`readyState === CONNECTING`)**: Native browser `EventSource` stays active and automatically handles auto-reconnection on the same instance, preserving its internal event ID state and sending the official `Last-Event-ID` HTTP header upon reconnect. Status transitions to `{ status: 'connecting' }`.
-- **Initial connection failures or fatal errors (`readyState === CLOSED`)**: When the native `EventSource` cannot reconnect automatically (e.g. initial connection failure, HTTP 500/502/503), the client tears down the instance and falls back to JavaScript exponential backoff retries.
+- **Mid-stream network drops (`readyState === CONNECTING`)**: Native browser `EventSource` stays active and automatically handles auto-reconnection on the same instance, preserving its internal event ID state and sending the official `Last-Event-ID` HTTP header upon reconnect. Status transitions to `{ status: 'connecting' }`. Mid-stream native reconnects do not consume or exhaust the JavaScript `maxRetries` retry budget.
+- **Initial connection failures or fatal errors (`readyState === CLOSED`)**: When the native `EventSource` cannot reconnect automatically (e.g. initial connection failure, HTTP 500/502/503), the client tears down the instance and falls back to JavaScript exponential backoff retries (which consume from `maxRetries`).
 
-**With `autoReconnect: true` (default) and retries remaining:**
+**With `autoReconnect: true` (default):**
 
-The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The native browser `EventSource` (or JS backoff for initial/fatal failures) attempts to reconnect. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
+The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The native browser `EventSource` (or JS backoff for initial/fatal failures) attempts to reconnect. Note that `maxRetries` applies only to initial or fatal failures handled by JavaScript backoff; mid-stream native reconnects do not consume or exhaust retries. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
 
 ```text
 'open' → 'connecting'   ← disconnect detected

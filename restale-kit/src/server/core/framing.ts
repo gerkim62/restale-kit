@@ -78,6 +78,9 @@ export function formatRevokeFrame(reason: string): Uint8Array {
  * Instructs standard EventSource clients to set their native reconnection delay.
  */
 export function formatRetryFrame(retryMs: number): Uint8Array {
+  if (!Number.isFinite(retryMs)) {
+    throw new Error('[formatRetryFrame] retryMs must be a finite number.')
+  }
   const sanitizedMs = Math.max(0, Math.floor(retryMs))
   return encoder.encode(`retry: ${String(sanitizedMs)}\n\n`)
 }
