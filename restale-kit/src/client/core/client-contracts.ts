@@ -52,7 +52,7 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
    *
    * Accepts a `boolean` or an `AutoReconnectOptions` object for granular control over
    * native browser EventSource mid-stream reconnects vs. JavaScript backoff retries.
-   * Manual reconnection via `connect()` or `reconnect()` remains available regardless of setting.
+   * Manual reconnection via `connect()` remains available regardless of setting.
    */
   autoReconnect?: boolean | AutoReconnectOptions
   /** Reconnect backoff configuration. */
