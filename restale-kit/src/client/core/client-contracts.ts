@@ -51,6 +51,8 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
    * later render will not take effect until the `url` also changes (which recreates the client).
    */
   withCredentials?: boolean
+  /** Enable debug logging for connection lifecycle events. Default: false. */
+  debug?: boolean
 }
 
 /**
