@@ -120,15 +120,16 @@ import type { SSEChannel, SSEChannelOptions } from 'restale-kit/server'
 import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
 ```
 
-### `createSSEChannel(options?)`
+### `createSSEChannel(options)`
 
 ```ts
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 
 interface SSEChannelOptions<TSignal> {
-  keepaliveIntervalMs?: number                        // default 30_000
+  target: SignalTarget | SignalTarget[]               // required target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
+  keepaliveIntervalMs?: number                        // default 0 (disabled)
   retryIntervalMs?: number                            // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>
   lastEventId?: string
@@ -141,6 +142,7 @@ interface SSEChannelOptions<TSignal> {
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly connectionId: string                       // unique connection ID from client
+  readonly target: SignalTarget | SignalTarget[]       // configured target discriminator; required
   readonly stream: ReadableStream<Uint8Array>
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
@@ -256,7 +258,7 @@ import { attachSSE } from 'restale-kit/express'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // The returned channel's `connectionId` property is populated from the
@@ -271,7 +273,7 @@ import type { FastifyRequestLike, FastifyReplyLike } from 'restale-kit/fastify'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 
 interface FastifyRequestLike {
@@ -299,7 +301,7 @@ import { toSSEResponse } from 'restale-kit/hono'
 
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // `channel.connectionId` is populated from the `__restale_cid__` query parameter.
@@ -343,6 +345,7 @@ interface ClientOptions<TSignal> {
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>
+  target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
 }
 
 interface AutoReconnectOptions {

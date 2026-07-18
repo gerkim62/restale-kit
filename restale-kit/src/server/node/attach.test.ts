@@ -24,11 +24,14 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res)
+    const channel = attachSSE(req, res, { target: 'swr' })
 
     expect(channel.connectionId).toBe('req-999')
     expect(channel.state).toBe('open')
-    expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr',
+    })
   })
 
   it('triggers disconnect on request close event', () => {
@@ -39,7 +42,7 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res)
+    const channel = attachSSE(req, res, { target: 'swr' })
 
     req.emit('close')
     expect(channel.state).toBe('closed')
@@ -53,8 +56,40 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    expect(() => attachSSE(reqWithoutUrl, res)).toThrow(
+    expect(() => attachSSE(reqWithoutUrl, res, { target: 'swr' })).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
+  })
+
+  it('emits X-ReStale-Target HTTP header when target option is specified', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-single-target',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: 'swr' })
+
+    expect(channel.target).toBe('swr')
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr',
+    })
+  })
+
+  it('emits comma-separated X-ReStale-Target HTTP header when target array is specified', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-multi-target',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+
+    expect(channel.target).toEqual(['swr', 'tanstack-query'])
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr, tanstack-query',
+    })
   })
 })

@@ -59,7 +59,7 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'swr' })
   const userId = req.user.id
   const sessionId = req.session.id
 

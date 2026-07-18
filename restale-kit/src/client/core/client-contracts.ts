@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
 import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
 /**
@@ -75,6 +75,8 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
    * later render will not take effect until the `url` also changes (which recreates the client).
    */
   debug?: boolean
+  /** Optional target discriminator expected by the client. */
+  target?: SignalTarget
 }
 
 /**

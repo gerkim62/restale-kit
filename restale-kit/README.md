@@ -436,12 +436,13 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
+| `target` | `SignalTarget` | `undefined` | Optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client. |
 
 ### `createSSEChannel(options?)` / `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `keepaliveIntervalMs` | `number` | `30000` (30s) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops. |
+| `keepaliveIntervalMs` | `number` | `0` (disabled) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops (disabled by default). |
 | `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
 | `signalSchema` | `StandardSchemaV1` | `undefined` | Standard Schema to validate signals passed to `channel.invalidate()`. |
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
@@ -449,6 +450,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
 | `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport adapters (`attachSSE`, `toSSEResponse`). You never need to set or manage this parameter manually. |
+| `target` | `SignalTarget \| SignalTarget[]` | **required** | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
 
 ### `SSEChannelGroup(options?)`
 

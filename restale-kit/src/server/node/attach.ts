@@ -21,14 +21,14 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
 export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
   const rawUrl = req.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
   const connectionId = extractConnectionId(searchParams)
 
-  const lastEventId = options?.lastEventId ?? extractLastEventId((name) => req.headers[name])
+  const lastEventId = options.lastEventId ?? extractLastEventId((name) => req.headers[name])
 
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
@@ -39,7 +39,12 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const channel = createSSEChannel<TSignal>(channelOptions)
 
   // Set SSE headers
-  res.writeHead(200, SSE_HEADERS)
+  const headers: Record<string, string> = {
+    ...SSE_HEADERS,
+    'X-ReStale-Target': Array.isArray(options.target) ? options.target.join(', ') : options.target,
+  }
+
+  res.writeHead(200, headers)
 
   // Pipe the ReadableStream into the Node response
   // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility

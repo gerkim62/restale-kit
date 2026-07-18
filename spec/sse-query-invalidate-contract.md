@@ -79,12 +79,11 @@ restale-kit/
 
 - **Module format:** ESM-only. No CJS build.
 - **TypeScript target:** ES2022 (guarantees `ReadableStream`, `EventTarget`, `structuredClone`).
-- **No framework/library peer dependencies in root `package.json`.** Framework-specific subpaths
+- **Optional peer dependencies in `package.json`.** Framework-specific subpaths
   (`restale-kit/react`, `restale-kit/tanstack-query`) import from `react` and
-  `@tanstack/react-query` respectively — if those aren't installed, TypeScript errors at compile
-  time and bundlers error at build time. This is sufficient enforcement and keeps the package
-  manifest framework-agnostic. A Vue user installing `restale-kit` to use only `client` sees
-  zero React-related anything.
+  `@tanstack/react-query` respectively. These are marked as optional peer dependencies in `package.json`
+  for ecosystem discoverability. A Vue user installing `restale-kit` to use only `client` sees
+  zero required React dependencies installed.
 
 Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
 `restale-kit/fastify` respectively (the Fastify adapter auto-calls `reply.hijack()` when passed
@@ -158,7 +157,9 @@ These types are **cache-library-agnostic** while supporting target-specific fram
 |---|---|---|---|
 | `'invalidate'` (default) | Mark matching entries as stale; refetch if observed | `queryClient.invalidateQueries()` | `revalidate()` |
 | `'refetch'` | Force immediate refetch of matching entries | `queryClient.refetchQueries()` | `revalidate({ force: true })` |
+| `'reset'` | Reset matching entries to initial state | `queryClient.resetQueries()` | — |
 | `'remove'` | Purge matching entries from cache entirely | `queryClient.removeQueries()` | `mutate(key, undefined, { revalidate: false })` |
+| `'cancel'` | Cancel in-flight queries matching filters | `queryClient.cancelQueries()` | — |
 
 Target-discriminated signals allow framework adapters (`tanstackQueryAdapter`, `swrAdapter`) to execute target-native methods directly.
 
@@ -185,7 +186,7 @@ data: <JSON payload>\n
 ```
 
 Where `<JSON payload>` is the output of `JSON.stringify(signal)` — a single object or an array.
-The entire payload is sent as one `data:` line. No splitting across multiple `data:` lines.
+Standard payloads are formatted as a single `data:` line; if a custom `.toJSON()` or stringified output contains newlines, each line is prefixed with `data:` per the W3C SSE specification to preserve stream framing.
 
 **`id:` field behavior:** By default (no `eventStore`), no `id:` field is emitted — there is
 nothing to replay, so advertising an event ID would be misleading. When an `eventStore` is
@@ -226,13 +227,13 @@ Periodic SSE comment to prevent proxies/load balancers from dropping idle connec
 \n
 ```
 
-- Default interval: **30 seconds**.
+- Default interval: **0** (disabled by default; opt-in via `keepaliveIntervalMs`).
 - Configurable via `keepaliveIntervalMs` in `createSSEChannel` options.
 - The comment is a standard SSE comment (`:` prefix) — `EventSource` silently ignores it.
 
 ### Initial connection
 
-No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, the stream begins producing periodic keepalives immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
+No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, if `keepaliveIntervalMs > 0` is set, the stream begins producing periodic keepalives. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
 
 ---
 
@@ -278,7 +279,8 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  keepaliveIntervalMs?: number   // default 30_000
+  target: SignalTarget | SignalTarget[] // Required target discriminator or target array for multi-target fanout
+  keepaliveIntervalMs?: number   // default 0 (disabled)
   retryIntervalMs?: number       // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   lastEventId?: string           // Last-Event-ID from the reconnecting client
@@ -288,7 +290,7 @@ interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 ```
 
@@ -520,8 +522,7 @@ Extracts the `__restale_cid__` query parameter from the request URL and assigns 
 without a `connectionId` cannot be revoked with per-connection precision.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
-`Connection: keep-alive`), pipes `channel.stream` into `res` via
-`Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
+`Connection: keep-alive`). When `options.target` is configured (`'tanstack-query'`, `'swr'`, `'rtk-query'`, or `'generic'`), also emits `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed). Pipes `channel.stream` into `res` via `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
 
 Extracts the `Last-Event-ID` header from the request (enforcing a maximum length limit of 512 bytes to protect against DoS attacks) and passes it to `createSSEChannel` for event replay (when an `eventStore` is configured). Header values exceeding 512 bytes are safely ignored (`undefined`).
 
@@ -535,21 +536,21 @@ is called automatically. If you pass raw Node objects directly, call `reply.hija
 ```ts
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 ```
 
 Extracts `connectionId` from the `__restale_cid__` query parameter and `Last-Event-ID` from
 request headers. Throws synchronously if the query parameter is missing.
 
-Constructs `new Response(channel.stream, { headers })`, wires
+Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). Sets the `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed) based on `options.target`. Constructs `new Response(channel.stream, { headers })`, wires
 `request.signal.addEventListener('abort', channel.disconnect)`. Returns a `Response` for the
 handler to `return` — inverted control flow vs. the Node adapter, because that's how Fetch-API
 frameworks work:
 
 ```ts
 app.get('/sse', (c) => {
-  const { response, channel } = toSSEResponse(c.req.raw)
+  const { response, channel } = toSSEResponse(c.req.raw, { target: 'swr' })
   registerChannel(channel) // call channel.invalidate(...) from app logic elsewhere
   return response
 })
@@ -590,6 +591,7 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
   onRevoke?: (reason: string) => void  // callback invoked on terminal connection revocation
+  target?: SignalTarget      // optional target discriminator expected by the client
 }
 
 interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
@@ -604,6 +606,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal> 
   get status(): ConnectionStatus
   connect(): Promise<void>   // resolves when open; rejects with the error Event if it fails first
   close(): void               // reason 'manual'; connect() can reopen
+  closeWithUnmount(): void    // reason 'unmount'; called on component unmount
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
     type: K,
@@ -840,7 +843,7 @@ import { SSEChannelGroup } from 'restale-kit/server'
 const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   
   // Register the channel in the group — auto-deregisters on disconnect
   group.register(channel, { userId: req.user.id, roles: req.user.roles })
@@ -976,7 +979,7 @@ const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
 
 app.get('/sse', (req, res) => {
   // Pass schema to attachSSE to enforce it on the channel
-  const channel = attachSSE(req, res, { signalSchema: TodoSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: TodoSignalSchema })
   
   // Validated synchronously upon registration; throws SchemaValidationError if invalid
   group.register(channel, { userId: req.user.id })

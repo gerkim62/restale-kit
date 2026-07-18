@@ -11,9 +11,10 @@ Development workspace for **restale-kit** — a monorepo containing the library 
 - **[docs/](./docs/)** — User-facing documentation guides.
   - [Getting Started](./docs/getting-started.md), [Server](./docs/server.md), [Client](./docs/client.md), [Validation](./docs/validation.md), [Pub/Sub](./docs/pubsub.md), [API Reference](./docs/api-reference.md)
 - **[spec/](./spec/README.md)** — Design documents, wire protocol contracts, and architectural decision records.
-- **[examples/](./examples/)** — Sample frontends and backends demonstrating the integration.
+- **[examples/](./examples/)** — Sample frontends, backends, and full-stack integrations.
   - **[examples/backend/](./examples/backend/)** — Hono, Express, Fastify, and native Node implementations.
   - **[examples/frontend/](./examples/frontend/)** — Vite + React + TanStack Query and SWR clients.
+  - **[examples/vercel-redis/](./examples/vercel-redis/)** — Full-stack Vercel Serverless + Redis PubSub example.
 
 ---
 

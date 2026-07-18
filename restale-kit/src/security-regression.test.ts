@@ -61,7 +61,7 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 describe('Issue 1 — revokeWhere connectionId security contract', () => {
   it('revokeWhere with connectionId as sole criteria still closes the matching channel (unsafe but functional)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     // This works — but is unsafe in production without scope because connectionId
@@ -73,7 +73,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 
   it('revokeByConnectionId with scope rejects a mismatched userId (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     // Scope doesn't match — should not close
@@ -85,7 +85,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 
   it('revokeByConnectionId with correct scope closes the channel (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     const result = await group.revokeByConnectionId('conn-abc', { userId: 1 })
@@ -102,7 +102,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
   it('broadcast records each signal exactly once in the shared eventStore', () => {
     const store = createEventStore()
     const group = new SSEChannelGroup<any, { userId: number }>({ eventStore: store })
-    const ch = createSSEChannel({ eventStore: store })
+    const ch = createSSEChannel({ target: 'swr', eventStore: store })
     group.register(ch, { userId: 1 })
 
     group.broadcastToAll({ key: ['todos'] })
@@ -118,7 +118,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     const group = new SSEChannelGroup<any, { userId: number }>({
       eventStore: store,
     })
-    const ch = createSSEChannel({ eventStore: store })
+    const ch = createSSEChannel({ target: 'swr', eventStore: store })
     group.register(ch, { userId: 1 }, { topics: ['updates'] })
 
     await group.publish('updates', { key: ['products'] })
@@ -131,7 +131,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
 
   it('channel with its own private eventStore still records when no group is involved', () => {
     const store = createEventStore()
-    const ch = createSSEChannel({ eventStore: store })
+    const ch = createSSEChannel({ target: 'swr', eventStore: store })
 
     ch.invalidate({ key: ['item'] })
     ch.invalidate({ key: ['item2'] })
@@ -148,7 +148,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // Verify the group store only ever sees what the group itself recorded.
     const groupStore = createEventStore()
     const group = new SSEChannelGroup<any, undefined>({ eventStore: groupStore })
-    const ch = createSSEChannel({ eventBufferCapacity: 10 })
+    const ch = createSSEChannel({ target: 'swr', eventBufferCapacity: 10 })
     group.register(ch, undefined)
 
     group.broadcastToAll({ key: ['data'] })
@@ -161,7 +161,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // its own copy. We verify indirectly: the returned eventId from invalidate()
     // on a fresh channel with its own store starts at '1' — not influenced by group's counter.
     const soloStore = createEventStore()
-    const soloChannel = createSSEChannel({ eventStore: soloStore })
+    const soloChannel = createSSEChannel({ target: 'swr', eventStore: soloStore })
     soloChannel.invalidate({ key: ['x'] })
     const soloProbe = soloStore.add({ key: ['probe'] })
     expect(soloProbe.id).toBe('2') // solo store is independent — starts at 1
@@ -255,7 +255,7 @@ describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted 
     store.add({ key: ['old3'] }, 'id-3') // id-1 evicted
 
     // Channel should enqueue a full-invalidate signal, not silently do nothing
-    const ch = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
+    const ch = createSSEChannel({ target: 'swr', lastEventId: 'id-1', eventStore: store })
     const reader = ch.stream.getReader()
     const { value } = await reader.read()
 
@@ -370,7 +370,7 @@ describe('Issue 6 — SSEChannelGroup validates controlTopic at construction', (
     await Promise.resolve()
     await Promise.resolve()
 
-    const ch = createSSEChannel({ connectionId: 'conn-1' })
+    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-1' })
     group.register(ch, { userId: 42 })
 
     // Publish a revoke-matching criteria on the CONTROL topic — should close the channel

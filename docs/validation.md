@@ -81,7 +81,7 @@ const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
   // channel is typed as SSEChannel<AppSignal>
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
   group.register(channel)
 })
 
@@ -105,7 +105,7 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
 
   // Throws SchemaValidationError if validation fails
   group.register(channel, {
@@ -129,7 +129,7 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
   group.register(channel, { userId: req.user.id, role: req.user.role })
 })
 ```
@@ -235,5 +235,5 @@ const AppSignalSchema = v.object({
   action: v.optional(v.picklist(['invalidate', 'refetch', 'remove'])),
 })
 
-const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
 ```

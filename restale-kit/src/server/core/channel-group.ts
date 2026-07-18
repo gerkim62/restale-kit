@@ -22,8 +22,8 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
   constructor(
     private readonly topic: string,
-    private readonly pubsub: PubSubAdapter<TSignal> | undefined,
-    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
+    private readonly pubsub: PubSubAdapter | undefined,
+    private readonly onMessage: (message: PubSubMessage) => void,
     private readonly onTeardown?: (topic: string) => void
   ) {}
 
@@ -143,6 +143,16 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
+export interface SSEChannelGroupOptions<
+  TMeta = unknown,
+> {
+  metaSchema?: StandardSchemaV1<unknown, TMeta>
+  pubsub?: PubSubAdapter
+  eventStore?: EventStore
+  eventBufferCapacity?: number
+  controlTopic?: string
+}
+
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
  *
@@ -157,24 +167,18 @@ export class SSEChannelGroup<
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly pubsub?: PubSubAdapter<TSignal>
-  readonly eventStore?: EventStore<TSignal>
+  private readonly pubsub?: PubSubAdapter
+  readonly eventStore?: EventStore
   readonly controlTopic: string
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options?: {
-    metaSchema?: StandardSchemaV1<unknown, TMeta>
-    pubsub?: PubSubAdapter<TSignal>
-    eventStore?: EventStore<TSignal>
-    eventBufferCapacity?: number
-    controlTopic?: string
-  }) {
-    this.metaSchema = options?.metaSchema
-    this.pubsub = options?.pubsub
+  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
+    this.metaSchema = options.metaSchema
+    this.pubsub = options.pubsub
 
-    const rawControlTopic = options?.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
+    const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
       throw new Error(
         `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
@@ -183,9 +187,9 @@ export class SSEChannelGroup<
     }
     this.controlTopic = rawControlTopic
 
-    if (options?.eventStore) {
+    if (options.eventStore) {
       this.eventStore = options.eventStore
-    } else if (options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+    } else if (options.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
       this.eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity })
     }
 
@@ -309,23 +313,29 @@ export class SSEChannelGroup<
    */
   private deliverToChannel(
     channel: SSEChannel<TSignal>,
-    signal: TSignal | TSignal[],
-    context: string,
+    signal: InvalidateSignal | InvalidateSignal[],
+    context: 'broadcast' | 'publish' | 'pubsub',
     topic?: string,
     eventId?: string
   ): void {
     try {
+      // Channel has its own required target, so channel.invalidate() handles the transform.
       channel.invalidate(signal, eventId)
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)
-      } else {
+      } else if (context !== 'broadcast') {
+        // For broadcast context, let broadcast() handle logging with full metadata/signal details.
+        // For other contexts, log here since there is no outer catch with that context.
         const err = error instanceof Error ? error : new Error(String(error))
         console.error(
           `[ERROR][SSEChannelGroup.${context}] Failed to invalidate channel` +
           (topic ? ` on topic "${topic}"` : ""),
           err.stack || err.message
         )
+      }
+      if (context === 'broadcast') {
+        throw error
       }
     }
   }
@@ -572,6 +582,7 @@ export class SSEChannelGroup<
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
+      // Store the raw signal — deliverToChannel applies per-channel target transforms.
       const record = this.eventStore.add(signal)
       eventId = record.id
     }
@@ -585,7 +596,7 @@ export class SSEChannelGroup<
       if (!shouldInclude) continue
 
       try {
-        channel.invalidate(signal, eventId)
+        this.deliverToChannel(channel, signal, 'broadcast', undefined, eventId)
       } catch (error) {
         if (error instanceof ChannelClosedError) {
           this.deregister(channel)
@@ -656,6 +667,7 @@ export class SSEChannelGroup<
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
+      // Store the raw signal — deliverToChannel applies per-channel target transforms.
       const record = this.eventStore.add(signal)
       eventId = record.id
     }
@@ -668,7 +680,7 @@ export class SSEChannelGroup<
       }
     }
 
-    // 2. Publish to the broker
+    // 2. Publish to the broker (publish the raw signal — remote instances apply their own target transform)
     if (this.pubsub) {
       await this.pubsub.publish(topic, { kind: 'signal', data: signal, id: eventId })
     }
