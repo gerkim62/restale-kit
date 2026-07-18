@@ -53,9 +53,9 @@ describe('transport-utils', () => {
       expect(extractRequestedTarget(params)).toBeUndefined()
     })
 
-    it('returns undefined when __restale_target__ value is not a known target', () => {
+    it('returns the raw string when __restale_target__ value is not a known target (so channel can issue unsupported-target revoke)', () => {
       const params = new URLSearchParams('__restale_target__=unknown-framework')
-      expect(extractRequestedTarget(params)).toBeUndefined()
+      expect(extractRequestedTarget(params)).toBe('unknown-framework')
     })
 
     it('returns undefined when __restale_target__ is an empty string', () => {
@@ -63,9 +63,10 @@ describe('transport-utils', () => {
       expect(extractRequestedTarget(params)).toBeUndefined()
     })
 
-    it('is case-sensitive — uppercase known target returns undefined', () => {
+    it('is case-sensitive — uppercase SWR returns the raw string (not undefined)', () => {
       const params = new URLSearchParams('__restale_target__=SWR')
-      expect(extractRequestedTarget(params)).toBeUndefined()
+      // Returns raw string so the channel can reject it via unsupported-target
+      expect(extractRequestedTarget(params)).toBe('SWR')
     })
   })
 })

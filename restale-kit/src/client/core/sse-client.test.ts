@@ -718,6 +718,32 @@ describe('SSEInvalidatorClient', () => {
     // Status sequence: connecting → open → closed (revoked)
     expect(events).toEqual(['statuschange:connecting', 'statuschange:open', 'statuschange:closed', 'revoke'])
   })
+
+  it('partial unsupported-target frame (missing requested/supported) falls to generic branch', async () => {
+    // If server sends reason:'unsupported-target' but omits requested/supported fields,
+    // the client must NOT emit the structured first branch (which requires all three fields).
+    // It must fall through to the generic branch: { reason: 'unsupported-target' } is
+    // NOT possible in the type — but at runtime it would be a plain string. The guard in
+    // wireInvalidateListener requires parsedRequested !== undefined && parsedSupported !== undefined
+    // before emitting the first branch, so this should dispatch { reason: undefined } when
+    // those fields are absent.
+    const client = new SSEInvalidatorClient('/sse')
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    // Frame has reason but is missing required requested+supported
+    es?.emitCustomEvent('revoke', JSON.stringify({ reason: 'unsupported-target' }))
+
+    // Must fall to generic branch because parsedSupported is undefined
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'unsupported-target' })
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+  })
 })
 
 

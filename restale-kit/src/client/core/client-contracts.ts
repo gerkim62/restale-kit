@@ -137,10 +137,12 @@ export type RevokeEventDetail =
     }
   | {
       /**
-       * Any other revocation reason (e.g. `'session-expired'`, `'logout'`, `'banned'`),
+       * Any application-level revocation reason (e.g. `'session-expired'`, `'logout'`, `'banned'`),
        * or `undefined` when the server sent a malformed / reason-less revoke frame.
+       * Explicitly excludes `'unsupported-target'` — that case always carries `requested`/`supported`
+       * and is narrowed by the first branch.
        */
-      reason: string | undefined
+      reason: Exclude<string, 'unsupported-target'> | undefined
       requested?: never
       supported?: never
     }

@@ -225,6 +225,60 @@ describe('channel', () => {
     expect(trailing).toBeUndefined()
   })
 
+  it('replay filters out signals not matching requestedTarget', async () => {
+    // A shared store might contain signals for multiple targets (e.g. stored by a group).
+    // On reconnect, a channel with requestedTarget:'swr' must only replay swr signals.
+    const store = createEventStore({ capacity: 10 })
+    store.add({ target: 'swr', key: ['swr-item'] } as any, 'id-swr')
+    store.add({ target: 'tanstack-query', queryKey: ['tq-item'] } as any, 'id-tq')
+    store.add({ target: 'swr', key: ['swr-item-2'] } as any, 'id-swr2')
+
+    const channel = createSSEChannel({
+      target: 'swr',
+      requestedTarget: 'swr',
+      lastEventId: '0',    // replay from the start (stale cursor → full invalidate)
+      eventStore: store,
+    })
+
+    // id '0' is unknown → stale → full-invalidate frame is emitted
+    const reader = channel.stream.getReader()
+    const { value: v1 } = await reader.read()
+    reader.releaseLock()
+
+    // stale path emits a single { key: [] } frame, not the filtered records
+    expect(decoder.decode(v1)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+    channel.close()
+  })
+
+  it('replay with a valid lastEventId filters only matching-target signals', async () => {
+    const store = createEventStore({ capacity: 10 })
+    // anchor event (the client's last-event-id)
+    store.add({ target: 'swr', key: ['anchor'] } as any, 'id-0')
+    // missed events: one swr, one tanstack-query
+    store.add({ target: 'swr', key: ['swr-missed'] } as any, 'id-1')
+    store.add({ target: 'tanstack-query', queryKey: ['tq-missed'] } as any, 'id-2')
+
+    const channel = createSSEChannel({
+      target: 'swr',
+      requestedTarget: 'swr',
+      lastEventId: 'id-0',  // valid cursor — replay id-1 and id-2
+      eventStore: store,
+    })
+
+    const reader = channel.stream.getReader()
+    const { value: v1 } = await reader.read()
+    // Only the swr signal should be replayed — tanstack-query must be filtered out
+    const text1 = decoder.decode(v1)
+    expect(text1).toContain('"swr-missed"')
+    expect(text1).not.toContain('tq-missed')
+
+    // Stream should be done after the one replayed frame
+    channel.close()
+    const { done } = await reader.read()
+    reader.releaseLock()
+    expect(done).toBe(true)
+  })
+
   it('warns when controller.close throws an error in closeInternal', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const OriginalReadableStream = globalThis.ReadableStream
@@ -779,6 +833,28 @@ describe('requestedTarget negotiation', () => {
     expect(warnSpy.mock.calls[0][0]).toContain('rtk-query')
     expect(warnSpy.mock.calls[0][0]).toContain('swr')
     expect(warnSpy.mock.calls[0][0]).toContain('conn-warn')
+
+    warnSpy.mockRestore()
+  })
+
+  it('unknown string target (e.g. from unrecognized client) triggers unsupported-target revoke', async () => {
+    // extractRequestedTarget now returns the raw string for unrecognized values.
+    // The channel must reject it just like a known-but-unsupported target.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel({
+      target: 'swr',
+      requestedTarget: 'some-unknown-framework',  // not a SignalTarget but widened to string
+      connectionId: 'conn-unknown',
+    })
+
+    const reader = channel.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = decoder.decode(value)
+    expect(text).toContain('"reason":"unsupported-target"')
+    expect(text).toContain('"requested":"some-unknown-framework"')
+    expect(channel.state).toBe('closed')
 
     warnSpy.mockRestore()
   })

@@ -33,7 +33,7 @@ already exists on both sides; this wires them together over the wire.
 
 ### 1. Client sends target in the request query string
 
-```
+```text
 GET /sse?__restale_cid__=abc123&__restale_target__=swr
 ```
 
@@ -48,7 +48,7 @@ GET /sse?__restale_cid__=abc123&__restale_target__=swr
 
 On a successful SSE response:
 
-```
+```text
 X-ReStale-Target: swr
 X-ReStale-Supported: tanstack-query, swr
 ```
@@ -70,7 +70,7 @@ with `target: ['tanstack-query', 'swr']`, the server:
    the server can't withhold the 200 until negotiation completes, since headers must be flushed
    before the developer's channel logic runs. See **Known limitation** below.
 2. Immediately emits a `revoke` event frame with a structured reason:
-   ```
+   ```text
    event: revoke
    data: {"reason":"unsupported-target","requested":"rtk-query","supported":["tanstack-query","swr"]}
    ```
@@ -266,7 +266,7 @@ and the React hook, same as today.
 
 No new event frame type. Existing `revoke` frame gains optional structured fields:
 
-```
+```text
 event: revoke
 data: {"reason":"unsupported-target","requested":"rtk-query","supported":["tanstack-query","swr"]}
 

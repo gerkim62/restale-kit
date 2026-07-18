@@ -36,8 +36,12 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * query parameter by transport adapters. When set, the channel will:
    * - Reject the connection immediately if the requested target is not in `options.target`.
    * - Filter outgoing frames to only emit signals matching this target.
+   *
+   * Accepts any string (not just known `SignalTarget` values) so that unrecognized
+   * targets sent by the client are passed through and rejected by the unsupported-target
+   * check rather than silently treated as "no preference".
    */
-  requestedTarget?: SignalTarget
+  requestedTarget?: string
 }
 
 /**
@@ -63,8 +67,8 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
   readonly target: SignalTarget | SignalTarget[]
-  /** The single target requested by the client via query param, if any. */
-  readonly requestedTarget: SignalTarget | undefined
+  /** The single target requested by this client via query param, if any. May be an unrecognized string if the client sent an unknown target. */
+  readonly requestedTarget: string | undefined
   /** The SSE byte stream to pipe into a response. */
   readonly stream: ReadableStream<Uint8Array>
   /**
@@ -184,6 +188,9 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             // The cursor fell off the ring buffer or was never valid — the client missed
             // an unknown number of events. Send a full-invalidate signal (key: []) so the
             // client refetches everything rather than silently displaying stale data.
+            // For a targeted client the stale full-invalidate is still valid: it carries
+            // no explicit `target` field so processTargetSignals will stamp it with the
+            // channel's configured target — which the client's adapter will handle.
             controller.enqueue(formatInvalidateFrame({ key: [] }))
           } else {
             for (const record of missed) {
@@ -191,6 +198,24 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
               // (target-less) signals recorded by a group. processTargetSignals is safe to
               // call on already-tagged signals because hasTargetProperty passes them through.
               const replaySignal = processTargetSignals(record.signal, target)
+
+              // Apply requestedTarget filter: skip signals that don't match this client's
+              // requested target (same semantics as the live invalidate() filter path).
+              if (requestedTarget !== undefined) {
+                if (Array.isArray(replaySignal)) {
+                  const filtered = replaySignal.filter((s) => {
+                    const t = 'target' in s ? s.target : undefined
+                    return t === requestedTarget
+                  })
+                  if (filtered.length === 0) continue
+                  controller.enqueue(formatInvalidateFrame(filtered, record.id))
+                  continue
+                } else {
+                  const t = 'target' in replaySignal ? replaySignal.target : undefined
+                  if (t !== requestedTarget) continue
+                }
+              }
+
               controller.enqueue(formatInvalidateFrame(replaySignal, record.id))
             }
           }

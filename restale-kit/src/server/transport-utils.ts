@@ -1,6 +1,4 @@
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
-import { SIGNAL_TARGETS } from '@/utils/constants.js'
-import type { SignalTarget } from '@/types/protocol.js'
 
 /**
  * Maximum accepted byte length for a Last-Event-ID header value.
@@ -61,22 +59,19 @@ export function extractLastEventId(
   return value
 }
 
-/** Tuple of all valid SignalTarget values, used for exhaustive narrowing without a cast. */
-const KNOWN_TARGET_VALUES: readonly SignalTarget[] = Object.values(SIGNAL_TARGETS)
-
 /**
- * Extracts and validates the `__restale_target__` query parameter.
+ * Extracts the `__restale_target__` query parameter.
  *
- * Returns the validated `SignalTarget` value if present and recognized.
- * Returns `undefined` if the parameter is absent — callers treat absence as
- * "no preference; send everything."
- * Returns `undefined` (without throwing) if the value is present but unrecognized,
- * leaving downstream callers to decide how to handle an unknown target.
+ * Returns `undefined` only if the parameter is absent or empty — callers
+ * treat absence as "no preference; send everything."
+ * Returns the raw string value for any non-empty value (known or unknown),
+ * so the channel can issue an `unsupported-target` revoke for unrecognized
+ * targets rather than silently treating them as "no preference."
  */
-export function extractRequestedTarget(searchParams: URLSearchParams): SignalTarget | undefined {
+export function extractRequestedTarget(searchParams: URLSearchParams): string | undefined {
   const raw = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM)
   if (raw === null || raw === '') return undefined
-  // `includes` on a readonly SignalTarget[] narrows `raw` to SignalTarget — no cast needed.
-  const found = KNOWN_TARGET_VALUES.find((t) => t === raw)
-  return found
+  // Return the raw string — the channel validates it against its supported set
+  // and issues an unsupported-target revoke if unrecognized.
+  return raw
 }
