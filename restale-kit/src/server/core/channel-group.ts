@@ -314,7 +314,7 @@ export class SSEChannelGroup<
   private deliverToChannel(
     channel: SSEChannel<TSignal>,
     signal: InvalidateSignal | InvalidateSignal[],
-    context: string,
+    context: 'broadcast' | 'publish' | 'pubsub',
     topic?: string,
     eventId?: string
   ): void {
@@ -324,7 +324,9 @@ export class SSEChannelGroup<
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)
-      } else {
+      } else if (context !== 'broadcast') {
+        // For broadcast context, let broadcast() handle logging with full metadata/signal details.
+        // For other contexts, log here since there is no outer catch with that context.
         const err = error instanceof Error ? error : new Error(String(error))
         console.error(
           `[ERROR][SSEChannelGroup.${context}] Failed to invalidate channel` +

@@ -142,6 +142,7 @@ interface SSEChannelOptions<TSignal> {
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly connectionId: string                       // unique connection ID from client
+  readonly target: SignalTarget | SignalTarget[]       // configured target discriminator; required
   readonly stream: ReadableStream<Uint8Array>
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.

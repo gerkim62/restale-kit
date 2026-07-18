@@ -108,8 +108,8 @@ describe('channel', () => {
     reader.releaseLock()
     
 
-    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
-    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
+    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"target":"swr","key":["b"]}\n\n')
+    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"target":"swr","key":["c"]}\n\n')
   })
 
   it('uses eventStore and custom idGenerator during invalidate', () => {

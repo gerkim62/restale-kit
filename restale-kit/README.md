@@ -450,7 +450,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
 | `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport adapters (`attachSSE`, `toSSEResponse`). You never need to set or manage this parameter manually. |
-| `target` | `SignalTarget \| SignalTarget[]` | `undefined` | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
+| `target` | `SignalTarget \| SignalTarget[]` | **required** | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
 
 ### `SSEChannelGroup(options?)`
 
@@ -461,7 +461,6 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventBufferCapacity` | Enables Last-Event-ID event history replay buffer. |
 | `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
-| `target` | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) or target array for automatic signal tagging and multi-target fanout. |
 
 ### `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
 

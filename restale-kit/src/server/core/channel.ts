@@ -154,7 +154,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             controller.enqueue(formatInvalidateFrame({ key: [] }))
           } else {
             for (const record of missed) {
-              controller.enqueue(formatInvalidateFrame(record.signal, record.id))
+              // Apply target transform during replay: the shared eventStore may store raw
+              // (target-less) signals recorded by a group. processTargetSignals is safe to
+              // call on already-tagged signals because hasTargetProperty passes them through.
+              const replaySignal = processTargetSignals(record.signal, target)
+              controller.enqueue(formatInvalidateFrame(replaySignal, record.id))
             }
           }
         } catch {
