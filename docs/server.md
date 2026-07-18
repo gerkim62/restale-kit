@@ -298,7 +298,7 @@ const group = new SSEChannelGroup({ eventStore })
 
 app.get('/sse', (req, res) => {
   // Pass eventStore to transport helper so reconnecting channels replay missed history
-  const channel = attachSSE(req, res, { eventStore })
+  const channel = attachSSE(req, res, { target: 'swr', eventStore })
   group.register(channel, { userId: req.user.id })
 })
 ```

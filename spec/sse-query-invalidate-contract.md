@@ -843,7 +843,7 @@ import { SSEChannelGroup } from 'restale-kit/server'
 const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   
   // Register the channel in the group — auto-deregisters on disconnect
   group.register(channel, { userId: req.user.id, roles: req.user.roles })
@@ -979,7 +979,7 @@ const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
 
 app.get('/sse', (req, res) => {
   // Pass schema to attachSSE to enforce it on the channel
-  const channel = attachSSE(req, res, { signalSchema: TodoSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: TodoSignalSchema })
   
   // Validated synchronously upon registration; throws SchemaValidationError if invalid
   group.register(channel, { userId: req.user.id })

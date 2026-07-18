@@ -120,11 +120,11 @@ import type { SSEChannel, SSEChannelOptions } from 'restale-kit/server'
 import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
 ```
 
-### `createSSEChannel(options?)`
+### `createSSEChannel(options)`
 
 ```ts
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 
 interface SSEChannelOptions<TSignal> {
@@ -257,7 +257,7 @@ import { attachSSE } from 'restale-kit/express'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // The returned channel's `connectionId` property is populated from the
@@ -272,7 +272,7 @@ import type { FastifyRequestLike, FastifyReplyLike } from 'restale-kit/fastify'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 
 interface FastifyRequestLike {
@@ -300,7 +300,7 @@ import { toSSEResponse } from 'restale-kit/hono'
 
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // `channel.connectionId` is populated from the `__restale_cid__` query parameter.

@@ -45,7 +45,7 @@ const group = new SSEChannelGroup()
 
 // SSE endpoint — clients connect here
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   group.register(channel)
 })
 
@@ -91,7 +91,7 @@ That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, eve
 >
 > ```ts
 > app.get('/sse', (req, res) => {
->   const channel = attachSSE(req, res)
+>   const channel = attachSSE(req, res, { target: 'tanstack-query' })
 >   group.register(channel, { userId: req.user.id }) // ← add metadata now
 > })
 > ```

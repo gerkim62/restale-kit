@@ -128,7 +128,7 @@ const group = new SSEChannelGroup<Signal, Meta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   group.register(channel, { userId }, { topics: [`user:${userId}`] })
   // No manual cleanup needed — channel auto-deregisters from the group on disconnect
 })
