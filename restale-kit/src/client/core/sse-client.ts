@@ -249,7 +249,7 @@ export class SSEInvalidatorClient<
     if (this.debug) {
       const reason = this.attempt === 0
         ? 'First connection attempt for this client instance'
-        : `Automatic reconnection attempt ${this.attempt} after connection drop/error`
+        : `Automatic reconnection attempt ${String(this.attempt)} after connection drop/error`
       console.log(
         `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}. URL: ${this.eventSourceUrl}`
       )
@@ -299,7 +299,7 @@ export class SSEInvalidatorClient<
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         if (this.debug) {
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}, readyState: ${es.readyState}). Reason: EventSource error. Retrying in ${delay}ms (attempt ${this.attempt + 1} of ${this.maxRetries}).`
+            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
           )
         }
         this.attempt++
@@ -314,7 +314,7 @@ export class SSEInvalidatorClient<
             ? 'Server sent terminal revoke frame'
             : !this.autoReconnect
             ? 'autoReconnect is disabled'
-            : `Exhausted maxRetries (${this.maxRetries})`
+            : `Exhausted maxRetries (${String(this.maxRetries)})`
           console.log(
             `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
           )
