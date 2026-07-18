@@ -136,6 +136,7 @@ interface SSEChannelOptions<TSignal> {
   eventBufferCapacity?: number
   idGenerator?: () => string
   connectionId?: string                               // unique connection ID from client
+  target?: SignalTarget | SignalTarget[]              // target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
 }
 
 interface SSEChannel<TSignal> {

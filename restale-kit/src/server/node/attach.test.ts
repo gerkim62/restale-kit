@@ -57,4 +57,36 @@ describe('node attachSSE', () => {
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })
+
+  it('emits X-ReStale-Target HTTP header when target option is specified', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-single-target',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: 'swr' })
+
+    expect(channel.target).toBe('swr')
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr',
+    })
+  })
+
+  it('emits comma-separated X-ReStale-Target HTTP header when target array is specified', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-multi-target',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+
+    expect(channel.target).toEqual(['swr', 'tanstack-query'])
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr, tanstack-query',
+    })
+  })
 })

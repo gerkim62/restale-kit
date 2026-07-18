@@ -522,8 +522,7 @@ Extracts the `__restale_cid__` query parameter from the request URL and assigns 
 without a `connectionId` cannot be revoked with per-connection precision.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
-`Connection: keep-alive`), pipes `channel.stream` into `res` via
-`Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
+`Connection: keep-alive`). When `options.target` is configured (`'tanstack-query'`, `'swr'`, `'rtk-query'`, or `'generic'`), also emits `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed). Pipes `channel.stream` into `res` via `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
 
 Extracts the `Last-Event-ID` header from the request (enforcing a maximum length limit of 512 bytes to protect against DoS attacks) and passes it to `createSSEChannel` for event replay (when an `eventStore` is configured). Header values exceeding 512 bytes are safely ignored (`undefined`).
 

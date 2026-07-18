@@ -33,8 +33,15 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
+  const headers: Record<string, string> = { ...SSE_HEADERS }
+  if (options?.target !== undefined) {
+    headers['X-ReStale-Target'] = Array.isArray(options.target)
+      ? options.target.join(', ')
+      : options.target
+  }
+
   const response = new Response(channel.stream, {
-    headers: SSE_HEADERS,
+    headers,
   })
 
   // Wire up disconnect detection via the request's AbortSignal

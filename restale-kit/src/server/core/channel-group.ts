@@ -1,6 +1,6 @@
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey, SignalTarget } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import type { SSEChannel } from '@/server/core/channel.js'
+import { processTargetSignals, type SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -143,6 +143,18 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
+export interface SSEChannelGroupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+> {
+  metaSchema?: StandardSchemaV1<unknown, TMeta>
+  pubsub?: PubSubAdapter<TSignal>
+  eventStore?: EventStore<TSignal>
+  eventBufferCapacity?: number
+  controlTopic?: string
+  target?: SignalTarget | SignalTarget[]
+}
+
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
  *
@@ -160,19 +172,15 @@ export class SSEChannelGroup<
   private readonly pubsub?: PubSubAdapter<TSignal>
   readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
+  readonly target?: SignalTarget | SignalTarget[]
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options?: {
-    metaSchema?: StandardSchemaV1<unknown, TMeta>
-    pubsub?: PubSubAdapter<TSignal>
-    eventStore?: EventStore<TSignal>
-    eventBufferCapacity?: number
-    controlTopic?: string
-  }) {
+  constructor(options?: SSEChannelGroupOptions<TSignal, TMeta>) {
     this.metaSchema = options?.metaSchema
     this.pubsub = options?.pubsub
+    this.target = options?.target
 
     const rawControlTopic = options?.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
@@ -315,7 +323,10 @@ export class SSEChannelGroup<
     eventId?: string
   ): void {
     try {
-      channel.invalidate(signal, eventId)
+      const effectiveSignal = (this.target !== undefined && channel.target === undefined)
+        ? processTargetSignals(signal, this.target)
+        : signal
+      channel.invalidate(effectiveSignal, eventId)
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)
@@ -326,6 +337,9 @@ export class SSEChannelGroup<
           (topic ? ` on topic "${topic}"` : ""),
           err.stack || err.message
         )
+      }
+      if (context === 'broadcast') {
+        throw error
       }
     }
   }
@@ -569,10 +583,11 @@ export class SSEChannelGroup<
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
+    const effectiveSignal = this.target !== undefined ? processTargetSignals(signal, this.target) : signal
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
-      const record = this.eventStore.add(signal)
+      const record = this.eventStore.add(effectiveSignal)
       eventId = record.id
     }
 
@@ -585,7 +600,7 @@ export class SSEChannelGroup<
       if (!shouldInclude) continue
 
       try {
-        channel.invalidate(signal, eventId)
+        this.deliverToChannel(channel, effectiveSignal, 'broadcast', undefined, eventId)
       } catch (error) {
         if (error instanceof ChannelClosedError) {
           this.deregister(channel)
@@ -654,9 +669,10 @@ export class SSEChannelGroup<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+    const effectiveSignal = this.target !== undefined ? processTargetSignals(signal, this.target) : signal
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
-      const record = this.eventStore.add(signal)
+      const record = this.eventStore.add(effectiveSignal)
       eventId = record.id
     }
 
@@ -664,13 +680,13 @@ export class SSEChannelGroup<
     const topicManager = this.topics.get(topic)
     if (topicManager) {
       for (const channel of topicManager.channels) {
-        this.deliverToChannel(channel, signal, 'publish', topic, eventId)
+        this.deliverToChannel(channel, effectiveSignal, 'publish', topic, eventId)
       }
     }
 
     // 2. Publish to the broker
     if (this.pubsub) {
-      await this.pubsub.publish(topic, { kind: 'signal', data: signal, id: eventId })
+      await this.pubsub.publish(topic, { kind: 'signal', data: effectiveSignal, id: eventId })
     }
   }
 }

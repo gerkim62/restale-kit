@@ -1,9 +1,9 @@
-import type { InvalidateSignal, ChannelState, EventStore } from '@/types/protocol.js'
+import type { InvalidateSignal, ChannelState, EventStore, SignalTarget } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
-import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS } from '@/utils/constants.js'
 
 /**
  * Configuration options for `createSSEChannel`.
@@ -29,6 +29,8 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * and pass it here automatically. You rarely need to set this manually.
    */
   connectionId?: string
+  /** Optional target discriminator or target array for automatic signal tagging and multi-target fanout. */
+  target?: SignalTarget | SignalTarget[]
 }
 
 /**
@@ -50,7 +52,10 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * const channel = attachSSE(req, res)
    * group.register(channel, { userId })
    */
+  /** The unique connection ID sent by the client (`__restale_cid__`). */
   readonly connectionId: string
+  /** Optional configured target discriminator or target array. */
+  readonly target?: SignalTarget | SignalTarget[]
   /** The SSE byte stream to pipe into a response. */
   readonly stream: ReadableStream<Uint8Array>
   /**
@@ -107,6 +112,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const lastEventId = options?.lastEventId
   const idGenerator = options?.idGenerator
   const connectionId = options?.connectionId ?? ''
+  const target = options?.target
 
   let eventStore: EventStore<TSignal> | undefined = options?.eventStore
   // Track whether this channel owns its eventStore (created internally) or was given an
@@ -202,8 +208,13 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       throw new ChannelClosedError()
     }
 
+    let effectiveSignal = signal
+    if (target !== undefined) {
+      effectiveSignal = processTargetSignals(signal, target) as any
+    }
+
     if (signalSchema) {
-      const signals = Array.isArray(signal) ? signal : [signal]
+      const signals = Array.isArray(effectiveSignal) ? effectiveSignal : [effectiveSignal]
       for (const s of signals) {
         validateStandardSchema(s, signalSchema)
       }
@@ -217,7 +228,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (eventStore !== undefined) {
       if (ownsEventStore || customId === undefined) {
         // Channel owns its store, or no id was provided — record it now.
-        const record = eventStore.add(signal, eventId)
+        const record = eventStore.add(effectiveSignal, eventId)
         eventId = record.id
       } else {
         // External store with a customId provided: only skip add() when the record already
@@ -226,24 +237,17 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         const { stale } = eventStore.getEventsAfter(customId)
         const alreadyRecorded = !stale
         if (!alreadyRecorded) {
-          const record = eventStore.add(signal, customId)
+          const record = eventStore.add(effectiveSignal, customId)
           eventId = record.id
         }
-        // When stale is false the record exists — skip add() to prevent double-recording.
       }
-      try {
-        controller.enqueue(formatInvalidateFrame(signal, eventId))
-      } catch {
-        closeInternal()
-        throw new ChannelClosedError()
-      }
-    } else {
-      try {
-        controller.enqueue(formatInvalidateFrame(signal, eventId))
-      } catch {
-        closeInternal()
-        throw new ChannelClosedError()
-      }
+    }
+
+    try {
+      controller.enqueue(formatInvalidateFrame(effectiveSignal, eventId))
+    } catch {
+      closeInternal()
+      throw new ChannelClosedError()
     }
 
     return eventId ?? ''
@@ -254,6 +258,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       return state
     },
     connectionId,
+    target,
     stream,
     invalidate,
     close: closeInternal,
@@ -269,10 +274,59 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     },
     onClose(callback: () => void): void {
       if (state === 'closed') {
-        callback()
+        try { callback() } catch { /* ignore errors */ }
       } else {
         closeCallbacks.push(callback)
       }
     },
   }
+}
+
+export function processTargetSignals(signal: any, targetConfig: SignalTarget | SignalTarget[]): any {
+  const signalList = Array.isArray(signal) ? signal : [signal]
+  const targets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
+  const result: any[] = []
+
+  for (const s of signalList) {
+    if (s && typeof s === 'object' && ('target' in s) && s.target !== undefined) {
+      result.push(s)
+      continue
+    }
+
+    if (Array.isArray(targetConfig)) {
+      for (const t of targets) {
+        result.push(buildTargetSignal(s, t))
+      }
+    } else {
+      result.push(buildTargetSignal(s, targetConfig))
+    }
+  }
+
+  return !Array.isArray(signal) && result.length === 1 ? result[0] : result
+}
+
+function buildTargetSignal(s: any, t: SignalTarget): any {
+  const key = s?.queryKey ?? s?.key ?? []
+  if (t === SIGNAL_TARGETS.TANSTACK) {
+    const res: any = { target: SIGNAL_TARGETS.TANSTACK, queryKey: key }
+    if (s?.exact !== undefined) res.exact = s.exact
+    if (s?.type !== undefined) res.type = s.type
+    if (s?.action !== undefined) res.action = s.action
+    if (s?.stale !== undefined) res.stale = s.stale
+    return res
+  }
+  if (t === SIGNAL_TARGETS.SWR) {
+    const res: any = { target: SIGNAL_TARGETS.SWR, key }
+    if (s?.action !== undefined) res.action = s.action
+    if (s?.revalidate !== undefined) res.revalidate = s.revalidate
+    if (s?.match !== undefined) res.match = s.match
+    return res
+  }
+  if (t === SIGNAL_TARGETS.RTK) {
+    return { target: SIGNAL_TARGETS.RTK, tags: s?.tags ?? [] }
+  }
+  const res: any = { target: SIGNAL_TARGETS.GENERIC, key }
+  if (s?.exact !== undefined) res.exact = s.exact
+  if (s?.action !== undefined) res.action = s.action
+  return res
 }

@@ -57,6 +57,14 @@ export interface GenericInvalidateSignal {
   action?: GenericAction
 }
 
+export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
+
+export type TargetInputSignal<TTarget extends SignalTarget> =
+  TTarget extends 'tanstack-query' ? Omit<TanStackQuerySignal, 'target'> & { target?: 'tanstack-query' } :
+  TTarget extends 'swr' ? Omit<SWRSignal, 'target'> & { target?: 'swr' } :
+  TTarget extends 'rtk-query' ? Omit<RTKQuerySignal, 'target'> & { target?: 'rtk-query' } :
+  Omit<GenericInvalidateSignal, 'target'> & { target?: 'generic' }
+
 /** Discriminated union of all supported wire signals */
 export type ReStaleSignal =
   | TanStackQuerySignal

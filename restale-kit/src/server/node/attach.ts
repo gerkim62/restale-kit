@@ -39,7 +39,14 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const channel = createSSEChannel<TSignal>(channelOptions)
 
   // Set SSE headers
-  res.writeHead(200, SSE_HEADERS)
+  const headers: Record<string, string> = { ...SSE_HEADERS }
+  if (options?.target !== undefined) {
+    headers['X-ReStale-Target'] = Array.isArray(options.target)
+      ? options.target.join(', ')
+      : options.target
+  }
+
+  res.writeHead(200, headers)
 
   // Pipe the ReadableStream into the Node response
   // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility

@@ -360,6 +360,26 @@ describe('channel', () => {
     channel.close()
     expect(cb).toHaveBeenCalledTimes(1)
   })
+
+  it('attaches target property and frames single target signal on invalidate', async () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expect(channel.target).toBe('swr')
+
+    channel.invalidate({ key: ['items', 1] } as any)
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
+  })
+
+  it('natively fans out multi-target array when channel is configured with target array', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query'] })
+    expect(channel.target).toEqual(['swr', 'tanstack-query'])
+
+    channel.invalidate({ key: ['items', 1] } as any)
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toBe(
+      'event: invalidate\ndata: [{"target":"swr","key":["items",1]},{"target":"tanstack-query","queryKey":["items",1]}]\n\n'
+    )
+  })
 })
 
 

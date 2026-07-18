@@ -1067,6 +1067,22 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
+  it('exposes target property on group and auto-frames multi-target signals on broadcast', async () => {
+    const group = new SSEChannelGroup({ target: ['swr', 'tanstack-query'] })
+    expect(group.target).toEqual(['swr', 'tanstack-query'])
+
+    const ch = createSSEChannel()
+    group.register(ch)
+
+    const reader = ch.stream.getReader()
+    group.broadcastToAll({ key: ['items'] } as any)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const decoder = new TextDecoder()
+    expect(decoder.decode(value)).toBe(
+      'event: invalidate\ndata: [{"target":"swr","key":["items"]},{"target":"tanstack-query","queryKey":["items"]}]\n\n'
+    )
+  })
 })
-
-

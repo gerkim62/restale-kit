@@ -4,6 +4,7 @@
 export const PROTOCOL_CONSTANTS = {
   RESTALE_REQUEST_ID_PARAM: '__restale_cid__',
   LAST_EVENT_ID_HEADER: 'last-event-id',
+  TARGET_HEADER: 'x-restale-target',
   DEFAULT_CONTROL_TOPIC: '__restale_control__',
   DEFAULT_KEEPALIVE_INTERVAL_MS: 0,
   DEFAULT_AUTO_RECONNECT: true,
