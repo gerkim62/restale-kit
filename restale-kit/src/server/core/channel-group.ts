@@ -22,8 +22,8 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
   constructor(
     private readonly topic: string,
-    private readonly pubsub: PubSubAdapter<TSignal> | undefined,
-    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
+    private readonly pubsub: PubSubAdapter | undefined,
+    private readonly onMessage: (message: PubSubMessage) => void,
     private readonly onTeardown?: (topic: string) => void
   ) {}
 
@@ -144,12 +144,11 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 
 export interface SSEChannelGroupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter<TSignal>
-  eventStore?: EventStore<TSignal>
+  pubsub?: PubSubAdapter
+  eventStore?: EventStore
   eventBufferCapacity?: number
   controlTopic?: string
   target?: SignalTarget | SignalTarget[]
@@ -169,15 +168,15 @@ export class SSEChannelGroup<
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly pubsub?: PubSubAdapter<TSignal>
-  readonly eventStore?: EventStore<TSignal>
+  private readonly pubsub?: PubSubAdapter
+  readonly eventStore?: EventStore
   readonly controlTopic: string
   readonly target?: SignalTarget | SignalTarget[]
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options?: SSEChannelGroupOptions<TSignal, TMeta>) {
+  constructor(options?: SSEChannelGroupOptions<TMeta>) {
     this.metaSchema = options?.metaSchema
     this.pubsub = options?.pubsub
     this.target = options?.target
@@ -317,7 +316,7 @@ export class SSEChannelGroup<
    */
   private deliverToChannel(
     channel: SSEChannel<TSignal>,
-    signal: TSignal | TSignal[],
+    signal: InvalidateSignal | InvalidateSignal[],
     context: string,
     topic?: string,
     eventId?: string
@@ -583,7 +582,9 @@ export class SSEChannelGroup<
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
   broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
-    const effectiveSignal = this.target !== undefined ? processTargetSignals(signal, this.target) : signal
+    const effectiveSignal = this.target !== undefined
+      ? processTargetSignals(signal, this.target)
+      : signal
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -669,7 +670,9 @@ export class SSEChannelGroup<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
-    const effectiveSignal = this.target !== undefined ? processTargetSignals(signal, this.target) : signal
+    const effectiveSignal = this.target !== undefined
+      ? processTargetSignals(signal, this.target)
+      : signal
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       const record = this.eventStore.add(effectiveSignal)
