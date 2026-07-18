@@ -25,7 +25,7 @@ functions with zero adapters installed — it just falls back to local-only deli
 
 ```ts
 type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
-  | { kind: 'signal'; data: TSignal | TSignal[] }
+  | { kind: 'signal'; data: TSignal | TSignal[]; id?: string }
   | { kind: 'control'; data: JSONValue }
 
 export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {

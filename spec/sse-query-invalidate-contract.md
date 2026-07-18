@@ -79,12 +79,11 @@ restale-kit/
 
 - **Module format:** ESM-only. No CJS build.
 - **TypeScript target:** ES2022 (guarantees `ReadableStream`, `EventTarget`, `structuredClone`).
-- **No framework/library peer dependencies in root `package.json`.** Framework-specific subpaths
+- **Optional peer dependencies in `package.json`.** Framework-specific subpaths
   (`restale-kit/react`, `restale-kit/tanstack-query`) import from `react` and
-  `@tanstack/react-query` respectively — if those aren't installed, TypeScript errors at compile
-  time and bundlers error at build time. This is sufficient enforcement and keeps the package
-  manifest framework-agnostic. A Vue user installing `restale-kit` to use only `client` sees
-  zero React-related anything.
+  `@tanstack/react-query` respectively. These are marked as optional peer dependencies in `package.json`
+  for ecosystem discoverability. A Vue user installing `restale-kit` to use only `client` sees
+  zero required React dependencies installed.
 
 Express and Fastify both sit on Node's `http` module, so they use `restale-kit/express` and
 `restale-kit/fastify` respectively (the Fastify adapter auto-calls `reply.hijack()` when passed
@@ -280,7 +279,8 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  keepaliveIntervalMs?: number   // default 30_000
+  target: SignalTarget | SignalTarget[] // Required target discriminator or target array for multi-target fanout
+  keepaliveIntervalMs?: number   // default 0 (disabled)
   retryIntervalMs?: number       // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   lastEventId?: string           // Last-Event-ID from the reconnecting client
@@ -290,7 +290,7 @@ interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 ```
 
@@ -606,6 +606,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal> 
   get status(): ConnectionStatus
   connect(): Promise<void>   // resolves when open; rejects with the error Event if it fails first
   close(): void               // reason 'manual'; connect() can reopen
+  closeWithUnmount(): void    // reason 'unmount'; called on component unmount
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
     type: K,
