@@ -837,6 +837,26 @@ describe('requestedTarget negotiation', () => {
     warnSpy.mockRestore()
   })
 
+  it('sanitizes newlines in requestedTarget and connectionId to prevent log injection', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel({
+      target: ['swr'],
+      requestedTarget: 'bad\r\ntarget',
+      connectionId: 'bad\ncid',
+    })
+
+    const reader = channel.stream.getReader()
+    await reader.read()
+    reader.releaseLock()
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('requested target "bad\\ntarget"')
+    )
+    expect(warnSpy.mock.calls[0][0]).toContain('connectionId: bad\\ncid.')
+
+    warnSpy.mockRestore()
+  })
+
   it('unknown string target (e.g. from unrecognized client) triggers unsupported-target revoke', async () => {
     // extractRequestedTarget now returns the raw string for unrecognized values.
     // The channel must reject it just like a known-but-unsupported target.

@@ -154,8 +154,10 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         const supportedTargets = Array.isArray(target) ? target : [target]
         // @ts-expect-error includes not present for SignalTarget type
         if (!supportedTargets.includes(requestedTarget)) {
+          const safeRequestedTarget = requestedTarget.replace(/\r\n|\r|\n/g, '\\n')
+          const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
           console.warn(
-            `[WARN][createSSEChannel] Rejected connection: requested target "${requestedTarget}" not in supported set [${supportedTargets.join(', ')}]. connectionId: ${connectionId}.`
+            `[WARN][createSSEChannel] Rejected connection: requested target "${safeRequestedTarget}" not in supported set [${supportedTargets.join(', ')}]. connectionId: ${safeConnectionId}.`
           )
           try {
             controller.enqueue(
