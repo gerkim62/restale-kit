@@ -365,7 +365,7 @@ describe('channel', () => {
     const channel = createSSEChannel({ target: 'swr' })
     expect(channel.target).toBe('swr')
 
-    channel.invalidate({ key: ['items', 1] } as any)
+    channel.invalidate({ key: ['items', 1] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
@@ -374,7 +374,7 @@ describe('channel', () => {
     const channel = createSSEChannel({ target: ['swr', 'tanstack-query'] })
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
 
-    channel.invalidate({ key: ['items', 1] } as any)
+    channel.invalidate({ key: ['items', 1] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toBe(
       'event: invalidate\ndata: [{"target":"swr","key":["items",1]},{"target":"tanstack-query","queryKey":["items",1]}]\n\n'

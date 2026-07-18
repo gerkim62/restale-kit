@@ -1075,7 +1075,7 @@ describe('channel-group', () => {
     group.register(ch)
 
     const reader = ch.stream.getReader()
-    group.broadcastToAll({ key: ['items'] } as any)
+    group.broadcastToAll({ key: ['items'] })
 
     const { value } = await reader.read()
     reader.releaseLock()
