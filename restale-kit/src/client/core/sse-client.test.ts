@@ -106,6 +106,33 @@ describe('SSEInvalidatorClient', () => {
     expect(client.status.status).toBe('open')
   })
 
+  it('reuses existing EventSource when connect() is called while readyState is EventSource.CONNECTING', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const p1 = client.connect()
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p1
+
+    expect(client.status.status).toBe('open')
+
+    // Simulate transient mid-stream error while browser native EventSource is reconnecting (readyState CONNECTING)
+    if (es) {
+      es.readyState = MockEventSource.CONNECTING
+      es.emitError()
+    }
+
+    expect(client.status.status).toBe('connecting')
+
+    // Calling connect() while native reconnection is active should reuse existing EventSource
+    const p2 = client.connect()
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    // Simulate native EventSource completing reconnect
+    es?.emitOpen()
+    await expect(p2).resolves.toBeUndefined()
+    expect(client.status.status).toBe('open')
+  })
+
   it('falls back to JS backoff retries when mid-stream error results in readyState CLOSED', async () => {
     const client = new SSEInvalidatorClient('/sse', {
       autoReconnect: true,

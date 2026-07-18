@@ -60,7 +60,7 @@ export class SSEInvalidatorClient<
       this.currentConnectionId
     )
     const autoReconnectOpt = opts?.autoReconnect
-    if (typeof autoReconnectOpt === 'object' && autoReconnectOpt !== null) {
+    if (typeof autoReconnectOpt === 'object') {
       this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
       this.jsBackoffAutoReconnect = autoReconnectOpt.jsBackoff ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
     } else {
@@ -76,7 +76,7 @@ export class SSEInvalidatorClient<
 
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${String(this.currentConnectionId)}) for URL: ${this.eventSourceUrl}`
+        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${this.currentConnectionId})`
       )
     }
   }
@@ -114,7 +114,7 @@ export class SSEInvalidatorClient<
   connect(): Promise<void> {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${String(this.currentConnectionId)}, currentStatus: ${this.currentStatus.status})`
+        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${this.currentConnectionId}, currentStatus: ${this.currentStatus.status})`
       )
     }
 
@@ -123,9 +123,24 @@ export class SSEInvalidatorClient<
       return Promise.resolve()
     }
 
-    // Already connecting and actively establishing socket (not waiting on retry timer) — return same pending promise
-    if (this.currentStatus.status === 'connecting' && this.connectPromise && this.retryTimer === null) {
-      return this.connectPromise.promise
+    // Already connecting — handle active native reconnect or pending connect promise
+    if (this.currentStatus.status === 'connecting') {
+      if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
+        if (!this.connectPromise) {
+          let resolveConnect: () => void = () => {}
+          let rejectConnect: (error: Event) => void = () => {}
+          const promise = new Promise<void>((res, rej) => {
+            resolveConnect = res
+            rejectConnect = rej
+          })
+          this.connectPromise = { promise, resolve: resolveConnect, reject: rejectConnect }
+        }
+        return this.connectPromise.promise
+      }
+
+      if (this.connectPromise && this.retryTimer === null) {
+        return this.connectPromise.promise
+      }
     }
 
     // Cancel any pending retry timer
@@ -149,7 +164,7 @@ export class SSEInvalidatorClient<
   close(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${String(this.currentConnectionId)})`
+        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${this.currentConnectionId})`
       )
     }
     this.teardown()
@@ -171,7 +186,7 @@ export class SSEInvalidatorClient<
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${String(this.currentConnectionId)})`
+        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId})`
       )
     }
     this.teardown()
@@ -250,7 +265,6 @@ export class SSEInvalidatorClient<
    * Establishes the connection and handles retries / promise resolution.
    */
   private establishConnection(): void {
-    const existingPromise = this.connectPromise
     this.opened = false
 
     this.setStatus({ status: 'connecting' })
@@ -260,7 +274,7 @@ export class SSEInvalidatorClient<
         ? 'First connection attempt for this client instance'
         : `Automatic reconnection attempt ${String(this.attempt)} after connection drop/error`
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${String(this.currentConnectionId)}). Reason: ${reason}. URL: ${this.eventSourceUrl}`
+        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
       )
     }
 
@@ -273,14 +287,12 @@ export class SSEInvalidatorClient<
       this.setStatus({ status: 'open' })
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${String(this.currentConnectionId)}). Stream is live.`
+          `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId}). Stream is live.`
         )
       }
-      if (existingPromise) {
-        existingPromise.resolve()
-        if (this.connectPromise === existingPromise) {
-          this.connectPromise = null
-        }
+      if (this.connectPromise) {
+        this.connectPromise.resolve()
+        this.connectPromise = null
       }
     }
 
@@ -294,7 +306,7 @@ export class SSEInvalidatorClient<
       if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
         if (this.debug) {
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${String(this.currentConnectionId)}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
+            `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${this.currentConnectionId}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
           )
         }
         // Connection was established and dropped mid-stream (temporary network drop).
@@ -313,7 +325,7 @@ export class SSEInvalidatorClient<
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         if (this.debug) {
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${String(this.currentConnectionId)}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
+            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
           )
         }
         this.attempt++
@@ -330,15 +342,13 @@ export class SSEInvalidatorClient<
             ? 'jsBackoff autoReconnect is disabled'
             : `Exhausted maxRetries (${String(this.maxRetries)})`
           console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${String(this.currentConnectionId)}). Reason: ${reason}.`
+            `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
           )
         }
         this.setStatus({ status: 'error', error: event })
-        if (existingPromise) {
-          existingPromise.reject(event)
-          if (this.connectPromise === existingPromise) {
-            this.connectPromise = null
-          }
+        if (this.connectPromise) {
+          this.connectPromise.reject(event)
+          this.connectPromise = null
         }
       }
     }
@@ -422,7 +432,7 @@ export class SSEInvalidatorClient<
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${String(this.currentConnectionId)}). Reason: Server revoked connection ("${reason}"). Auto-reconnect suppressed.`
+          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${reason}"). Auto-reconnect suppressed.`
         )
       }
       this.revoked = true

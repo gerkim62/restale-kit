@@ -516,7 +516,8 @@ export class SSEChannelGroup<
     }
 
     if (scope !== undefined) {
-      if (!scope || typeof scope !== 'object' || Array.isArray(scope) || !isJSONValue(scope)) {
+      const scopeVal: unknown = scope
+      if (!scopeVal || typeof scopeVal !== 'object' || Array.isArray(scopeVal) || !isJSONValue(scopeVal)) {
         throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
       }
     }
