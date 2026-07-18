@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame } from './framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame } from './framing.js'
 
 const decoder = new TextDecoder()
 
@@ -41,6 +41,18 @@ describe('framing', () => {
     const str = decoder.decode(bytes)
 
     expect(str).toBe(': keepalive\n\n')
+  })
+
+  it('formats retry frame', () => {
+    const bytes = formatRetryFrame(5000)
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe('retry: 5000\n\n')
+  })
+
+  it('throws error for non-finite retryMs in formatRetryFrame', () => {
+    expect(() => formatRetryFrame(NaN)).toThrow('[formatRetryFrame] retryMs must be a finite number.')
+    expect(() => formatRetryFrame(Infinity)).toThrow('[formatRetryFrame] retryMs must be a finite number.')
   })
 })
 

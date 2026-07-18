@@ -34,11 +34,27 @@ export interface ReconnectOptions {
 }
 
 /**
+ * Granular auto-reconnect settings for SSEInvalidatorClient.
+ */
+export interface AutoReconnectOptions {
+  /** Enable native browser EventSource auto-reconnection on mid-stream network drops. Default: true. */
+  native?: boolean
+  /** Enable JavaScript exponential backoff retries on connection setup failure or closure. Default: true. */
+  jsBackoff?: boolean
+}
+
+/**
  * Configuration options for `SSEInvalidatorClient`.
  */
 export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  /** Whether to automatically reconnect on failure. Default: true. */
-  autoReconnect?: boolean
+  /**
+   * Whether to automatically reconnect on failure. Default: true.
+   *
+   * Accepts a `boolean` or an `AutoReconnectOptions` object for granular control over
+   * native browser EventSource mid-stream reconnects vs. JavaScript backoff retries.
+   * Manual reconnection via `connect()` remains available regardless of setting.
+   */
+  autoReconnect?: boolean | AutoReconnectOptions
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
   /** Optional Standard Schema for runtime payload validation. */
@@ -46,11 +62,19 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   /**
    * Include credentials when opening the EventSource connection. Default: false.
    *
-   * **Note:** Like `autoReconnect`, `reconnect`, and `signalSchema`, this option is applied
+   * **Note:** Like `autoReconnect`, `reconnect`, `signalSchema`, and `debug`, this option is applied
    * only when the client is initially created. In the React hook, changing this value on a
    * later render will not take effect until the `url` also changes (which recreates the client).
    */
   withCredentials?: boolean
+  /**
+   * Enable debug logging for connection lifecycle events. Default: false.
+   *
+   * **Note:** Like `autoReconnect`, `reconnect`, `signalSchema`, and `withCredentials`, this option is applied
+   * only when the client is initially created. In the React hook, changing this value on a
+   * later render will not take effect until the `url` also changes (which recreates the client).
+   */
+  debug?: boolean
 }
 
 /**

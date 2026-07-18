@@ -365,13 +365,14 @@ function App() {
 
 ---
 
-## What the frontend sees on disconnect
+When the SSE connection drops, `EventSource.onerror` fires internally.
 
-When the SSE connection drops, `EventSource.onerror` fires internally. The client tears down the current `EventSource` and dispatches an `'error'` event, then decides what to do based on `autoReconnect` and the retry count.
+- **Mid-stream network drops (`readyState === CONNECTING`)**: Native browser `EventSource` stays active and automatically handles auto-reconnection on the same instance, preserving its internal event ID state and sending the official `Last-Event-ID` HTTP header upon reconnect. Status transitions to `{ status: 'connecting' }`. Mid-stream native reconnects do not consume or exhaust the JavaScript `maxRetries` retry budget.
+- **Initial connection failures or fatal errors (`readyState === CLOSED`)**: When the native `EventSource` cannot reconnect automatically (e.g. initial connection failure, HTTP 500/502/503), the client tears down the instance and falls back to JavaScript exponential backoff retries (which consume from `maxRetries`).
 
-**With `autoReconnect: true` (default) and retries remaining:**
+**With `autoReconnect: true` (default):**
 
-The status immediately transitions to `{ status: 'connecting' }`, and `statuschange` fires. The client schedules a retry after an exponential backoff delay. Each subsequent attempt also stays in `'connecting'`. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
+The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The native browser `EventSource` (or JS backoff for initial/fatal failures) attempts to reconnect. Note that `maxRetries` applies only to initial or fatal failures handled by JavaScript backoff; mid-stream native reconnects do not consume or exhaust retries. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
 
 ```text
 'open' → 'connecting'   ← disconnect detected
@@ -381,10 +382,26 @@ The status immediately transitions to `{ status: 'connecting' }`, and `statuscha
 
 **With `autoReconnect: false`, or when retries are exhausted:**
 
-The status transitions to `{ status: 'error', error: Event }`. No further reconnection is attempted automatically. Call `reconnect()` (hook) or `client.connect()` to try again manually.
+The status transitions to `{ status: 'error', error: Event }`. All automatic background reconnect attempts (both native browser `EventSource` reconnects and JavaScript backoff retries) are suppressed. However, manual reconnection via `reconnect()` (hook) or `client.connect()` remains enabled and can be called explicitly at any time.
 
 ```text
-'open' → 'error'   ← immediate, no retries
+'open' → 'error'   ← immediate, no automatic retries (manual reconnect() still permitted)
+```
+
+**Granular retry control (`autoReconnect: { native?: boolean, jsBackoff?: boolean }`):**
+
+To independently control native browser mid-stream reconnects vs. JavaScript backoff retries, pass an object to `autoReconnect`:
+
+```ts
+// Example: Disable native browser auto-reconnect, force JS exponential backoff on drops
+useReStale('/sse', {
+  autoReconnect: { native: false, jsBackoff: true },
+})
+
+// Example: Allow native browser reconnects, but do NOT retry initial/fatal failures via JS
+useReStale('/sse', {
+  autoReconnect: { native: true, jsBackoff: false },
+})
 ```
 
 **Without an event store, signals fired while the client was offline are not replayed.** See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.

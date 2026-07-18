@@ -65,6 +65,21 @@ describe('channel-group', () => {
     expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
   })
 
+  it('enqueues framed SSE bytes with id line when group has eventBufferCapacity', async () => {
+    const group = new SSEChannelGroup({ eventBufferCapacity: 50 })
+    const ch = createSSEChannel()
+    group.register(ch)
+
+    group.broadcastToAll({ key: ['todos'] })
+
+    const decoder = new TextDecoder()
+    const reader = ch.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"key":["todos"]}\n\n')
+  })
+
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
     // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
     // undefined, the predicate receives undefined (not skipped) and can act on it.
@@ -338,7 +353,48 @@ describe('channel-group', () => {
     expect(publishSpy).toHaveBeenCalledWith('notifications', {
       kind: 'signal',
       data: { key: ['alert'] },
+      id: undefined,
     })
+  })
+
+  it('includes eventId in pubsub.publish payload when group has eventBufferCapacity', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const publishSpy = vi.spyOn(pubsub, 'publish')
+
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub, eventBufferCapacity: 10 })
+    const ch = createSSEChannel()
+    group.register(ch, { userId: 10 }, { topics: ['notifications'] })
+
+    await group.publish('notifications', { key: ['alert'] })
+
+    expect(publishSpy).toHaveBeenCalledWith(
+      'notifications',
+      expect.objectContaining({
+        kind: 'signal',
+        data: { key: ['alert'] },
+        id: expect.any(String),
+      })
+    )
+  })
+
+  it('delivers pubsub signal with id to subscribed channels', async () => {
+    const pubsub = new MemoryPubSubAdapter()
+    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const ch = createSSEChannel()
+    const invalidateSpy = vi.spyOn(ch, 'invalidate')
+
+    group.register(ch, { userId: 10 }, { topics: ['notifications'] })
+
+    // Flush async TopicManager subscription
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
+
+    await pubsub.publish('notifications', {
+      kind: 'signal',
+      data: { key: ['alert'] },
+      id: 'pubsub-evt-100',
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, 'pubsub-evt-100')
   })
 
   it('revokes matching channels locally and publishes control message to pubsub', async () => {
@@ -900,6 +956,23 @@ describe('channel-group', () => {
     expect(result2.closed).toBe(true)
     expect(ch.state).toBe('closed')
     expect(group.size).toBe(0)
+  })
+
+  it('revokeByConnectionId rejects invalid non-plain-object scope values', async () => {
+    const group = new SSEChannelGroup<any, TestMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-scope-val' })
+    group.register(ch, { userId: 100, role: 'admin' })
+
+    await expect(group.revokeByConnectionId(ch.connectionId, null as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    await expect(group.revokeByConnectionId(ch.connectionId, [] as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    await expect(group.revokeByConnectionId(ch.connectionId, 123 as any)).rejects.toThrow(
+      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
+    )
+    expect(ch.state).toBe('open')
   })
 
   it('handles remote revokeByConnectionId messages via pubsub', async () => {

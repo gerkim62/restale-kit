@@ -155,7 +155,7 @@ export function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: 
  * Discriminated union envelope carried across pub/sub adapters.
  */
 export type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
-  | { kind: 'signal'; data: TSignal | TSignal[] }
+  | { kind: 'signal'; data: TSignal | TSignal[]; id?: string }
   | { kind: 'control'; data: JSONValue }
 
 /**

@@ -123,6 +123,26 @@ describe('channel', () => {
     expect(customGen).toHaveBeenCalled()
   })
 
+  it('includes customId in SSE stream frame even when channel has no eventStore', async () => {
+    const channel = createSSEChannel()
+    const returnedId = channel.invalidate({ key: ['items', 1] }, 'custom-evt-99')
+
+    expect(returnedId).toBe('custom-evt-99')
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"key":["items",1]}\n\n')
+  })
+
+  it('uses idGenerator to produce SSE stream frame id when channel has no eventStore', async () => {
+    const customGen = vi.fn().mockReturnValue('gen-id-456')
+    const channel = createSSEChannel({ idGenerator: customGen })
+
+    const returnedId = channel.invalidate({ key: ['items', 2] })
+
+    expect(returnedId).toBe('gen-id-456')
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"key":["items",2]}\n\n')
+  })
+
   it('warns when controller.close throws inside closeInternal', async () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const channel = createSSEChannel()

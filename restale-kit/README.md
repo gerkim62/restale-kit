@@ -427,14 +427,28 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
 | `onRevoke` | `(reason: string) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. |
-| `autoReconnect` | `boolean` | `true` | Auto-reconnect on disconnect. |
+| `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
 | `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
+| `debug` | `boolean` | `false` | Enable verbose console debug logging for connection lifecycle events. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
+
+### `createSSEChannel(options?)` / `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `keepaliveIntervalMs` | `number` | `30000` (30s) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops. |
+| `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
+| `signalSchema` | `StandardSchemaV1` | `undefined` | Standard Schema to validate signals passed to `channel.invalidate()`. |
+| `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
+| `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
+| `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
+| `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
+| `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport adapters (`attachSSE`, `toSSEResponse`). You never need to set or manage this parameter manually. |
 
 ### `SSEChannelGroup(options?)`
 

@@ -232,8 +232,7 @@ Periodic SSE comment to prevent proxies/load balancers from dropping idle connec
 
 ### Initial connection
 
-No special event is sent when a client connects. The stream begins producing keepalives
-immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
+No special event is required when a client connects. If `retryIntervalMs` is configured, an initial `retry: <ms>\n\n` frame is enqueued upon stream start to instruct standard `EventSource` browsers on their native reconnection delay. Otherwise, the stream begins producing periodic keepalives immediately. The first `invalidate` event arrives whenever `channel.invalidate()` is first called.
 
 ---
 
@@ -280,6 +279,7 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   keepaliveIntervalMs?: number   // default 30_000
+  retryIntervalMs?: number       // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   lastEventId?: string           // Last-Event-ID from the reconnecting client
   eventStore?: EventStore<TSignal> // shared store for recording history and replaying missed events
@@ -292,8 +292,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 ): SSEChannel<TSignal>
 ```
 
-`invalidate()` returns the event ID assigned to the frame (the `customId` if provided, or the
-auto-generated ID from the `eventStore`, or `''` when no ID is assigned).
+`invalidate()` returns the event ID assigned to the frame. By default without an event store or buffer, IDs are absent or empty (`''`). Caller-supplied `customId` or custom `idGenerator` values may still be emitted without an event store, but such IDs cannot be replayed without history. When an `eventStore` or `eventBufferCapacity` is configured, IDs are recorded and used for `Last-Event-ID` replay upon reconnect.
 
 When `signalSchema` is provided, `invalidate()` validates each signal (unwrapping arrays) via
 `signalSchema['~standard'].validate(signal)` before framing. If the result contains `issues`,
@@ -580,8 +579,13 @@ interface ReconnectOptions {
   maxRetries?: number     // default Infinity (unlimited)
 }
 
+interface AutoReconnectOptions {
+  native?: boolean        // default true (native EventSource auto-reconnect)
+  jsBackoff?: boolean     // default true (JS exponential backoff retries)
+}
+
 interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  autoReconnect?: boolean   // default true
+  autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request

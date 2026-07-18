@@ -68,11 +68,20 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   // On the first render, or when the url changes, build a new client and stage it in
   // pendingClientRef. The committed clientRef is left intact until the effect runs.
   if (urlRef.current !== url) {
+    if (opts.debug) {
+      const reason = urlRef.current === null
+        ? `Hook mounted with URL: "${url}"`
+        : `URL prop changed from "${urlRef.current}" to "${url}"`
+      console.log(
+        `[restale-kit][useReStale] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
+      )
+    }
     pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
       signalSchema: opts.signalSchema,
       withCredentials: opts.withCredentials,
+      debug: opts.debug,
     })
     urlRef.current = url
   }
@@ -119,6 +128,11 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
 
     // Close the previous client only after the new one is committed.
     if (previous !== null && previous !== pending) {
+      if (opts.debug) {
+        console.log(
+          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId} because URL changed to "${url}". Closing previous client connectionId=${previous.connectionId}.`
+        )
+      }
       previous.close()
     }
     // Note: connect() for the new client is handled by the open/unmount effect below,
@@ -152,13 +166,31 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   // Open on mount / close on unmount
   useEffect(() => {
-    if (disabled) return
+    if (disabled) {
+      if (opts.debug) {
+        console.log(
+          `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId} because disabled=true.`
+        )
+      }
+      return
+    }
+
+    if (opts.debug) {
+      console.log(
+        `[restale-kit][useReStale] Effect mounted for connectionId=${client.connectionId} (URL: "${client.endpointUrl}"). Reason: Component mounted or client instance changed. Calling connect().`
+      )
+    }
 
     void client.connect().catch((e: unknown) => {
       console.error('Failed to connect to SSE server:', e)
     })
 
     return () => {
+      if (opts.debug) {
+        console.log(
+          `[restale-kit][useReStale] Effect unmounting for connectionId=${client.connectionId}. Reason: Component unmounting or client instance changing. Calling closeWithUnmount().`
+        )
+      }
       client.closeWithUnmount()
     }
   }, [client, disabled])

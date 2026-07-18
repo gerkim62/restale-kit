@@ -129,6 +129,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 interface SSEChannelOptions<TSignal> {
   keepaliveIntervalMs?: number                        // default 30_000
+  retryIntervalMs?: number                            // optional retry interval in ms for browser EventSource
   signalSchema?: StandardSchemaV1<unknown, TSignal>
   lastEventId?: string
   eventStore?: EventStore<TSignal>
@@ -144,12 +145,12 @@ interface SSEChannel<TSignal> {
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
    *
-   * Returns the SSE event ID string assigned to this frame. When an
-   * `eventStore` or `eventBufferCapacity` is configured, this ID is used
-   * for Last-Event-ID replay: the client echoes it back in the
-   * `Last-Event-ID` header on reconnect, and `restale-kit` replays any
-   * events that follow it. If neither eventBufferCapacity nor eventStore is
-   * configured, the return value is an empty string and can be ignored.
+   * Returns the SSE event ID string assigned to this frame. By default without an
+   * `eventStore` or `eventBufferCapacity` configured, IDs are absent or empty (`''`).
+   * Caller-supplied `customId` or custom `idGenerator` values may still be emitted
+   * without an event store, but such IDs cannot be replayed without history.
+   * When an `eventStore` or `eventBufferCapacity` is configured, event IDs are recorded
+   * for `Last-Event-ID` replay upon reconnect.
    *
    * Throws `ChannelClosedError` when `state` is `'closed'`.
    * Throws `SchemaValidationError` when `signalSchema` validation fails.
@@ -338,10 +339,15 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 interface ClientOptions<TSignal> {
-  autoReconnect?: boolean           // default true
+  autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>
+}
+
+interface AutoReconnectOptions {
+  native?: boolean                  // default true (native EventSource auto-reconnect)
+  jsBackoff?: boolean               // default true (JS exponential backoff retries)
 }
 
 interface ReconnectOptions {
