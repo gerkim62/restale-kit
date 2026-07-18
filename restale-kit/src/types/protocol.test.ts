@@ -49,6 +49,9 @@ describe('protocol - isJSONValue', () => {
 
   it('recognizes valid nested structures', () => {
     expect(isJSONValue(['todos', 1, { status: 'active', flags: [true, null] }])).toBe(true)
+    const nullProtoObj = Object.create(null) as Record<string, unknown>
+    nullProtoObj.key = 'value'
+    expect(isJSONValue(nullProtoObj)).toBe(true)
   })
 
   it('rejects class instances and invalid properties', () => {
