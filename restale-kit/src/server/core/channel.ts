@@ -152,6 +152,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       // If it is unsupported, emit a structured revoke frame and close immediately.
       if (requestedTarget !== undefined) {
         const supportedTargets = Array.isArray(target) ? target : [target]
+        // @ts-expect-error includes not present for SignalTarget type
         if (!supportedTargets.includes(requestedTarget)) {
           console.warn(
             `[WARN][createSSEChannel] Rejected connection: requested target "${requestedTarget}" not in supported set [${supportedTargets.join(', ')}]. connectionId: ${connectionId}.`
