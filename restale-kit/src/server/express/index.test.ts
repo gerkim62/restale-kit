@@ -27,7 +27,7 @@ describe('server/express entrypoint', () => {
     const req = createMockExpressRequest('/sse?__restale_cid__=express-123')
     const res = createMockExpressResponse()
 
-    const channel = attachSSE(req, res)
+    const channel = attachSSE(req, res, { target: 'swr' })
 
     expect(channel.connectionId).toBe('express-123')
     expect(SSE_HEADERS).toEqual({
@@ -35,7 +35,10 @@ describe('server/express entrypoint', () => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     })
-    expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'swr',
+    })
     expect(channel.state).toBe('open')
     channel.close()
   })
@@ -44,7 +47,7 @@ describe('server/express entrypoint', () => {
     const req = createMockExpressRequest('/sse')
     const res = createMockExpressResponse()
 
-    expect(() => attachSSE(req, res)).toThrow(
+    expect(() => attachSSE(req, res, { target: 'swr' })).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })

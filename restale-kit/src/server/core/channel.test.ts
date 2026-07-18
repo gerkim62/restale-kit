@@ -24,12 +24,12 @@ describe('channel', () => {
   })
 
   it('starts in open state', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     expect(channel.state).toBe('open')
   })
 
   it('closes idempotently and sets state to closed', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.close()
     expect(channel.state).toBe('closed')
     channel.close() // should not throw
@@ -37,20 +37,20 @@ describe('channel', () => {
   })
 
   it('disconnect calls close idempotently', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.disconnect()
     expect(channel.state).toBe('closed')
   })
 
   it('throws ChannelClosedError on invalidate when closed', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.close()
     expect(() => channel.invalidate({ key: ['test'] })).toThrow(ChannelClosedError)
   })
 
   it('validates signals against signalSchema before enqueuing batch', () => {
     const schema = createInvalidSchema('Invalid key')
-    const channel = createSSEChannel({ signalSchema: schema })
+    const channel = createSSEChannel({ target: 'swr', signalSchema: schema })
 
     expect(() => channel.invalidate([{ key: ['valid'] }, { key: ['invalid'] }])).toThrow(
       SchemaValidationError
@@ -58,15 +58,15 @@ describe('channel', () => {
   })
 
   it('enqueues framed invalidate event bytes into stream', async () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.invalidate({ key: ['items', 1] })
 
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
   it('does not emit keepalives by default when keepaliveIntervalMs is omitted', async () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const reader = channel.stream.getReader()
 
     await vi.advanceTimersByTimeAsync(60000)
@@ -80,7 +80,7 @@ describe('channel', () => {
   })
 
   it('emits keepalives at configured interval when keepaliveIntervalMs is provided', async () => {
-    const channel = createSSEChannel({ keepaliveIntervalMs: 5000 })
+    const channel = createSSEChannel({ target: 'swr', keepaliveIntervalMs: 5000 })
     const reader = channel.stream.getReader()
 
     await vi.advanceTimersByTimeAsync(5000)
@@ -97,6 +97,7 @@ describe('channel', () => {
     store.add({ key: ['c'] }, 'evt-3')
 
     const channel = createSSEChannel({
+      target: 'swr',
       lastEventId: 'evt-1',
       eventStore: store,
     })
@@ -113,7 +114,7 @@ describe('channel', () => {
 
   it('uses eventStore and custom idGenerator during invalidate', () => {
     const store = createEventStore({ capacity: 10 })
-    const channel = createSSEChannel({ eventStore: store })
+    const channel = createSSEChannel({ target: 'swr', eventStore: store })
 
     const id = channel.invalidate({ key: ['test-store'] })
     expect(id).toBeDefined()
@@ -132,7 +133,7 @@ describe('channel', () => {
     expect(staleMiss).toBe(true)
 
     const customGen = vi.fn().mockReturnValue('custom-id-123')
-    const customChannel = createSSEChannel({ eventBufferCapacity: 10, idGenerator: customGen })
+    const customChannel = createSSEChannel({ target: 'swr', eventBufferCapacity: 10, idGenerator: customGen })
 
     const generatedId = customChannel.invalidate({ key: ['test-custom'] })
     expect(generatedId).toBe('custom-id-123')
@@ -140,28 +141,28 @@ describe('channel', () => {
   })
 
   it('includes customId in SSE stream frame even when channel has no eventStore', async () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const returnedId = channel.invalidate({ key: ['items', 1] }, 'custom-evt-99')
 
     expect(returnedId).toBe('custom-evt-99')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"key":["items",1]}\n\n')
+    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
   it('uses idGenerator to produce SSE stream frame id when channel has no eventStore', async () => {
     const customGen = vi.fn().mockReturnValue('gen-id-456')
-    const channel = createSSEChannel({ idGenerator: customGen })
+    const channel = createSSEChannel({ target: 'swr', idGenerator: customGen })
 
     const returnedId = channel.invalidate({ key: ['items', 2] })
 
     expect(returnedId).toBe('gen-id-456')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"key":["items",2]}\n\n')
+    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"target":"swr","key":["items",2]}\n\n')
   })
 
   it('warns when controller.close throws inside closeInternal', async () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
 
     // Cancel reader to trigger cancel callback on stream which closes stream controller
     const reader = channel.stream.getReader()
@@ -189,7 +190,7 @@ describe('channel', () => {
       },
     }
 
-    const channel = createSSEChannel({ signalSchema: schema as any })
+    const channel = createSSEChannel({ target: 'swr', signalSchema: schema as any })
     channel.close()
 
     // Must throw ChannelClosedError, not SchemaValidationError
@@ -209,7 +210,7 @@ describe('channel', () => {
 
     // A channel created with an evicted lastEventId should emit a full-invalidate
     // signal (key: []) so the client knows to refetch everything.
-    const channel = createSSEChannel({ lastEventId: 'id-1', eventStore: store })
+    const channel = createSSEChannel({ target: 'swr', lastEventId: 'id-1', eventStore: store })
     const reader = channel.stream.getReader()
     const { value } = await reader.read()
 
@@ -245,7 +246,7 @@ describe('channel', () => {
     } as unknown as typeof ReadableStream
 
     try {
-      const channel = createSSEChannel()
+      const channel = createSSEChannel({ target: 'swr' })
       channel.close()
 
       expect(consoleSpy).toHaveBeenCalledWith(
@@ -260,7 +261,7 @@ describe('channel', () => {
   })
 
   it('emits keepalive frame on timer interval when channel state is open', async () => {
-    const channel = createSSEChannel({ keepaliveIntervalMs: 1000 })
+    const channel = createSSEChannel({ target: 'swr', keepaliveIntervalMs: 1000 })
     const reader = channel.stream.getReader()
 
     await vi.advanceTimersByTimeAsync(1000)
@@ -271,23 +272,23 @@ describe('channel', () => {
   })
 
   it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {
-    const channel = createSSEChannel({ eventBufferCapacity: 20 })
+    const channel = createSSEChannel({ target: 'swr', eventBufferCapacity: 20 })
     const id = channel.invalidate({ key: ['auto-store'] })
     expect(id).toBe('1') // EventStore auto-increment ID
   })
 
   it('exposes connectionId from options', () => {
-    const channel = createSSEChannel({ connectionId: 'test-conn-id' })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'test-conn-id' })
     expect(channel.connectionId).toBe('test-conn-id')
   })
 
   it('connectionId defaults to empty string when not provided', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     expect(channel.connectionId).toBe('')
   })
 
   it('revoke() sends a revoke frame then closes the channel', async () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const reader = channel.stream.getReader()
 
     channel.revoke()
@@ -300,7 +301,7 @@ describe('channel', () => {
   })
 
   it('revoke() sends a revoke frame with a custom reason', async () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const reader = channel.stream.getReader()
 
     channel.revoke('logout')
@@ -313,14 +314,14 @@ describe('channel', () => {
   })
 
   it('revoke() is idempotent — no-op when already closed', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.close()
     expect(() => { channel.revoke() }).not.toThrow()
     expect(channel.state).toBe('closed')
   })
 
   it('revoke() fires onClose callbacks', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const cb = vi.fn()
     channel.onClose(cb)
 
@@ -330,7 +331,7 @@ describe('channel', () => {
   })
 
   it('onClose fires callback when channel is closed', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const cb = vi.fn()
     channel.onClose(cb)
     expect(cb).not.toHaveBeenCalled()
@@ -339,7 +340,7 @@ describe('channel', () => {
   })
 
   it('onClose fires immediately if channel is already closed', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     channel.close()
     const cb = vi.fn()
     channel.onClose(cb)
@@ -347,7 +348,7 @@ describe('channel', () => {
   })
 
   it('onClose fires on disconnect', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const cb = vi.fn()
     channel.onClose(cb)
     channel.disconnect()
@@ -355,7 +356,7 @@ describe('channel', () => {
   })
 
   it('onClose does not fire twice if close is called twice', () => {
-    const channel = createSSEChannel()
+    const channel = createSSEChannel({ target: 'swr' })
     const cb = vi.fn()
     channel.onClose(cb)
     channel.close()

@@ -9,6 +9,8 @@ import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS } from '@/utils/constants.js'
  * Configuration options for `createSSEChannel`.
  */
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+  /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required. */
+  target: SignalTarget | SignalTarget[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
@@ -29,8 +31,6 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * and pass it here automatically. You rarely need to set this manually.
    */
   connectionId?: string
-  /** Optional target discriminator or target array for automatic signal tagging and multi-target fanout. */
-  target?: SignalTarget | SignalTarget[]
 }
 
 /**
@@ -54,8 +54,8 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   /** The unique connection ID sent by the client (`__restale_cid__`). */
   readonly connectionId: string
-  /** Optional configured target discriminator or target array. */
-  readonly target?: SignalTarget | SignalTarget[]
+  /** Configured target discriminator or target array. Required. */
+  readonly target: SignalTarget | SignalTarget[]
   /** The SSE byte stream to pipe into a response. */
   readonly stream: ReadableStream<Uint8Array>
   /**
@@ -103,27 +103,27 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
  * pipe this stream into a response.
  */
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
   const keepaliveIntervalMs =
-    options?.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
-  const retryIntervalMs = options?.retryIntervalMs
-  const signalSchema = options?.signalSchema
-  const lastEventId = options?.lastEventId
-  const idGenerator = options?.idGenerator
-  const connectionId = options?.connectionId ?? ''
-  const target = options?.target
+    options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
+  const retryIntervalMs = options.retryIntervalMs
+  const signalSchema = options.signalSchema
+  const lastEventId = options.lastEventId
+  const idGenerator = options.idGenerator
+  const connectionId = options.connectionId ?? ''
+  const target = options.target
 
   // Track whether this channel owns its eventStore (created internally) or was given an
   // external one. When the store is external (shared with a group), the group is responsible
   // for recording signals before calling invalidate() with a customId — the channel must not
   // call eventStore.add() a second time for the same event.
   const eventStore =
-    options?.eventStore ??
-    (options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0
+    options.eventStore ??
+    (options.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0
       ? createEventStore({ capacity: options.eventBufferCapacity, idGenerator })
       : undefined)
-  const ownsEventStore = options?.eventStore === undefined
+  const ownsEventStore = options.eventStore === undefined
 
   let state: ChannelState = 'open'
   let controller: ReadableStreamDefaultController<Uint8Array>
@@ -212,10 +212,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       throw new ChannelClosedError()
     }
 
-    let effectiveSignal: InvalidateSignal | InvalidateSignal[] = signal
-    if (target !== undefined) {
-      effectiveSignal = processTargetSignals(signal, target)
-    }
+    const effectiveSignal = processTargetSignals(signal, target)
 
     if (signalSchema) {
       const signals = Array.isArray(effectiveSignal) ? effectiveSignal : [effectiveSignal]

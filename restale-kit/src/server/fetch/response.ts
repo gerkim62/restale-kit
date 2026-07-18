@@ -17,13 +17,13 @@ import { extractConnectionId, extractLastEventId } from '@/server/transport-util
  */
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)
 
   const lastEventId =
-    options?.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
+    options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
   const channelOptions: SSEChannelOptions<TSignal> = {
     ...options,
@@ -33,11 +33,9 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
-  const headers: Record<string, string> = { ...SSE_HEADERS }
-  if (options?.target !== undefined) {
-    headers['X-ReStale-Target'] = Array.isArray(options.target)
-      ? options.target.join(', ')
-      : options.target
+  const headers: Record<string, string> = {
+    ...SSE_HEADERS,
+    'X-ReStale-Target': Array.isArray(options.target) ? options.target.join(', ') : options.target,
   }
 
   const response = new Response(channel.stream, {

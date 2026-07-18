@@ -1,6 +1,6 @@
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey, SignalTarget } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import { processTargetSignals, type SSEChannel } from '@/server/core/channel.js'
+import type { SSEChannel } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -146,12 +146,12 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 export interface SSEChannelGroupOptions<
   TMeta = unknown,
 > {
+  target: SignalTarget | SignalTarget[]
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   pubsub?: PubSubAdapter
   eventStore?: EventStore
   eventBufferCapacity?: number
   controlTopic?: string
-  target?: SignalTarget | SignalTarget[]
 }
 
 /**
@@ -171,17 +171,17 @@ export class SSEChannelGroup<
   private readonly pubsub?: PubSubAdapter
   readonly eventStore?: EventStore
   readonly controlTopic: string
-  readonly target?: SignalTarget | SignalTarget[]
+  readonly target: SignalTarget | SignalTarget[]
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options?: SSEChannelGroupOptions<TMeta>) {
-    this.metaSchema = options?.metaSchema
-    this.pubsub = options?.pubsub
-    this.target = options?.target
+  constructor(options: SSEChannelGroupOptions<TMeta>) {
+    this.metaSchema = options.metaSchema
+    this.pubsub = options.pubsub
+    this.target = options.target
 
-    const rawControlTopic = options?.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
+    const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
       throw new Error(
         `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
@@ -190,9 +190,9 @@ export class SSEChannelGroup<
     }
     this.controlTopic = rawControlTopic
 
-    if (options?.eventStore) {
+    if (options.eventStore) {
       this.eventStore = options.eventStore
-    } else if (options?.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
+    } else if (options.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
       this.eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity })
     }
 
@@ -322,12 +322,8 @@ export class SSEChannelGroup<
     eventId?: string
   ): void {
     try {
-      // Apply the group-level target transform only when the channel has no own target.
-      // When the channel has its own target, channel.invalidate() applies its own transform.
-      const effectiveSignal = (this.target !== undefined && channel.target === undefined)
-        ? processTargetSignals(signal, this.target)
-        : signal
-      channel.invalidate(effectiveSignal, eventId)
+      // Channel has its own required target, so channel.invalidate() handles the transform.
+      channel.invalidate(signal, eventId)
     } catch (error) {
       if (error instanceof ChannelClosedError) {
         this.deregister(channel)

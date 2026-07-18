@@ -19,7 +19,7 @@ export interface FastifyRequestLike {
 export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
