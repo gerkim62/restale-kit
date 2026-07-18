@@ -315,7 +315,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { SSEInvalidatorClient } from 'restale-kit/client'
-import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap } from 'restale-kit/client'
+import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RevokeEventDetail } from 'restale-kit/client'
 import type { InvalidateSignal } from 'restale-kit/client' // re-exported for convenience
 ```
 
@@ -376,8 +376,20 @@ interface SSEInvalidatorClientEventMap<TSignal> {
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
   /** Fired when the server sends a terminal `revoke` frame. Auto-reconnect is suppressed. */
-  revoke: CustomEvent<{ reason: string }>
+  revoke: CustomEvent<RevokeEventDetail>
 }
+
+type RevokeEventDetail =
+  | {
+      reason: 'unsupported-target'
+      requested: string
+      supported: string[]
+    }
+  | {
+      reason: Exclude<string, 'unsupported-target'> | undefined
+      requested?: never
+      supported?: never
+    }
 ```
 
 ---
@@ -386,7 +398,7 @@ interface SSEInvalidatorClientEventMap<TSignal> {
 
 ```ts
 import { useReStale } from 'restale-kit/react'
-import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus } from 'restale-kit/react'
+import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus, RevokeEventDetail } from 'restale-kit/react'
 
 function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   url: string,
@@ -400,7 +412,7 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
    * Called when the server sends a terminal `revoke` frame.
    * The connection is already closed; auto-reconnect is suppressed.
    * Branch on `detail.reason` to distinguish revocation causes:
-   * - `'unsupported-target'` — server does not support the requested target
+   * - `'unsupported-target'` — server does not support the requested target (detail includes requested & supported)
    * - any other string (e.g. `'logout'`, `'banned'`) — application-level revocation
    */
   onRevoke?: (detail: RevokeEventDetail) => void
