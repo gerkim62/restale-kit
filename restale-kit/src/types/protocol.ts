@@ -81,7 +81,7 @@ export function isJSONValue(value: unknown): value is JSONValue {
     return true
   }
   if (Array.isArray(value)) return value.every(isJSONValue)
-  if (typeof value !== 'object' || value === null) return false
+  if (typeof value !== 'object') return false
   const proto: unknown = Object.getPrototypeOf(value)
   if (proto !== null && proto !== Object.prototype) return false
   return Object.values(value).every(isJSONValue)
