@@ -34,17 +34,27 @@ export interface ReconnectOptions {
 }
 
 /**
+ * Granular auto-reconnect settings for SSEInvalidatorClient.
+ */
+export interface AutoReconnectOptions {
+  /** Enable native browser EventSource auto-reconnection on mid-stream network drops. Default: true. */
+  native?: boolean
+  /** Enable JavaScript exponential backoff retries on connection setup failure or closure. Default: true. */
+  jsBackoff?: boolean
+}
+
+/**
  * Configuration options for `SSEInvalidatorClient`.
  */
 export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /**
    * Whether to automatically reconnect on failure. Default: true.
    *
-   * Setting this to `false` disables automatic background reconnects (both native
-   * EventSource mid-stream reconnects and JS backoff retries) on failure.
-   * Manual reconnection via `connect()` or `reconnect()` remains available.
+   * Accepts a `boolean` or an `AutoReconnectOptions` object for granular control over
+   * native browser EventSource mid-stream reconnects vs. JavaScript backoff retries.
+   * Manual reconnection via `connect()` or `reconnect()` remains available regardless of setting.
    */
-  autoReconnect?: boolean
+  autoReconnect?: boolean | AutoReconnectOptions
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
   /** Optional Standard Schema for runtime payload validation. */

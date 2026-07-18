@@ -28,7 +28,8 @@ export class SSEInvalidatorClient<
 > extends EventTarget {
   private readonly url: string
   private readonly eventSourceUrl: string
-  private readonly autoReconnect: boolean
+  private readonly nativeAutoReconnect: boolean
+  private readonly jsBackoffAutoReconnect: boolean
   private readonly maxRetries: number
   private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
@@ -58,7 +59,15 @@ export class SSEInvalidatorClient<
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
       this.currentConnectionId
     )
-    this.autoReconnect = opts?.autoReconnect ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+    const autoReconnectOpt = opts?.autoReconnect
+    if (typeof autoReconnectOpt === 'object' && autoReconnectOpt !== null) {
+      this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+      this.jsBackoffAutoReconnect = autoReconnectOpt.jsBackoff ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+    } else {
+      const isAuto = autoReconnectOpt ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+      this.nativeAutoReconnect = isAuto
+      this.jsBackoffAutoReconnect = isAuto
+    }
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.signalSchema = opts?.signalSchema
@@ -282,7 +291,7 @@ export class SSEInvalidatorClient<
         return
       }
 
-      if (this.opened && this.autoReconnect && es.readyState === EventSource.CONNECTING) {
+      if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
         if (this.debug) {
           console.log(
             `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${String(this.currentConnectionId)}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
@@ -295,11 +304,12 @@ export class SSEInvalidatorClient<
         return
       }
 
-      // Initial connection failure or fatal response (e.g. HTTP 500/502/503 where readyState === CLOSED):
+      // Initial connection failure or fatal response (e.g. HTTP 500/502/503 where readyState === CLOSED),
+      // OR mid-stream drop when nativeAutoReconnect is false:
       // Native EventSource will not auto-reconnect. Fall back to JS backoff retries.
       this.teardown()
 
-      if (!this.revoked && this.autoReconnect && this.attempt < this.maxRetries) {
+      if (!this.revoked && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         if (this.debug) {
           console.log(
@@ -316,8 +326,8 @@ export class SSEInvalidatorClient<
         if (this.debug) {
           const reason = this.revoked
             ? 'Server sent terminal revoke frame'
-            : !this.autoReconnect
-            ? 'autoReconnect is disabled'
+            : !this.jsBackoffAutoReconnect
+            ? 'jsBackoff autoReconnect is disabled'
             : `Exhausted maxRetries (${String(this.maxRetries)})`
           console.log(
             `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${String(this.currentConnectionId)}). Reason: ${reason}.`

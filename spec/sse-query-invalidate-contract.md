@@ -579,8 +579,13 @@ interface ReconnectOptions {
   maxRetries?: number     // default Infinity (unlimited)
 }
 
+interface AutoReconnectOptions {
+  native?: boolean        // default true (native EventSource auto-reconnect)
+  jsBackoff?: boolean     // default true (JS exponential backoff retries)
+}
+
 interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  autoReconnect?: boolean   // default true
+  autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request

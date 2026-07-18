@@ -427,7 +427,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
 | `onRevoke` | `(reason: string) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. |
-| `autoReconnect` | `boolean` | `true` | Auto-reconnect on disconnect (suppresses background retries when false; manual `reconnect()` / `connect()` remains permitted). |
+| `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
 | `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |

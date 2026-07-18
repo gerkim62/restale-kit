@@ -388,6 +388,22 @@ The status transitions to `{ status: 'error', error: Event }`. All automatic bac
 'open' → 'error'   ← immediate, no automatic retries (manual reconnect() still permitted)
 ```
 
+**Granular retry control (`autoReconnect: { native?: boolean, jsBackoff?: boolean }`):**
+
+To independently control native browser mid-stream reconnects vs. JavaScript backoff retries, pass an object to `autoReconnect`:
+
+```ts
+// Example: Disable native browser auto-reconnect, force JS exponential backoff on drops
+useReStale('/sse', {
+  autoReconnect: { native: false, jsBackoff: true },
+})
+
+// Example: Allow native browser reconnects, but do NOT retry initial/fatal failures via JS
+useReStale('/sse', {
+  autoReconnect: { native: true, jsBackoff: false },
+})
+```
+
 **Without an event store, signals fired while the client was offline are not replayed.** See [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay) for the full server-side setup.
 
 ---

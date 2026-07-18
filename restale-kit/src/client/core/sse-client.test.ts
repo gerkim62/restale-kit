@@ -148,6 +148,46 @@ describe('SSEInvalidatorClient', () => {
     expect(MockEventSource.instances).toHaveLength(1)
   })
 
+  it('supports autoReconnect object with { native: false, jsBackoff: true }', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: { native: false, jsBackoff: true },
+      reconnect: { maxRetries: 2, baseDelayMs: 100, jitter: false },
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    expect(client.status.status).toBe('open')
+
+    // Mid-stream drop with native: false falls through to JS backoff retries
+    if (es) {
+      es.readyState = MockEventSource.CONNECTING
+      es.emitError()
+    }
+
+    expect(client.status.status).toBe('connecting')
+    await vi.advanceTimersByTimeAsync(150)
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
+  it('supports autoReconnect object with { native: true, jsBackoff: false }', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: { native: true, jsBackoff: false },
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+
+    // Initial connection error with jsBackoff: false does NOT retry via JS backoff
+    MockEventSource.instances[0]?.emitError()
+    expect(client.status.status).toBe('error')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
   it('does not schedule retry if error listener calls close()', async () => {
     const client = new SSEInvalidatorClient('/sse', {
       autoReconnect: true,
