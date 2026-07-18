@@ -1,8 +1,8 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { SSE_HEADERS } from '@/utils/constants.js'
-import { extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
+import { SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
+import { extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 
 /**
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
@@ -21,6 +21,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)
+  const requestedTarget = extractRequestedTarget(urlObj.searchParams)
 
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
@@ -29,13 +30,22 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
     ...options,
     lastEventId,
     connectionId,
+    requestedTarget: requestedTarget ?? options.requestedTarget,
   }
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
+  // Build the supported targets list from options.target for the X-ReStale-Supported header
+  const supportedTargets = Array.isArray(options.target)
+    ? options.target.join(', ')
+    : options.target
+
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    'X-ReStale-Target': Array.isArray(options.target) ? options.target.join(', ') : options.target,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: Array.isArray(options.target)
+      ? options.target.join(', ')
+      : options.target,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedTargets,
   }
 
   const response = new Response(channel.stream, {

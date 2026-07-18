@@ -35,10 +35,11 @@ describe('server/express entrypoint', () => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     })
-    expect(res.writeHead).toHaveBeenCalledWith(200, {
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       ...SSE_HEADERS,
       'X-ReStale-Target': 'swr',
-    })
+      'X-ReStale-Supported': 'swr',
+    }))
     expect(channel.state).toBe('open')
     channel.close()
   })

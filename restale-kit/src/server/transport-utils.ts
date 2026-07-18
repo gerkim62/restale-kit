@@ -23,7 +23,7 @@ export function extractConnectionId(searchParams: URLSearchParams): string {
 }
 
 /**
- * Extracts the Last-Event-ID header from a header lookup callback.
+ * Extracts and validates the Last-Event-ID header from a header lookup callback.
  * Returns `undefined` if the header is absent, empty, or exceeds the maximum
  * allowed length (to prevent DoS via oversized IDs triggering expensive buffer scans).
  */
@@ -57,4 +57,21 @@ export function extractLastEventId(
   }
 
   return value
+}
+
+/**
+ * Extracts the `__restale_target__` query parameter.
+ *
+ * Returns `undefined` only if the parameter is absent or empty — callers
+ * treat absence as "no preference; send everything."
+ * Returns the raw string value for any non-empty value (known or unknown),
+ * so the channel can issue an `unsupported-target` revoke for unrecognized
+ * targets rather than silently treating them as "no preference."
+ */
+export function extractRequestedTarget(searchParams: URLSearchParams): string | undefined {
+  const raw = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM)
+  if (raw === null || raw === '') return undefined
+  // Return the raw string — the channel validates it against its supported set
+  // and issues an unsupported-target revoke if unrecognized.
+  return raw
 }

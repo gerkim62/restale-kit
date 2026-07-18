@@ -426,7 +426,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
-| `onRevoke` | `(reason: string) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. |
+| `onRevoke` | `(detail: RevokeEventDetail) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. Branch on `detail.reason` to handle `'unsupported-target'` vs application-level revocations. |
 | `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
 | `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
@@ -436,7 +436,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
-| `target` | `SignalTarget` | `undefined` | Optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client. |
+| `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
 ### `createSSEChannel(options?)` / `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
 

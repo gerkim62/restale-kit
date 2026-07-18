@@ -92,7 +92,7 @@ type ChannelState = 'open' | 'closed'
 - `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
 - `isJSONValueArray(value: unknown): value is JSONValue[]`: Checks if a value is an array of JSON-serializable elements.
 - `matchesInvalidateSignalKey(cacheKey: JSONValue, signal: ReStaleSignal): boolean`: Determines whether a cache key matches a given signal.
-- `validateStandardSchema<T>(schema: StandardSchemaV1<T>, input: unknown): T`: Synchronously validates input against a Standard Schema v1 compliance object.
+- `validateStandardSchema<T>(value: unknown, schema: StandardSchemaV1<unknown, T>): T`: Synchronously validates input against a Standard Schema v1 compliance object.
 
 ### Errors
 
@@ -137,12 +137,14 @@ interface SSEChannelOptions<TSignal> {
   eventBufferCapacity?: number
   idGenerator?: () => string
   connectionId?: string                               // unique connection ID from client
+  requestedTarget?: SignalTarget                      // target requested by the client via __restale_target__ query param
 }
 
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly connectionId: string                       // unique connection ID from client
   readonly target: SignalTarget | SignalTarget[]       // configured target discriminator; required
+  readonly requestedTarget: SignalTarget | undefined  // target requested by this client via __restale_target__, if any
   readonly stream: ReadableStream<Uint8Array>
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
@@ -313,7 +315,7 @@ function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { SSEInvalidatorClient } from 'restale-kit/client'
-import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap } from 'restale-kit/client'
+import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RevokeEventDetail } from 'restale-kit/client'
 import type { InvalidateSignal } from 'restale-kit/client' // re-exported for convenience
 ```
 
@@ -374,8 +376,20 @@ interface SSEInvalidatorClientEventMap<TSignal> {
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
   /** Fired when the server sends a terminal `revoke` frame. Auto-reconnect is suppressed. */
-  revoke: CustomEvent<{ reason: string }>
+  revoke: CustomEvent<RevokeEventDetail>
 }
+
+type RevokeEventDetail =
+  | {
+      reason: 'unsupported-target'
+      requested: string
+      supported: string[]
+    }
+  | {
+      reason: Exclude<string, 'unsupported-target'> | undefined
+      requested?: never
+      supported?: never
+    }
 ```
 
 ---
@@ -384,7 +398,7 @@ interface SSEInvalidatorClientEventMap<TSignal> {
 
 ```ts
 import { useReStale } from 'restale-kit/react'
-import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus } from 'restale-kit/react'
+import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus, RevokeEventDetail } from 'restale-kit/react'
 
 function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   url: string,
@@ -397,9 +411,11 @@ interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
   /**
    * Called when the server sends a terminal `revoke` frame.
    * The connection is already closed; auto-reconnect is suppressed.
-   * Use this to log out the user, show a notice, or redirect.
+   * Branch on `detail.reason` to distinguish revocation causes:
+   * - `'unsupported-target'` — server does not support the requested target (detail includes requested & supported)
+   * - any other string (e.g. `'logout'`, `'banned'`) — application-level revocation
    */
-  onRevoke?: (reason: string) => void
+  onRevoke?: (detail: RevokeEventDetail) => void
 }
 // Option stability: autoReconnect, reconnect, signalSchema, and withCredentials are
 // applied only at client creation time. Changing them after mount has no effect until

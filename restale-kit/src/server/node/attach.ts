@@ -3,8 +3,8 @@ import { Readable } from 'node:stream'
 import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { SSE_HEADERS } from '@/utils/constants.js'
-import { extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
+import { SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
+import { extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 
 /**
  * Attaches an SSE channel to a Node.js HTTP response.
@@ -27,6 +27,7 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
   const connectionId = extractConnectionId(searchParams)
+  const requestedTarget = extractRequestedTarget(searchParams)
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => req.headers[name])
 
@@ -34,14 +35,23 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
     ...options,
     lastEventId,
     connectionId,
+    requestedTarget: requestedTarget ?? options.requestedTarget,
   }
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
+  // Build the supported targets list from options.target for the X-ReStale-Supported header
+  const supportedTargets = Array.isArray(options.target)
+    ? options.target.join(', ')
+    : options.target
+
   // Set SSE headers
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    'X-ReStale-Target': Array.isArray(options.target) ? options.target.join(', ') : options.target,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: Array.isArray(options.target)
+      ? options.target.join(', ')
+      : options.target,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedTargets,
   }
 
   res.writeHead(200, headers)

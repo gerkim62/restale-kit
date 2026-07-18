@@ -5,6 +5,8 @@ export type {
   ClientOptions,
   ReconnectOptions,
   SSEInvalidatorClientEventMap,
+  RevokeEventDetail,
+  AdaptedInvalidateCallback,
 } from './client-contracts.js'
 
 export type { InvalidateSignal } from '../../types/protocol.js'

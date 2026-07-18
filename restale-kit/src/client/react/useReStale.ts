@@ -1,26 +1,73 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
-import type { ConnectionStatus, ClientOptions, SSEInvalidatorClientEventMap } from '@/client/core/client-contracts.js'
+import type {
+  ConnectionStatus,
+  ClientOptions,
+  SSEInvalidatorClientEventMap,
+  RevokeEventDetail,
+  AdaptedInvalidateCallback,
+} from '@/client/core/client-contracts.js'
 
 /**
- * Options for `useReStale`, extending `ClientOptions` with React-specific fields.
+ * Options for `useReStale`.
+ *
+ * `TTarget` is inferred from the branded adapter callback passed as `onInvalidate`.
+ * You do not need to pass `target` explicitly — it is inferred from the adapter.
+ * If you *do* pass `target` explicitly it must match the adapter's target; a mismatch
+ * is a compile-time error.
+ *
+ * @example — target inferred, no need to write it:
+ * ```ts
+ * const onInvalidate = useTanstackQueryAdapter(queryClient)
+ * useReStale('/api/sse', { onInvalidate })
+ * ```
+ *
+ * @example — explicit target that matches is fine:
+ * ```ts
+ * useReStale('/api/sse', { onInvalidate, target: 'tanstack-query' })
+ * ```
+ *
+ * @example — explicit target mismatch → compile error:
+ * ```ts
+ * useReStale('/api/sse', { onInvalidate, target: 'swr' }) // ❌ Type error
+ * ```
  */
-export interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
-  extends ClientOptions<TSignal> {
+export interface UseReStaleOptions<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = InvalidateSignal,
+> extends Omit<ClientOptions<TSignal>, 'target'> {
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
-  /** Called on every received invalidation event. Typed by schema if provided. */
-  onInvalidate: (signal: TSignal | TSignal[]) => void
+  /**
+   * The branded adapter callback returned by `useTanstackQueryAdapter` or `useSwrAdapter`.
+   * The `target` for the SSE connection is inferred from this callback's brand.
+   */
+  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal>
+  /**
+   * Explicit target override. Must match the adapter's target — a mismatch is a type error.
+   * You usually don't need to pass this; it is inferred from `onInvalidate`.
+   */
+  target?: TTarget
   /**
    * Called when the server sends a terminal revocation frame.
    *
    * At this point the connection is already closed and auto-reconnect is suppressed.
-   * Use this to log out the user, show a UI notice, or redirect.
    *
-   * @param reason - The reason string from the revoke payload (e.g. `'logout'`, `'banned'`).
+   * The `detail` is a `RevokeEventDetail` discriminated union. Branch on `detail.reason`
+   * to handle specific revocation causes:
+   *
+   * ```ts
+   * onRevoke: (detail) => {
+   *   if (detail.reason === 'unsupported-target') {
+   *     console.warn('Unsupported target. Server supports:', detail.supported)
+   *   } else {
+   *     logout()
+   *   }
+   * }
+   * ```
    */
-  onRevoke?: (reason: string) => void
+  onRevoke?: (detail: RevokeEventDetail) => void
 }
 
 /**
@@ -44,12 +91,15 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  * subscription.
  *
  * Opens on mount unless `disabled`. Closes with reason `'unmount'` on unmount.
- * Knows nothing about queries or caches — it only forwards `invalidate` events
- * to `onInvalidate`.
+ * The SSE `target` is inferred automatically from the branded adapter callback
+ * passed as `onInvalidate`.
  */
-export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useReStale<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = InvalidateSignal,
+>(
   url: string,
-  opts: UseReStaleOptions<TSignal>
+  opts: UseReStaleOptions<TTarget, TSignal>
 ): UseReStaleResult {
   const disabled = opts.disabled ?? false
   const onInvalidateRef = useRef(opts.onInvalidate)
@@ -82,6 +132,12 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
       signalSchema: opts.signalSchema,
       withCredentials: opts.withCredentials,
       debug: opts.debug,
+      // Auto-infer target from the adapter's brand when not set explicitly.
+      // opts.onInvalidate.__restaleTarget is stamped at runtime by makeAdaptedCallback
+      // (e.g. useSwrAdapter → 'swr', useTanstackQueryAdapter → 'tanstack-query').
+      // This ensures __restale_target__ is appended to the SSE URL and server-side
+      // filtering activates automatically without requiring an explicit `target` prop.
+      target: opts.target ?? opts.onInvalidate.__restaleTarget,
     })
     urlRef.current = url
   }
@@ -155,7 +211,7 @@ export function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   // Wire up onRevoke
   useEffect(() => {
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['revoke']) => {
-      onRevokeRef.current?.(event.detail.reason)
+      onRevokeRef.current?.(event.detail)
     }
 
     client.addEventListener('revoke', handler)

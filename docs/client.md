@@ -43,7 +43,7 @@ useReStale(url: string, options: {
   onInvalidate: (signal: InvalidateSignal | InvalidateSignal[]) => void
 
   // Revocation (optional)
-  onRevoke?: (reason: string) => void  // called when server sends a terminal revoke frame
+  onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
 
   // Connection
   autoReconnect?: boolean       // default true
@@ -60,11 +60,13 @@ useReStale(url: string, options: {
 
   // Validation & Target (optional)
   signalSchema?: StandardSchemaV1 // validate incoming signals at runtime
-  target?: SignalTarget         // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
+  target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
 })
 ```
 
 > **Option stability note:** `autoReconnect`, `reconnect`, `signalSchema`, `target`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
+>
+> **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 
 ### Return value
 
@@ -99,15 +101,19 @@ When the server calls `channel.revoke()` (e.g. on logout or session expiry), it 
 
 1. Sets status to `{ status: 'closed', reason: 'revoked' }`
 2. Suppresses automatic reconnection
-3. Calls `onRevoke` with the reason string
+3. Calls `onRevoke` with a `RevokeEventDetail` object
 
 ```tsx
 useReStale('/api/sse', {
   onInvalidate: tanstackAdapter(queryClient),
-  onRevoke: (reason) => {
-    // Server intentionally closed this connection.
-    // reason is e.g. 'logout', 'banned', 'session-expired'
-    auth.logout()
+  onRevoke: (detail) => {
+    if (detail.reason === 'unsupported-target') {
+      // Server doesn't support the requested target
+      console.warn('Unsupported target. Server supports:', detail.supported)
+    } else {
+      // e.g. 'logout', 'banned', 'session-expired'
+      auth.logout()
+    }
   },
 })
 ```

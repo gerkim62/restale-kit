@@ -570,6 +570,180 @@ describe('SSEInvalidatorClient', () => {
 
     await expect(p).rejects.toBeInstanceOf(Event)
   })
+
+  // --- __restale_target__ URL param ---
+
+  it('appends __restale_target__ to EventSource URL when target option is set', () => {
+    const client = new SSEInvalidatorClient('/sse', { target: 'swr' })
+    void client.connect()
+
+    expect(MockEventSource.instances).toHaveLength(1)
+    const url = MockEventSource.instances[0]?.url ?? ''
+    expect(url).toContain('__restale_target__=swr')
+    expect(url).toContain(`__restale_cid__=${client.connectionId}`)
+  })
+
+  it('does NOT append __restale_target__ when target option is not set', () => {
+    const client = new SSEInvalidatorClient('/sse')
+    void client.connect()
+
+    expect(MockEventSource.instances).toHaveLength(1)
+    const url = MockEventSource.instances[0]?.url ?? ''
+    expect(url).not.toContain('__restale_target__')
+  })
+
+  it('appends __restale_target__ for each supported target value', () => {
+    const targets = ['tanstack-query', 'swr', 'rtk-query', 'generic'] as const
+    for (const target of targets) {
+      MockEventSource.clear()
+      const client = new SSEInvalidatorClient('/sse', { target })
+      void client.connect()
+      const url = MockEventSource.instances[0]?.url ?? ''
+      expect(url).toContain(`__restale_target__=${target}`)
+    }
+  })
+
+  // --- revoke event with richer detail ---
+
+  it('dispatches revoke CustomEvent with reason/requested/supported on unsupported-target revoke', async () => {
+    const client = new SSEInvalidatorClient('/sse', { target: 'rtk-query' })
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    const payload = JSON.stringify({
+      reason: 'unsupported-target',
+      requested: 'rtk-query',
+      supported: ['tanstack-query', 'swr'],
+    })
+    es?.emitCustomEvent('revoke', payload)
+
+    expect(revokeSpy).toHaveBeenCalledWith({
+      reason: 'unsupported-target',
+      requested: 'rtk-query',
+      supported: ['tanstack-query', 'swr'],
+    })
+  })
+
+  it('sets status to { status: closed, reason: revoked } and suppresses retry on unsupported-target revoke', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      target: 'rtk-query',
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    const payload = JSON.stringify({
+      reason: 'unsupported-target',
+      requested: 'rtk-query',
+      supported: ['swr'],
+    })
+    es?.emitCustomEvent('revoke', payload)
+
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+
+    // Advance timers — no retry should occur
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
+  it('dispatches revoke event with only reason field when no details present (backward compat)', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    es?.emitCustomEvent('revoke', JSON.stringify({ reason: 'logout' }))
+
+    // The detail matches the non-unsupported-target branch: only reason is present
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'logout' })
+  })
+
+  it('dispatches revoke event with undefined reason on malformed payload', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    es?.emitCustomEvent('revoke', 'not-json')
+
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: undefined })
+  })
+
+  it('onopen fires before revoke arrives — ordering is open then revoke', async () => {
+    const client = new SSEInvalidatorClient('/sse', { target: 'rtk-query' })
+    const events: string[] = []
+
+    client.addEventListener('statuschange', (e) => {
+      events.push(`statuschange:${(e.detail as { status: string }).status}`)
+    })
+    client.addEventListener('revoke', () => {
+      events.push('revoke')
+    })
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+
+    // onopen fires first
+    es?.emitOpen()
+    await p
+
+    // revoke arrives after open
+    es?.emitCustomEvent(
+      'revoke',
+      JSON.stringify({ reason: 'unsupported-target', requested: 'rtk-query', supported: ['swr'] })
+    )
+
+    // Status sequence: connecting → open → closed (revoked)
+    expect(events).toEqual(['statuschange:connecting', 'statuschange:open', 'statuschange:closed', 'revoke'])
+  })
+
+  it('partial unsupported-target frame (missing requested/supported) falls to generic branch', async () => {
+    // If server sends reason:'unsupported-target' but omits requested/supported fields,
+    // the client must NOT emit the structured first branch (which requires all three fields).
+    // It must fall through to the generic branch: { reason: 'unsupported-target' } is
+    // NOT possible in the type — but at runtime it would be a plain string. The guard in
+    // wireInvalidateListener requires parsedRequested !== undefined && parsedSupported !== undefined
+    // before emitting the first branch, so this should dispatch { reason: undefined } when
+    // those fields are absent.
+    const client = new SSEInvalidatorClient('/sse')
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    p.catch(() => {})
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    // Frame has reason but is missing required requested+supported
+    es?.emitCustomEvent('revoke', JSON.stringify({ reason: 'unsupported-target' }))
+
+    // Must fall to generic branch because parsedSupported is undefined
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'unsupported-target' })
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+  })
 })
 
 

@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   ClientOptions,
   SSEInvalidatorClientEventMap,
+  RevokeEventDetail,
 } from '@/client/core/client-contracts.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
@@ -11,6 +12,20 @@ import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS } from '@/utils/constants.js'
+
+/** Reads a string property from an unknown object without any cast. */
+function getStringProp(obj: object, key: string): string | undefined {
+  if (!Object.hasOwn(obj, key)) return undefined
+  const val: unknown = Reflect.get(obj, key)
+  return typeof val === 'string' ? val : undefined
+}
+
+/** Reads an array property from an unknown object without any cast. */
+function getArrayProp(obj: object, key: string): unknown[] | undefined {
+  if (!Object.hasOwn(obj, key)) return undefined
+  const val: unknown = Reflect.get(obj, key)
+  return Array.isArray(val) ? val : undefined
+}
 
 
 /**
@@ -54,11 +69,19 @@ export class SSEInvalidatorClient<
     super()
     this.currentConnectionId = generateUUID()
     this.url = url
-    this.eventSourceUrl = appendQueryParam(
+    let eventSourceUrl = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
       this.currentConnectionId
     )
+    if (opts?.target !== undefined) {
+      eventSourceUrl = appendQueryParam(
+        eventSourceUrl,
+        PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM,
+        opts.target
+      )
+    }
+    this.eventSourceUrl = eventSourceUrl
     const autoReconnectOpt = opts?.autoReconnect
     if (typeof autoReconnectOpt === 'object') {
       this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
@@ -411,41 +434,56 @@ export class SSEInvalidatorClient<
     })
 
     es.addEventListener(SSE_EVENTS.REVOKE, (event: MessageEvent<string>) => {
-      let reason = 'revoked'
+      let parsedReason: string | undefined
+      let parsedRequested: string | undefined
+      let parsedSupported: string[] | undefined
       try {
         const parsed: unknown = JSON.parse(event.data)
-        if (
-          parsed !== null &&
-          typeof parsed === 'object' &&
-          !Array.isArray(parsed) &&
-          'reason' in parsed
-        ) {
-          const { reason: parsedReason } = parsed
-          if (typeof parsedReason === 'string') {
-            reason = parsedReason
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const reason = getStringProp(parsed, 'reason')
+          const requested = getStringProp(parsed, 'requested')
+          const supportedRaw = getArrayProp(parsed, 'supported')
+          if (reason !== undefined) parsedReason = reason
+          if (requested !== undefined) parsedRequested = requested
+          if (supportedRaw !== undefined) {
+            const strings = supportedRaw.filter((s): s is string => typeof s === 'string')
+            if (strings.length === supportedRaw.length) parsedSupported = strings
           }
         }
       } catch {
-        // malformed revoke payload — use default reason
+        // malformed revoke payload — leave fields as undefined
       }
 
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
-        console.log(
-          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${reason}"). Auto-reconnect suppressed.`
-        )
+        if (parsedReason === 'unsupported-target' && parsedRequested !== undefined) {
+          console.warn(
+            `[WARN][SSEInvalidatorClient] Connection revoked: requested "${parsedRequested}", supported [${parsedSupported?.join(', ') ?? ''}]. Auto-reconnect suppressed. connectionId: ${this.currentConnectionId}.`
+          )
+        } else {
+          console.log(
+            `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
+          )
+        }
       }
       this.revoked = true
       this.teardown()
-      const status: ConnectionStatus = { status: 'closed', reason: 'revoked' }
-      this.setStatus(status)
+      this.setStatus({ status: 'closed', reason: 'revoked' })
 
       if (this.connectPromise) {
         this.connectPromise.reject(new Event(SSE_EVENTS.REVOKE))
         this.connectPromise = null
       }
 
-      this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: { reason } }))
+      // Build a properly-typed discriminated RevokeEventDetail
+      const detail: RevokeEventDetail =
+        parsedReason === 'unsupported-target' &&
+        parsedRequested !== undefined &&
+        parsedSupported !== undefined
+          ? { reason: 'unsupported-target', requested: parsedRequested, supported: parsedSupported }
+          : { reason: parsedReason }
+
+      this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail }))
     })
   }
 

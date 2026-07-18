@@ -585,18 +585,28 @@ interface AutoReconnectOptions {
   jsBackoff?: boolean     // default true (JS exponential backoff retries)
 }
 
+type RevokeEventDetail =
+  | {
+      reason: 'unsupported-target'
+      requested: string   // the target value the client sent in __restale_target__
+      supported: string[] // the target values the server channel is configured to support
+    }
+  | {
+      reason: string | undefined  // e.g. 'session-expired', 'logout', 'banned', or undefined for malformed frames
+    }
+
 interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   reconnect?: ReconnectOptions
   signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
-  onRevoke?: (reason: string) => void  // callback invoked on terminal connection revocation
-  target?: SignalTarget      // optional target discriminator expected by the client
+  onRevoke?: (detail: RevokeEventDetail) => void  // callback invoked on terminal connection revocation
+  target?: SignalTarget      // optional — overrides target auto-inferred from the adapter brand
 }
 
 interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
   invalidate: CustomEvent<TSignal | TSignal[]>
-  revoke: CustomEvent<{ reason: string }>
+  revoke: CustomEvent<RevokeEventDetail>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
 }
