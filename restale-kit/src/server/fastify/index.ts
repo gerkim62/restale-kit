@@ -24,7 +24,7 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
   options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal, unknown>
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()

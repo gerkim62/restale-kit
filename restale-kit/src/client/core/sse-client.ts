@@ -28,6 +28,13 @@ function getArrayProp(obj: object, key: string): unknown[] | undefined {
   return Array.isArray(val) ? val : undefined
 }
 
+/** Reads a number property from an unknown object without any cast. */
+function getNumberProp(obj: object, key: string): number | undefined {
+  if (!Object.hasOwn(obj, key)) return undefined
+  const val: unknown = Reflect.get(obj, key)
+  return typeof val === 'number' ? val : undefined
+}
+
 
 /**
  * Client-side SSE invalidation client built on native `EventSource`.
@@ -504,8 +511,8 @@ export class SSEInvalidatorClient<
       try {
         const parsed: unknown = JSON.parse(event.data)
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const ma: unknown = Reflect.get(parsed, 'maxAttempts')
-          const rd: unknown = Reflect.get(parsed, 'retryDelayMs')
+          const ma: unknown = getNumberProp(parsed, 'maxAttempts')
+          const rd: unknown = getNumberProp(parsed, 'retryDelayMs')
           // maxAttempts must be a positive finite integer supplied by the server — no floor/default.
           if (typeof ma === 'number' && Number.isFinite(ma) && ma >= 1) {
             maxAttempts = Math.floor(ma)

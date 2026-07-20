@@ -309,15 +309,15 @@ const group = new SSEChannelGroup({
   channelDefaults: {
     lifetime: { ttlMs: 5 * 60 * 1000 },
     guardKeepalive: true,
-    // More options can be added here
   }
 })
 
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res, {
     target: 'swr',
-    ...group.channelDefaults  // merge defaults into channel options
-  })
+    // Channel-specific options can override defaults:
+    // lifetime: { ttlMs: 10 * 60 * 1000 }
+  }, group)  // Pass group as fourth argument to apply channelDefaults
   group.register(channel, { userId: req.user.id })
 })
 ```

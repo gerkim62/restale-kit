@@ -67,20 +67,20 @@ export function mergeChannelDefaults<TSignal extends InvalidateSignal>(
 
 /**
  * Merges lifetime option parts independently:
- * - Time value (ttlMs / deadline): one atomic pair — channel wins if either is present.
- * - `onDeadline`: independent — defaults when the channel didn't set it.
+ * - Time value (ttlMs / deadline): one atomic pair — channel wins if either is present AND not undefined.
+ * - `onDeadline`: independent — defaults when the channel didn't set it or set it to undefined.
  */
 function mergeLifetimeParts(
   channel: LifetimeOptions,
   defaults: LifetimeOptions
 ): LifetimeOptions {
-  // Determine which time value (if any) the channel explicitly set.
-  const channelHasTtl = Object.hasOwn(channel, 'ttlMs')
-  const channelHasDeadline = Object.hasOwn(channel, 'deadline')
+  // Determine which time value (if any) the channel explicitly set to a non-undefined value.
+  const channelHasTtl = Object.hasOwn(channel, 'ttlMs') && channel.ttlMs !== undefined
+  const channelHasDeadline = Object.hasOwn(channel, 'deadline') && channel.deadline !== undefined
   const channelHasTimeValue = channelHasTtl || channelHasDeadline
 
-  // Determine whether the channel explicitly set onDeadline.
-  const channelHasOnDeadline = Object.hasOwn(channel, 'onDeadline')
+  // Determine whether the channel explicitly set onDeadline to a non-undefined value.
+  const channelHasOnDeadline = Object.hasOwn(channel, 'onDeadline') && channel.onDeadline !== undefined
 
   // Resolve the time value to use.
   const timeValue: { ttlMs: number; deadline?: never } | { deadline: number; ttlMs?: never } =
@@ -88,7 +88,7 @@ function mergeLifetimeParts(
       ? resolveTimeValue(channel)
       : resolveTimeValue(defaults)
 
-  // Resolve onDeadline: channel wins if present, otherwise fall back to default.
+  // Resolve onDeadline: channel wins if present and not undefined, otherwise fall back to default.
   const onDeadline: OnDeadline | undefined = channelHasOnDeadline
     ? channel.onDeadline
     : defaults.onDeadline

@@ -102,6 +102,7 @@ describe('mergeChannelDefaults', () => {
     // The channel has an onDeadline that should be preserved.
     // The time value comes from the default.
     expect((result.lifetime as any).onDeadline).toBe('revoke')
+    expect((result.lifetime as any).ttlMs).toBe(5000)
   })
 
   // ── lifetime — onDeadline merging ─────────────────────────────────────────

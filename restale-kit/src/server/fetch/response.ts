@@ -23,7 +23,7 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal, unknown>
+  group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)

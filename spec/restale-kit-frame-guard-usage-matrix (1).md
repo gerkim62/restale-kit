@@ -97,12 +97,12 @@ app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res, {
     target: 'swr',
     beforeFrame: (ctx) => isSessionValid(sessionId) ? { action: 'send' } : { action: 'close' },
-  })
+  }, group)  // Pass group to apply channelDefaults
   group.register(channel, { userId: req.user.id, sessionId })
 })
 ```
 
-`lifetime`/`guardKeepalive` come from the group's `channelDefaults` here since they weren't set on `attachSSE` directly; `beforeFrame` was set per-channel since it's inherently per-connection.
+`lifetime`/`guardKeepalive` come from the group's `channelDefaults` here since they weren't set on `attachSSE` directly; `beforeFrame` was set per-channel since it's inherently per-connection. The `group` parameter is passed to `attachSSE` as the fourth argument to apply the defaults.
 
 ### 4.2 Standalone channel, no group
 

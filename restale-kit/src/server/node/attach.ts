@@ -27,7 +27,7 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
   options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal, unknown>
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal> {
   const rawUrl = req.url || '/'
   const searchIndex = rawUrl.indexOf('?')
