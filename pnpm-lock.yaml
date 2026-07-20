@@ -246,6 +246,10 @@ importers:
         version: 8.1.4(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.0)
 
   restale-kit:
+    dependencies:
+      sse.js:
+        specifier: ^2.8.0
+        version: 2.8.0
     devDependencies:
       '@tanstack/react-query':
         specifier: ^5.0.0
@@ -2376,6 +2380,9 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
+
+  sse.js@2.8.0:
+    resolution: {integrity: sha512-35RyyFYpzzHZgMw9D5GxwADbL6gnntSwW/rKXcuIy1KkYCPjW6oia0moNdNRhs34oVHU1Sjgovj3l7uIEZjrKA==}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
@@ -4627,6 +4634,8 @@ snapshots:
   source-map-js@1.2.1: {}
 
   split2@4.2.0: {}
+
+  sse.js@2.8.0: {}
 
   stackback@0.0.2: {}
 

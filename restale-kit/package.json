@@ -148,5 +148,8 @@
     "swr": "^2.4.0",
     "tsc-alias": "^1.9.0",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "sse.js": "^2.8.0"
   }
 }
