@@ -747,3 +747,208 @@ describe('SSEInvalidatorClient', () => {
 })
 
 
+
+// ─── renew frame tests ────────────────────────────────────────────────────────
+
+describe('SSEInvalidatorClient — renew frame', () => {
+  let originalEventSource: typeof globalThis.EventSource
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    originalEventSource = globalThis.EventSource
+    MockEventSource.clear()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    globalThis.EventSource = originalEventSource
+  })
+
+  it('emits a renew CustomEvent with the frame payload when renew is received', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const renewSpy = vi.fn()
+    client.addEventListener('renew', (e: any) => renewSpy(e.detail))
+
+    const p = client.connect()
+    const es = MockEventSource.instances[0]
+    es?.emitOpen()
+    await p
+
+    es?.emitCustomEvent('renew', JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }))
+
+    expect(renewSpy).toHaveBeenCalledWith({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+  })
+
+  it('transitions to connecting then open on a successful renew reconnect', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const statuses: string[] = []
+    client.addEventListener('statuschange', (e: any) => statuses.push(e.detail.status))
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+
+    expect(client.status.status).toBe('connecting')
+
+    // The renew handler creates a new EventSource immediately (first attempt, no delay)
+    expect(MockEventSource.instances).toHaveLength(2)
+    MockEventSource.instances[1]?.emitOpen()
+
+    expect(client.status.status).toBe('open')
+    expect(statuses).toContain('connecting')
+    expect(statuses).toContain('open')
+  })
+
+  it('does NOT consume the general maxRetries budget (renew budget is separate)', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 1, baseDelayMs: 100, jitter: false },
+    })
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    // Receive renew with maxAttempts: 1
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+
+    // Confirmatory attempt fails
+    MockEventSource.instances[1]?.emitError()
+
+    // Should be closed/revoked — NOT retried via the general backoff path
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+
+    // Advance time — no extra connection should be created
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
+  it('emits revoke event with reason deadline when renew exhausts maxAttempts', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const revokeSpy = vi.fn()
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+
+    // Confirmatory attempt fails
+    MockEventSource.instances[1]?.emitError()
+
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'deadline' })
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+  })
+
+  it('maxAttempts: 2 — makes second attempt after retryDelayMs when first fails', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 2, retryDelayMs: 500 })
+    )
+
+    // First attempt is immediate — fails
+    expect(MockEventSource.instances).toHaveLength(2)
+    MockEventSource.instances[1]?.emitError()
+
+    // Second attempt is delayed by retryDelayMs ± jitter
+    expect(MockEventSource.instances).toHaveLength(2) // not yet
+    await vi.advanceTimersByTimeAsync(700) // past max jitter window
+    expect(MockEventSource.instances).toHaveLength(3)
+
+    // Second attempt succeeds
+    MockEventSource.instances[2]?.emitOpen()
+    expect(client.status.status).toBe('open')
+  })
+
+  it('successful renew reconnect clears renewing flag — subsequent network drops use normal backoff', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 3, baseDelayMs: 100, jitter: false },
+    })
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    // Receive renew and successfully reconnect
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+    MockEventSource.instances[1]?.emitOpen()
+    expect(client.status.status).toBe('open')
+
+    // Now simulate a regular network error on the new connection
+    if (MockEventSource.instances[1]) {
+      MockEventSource.instances[1].readyState = MockEventSource.CLOSED
+      MockEventSource.instances[1].emitError()
+    }
+
+    // Should enter normal JS backoff reconnect (not be treated as revoked)
+    expect(client.status.status).toBe('connecting')
+    await vi.advanceTimersByTimeAsync(150)
+    expect(MockEventSource.instances).toHaveLength(3)
+  })
+
+  it('uses default maxAttempts and retryDelayMs from FRAME_GUARD_DEFAULTS on malformed renew payload', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const renewSpy = vi.fn()
+    client.addEventListener('renew', (e: any) => renewSpy(e.detail))
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    // Send malformed payload — should fall back to defaults
+    MockEventSource.instances[0]?.emitCustomEvent('renew', 'not-json')
+
+    expect(renewSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+    // Attempt was made immediately
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
+  it('renew does not fire onerror general backoff when renew reconnect is in progress', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
+    })
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+
+    // The original ES fires onerror (as it closes) — this must NOT start a general backoff
+    MockEventSource.instances[0]?.emitError()
+
+    // Only the renew attempt should exist, not an extra backoff attempt
+    await vi.advanceTimersByTimeAsync(500)
+    // 2 instances: original + 1 renew attempt
+    expect(MockEventSource.instances.length).toBeLessThanOrEqual(2)
+  })
+})

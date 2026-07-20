@@ -6,6 +6,7 @@ export type {
   ReconnectOptions,
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
+  RenewEventDetail,
   AdaptedInvalidateCallback,
 } from './client-contracts.js'
 

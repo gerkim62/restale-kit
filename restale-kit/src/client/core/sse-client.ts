@@ -491,6 +491,177 @@ export class SSEInvalidatorClient<
 
       this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail }))
     })
+
+    es.addEventListener(SSE_EVENTS.RENEW, (event: MessageEvent<string>) => {
+      // Parse the renew payload — maxAttempts and retryDelayMs are server-supplied.
+      let maxAttempts = FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS
+      let retryDelayMs = FRAME_GUARD_DEFAULTS.RENEW_RETRY_DELAY_MS
+      try {
+        const parsed: unknown = JSON.parse(event.data)
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const ma = Reflect.get(parsed, 'maxAttempts')
+          const rd = Reflect.get(parsed, 'retryDelayMs')
+          if (typeof ma === 'number' && Number.isFinite(ma) && ma >= 1) maxAttempts = Math.floor(ma)
+          if (typeof rd === 'number' && Number.isFinite(rd) && rd >= 0) retryDelayMs = Math.floor(rd)
+        }
+      } catch {
+        // malformed renew payload — use defaults
+      }
+
+      if (this.debug) {
+        console.log(
+          `[restale-kit][SSEInvalidatorClient] Renew frame received (connectionId: ${this.currentConnectionId}). ` +
+          `Deadline reached — making up to ${String(maxAttempts)} confirmatory reconnect attempt(s).`
+        )
+      }
+
+      // Suppress the generic onerror backoff path for the duration of renew handling.
+      this.renewing = true
+      this.teardown()
+      this.setStatus({ status: 'connecting' })
+
+      // Emit the renew event so integrators can observe it (optional — reconnect proceeds regardless).
+      const renewDetail: RenewEventDetail = { reason: 'deadline', maxAttempts, retryDelayMs }
+      this.dispatchEvent(new CustomEvent(SSE_EVENTS.RENEW, { detail: renewDetail }))
+
+      // Start the confirmatory reconnect sequence. Each attempt is a fresh establishConnection()
+      // call — it reuses the same EventSource URL (which carries Last-Event-ID in the header
+      // automatically), so replay works through the existing eventStore path.
+      let attemptsRemaining = maxAttempts
+      const attemptRenewReconnect = (): void => {
+        if (attemptsRemaining <= 0) {
+          // All attempts exhausted — treat as a hard revoke (spec §4.1.2).
+          if (this.debug) {
+            console.log(
+              `[restale-kit][SSEInvalidatorClient] Renew confirmatory reconnect exhausted ` +
+              `(connectionId: ${this.currentConnectionId}). Treating as revoked.`
+            )
+          }
+          this.renewing = false
+          this.revoked = true
+          this.setStatus({ status: 'closed', reason: 'revoked' })
+          const exhaustedDetail: RevokeEventDetail = { reason: 'deadline' }
+          this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: exhaustedDetail }))
+          if (this.connectPromise) {
+            this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
+            this.connectPromise = null
+          }
+          return
+        }
+
+        attemptsRemaining--
+
+        // Wire a one-shot open handler: if the connection succeeds, clear renewing state
+        // so everything returns to normal. If it errors, schedule the next attempt.
+        const onRenewOpen = (): void => {
+          // Successful reconnect — renew cycle complete, resume normal operation.
+          this.renewing = false
+          if (this.debug) {
+            console.log(
+              `[restale-kit][SSEInvalidatorClient] Renew confirmatory reconnect succeeded ` +
+              `(connectionId: ${this.currentConnectionId}).`
+            )
+          }
+        }
+
+        const onRenewError = (): void => {
+          if (this.eventSource === null) return  // already torn down
+
+          this.teardown()
+
+          if (attemptsRemaining <= 0) {
+            // No more attempts — terminal failure, same as exhaustion above.
+            this.renewing = false
+            this.revoked = true
+            this.setStatus({ status: 'closed', reason: 'revoked' })
+            const failDetail: RevokeEventDetail = { reason: 'deadline' }
+            this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: failDetail }))
+            if (this.connectPromise) {
+              this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
+              this.connectPromise = null
+            }
+            return
+          }
+
+          // More attempts remain — apply fixed delay with ±20% jitter (spec §4.1.5).
+          const jitter = retryDelayMs * FRAME_GUARD_DEFAULTS.RENEW_JITTER_FACTOR
+          const delay = retryDelayMs + (Math.random() * 2 - 1) * jitter
+          this.setStatus({ status: 'connecting' })
+          this.renewRetryTimer = setTimeout(() => {
+            this.renewRetryTimer = null
+            attemptRenewReconnect()
+          }, Math.max(0, delay))
+        }
+
+        // Use the same EventSource URL — the browser will attach Last-Event-ID automatically.
+        const renewEs = new EventSource(this.eventSourceUrl, { withCredentials: this.withCredentials })
+        this.eventSource = renewEs
+
+        renewEs.onopen = () => {
+          // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
+          renewEs.onopen = null
+          renewEs.onerror = null
+          this.wireRenewSuccess(renewEs, onRenewOpen)
+        }
+
+        renewEs.onerror = () => {
+          if (this.eventSource !== renewEs) return
+          renewEs.onopen = null
+          renewEs.onerror = null
+          onRenewError()
+        }
+      }
+
+      // Kick off the first attempt immediately (no initial delay — spec §4.1.2).
+      attemptRenewReconnect()
+    })
+  }
+
+  /**
+   * After a successful renew confirmatory reconnect, re-wires the full event listeners
+   * (invalidate, revoke, renew) on the newly opened EventSource and transitions to `open`.
+   */
+  private wireRenewSuccess(es: EventSource, onOpenCallback: () => void): void {
+    this.opened = true
+    this.attempt = 0
+    this.setStatus({ status: 'open' })
+    onOpenCallback()
+
+    if (this.connectPromise) {
+      this.connectPromise.resolve()
+      this.connectPromise = null
+    }
+
+    // Re-wire the full listener set so subsequent frames are handled correctly.
+    this.wireInvalidateListener(es)
+
+    // Wire onerror for mid-stream drops on the new connection.
+    es.onerror = (event: Event) => {
+      if (this.eventSource !== es) return
+
+      if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
+        this.setStatus({ status: 'connecting' })
+        return
+      }
+
+      this.teardown()
+
+      if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
+        const delay = calculateBackoff(this.attempt, this.reconnectOptions)
+        this.attempt++
+        this.setStatus({ status: 'connecting' })
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null
+          this.establishConnection()
+        }, delay)
+      } else {
+        this.setStatus({ status: 'error', error: event })
+        if (this.connectPromise) {
+          this.connectPromise.reject(event)
+          this.connectPromise = null
+        }
+      }
+    }
   }
 
   private setStatus(newStatus: ConnectionStatus): void {
