@@ -129,6 +129,11 @@ export function formatRetryFrame(retryMs: number): Uint8Array {
  * because the server knows the deadline policy; the client reads them as-is (spec §4.1.2).
  */
 export function formatRenewFrame(maxAttempts: number, retryDelayMs: number): Uint8Array {
+  if (!Number.isFinite(maxAttempts) || !Number.isFinite(retryDelayMs)) {
+    throw new TypeError(
+      `formatRenewFrame requires finite numbers: maxAttempts=${String(maxAttempts)}, retryDelayMs=${String(retryDelayMs)}`
+    )
+  }
   const payload: RenewFramePayload = {
     reason: 'deadline',
     maxAttempts: Math.max(1, Math.floor(maxAttempts)),

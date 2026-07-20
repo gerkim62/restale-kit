@@ -132,7 +132,7 @@ To reconnect after a revocation (e.g. after the user re-authenticates), call `re
 
 ### Connection Renewal on Deadline (Frame Guard)
 
-When the server has a connection deadline (e.g., tied to an authentication token's expiry), it sends a `renew` SSE event frame before the deadline fires. The client must then make **exactly one** confirmatory reconnect attempt through your server's real authentication middleware, allowing the server to validate or refresh the session.
+When the server has a connection deadline (e.g., tied to an authentication token's expiry), it sends a `renew` SSE event frame before the deadline fires. The client must then make confirmatory reconnect attempt(s) through your server's real authentication middleware, allowing the server to validate or refresh the session. The number of attempts is controlled by the `maxAttempts` field in the renew frame (default: 1).
 
 The `renew` event includes:
 - `reason: 'deadline'` — signals this is a server-initiated renewal (not a transient error)

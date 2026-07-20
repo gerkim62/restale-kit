@@ -608,7 +608,7 @@ type RevokeEventDetail =
       supported: string[] // the target values the server channel is configured to support
     }
   | {
-      reason: 'revoked' | 'deadline' | string  // 'deadline': Frame Guard deadline fired; 'revoked': generic/integrator; or any custom reason
+      reason: 'deadline' | string  // 'deadline': Frame Guard deadline fired with exhausted reconnect attempts; or any integrator-supplied reason string from the server's revoke frame
     }
 
 interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {

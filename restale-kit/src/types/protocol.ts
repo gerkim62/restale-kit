@@ -301,15 +301,19 @@ export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
  * The payload of a revoke SSE event frame.
  *
  * The `reason` field conveys why the server is revoking the connection:
- * - `'revoked'` — generic or integrator-supplied reason (e.g. on logout)
+ * - `'deadline'` — Frame Guard deadline reached and all confirmatory reconnect attempts exhausted
  * - `'unsupported-target'` — client requested a target not in the channel's supported set
- * - `'deadline'` — frame guard deadline reached (client was sent a `renew` frame first)
- * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`
+ * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`, or undefined
  *
  * The optional `details` field carries extra context specific to each reason.
+ *
+ * Note: This type describes the `detail` of the `revoke` CustomEvent dispatched by the client,
+ * not `ConnectionStatus.reason`. When a revoke event fires, the connection status becomes
+ * `{ status: 'closed', reason: 'revoked' }`, but the event detail's `reason` field contains
+ * the specific cause (e.g., 'deadline', server-supplied string).
  */
 export type RevokeEventDetail =
-  | { reason: 'revoked' | 'deadline' }
+  | { reason: 'deadline' }
   | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
   | { reason: string; details?: unknown }
 

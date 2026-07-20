@@ -332,64 +332,83 @@ export class SSEInvalidatorClient<
 
     es.onerror = (event: Event) => {
       this.dispatchEvent(new CustomEvent('error', { detail: event }))
-
-      if (this.eventSource !== es) {
-        return
-      }
-
-      if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
-        if (this.debug) {
-          console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${this.currentConnectionId}). Reason: Network drop or temporary server disruption. Native EventSource is auto-reconnecting (readyState: CONNECTING).`
-          )
-        }
-        // Connection was established and dropped mid-stream (temporary network drop).
-        // Native EventSource is actively auto-reconnecting on the same instance (readyState === CONNECTING),
-        // preserving native Last-Event-ID HTTP headers.
-        this.setStatus({ status: 'connecting' })
-        return
-      }
-
-      // Initial connection failure or fatal response (e.g. HTTP 500/502/503 where readyState === CLOSED),
-      // OR mid-stream drop when nativeAutoReconnect is false:
-      // Native EventSource will not auto-reconnect. Fall back to JS backoff retries.
-      this.teardown()
-
-      if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
-        const delay = calculateBackoff(this.attempt, this.reconnectOptions)
-        if (this.debug) {
-          console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}, readyState: ${String(es.readyState)}). Reason: EventSource error. Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
-          )
-        }
-        this.attempt++
-        this.setStatus({ status: 'connecting' })
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null
-          this.establishConnection()
-        }, delay)
-      } else {
-        if (this.debug) {
-          const reason = this.revoked
-            ? 'Server sent terminal revoke frame'
-            : this.renewing
-            ? 'Renew confirmatory reconnect in progress'
-            : !this.jsBackoffAutoReconnect
-            ? 'jsBackoff autoReconnect is disabled'
-            : `Exhausted maxRetries (${String(this.maxRetries)})`
-          console.log(
-            `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
-          )
-        }
-        this.setStatus({ status: 'error', error: event })
-        if (this.connectPromise) {
-          this.connectPromise.reject(event)
-          this.connectPromise = null
-        }
-      }
+      this.handleReconnectError(es, event)
     }
 
     this.wireInvalidateListener(es)
+  }
+
+  /**
+   * Handles EventSource error events, implementing the reconnect decision tree.
+   * Checks for native reconnect (mid-stream drop), then JS backoff, then terminal failure.
+   */
+  private handleReconnectError(es: EventSource, event: Event): void {
+    if (this.eventSource !== es) return
+
+    if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
+      if (this.debug) {
+        console.log(
+          `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${this.currentConnectionId}). Native EventSource is auto-reconnecting.`
+        )
+      }
+      this.setStatus({ status: 'connecting' })
+      return
+    }
+
+    // Initial connection failure or fatal response: Native EventSource will not auto-reconnect.
+    // Fall back to JS backoff retries.
+    this.teardown()
+
+    if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
+      const delay = calculateBackoff(this.attempt, this.reconnectOptions)
+      if (this.debug) {
+        console.log(
+          `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
+          `Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
+        )
+      }
+      this.attempt++
+      this.setStatus({ status: 'connecting' })
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null
+        this.establishConnection()
+      }, delay)
+    } else {
+      if (this.debug) {
+        const reason = this.revoked
+          ? 'Server sent terminal revoke frame'
+          : this.renewing
+          ? 'Renew confirmatory reconnect in progress'
+          : !this.jsBackoffAutoReconnect
+          ? 'jsBackoff autoReconnect is disabled'
+          : `Exhausted maxRetries (${String(this.maxRetries)})`
+        console.log(
+          `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
+        )
+      }
+      this.setStatus({ status: 'error', error: event })
+      if (this.connectPromise) {
+        this.connectPromise.reject(event)
+        this.connectPromise = null
+      }
+    }
+  }
+
+  /**
+   * Handles hard revocation when deadline-related reconnect attempts fail or are invalid.
+   * Clears renewing state, marks as revoked, dispatches revoke event with reason 'deadline',
+   * rejects pending connect promise, and sets status to closed.
+   */
+  private hardRevokeDeadline(): void {
+    this.renewing = false
+    this.revoked = true
+    this.setStatus({ status: 'closed', reason: 'revoked' })
+    const detail: RevokeEventDetail = { reason: 'deadline' }
+    this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail }))
+    if (this.connectPromise) {
+      this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
+      this.connectPromise = null
+    }
   }
 
   /**
@@ -537,15 +556,7 @@ export class SSEInvalidatorClient<
         }
         this.renewing = true
         this.teardown()
-        this.renewing = false
-        this.revoked = true
-        this.setStatus({ status: 'closed', reason: 'revoked' })
-        const malformedDetail: RevokeEventDetail = { reason: 'deadline' }
-        this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: malformedDetail }))
-        if (this.connectPromise) {
-          this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
-          this.connectPromise = null
-        }
+        this.hardRevokeDeadline()
         return
       }
 
@@ -570,25 +581,8 @@ export class SSEInvalidatorClient<
       // automatically), so replay works through the existing eventStore path.
       let attemptsRemaining = maxAttempts
       const attemptRenewReconnect = (): void => {
-        if (attemptsRemaining <= 0) {
-          // All attempts exhausted — treat as a hard revoke (spec §4.1.2).
-          if (this.debug) {
-            console.log(
-              `[restale-kit][SSEInvalidatorClient] Renew confirmatory reconnect exhausted ` +
-              `(connectionId: ${this.currentConnectionId}). Treating as revoked.`
-            )
-          }
-          this.renewing = false
-          this.revoked = true
-          this.setStatus({ status: 'closed', reason: 'revoked' })
-          const exhaustedDetail: RevokeEventDetail = { reason: 'deadline' }
-          this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: exhaustedDetail }))
-          if (this.connectPromise) {
-            this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
-            this.connectPromise = null
-          }
-          return
-        }
+        // Note: The unreachable attemptsRemaining <= 0 check here was removed as it can never
+        // trigger at the start of attemptRenewReconnect - exhaustion is handled in onRenewError.
 
         attemptsRemaining--
 
@@ -611,16 +605,8 @@ export class SSEInvalidatorClient<
           this.teardown()
 
           if (attemptsRemaining <= 0) {
-            // No more attempts — terminal failure, same as exhaustion above.
-            this.renewing = false
-            this.revoked = true
-            this.setStatus({ status: 'closed', reason: 'revoked' })
-            const failDetail: RevokeEventDetail = { reason: 'deadline' }
-            this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: failDetail }))
-            if (this.connectPromise) {
-              this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
-              this.connectPromise = null
-            }
+            // No more attempts — terminal failure.
+            this.hardRevokeDeadline()
             return
           }
 
@@ -678,30 +664,7 @@ export class SSEInvalidatorClient<
 
     // Wire onerror for mid-stream drops on the new connection.
     es.onerror = (event: Event) => {
-      if (this.eventSource !== es) return
-
-      if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
-        this.setStatus({ status: 'connecting' })
-        return
-      }
-
-      this.teardown()
-
-      if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
-        const delay = calculateBackoff(this.attempt, this.reconnectOptions)
-        this.attempt++
-        this.setStatus({ status: 'connecting' })
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null
-          this.establishConnection()
-        }, delay)
-      } else {
-        this.setStatus({ status: 'error', error: event })
-        if (this.connectPromise) {
-          this.connectPromise.reject(event)
-          this.connectPromise = null
-        }
-      }
+      this.handleReconnectError(es, event)
     }
   }
 

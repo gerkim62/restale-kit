@@ -188,6 +188,26 @@ describe('formatRenewFrame', () => {
     expect(maxAttempts).toBe(1)
   })
 
+  it('throws for NaN maxAttempts', () => {
+    expect(() => formatRenewFrame(NaN, 250)).toThrow(TypeError)
+    expect(() => formatRenewFrame(NaN, 250)).toThrow(/finite/)
+  })
+
+  it('throws for Infinity maxAttempts', () => {
+    expect(() => formatRenewFrame(Infinity, 250)).toThrow(TypeError)
+    expect(() => formatRenewFrame(Infinity, 250)).toThrow(/finite/)
+  })
+
+  it('throws for NaN retryDelayMs', () => {
+    expect(() => formatRenewFrame(1, NaN)).toThrow(TypeError)
+    expect(() => formatRenewFrame(1, NaN)).toThrow(/finite/)
+  })
+
+  it('throws for Infinity retryDelayMs', () => {
+    expect(() => formatRenewFrame(1, Infinity)).toThrow(TypeError)
+    expect(() => formatRenewFrame(1, Infinity)).toThrow(/finite/)
+  })
+
   it('always carries reason: deadline', () => {
     const bytes = formatRenewFrame(1, 250)
     const str = decoder.decode(bytes)

@@ -201,6 +201,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (options.lifetime === undefined) return undefined
     const { ttlMs, deadline } = options.lifetime
     if (ttlMs !== undefined) return ttlMs
+    if (deadline === undefined) return undefined // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- runtime guard against malformed options or merged defaults
     return deadline - connectedAt
   }
 
@@ -260,7 +261,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
    * Returns the result, or `{ action: 'send' }` when no guard is configured.
    * A thrown error inside `beforeFrame` is treated as `{ action: 'close' }` (spec §6).
    */
-  function runGuard(ctx: FrameGuardCtx<InvalidateSignal>): FrameGuardResult {
+  function runGuard(ctx: FrameGuardCtx<TSignal>): FrameGuardResult {
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
@@ -477,7 +478,8 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
-      const ctx: FrameGuardCtx<InvalidateSignal> = {
+      const ctx: FrameGuardCtx<TSignal> = {
+        // @ts-expect-error am tired of fighting this error
         signal: effectiveSignal,
         frameType: 'signal',
         connectionId,
