@@ -690,6 +690,7 @@ export class SSEInvalidatorClient<
 
     // Wire onerror for mid-stream drops on the new connection.
     es.onerror = (event: SSEvent) => {
+      this.dispatchEvent(new CustomEvent('error', { detail: event }))
       this.handleReconnectError(es, event)
     }
   }

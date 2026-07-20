@@ -45,6 +45,9 @@ describe('pubsub envelope & encryption', () => {
     it('defaults encryption to disabled when options are omitted', () => {
       expect(validateEncryptionOptions()).toEqual({})
       expect(validateEncryptionOptions({})).toEqual({})
+      expect(validateEncryptionOptions({ encrypt: undefined })).toEqual({})
+      expect(validateEncryptionOptions({ encryptionKey: undefined })).toEqual({})
+      expect(validateEncryptionOptions({ encrypt: undefined, encryptionKey: undefined })).toEqual({})
     })
 
     it('rejects non-object options', () => {

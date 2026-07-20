@@ -197,10 +197,15 @@ If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, 
 import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
 import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
 
-function myCustomAdapter(options: PubSubEncryptionOptions): PubSubAdapter {
+function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
+  // Omitted options keep broker payloads unencrypted.
+  const encryptionKey = options.encryptionKey
+
   return {
     async publish(topic, message) {
-      // Send PubSubMessage envelope to broker on topic.
+      // Send a PubSubMessage envelope to the broker on topic. When encryptionKey
+      // is defined, encrypt the envelope payload with it and bind it to topic;
+      // otherwise send the plaintext envelope.
       // message is a discriminated union:
       // - Signals: { kind: 'signal', data: TSignal | TSignal[], id?: string }
       //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }

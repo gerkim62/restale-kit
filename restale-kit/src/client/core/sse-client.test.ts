@@ -991,6 +991,31 @@ describe('SSEInvalidatorClient — renew frame', () => {
     expect(MockEventSource.instances).toHaveLength(3)
   })
 
+  it('dispatches an error event for a stream failure after a successful renew reconnect', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      autoReconnect: true,
+      reconnect: { maxRetries: 1, baseDelayMs: 100, jitter: false },
+    })
+    const errorSpy = vi.fn()
+    client.addEventListener('error', errorSpy)
+
+    const p = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await p
+
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+    MockEventSource.instances[1]?.emitOpen()
+
+    const streamError = Object.assign(new Event('error'), { responseCode: 503 })
+    MockEventSource.instances[1]?.emitError(streamError)
+
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy.mock.calls[0]?.[0].detail).toBe(streamError)
+  })
+
   it('malformed renew payload (not-json) is treated as a hard revoke — no confirmatory attempt', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const renewSpy = vi.fn()

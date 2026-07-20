@@ -48,23 +48,22 @@ function parseAndValidateKey(encryptionKey: string): Buffer {
 export function validateEncryptionOptions(options?: unknown): { encryptionKey?: string } {
   if (options === undefined) return {}
   if (!isObject(options)) throw new Error('Pub/Sub adapter options must be an object when provided.')
-  const hasEncrypt = 'encrypt' in options
-  const hasKey = 'encryptionKey' in options
+  const encrypt = options['encrypt']
+  const key = options['encryptionKey']
 
-  if (!hasEncrypt && !hasKey) return {}
+  if (encrypt === undefined && key === undefined) return {}
 
-  if (hasEncrypt && options['encrypt'] === false) {
-    if (hasKey) {
+  if (encrypt === false) {
+    if (key !== undefined) {
       throw new Error('Exclusive option error: encrypt: false and encryptionKey are mutually exclusive.')
     }
     return {}
   }
 
-  if (hasEncrypt && options['encrypt'] !== true) {
+  if (encrypt !== undefined && encrypt !== true) {
     throw new Error('Invalid value for "encrypt": must be boolean false or true.')
   }
 
-  const key = options['encryptionKey']
   if (typeof key !== 'string' || key.trim() === '') {
     throw new Error('Invalid encryptionKey: must be a non-empty string.')
   }
