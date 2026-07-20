@@ -493,19 +493,53 @@ export class SSEInvalidatorClient<
     })
 
     es.addEventListener(SSE_EVENTS.RENEW, (event: MessageEvent<string>) => {
-      // Parse the renew payload — maxAttempts and retryDelayMs are server-supplied.
-      let maxAttempts = FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS
-      let retryDelayMs = FRAME_GUARD_DEFAULTS.RENEW_RETRY_DELAY_MS
+      // Parse the renew payload — maxAttempts and retryDelayMs are STRICTLY server-supplied.
+      // The spec (§4.1.2) states: "The client holds no independent default and performs no
+      // local override — maxAttempts is read from the frame the server sent for that deadline
+      // hit, full stop." If the frame is malformed or maxAttempts is missing/invalid, the
+      // client cannot proceed with any confirmatory attempt — treat as a hard revoke.
+      let maxAttempts: number | undefined
+      let retryDelayMs = 0 // safe neutral: "may be omitted when maxAttempts is 1" (§4.1.5)
+      let parseOk = false
       try {
         const parsed: unknown = JSON.parse(event.data)
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
           const ma = Reflect.get(parsed, 'maxAttempts')
           const rd = Reflect.get(parsed, 'retryDelayMs')
-          if (typeof ma === 'number' && Number.isFinite(ma) && ma >= 1) maxAttempts = Math.floor(ma)
+          // maxAttempts must be a positive finite integer supplied by the server — no floor/default.
+          if (typeof ma === 'number' && Number.isFinite(ma) && ma >= 1) {
+            maxAttempts = Math.floor(ma)
+            parseOk = true
+          }
+          // retryDelayMs is optional (irrelevant when maxAttempts=1); default to 0 if absent.
           if (typeof rd === 'number' && Number.isFinite(rd) && rd >= 0) retryDelayMs = Math.floor(rd)
         }
       } catch {
-        // malformed renew payload — use defaults
+        // malformed renew payload — parseOk stays false
+      }
+
+      // If the frame did not supply a valid maxAttempts the client has no basis to act.
+      // Treat as a hard revoke per the spirit of §4.1.2 (cannot make a confirmatory attempt
+      // of unknown count). Suppress general backoff via renewing=true during teardown.
+      if (!parseOk || maxAttempts === undefined) {
+        if (this.debug) {
+          console.warn(
+            `[restale-kit][SSEInvalidatorClient] Renew frame missing valid maxAttempts ` +
+            `(connectionId: ${this.currentConnectionId}). Treating as revoke.`
+          )
+        }
+        this.renewing = true
+        this.teardown()
+        this.renewing = false
+        this.revoked = true
+        this.setStatus({ status: 'closed', reason: 'revoked' })
+        const malformedDetail: RevokeEventDetail = { reason: 'deadline' }
+        this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail: malformedDetail }))
+        if (this.connectPromise) {
+          this.connectPromise.reject(new Event(SSE_EVENTS.RENEW))
+          this.connectPromise = null
+        }
+        return
       }
 
       if (this.debug) {

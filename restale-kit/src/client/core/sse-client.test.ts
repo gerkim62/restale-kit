@@ -909,23 +909,27 @@ describe('SSEInvalidatorClient — renew frame', () => {
     expect(MockEventSource.instances).toHaveLength(3)
   })
 
-  it('uses default maxAttempts and retryDelayMs from FRAME_GUARD_DEFAULTS on malformed renew payload', async () => {
+  it('malformed renew payload (not-json) is treated as a hard revoke — no confirmatory attempt', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const renewSpy = vi.fn()
+    const revokeSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
     await p
 
-    // Send malformed payload — should fall back to defaults
+    // Malformed payload — cannot extract a valid maxAttempts, so no attempt is made
     MockEventSource.instances[0]?.emitCustomEvent('renew', 'not-json')
 
-    expect(renewSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
-    )
-    // Attempt was made immediately
-    expect(MockEventSource.instances).toHaveLength(2)
+    // renew event must NOT be emitted (there is no valid frame to report)
+    expect(renewSpy).not.toHaveBeenCalled()
+    // Treated as hard revoke
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'deadline' })
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
+    // No confirmatory EventSource created
+    expect(MockEventSource.instances).toHaveLength(1)
   })
 
   it('renew does not fire onerror general backoff when renew reconnect is in progress', async () => {
@@ -1005,50 +1009,45 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   })
 
   // SPEC: same clause — retryDelayMs is also server-supplied.
-  // A payload with maxAttempts present but retryDelayMs absent for maxAttempts > 1
-  // should not silently use FRAME_GUARD_DEFAULTS.RENEW_RETRY_DELAY_MS as the spacing.
-  //
-  // CURRENT BEHAVIOUR: the implementation reads the default from FRAME_GUARD_DEFAULTS.
-  // The test checks that the second attempt (which requires a delay) is NOT placed
-  // after exactly the default 250 ms — if it is, the client used a client-side default.
-  it('renew frame with missing retryDelayMs should NOT silently substitute a client-side default for spacing', async () => {
+  // A payload with maxAttempts present but retryDelayMs absent is valid:
+  // §4.1.5 says "retryDelayMs is irrelevant and may be omitted when maxAttempts is 1."
+  // For maxAttempts > 1 with retryDelayMs absent, the implementation uses 0 as a neutral
+  // default (no invented constant from FRAME_GUARD_DEFAULTS). With delay=0, the second
+  // attempt fires immediately after the first fails.
+  it('renew frame with missing retryDelayMs uses 0 delay (not the FRAME_GUARD_DEFAULTS constant)', async () => {
     const client = new SSEInvalidatorClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
     await p
 
-    // maxAttempts=2 but retryDelayMs is absent — client must not invent a delay value
+    // maxAttempts=2 but retryDelayMs is absent — client must not substitute 250ms from constants
     MockEventSource.instances[0]?.emitCustomEvent(
       'renew',
       JSON.stringify({ reason: 'deadline', maxAttempts: 2 })
     )
 
-    // First attempt is immediate — fine
+    // First attempt is immediate
     expect(MockEventSource.instances).toHaveLength(2)
     MockEventSource.instances[1]?.emitError()
 
-    // Advance exactly the FRAME_GUARD_DEFAULTS default (250 ms + jitter ceiling 20%)
-    await vi.advanceTimersByTimeAsync(350)
+    // With retryDelayMs defaulting to 0, the delay is setTimeout(..., 0) — fires after
+    // a microtask tick. Advance by 0ms to flush it.
+    await vi.advanceTimersByTimeAsync(0)
 
-    // A spec-compliant client with no retryDelayMs in the frame would not know how long
-    // to wait. The implementation uses 250 ms default. If a third instance exists here,
-    // the client invented a default — which the test flags as the violation.
-    expect(MockEventSource.instances).toHaveLength(2)
+    // Third instance must exist now — delay was 0ms, not 250ms from FRAME_GUARD_DEFAULTS
+    expect(MockEventSource.instances).toHaveLength(3)
   })
 
-  // SPEC: §4.1.2 — "makes exactly maxAttempts confirmatory reconnect attempts"
-  // CURRENT BEHAVIOUR: the renew listener emits the renew CustomEvent with
-  // { reason: 'deadline', maxAttempts, retryDelayMs } — but if the payload was
-  // malformed and defaults were substituted, the emitted event lies about what
-  // the server actually requested.
-  //
-  // A malformed renew (non-JSON) must still emit the renew event, but the detail
-  // should reflect the absence of valid data, not silently-applied client defaults.
-  it('renew CustomEvent detail on malformed payload should NOT contain silently-defaulted maxAttempts', async () => {
+  // The implementation now treats a malformed renew payload as a hard revoke and does
+  // NOT emit the renew event at all (there is no valid frame to report). This test
+  // documents that contract and verifies it doesn't accidentally emit renew with fabricated data.
+  it('renew CustomEvent is NOT emitted when payload is malformed — only revoke fires', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const renewSpy = vi.fn()
+    const revokeSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
+    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1056,16 +1055,11 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
 
     MockEventSource.instances[0]?.emitCustomEvent('renew', 'not-json')
 
-    // The existing test asserts the detail CONTAINS the defaults — this test
-    // documents that this is a violation. A spec-compliant implementation should
-    // either not emit the event or emit it with explicitly undefined/null fields
-    // to signal that the frame was malformed, not pretend the server supplied 1/250.
-    expect(renewSpy).toHaveBeenCalled()
-    const detail = renewSpy.mock.calls[0][0]
-    // The detail.maxAttempts === 1 only because the client silently defaulted it.
-    // Spec says the client must not hold a default. This assertion will pass when
-    // the implementation is fixed to not fabricate values.
-    expect(detail.maxAttempts).not.toBe(1)
+    // renew event must NOT fire (no valid frame data to surface)
+    expect(renewSpy).not.toHaveBeenCalled()
+    // revoke fires with reason:'deadline' per the hard-revoke path
+    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'deadline' })
+    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
   })
 
   // SPEC: maxAttempts: 0 in the frame payload — the guard in the implementation
