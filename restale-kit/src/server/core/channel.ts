@@ -173,7 +173,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const connectionId = options.connectionId ?? ''
   const target = options.target
   const requestedTarget = options.requestedTarget
-  const beforeFrame = options.beforeFrame as BeforeFrameFn | undefined
+  const beforeFrame = options.beforeFrame
   const guardKeepalive = options.guardKeepalive ?? false
   // True if the client provided a Last-Event-ID header — i.e. this is a reconnect.
   const isResume = lastEventId !== undefined
@@ -264,7 +264,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
-      return (beforeFrame as BeforeFrameFn<TSignal>)(ctx)
+      return beforeFrame(ctx)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       console.warn(
@@ -478,7 +478,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
       const ctx: FrameGuardCtx<TSignal> = {
-        signal: effectiveSignal as TSignal | TSignal[],
+        signal: effectiveSignal,
         frameType: 'signal',
         connectionId,
         requestedTarget,
@@ -570,8 +570,8 @@ function hasTargetProperty(val: unknown): val is InvalidateSignal {
   return isRecord(val) && typeof val.target === 'string'
 }
 
-export function processTargetSignals(
-  signal: InvalidateSignal | InvalidateSignal[],
+export function processTargetSignals<TSignal extends InvalidateSignal = InvalidateSignal>(
+  signal: TSignal | TSignal[],
   targetConfig: SignalTarget | SignalTarget[]
 ): InvalidateSignal | InvalidateSignal[] {
   const signalList = Array.isArray(signal) ? signal : [signal]

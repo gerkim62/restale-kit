@@ -504,8 +504,8 @@ export class SSEInvalidatorClient<
       try {
         const parsed: unknown = JSON.parse(event.data)
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const ma = Reflect.get(parsed, 'maxAttempts')
-          const rd = Reflect.get(parsed, 'retryDelayMs')
+          const ma: unknown = Reflect.get(parsed, 'maxAttempts')
+          const rd: unknown = Reflect.get(parsed, 'retryDelayMs')
           // maxAttempts must be a positive finite integer supplied by the server — no floor/default.
           if (typeof ma === 'number' && Number.isFinite(ma) && ma >= 1) {
             maxAttempts = Math.floor(ma)

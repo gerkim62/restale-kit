@@ -1160,7 +1160,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
   // FT-03: channelDefaults behavioral tests — verify that group channelDefaults
   // are merged into channel options when channels are created via the group
-  it('apply channelDefaults to channels registered with the group', async () => {
+  it('apply channelDefaults to channels registered with the group', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { guardKeepalive: true, lifetime: { ttlMs: 1000 } },
     })
