@@ -74,11 +74,12 @@ export const FRAME_GUARD_DEFAULTS = {
    * Client-side jitter fraction applied on top of each `retryDelayMs` interval when
    * `maxAttempts > 1`. Each wait is multiplied by a factor uniformly distributed in
    * [1 - RENEW_JITTER_FACTOR, 1 + RENEW_JITTER_FACTOR] (spec §4.1.5).
-   * 
-   * This constant lives in the server-shared FRAME_GUARD_DEFAULTS object because the
-   * server places the `retryDelayMs` value in the `renew` frame, and clients must apply
-   * this jitter to that interval. By sharing the constant, client and server stay synchronized
-   * on the expected jitter semantics (spec §4.1.5).
+   *
+   * NOTE: This is a client-only constant — it is consumed exclusively by `sse-client.ts`
+   * to jitter the spacing between confirmatory renew reconnect attempts. It lives here
+   * alongside the other Frame Guard defaults so that client and server share a single
+   * source of truth for the expected jitter semantics (spec §4.1.5). The constants
+   * above this entry are all server-side scheduling values.
    */
   RENEW_JITTER_FACTOR: 0.2,
 } as const

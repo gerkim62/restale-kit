@@ -136,7 +136,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `Partial<SSEChannelOptions>` | Frame Guard defaults distributed to all channels (`lifetime`, `beforeFrame`, `guardKeepalive`). Merge into each `attachSSE()`/`toSSEResponse()` call. |
+| `channelDefaults` | `ChannelDefaults` | Frame Guard defaults (`lifetime`, `guardKeepalive`) applied to channels that don't set them directly. Pass `group` to `attachSSE()`/`toSSEResponse()` so the merge is applied automatically. `beforeFrame` is not supported here — it is per-connection by nature. |
 
 ---
 
@@ -285,6 +285,7 @@ const channel = attachSSE(req, res, {
   },
   // By default, beforeFrame runs before signal frames only.
   // Set guardKeepalive: true to also run it before keepalive ticks (if keepalive is enabled).
+  keepaliveIntervalMs: 5000,
   guardKeepalive: false,
 })
 ```
@@ -410,6 +411,7 @@ app.get('/sse', (req, res) => {
 
 When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
 
+> **Tip — pair with Frame Guard lifetime:** If you use `lifetime: { onDeadline: 'reconnect' }` (the default), configure a shared `eventStore` at the same time. During the brief close-and-reconnect window triggered by a deadline, any signals sent by the server may not be delivered to the client. An `eventStore` ensures those signals are replayed when the client reconnects with `Last-Event-ID`.
 
 ---
 

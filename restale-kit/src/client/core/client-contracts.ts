@@ -138,12 +138,17 @@ export type RevokeEventDetail =
     }
   | {
       /**
-       * Any application-level revocation reason (e.g. `'session-expired'`, `'logout'`, `'banned'`),
-       * or `undefined` when the server sent a malformed / reason-less revoke frame.
-       * Explicitly excludes `'unsupported-target'` — that case always carries `requested`/`supported`
-       * and is narrowed by the first branch.
+       * Any application-level revocation reason. Known values:
+       * - `'deadline'`: A Frame Guard lifetime deadline fired and the confirmatory
+       *   reconnect cycle exhausted all attempts. The client will not auto-reconnect.
+       * - `'session-expired'`, `'logout'`, `'banned'` (or any custom string): integrator-
+       *   supplied reason from a server-side `channel.revoke(reason)` call.
+       * - `undefined`: the server sent a malformed or reason-less revoke frame.
+       *
+       * Explicitly excludes `'unsupported-target'` — that case always carries
+       * `requested`/`supported` and is narrowed by the first branch.
        */
-      reason: Exclude<string, 'unsupported-target'> | undefined
+      reason: 'deadline' | (string & {}) | undefined
       requested?: never
       supported?: never
     }

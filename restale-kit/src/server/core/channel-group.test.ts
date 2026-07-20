@@ -1178,12 +1178,13 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
   it('channelDefaults lifetime triggers deadline on channels after merged apply', async () => {
     vi.useFakeTimers()
-    
+    const decoder = new TextDecoder()
+
     const group = new SSEChannelGroup({
       channelDefaults: { lifetime: { ttlMs: 2000, onDeadline: 'revoke' } },
     })
 
-    const ch = createSSEChannel({ target: 'swr', lifetime: group.channelDefaults.lifetime })
+    const ch = createSSEChannel({ target: 'swr', lifetime: group.channelDefaults?.lifetime })
     group.register(ch)
 
     const reader = ch.stream.getReader()

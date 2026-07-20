@@ -982,11 +982,10 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // SPEC: "The client holds no independent default and performs no local override —
   // maxAttempts is read from the frame the server sent for that deadline hit, full stop."
   //
-  // ACTUAL BEHAVIOUR: the implementation rejects malformed renew payloads (missing
-  // maxAttempts) as a hard revoke — it does not emit the renew event and closes the
-  // connection via the revoke path. This is the spec-compliant behaviour.
-  // This test verifies: no second EventSource is created (no confirmatory attempt),
-  // and the connection is treated as revoked, not reconnected.
+  // The implementation treats a missing maxAttempts as a malformed payload (parseOk=false)
+  // and falls to the hard-revoke path — no renew event is emitted, no confirmatory attempt
+  // is made, and the connection closes with { reason: 'deadline' }.
+  // This test verifies that spec-correct behaviour: no second EventSource created.
   it('renew frame with missing maxAttempts triggers hard revoke (no confirmatory attempt)', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const revokeSpy = vi.fn()
@@ -996,15 +995,15 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
     MockEventSource.instances[0]?.emitOpen()
     await p
 
-    // Payload deliberately omits maxAttempts — spec says client must not invent a value
+    // Payload deliberately omits maxAttempts — spec says client must not invent a value.
+    // Implementation guard: `typeof ma === 'number' && Number.isFinite(ma) && ma >= 1`
+    // fails for undefined → parseOk stays false → hard-revoke path, zero confirmatory attempts.
     MockEventSource.instances[0]?.emitCustomEvent(
       'renew',
       JSON.stringify({ reason: 'deadline', retryDelayMs: 250 })
     )
 
-    // With no valid maxAttempts the spec-compliant client cannot proceed with any
-    // confirmatory attempt. Under the current implementation it silently attempts one.
-    // This assertion exposes the violation: no new EventSource should have been created.
+    // No new EventSource should have been created — hard-revoke path, no reconnect attempt.
     expect(MockEventSource.instances).toHaveLength(1)
   })
 
@@ -1066,10 +1065,10 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // After a renew cycle completes (success or failure), the general backoff attempt
   // counter must be exactly as it was before the renew frame arrived.
   //
-  // ACTUAL BEHAVIOUR: the implementation correctly rejects maxAttempts: 0 as a
-  // protocol error and treats the renew payload as malformed, triggering a hard
-  // revoke. No confirmatory attempt is made. This test verifies: no second
-  // EventSource is created (no attempt), and the connection closes via revoke.
+  // The implementation correctly rejects maxAttempts: 0 as malformed — the guard
+  // `ma >= 1` fails, parseOk stays false, and the connection closes via hard-revoke
+  // with no confirmatory attempt. This is spec-correct: a server sending maxAttempts: 0
+  // is effectively saying "don't reconnect", and the client honours that.
   it('renew frame with maxAttempts: 0 triggers hard revoke (floor of 0 is protocol error)', async () => {
     const client = new SSEInvalidatorClient('/sse')
 
@@ -1082,8 +1081,8 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
       JSON.stringify({ reason: 'deadline', maxAttempts: 0, retryDelayMs: 250 })
     )
 
-    // The implementation guards `ma >= 1` and substitutes 1. Per spec the client
-    // must not override what the server sent — no attempt should be made.
+    // Implementation rejects ma < 1 entirely (parseOk=false → hard-revoke path).
+    // No confirmatory EventSource should be created.
     expect(MockEventSource.instances).toHaveLength(1)
   })
 })
@@ -1181,8 +1180,8 @@ describe('frameguard-spec §4.1.3 — retry-budget isolation: renew attempts nev
 
     expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
 
-    // Advance well past the confirmatory attempt timeout (retryDelayMs was 250ms in renew frame)
-    // Using 2000ms to ensure any lingering timers are flushed
+    // Advance 2000ms to flush any lingering timers and confirm no further connections
+    // are created by the general backoff loop (which is suppressed after renew exhaustion).
     await vi.advanceTimersByTimeAsync(2000)
 
     // Strictly 2 — original + 1 confirmatory. Any more means the general loop fired.

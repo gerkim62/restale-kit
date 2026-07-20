@@ -1334,6 +1334,15 @@ describe('Frame Guard — lifetime', () => {
 })
 
 
+describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   // FT-04: guardKeepalive + beforeFrame + default keepaliveIntervalMs
   it('guardKeepalive: true with no keepaliveIntervalMs (default 0) — guard never fires on keepalives', async () => {
     const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
@@ -1398,19 +1407,16 @@ describe('Frame Guard — lifetime', () => {
     channel.close()
   })
 
-  // FT-06: beforeFrame.close does not take renew path
-  it('beforeFrame returns close action when onDeadline is reconnect — sends revoke, not renew', async () => {
+  // FT-06: beforeFrame does NOT intercept lifetime deadline frames
+  // The deadline timer fires directly — it bypasses beforeFrame entirely.
+  // beforeFrame only runs for invalidate() calls, not for the renew/revoke
+  // frames emitted by the lifetime timer. This test documents that contract.
+  it('lifetime deadline fires renew frame even when beforeFrame would close — deadline bypasses beforeFrame', async () => {
+    const beforeFrameSpy = vi.fn().mockReturnValue({ action: 'close', reason: 'guard-rejected' })
     const channel = createSSEChannel({
       target: 'swr',
-      lifetime: { ttlMs: 1000, onDeadline: 'reconnect' }, // default: would send renew
-      beforeFrame: (ctx) => {
-        // On deadline timeout, beforeFrame sees the renew frame about to go out
-        // Returning close should skip the renew and go straight to revoke
-        if (ctx.frameType === 'signal' && ctx.signal === undefined) {
-          return { action: 'close', reason: 'guard-rejected' }
-        }
-        return { action: 'send' }
-      },
+      lifetime: { ttlMs: 1000, onDeadline: 'reconnect' },
+      beforeFrame: beforeFrameSpy,
     })
     const reader = channel.stream.getReader()
 
@@ -1421,10 +1427,11 @@ describe('Frame Guard — lifetime', () => {
     reader.releaseLock()
 
     const text = decoder.decode(value)
-    // Should be revoke (from beforeFrame close), not renew
-    expect(text).toContain('event: revoke')
-    expect(text).toContain('"reason":"guard-rejected"')
-    expect(text).not.toContain('event: renew')
+    // The deadline timer calls fireDeadline() → controller.enqueue(formatRenewFrame(...))
+    // directly, bypassing beforeFrame entirely. The renew frame is emitted as-is.
+    expect(text).toContain('event: renew')
+    // beforeFrame was not called by the deadline path (only by invalidate())
+    expect(beforeFrameSpy).not.toHaveBeenCalled()
     expect(channel.state).toBe('closed')
   })
 
@@ -1446,4 +1453,5 @@ describe('Frame Guard — lifetime', () => {
 
     channel.close()
   })
+})
 

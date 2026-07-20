@@ -271,6 +271,13 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   readonly state: ChannelState
   readonly stream: ReadableStream<Uint8Array>
   readonly connectionId: string
+  /**
+   * The single target requested by this client via __restale_target__ query param, if any.
+   * Typed as `string | undefined` (not `SignalTarget | undefined`) so that unrecognized
+   * targets sent by the client flow through to the unsupported-target rejection path
+   * rather than being silently treated as "no preference".
+   */
+  readonly requestedTarget: string | undefined
   invalidate(signal: TSignal | TSignal[], customId?: string): string
   close(): void
   revoke(reason?: string): void   // sends a terminal event: revoke frame (default reason: 'revoked') before closing
@@ -287,8 +294,8 @@ interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal>
   eventStore?: EventStore<TSignal> // shared store for recording history and replaying missed events
   eventBufferCapacity?: number   // auto-creates an EventStore with this capacity if eventStore is not provided
   idGenerator?: () => string     // custom ID generator; ignored when an external eventStore is provided
-  connectionId?: string          // unique ID for this connection (extracted by transport adapters; rarely set manually)
-  requestedTarget?: string       // the client's requested target from __restale_target__ query param (filtered by adapters)
+  connectionId?: string          // unique ID for this connection (extracted by transport adapters; set manually in tests or when calling createSSEChannel directly without a transport)
+  requestedTarget?: string       // the client's requested target from __restale_target__ query param; widened to string to pass unrecognized targets to the rejection path
   lifetime?: LifetimeOptions     // absolute or relative deadline for the connection (Frame Guard)
   beforeFrame?: BeforeFrameFn<TSignal>  // guard function evaluated before each outgoing frame (Frame Guard)
   guardKeepalive?: boolean       // when true, beforeFrame runs before keepalive ticks too (Frame Guard; default false)
@@ -395,7 +402,7 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number              // auto-creates an EventStore with this capacity
     controlTopic?: string                     // default '__restale_control__' (must be a non-empty, non-whitespace string)
-    channelDefaults?: Partial<SSEChannelOptions<TSignal>>  // Frame Guard defaults (lifetime, beforeFrame, guardKeepalive) to merge into channel options
+    channelDefaults?: ChannelDefaults  // Frame Guard defaults (lifetime, guardKeepalive) to merge into channel options; beforeFrame is deliberately excluded (per-connection by nature)
   })
 
   /** Number of active channels in the group */
@@ -407,8 +414,8 @@ class SSEChannelGroup<TSignal extends InvalidateSignal = InvalidateSignal, TMeta
   /** The event store, if one was provided or auto-created via eventBufferCapacity. */
   readonly eventStore?: EventStore<TSignal>
 
-  /** Frame Guard defaults (lifetime, beforeFrame, guardKeepalive) to merge into channel options. */
-  readonly channelDefaults?: Partial<SSEChannelOptions<TSignal>>
+  /** Frame Guard defaults (`lifetime`, `guardKeepalive`) to merge into channel options. `beforeFrame` is not included — it closes over per-request state and has no meaningful group-wide default. */
+  readonly channelDefaults?: ChannelDefaults
 
   /**
    * Registers a channel with its associated metadata and optional routing topics.
@@ -700,9 +707,13 @@ event. A payload that fails validation emits `error` instead.
 
 1. `JSON.parse` must succeed — otherwise error.
 2. Result must be a plain object, or an array of plain objects — otherwise error.
-3. Each object must have a `key` property that is an `Array` — otherwise error.
-4. If `exact` is present, it must be `boolean` — otherwise error.
-5. If `action` is present, it must be one of `'invalidate' | 'refetch' | 'remove'` — otherwise error.
+3. Each object must have a `target` discriminator field or a `key` property — otherwise error.
+   Per-target structural rules:
+   - Generic / SWR signals: must have `key` as an `Array`.
+   - TanStack Query signals (`target: 'tanstack-query'`): must have `queryKey` as an `Array`.
+   - RTK Query signals (`target: 'rtk-query'`): must have `tags` as an `Array`.
+4. If `exact` is present on a generic or TanStack signal, it must be `boolean` — otherwise error.
+5. If `action` is present, it must be a value valid for the detected target type's action union — otherwise error.
 6. **Extra unknown fields are ignored** — forward-compatible. A future protocol version can add
    optional fields without breaking existing clients.
 7. If `signalSchema` is provided: for each signal in the batch, call
@@ -722,9 +733,10 @@ On the server side, the validation pipeline for `channel.invalidate()` is:
 1. Check if the channel state is `'closed'` — if so, throw `ChannelClosedError` (before any other checks).
 2. If `signalSchema` is provided, validate the signal. Throw `SchemaValidationError` on failure.
 3. If `beforeFrame` (frame guard) is configured, evaluate it synchronously. Return `skip` to drop the frame, `close` to revoke and close the channel, or `send` to proceed.
+   - When `beforeFrame` returns `{ action: 'close' }`, `invalidate()` calls `channel.revoke(reason)` and then throws `ChannelClosedError`. Callers that wrap `invalidate()` in a `try/catch` should handle this case alongside the schema-error case.
 4. Enqueue the SSE frame into the stream.
 
-The guard is evaluated **after** schema validation, ensuring the guard function receives a validated signal.
+**Ordering:** Schema validation (step 2) runs **before** `beforeFrame` (step 3). If the signal fails schema validation, `beforeFrame` is never called — there is no valid signal to pass to the guard.
 
 ---
 
@@ -846,6 +858,8 @@ When the deadline approaches (after applying jitter to prevent thundering herds)
 - A `renew` SSE event frame (default `onDeadline: 'reconnect'`), instructing the client to make exactly one confirmatory reconnect attempt through the real auth middleware. The frame includes `maxAttempts` and `retryDelayMs` for client-side retry budgeting.
 - A terminal `revoke` SSE event frame (when `onDeadline: 'revoke'`), closing the connection without reconnection.
 
+The jitter is applied as a positive offset — the actual fire time is nudged to *at or after* the nominal deadline, never before it, so the client always gets the full lifetime window.
+
 The `renew` frame carries:
 - `reason: 'deadline'` — distinguishes deadline-driven renewal from ordinary errors
 - `maxAttempts` — how many times to retry if reconnect fails (typically 1 for strict auth)
@@ -875,6 +889,8 @@ type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
 
 The guard function is evaluated synchronously before each signal frame. Errors thrown are treated as `{ action: 'close' }`. By default, it runs before signal frames only; set `guardKeepalive: true` to also run before keepalive ticks.
 
+When `beforeFrame` returns `{ action: 'close' }`, `invalidate()` revokes the channel (sending a terminal `revoke` frame) and then throws `ChannelClosedError`. This is equivalent to the integrator calling `channel.revoke()` directly — it always uses the hard-revoke path regardless of `onDeadline`.
+
 ---
 
 ## Exported type surface
@@ -883,12 +899,12 @@ Each subpath export has a defined public API. Only these symbols are exported:
 
 | Subpath | Exported symbols |
 |---|---|
-| `restale-kit` | `JSONValue`, `ReStaleSignal`, `InvalidateSignal`, `TanStackQuerySignal`, `TanStackQueryAction`, `SWRSignal`, `SWRAction`, `RTKQuerySignal`, `GenericInvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, `SIGNAL_TARGETS`, `isJSONValue`, `isJSONValueArray`, `matchesInvalidateSignalKey`, `validateStandardSchema`, `StandardSchemaV1`, `ChannelClosedError`, `SchemaValidationError`, `LifetimeOptions`, `OnDeadline`, `FrameGuardResult`, `FrameGuardCtx`, `BeforeFrameFn`, `RevokeEventDetail` |
+| `restale-kit` | `JSONValue`, `ReStaleSignal`, `InvalidateSignal`, `TanStackQuerySignal`, `TanStackQueryAction`, `SWRSignal`, `SWRAction`, `RTKQuerySignal`, `GenericInvalidateSignal`, `SSEInvalidateEvent`, `ChannelState`, `SIGNAL_TARGETS`, `isJSONValue`, `isJSONValueArray`, `matchesInvalidateSignalKey`, `validateStandardSchema`, `StandardSchemaV1`, `ChannelClosedError`, `SchemaValidationError`, `LifetimeOptions`, `OnDeadline`, `FrameGuardResult`, `FrameGuardCtx`, `BeforeFrameFn`, `RevokeEventDetail`, `RenewEventDetail` |
 | `restale-kit/server` | `createSSEChannel`, `SSEChannel`, `SSEChannelOptions`, `SSEChannelGroup`, `createEventStore`, `EventStoreOptions`, `mergeChannelDefaults`, `ChannelDefaults` |
 | `restale-kit/node`, `restale-kit/express` | `attachSSE` |
 | `restale-kit/fastify` | `attachSSE`, `FastifyRequestLike`, `FastifyReplyLike` |
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
-| `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `SSEInvalidatorClientEventMap`, `InvalidateSignal` |
+| `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `SSEInvalidatorClientEventMap`, `RenewEventDetail`, `RevokeEventDetail`, `InvalidateSignal` |
 | `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
 | `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter`, `SWRAdapterOptions`, `SWRMutator` |
