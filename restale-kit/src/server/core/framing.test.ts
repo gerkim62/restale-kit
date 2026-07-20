@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame } from './framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame, formatRenewFrame } from './framing.js'
 
 const decoder = new TextDecoder()
 
@@ -141,5 +141,67 @@ describe('formatRevokeFrame', () => {
     const str = decoder.decode(bytes)
 
     expect(str).toBe('event: revoke\ndata: {"reason":"reason with \\"quotes\\" and \\\\backslash"}\n\n')
+  })
+})
+
+describe('formatRenewFrame', () => {
+  it('produces a correctly structured renew frame', () => {
+    const bytes = formatRenewFrame(1, 250)
+    const str = decoder.decode(bytes)
+
+    expect(str).toBe('event: renew\ndata: {"reason":"deadline","maxAttempts":1,"retryDelayMs":250}\n\n')
+  })
+
+  it('client can parse the renew payload back to its fields', () => {
+    const bytes = formatRenewFrame(2, 300)
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const parsed: unknown = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(parsed).toEqual({ reason: 'deadline', maxAttempts: 2, retryDelayMs: 300 })
+  })
+
+  it('clamps maxAttempts to a minimum of 1', () => {
+    const bytes = formatRenewFrame(0, 250)
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const { maxAttempts }: { maxAttempts: number } = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(maxAttempts).toBe(1)
+  })
+
+  it('clamps retryDelayMs to a minimum of 0', () => {
+    const bytes = formatRenewFrame(1, -100)
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const { retryDelayMs }: { retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(retryDelayMs).toBe(0)
+  })
+
+  it('floors non-integer maxAttempts', () => {
+    const bytes = formatRenewFrame(1.9, 250)
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const { maxAttempts }: { maxAttempts: number } = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(maxAttempts).toBe(1)
+  })
+
+  it('always carries reason: deadline', () => {
+    const bytes = formatRenewFrame(1, 250)
+    const str = decoder.decode(bytes)
+    const dataLine = str.split('\n').find((l) => l.startsWith('data:'))!
+    const { reason }: { reason: string } = JSON.parse(dataLine.slice('data: '.length))
+
+    expect(reason).toBe('deadline')
+  })
+
+  it('event name is renew, not revoke', () => {
+    const bytes = formatRenewFrame(1, 250)
+    const str = decoder.decode(bytes)
+
+    expect(str).toContain('event: renew')
+    expect(str).not.toContain('event: revoke')
   })
 })

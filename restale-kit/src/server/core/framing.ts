@@ -1,6 +1,16 @@
 import type { SSEInvalidateEvent } from '@/types/protocol.js'
 import { SSE_EVENTS } from '@/utils/constants.js'
 
+/**
+ * Payload carried in a `renew` SSE frame.
+ * Both fields are server-supplied so the client has no need to apply its own defaults.
+ */
+export interface RenewFramePayload {
+  reason: 'deadline'
+  maxAttempts: number
+  retryDelayMs: number
+}
+
 const encoder = new TextEncoder()
 
 /**
@@ -98,3 +108,31 @@ export function formatRetryFrame(retryMs: number): Uint8Array {
   return encoder.encode(`retry: ${String(sanitizedMs)}\n\n`)
 }
 
+
+/**
+ * Formats a `renew` SSE frame.
+ *
+ * Sent by the server when a connection's deadline fires with `onDeadline: 'reconnect'`
+ * (the default). It is a sibling of the `revoke` frame — same mechanism, opposite meaning:
+ * - `revoke` asserts "you are unauthorized, do not reconnect."
+ * - `renew` asserts "this connection is ending on purpose, but you are NOT being told you
+ *   are unauthorized — please make `maxAttempts` confirmatory reconnect attempt(s)."
+ *
+ * Produces exactly:
+ * ```
+ * event: renew\n
+ * data: {"reason":"deadline","maxAttempts":1,"retryDelayMs":250}\n
+ * \n
+ * ```
+ *
+ * `maxAttempts` and `retryDelayMs` are server-supplied rather than client-side defaults
+ * because the server knows the deadline policy; the client reads them as-is (spec §4.1.2).
+ */
+export function formatRenewFrame(maxAttempts: number, retryDelayMs: number): Uint8Array {
+  const payload: RenewFramePayload = {
+    reason: 'deadline',
+    maxAttempts: Math.max(1, Math.floor(maxAttempts)),
+    retryDelayMs: Math.max(0, Math.floor(retryDelayMs)),
+  }
+  return encoder.encode(`event: ${SSE_EVENTS.RENEW}\ndata: ${JSON.stringify(payload)}\n\n`)
+}
