@@ -87,7 +87,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * The function must be synchronous. Errors thrown inside it are the integrator's
    * responsibility — an unhandled throw is treated as `{ action: 'close' }`.
    */
-  beforeFrame?: BeforeFrameFn<TSignal>
+  beforeFrame?: BeforeFrameFn<InvalidateSignal>
   /**
    * When `true`, `beforeFrame` also runs before every keepalive tick.
    * Has no effect if `beforeFrame` is not set. Default: `false`.
@@ -260,7 +260,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
    * Returns the result, or `{ action: 'send' }` when no guard is configured.
    * A thrown error inside `beforeFrame` is treated as `{ action: 'close' }` (spec §6).
    */
-  function runGuard(ctx: FrameGuardCtx<TSignal>): FrameGuardResult {
+  function runGuard(ctx: FrameGuardCtx<InvalidateSignal>): FrameGuardResult {
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
@@ -368,7 +368,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
           // Run the guard before every keepalive tick when guardKeepalive is enabled.
           if (beforeFrame !== undefined && guardKeepalive) {
-            const ctx: FrameGuardCtx<TSignal> = {
+            const ctx: FrameGuardCtx<InvalidateSignal> = {
               signal: undefined,
               frameType: 'keepalive',
               connectionId,
@@ -477,7 +477,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
-      const ctx: FrameGuardCtx<TSignal> = {
+      const ctx: FrameGuardCtx<InvalidateSignal> = {
         signal: effectiveSignal,
         frameType: 'signal',
         connectionId,
