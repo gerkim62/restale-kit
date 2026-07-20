@@ -81,6 +81,8 @@ export interface ReconnectOptions {
   maxRetries?: number
   /** Statuses that close immediately instead of being retried. Defaults to no matches. */
   nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
+  /** Respect a retryable response's `Retry-After` header for its next retry. Default: `'ignore'`. */
+  retryAfter?: 'respect' | 'ignore'
 }
 
 /**

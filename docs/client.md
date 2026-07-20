@@ -58,6 +58,7 @@ useReStale(url: string, options: {
     jitter?: boolean            // default true
     maxRetries?: number         // default Infinity
     nonRetryableStatuses?: number | '4xx' | '5xx' | { from: number, to: number }
+    retryAfter?: 'respect' | 'ignore' // default 'ignore'
   }
 
   // Validation & Target (optional)
@@ -116,6 +117,8 @@ useReStale('/sse', {
 ```
 
 Each matcher can be an exact status (`401`), a status class (`'4xx'`), or an inclusive range (`{ from: 400, to: 499 }`). The default is no matches, preserving normal retry behaviour. A rejected handshake sets the connection to `{ status: 'closed', reason: 'rejected' }` and calls `onRejected`; it is distinct from a server-sent `revoke` frame.
+
+For retryable responses such as `429` or `503`, set `retryAfter: 'respect'` to use the server's `Retry-After` header for the next retry. It accepts either delay seconds or an HTTP-date; invalid or absent values fall back to normal exponential backoff.
 
 ### Server-initiated revocation
 

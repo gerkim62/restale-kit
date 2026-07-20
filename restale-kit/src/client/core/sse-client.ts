@@ -375,10 +375,13 @@ export class SSEInvalidatorClient<
     // sse.js's own retry loop is disabled. Preserve the former `native` option's
     // mid-stream behaviour while keeping retry budgeting under this client.
     const canRetry = this.jsBackoffAutoReconnect || (this.opened && this.nativeAutoReconnect)
+    const retryAfterDelay = this.reconnectOptions?.retryAfter === 'respect'
+      ? this.getRetryAfterDelay(es, event)
+      : undefined
     this.teardown()
 
     if (!this.revoked && !this.renewing && canRetry && this.attempt < this.maxRetries) {
-      const delay = calculateBackoff(this.attempt, this.reconnectOptions)
+      const delay = retryAfterDelay ?? calculateBackoff(this.attempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
@@ -717,6 +720,19 @@ export class SSEInvalidatorClient<
       // Browsers can withhold cross-origin response headers unless they are exposed.
       return {}
     }
+  }
+
+  private getRetryAfterDelay(es: SSE, event: SSEvent): number | undefined {
+    const headers: Partial<Record<string, string[]>> = event.headers ?? this.readResponseHeaders(es)
+    const retryAfter = headers['retry-after']?.[0]
+    if (retryAfter == undefined) return undefined
+
+    const seconds = Number(retryAfter)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds * 1_000)
+
+    const date = Date.parse(retryAfter)
+    if (!Number.isNaN(date)) return Math.max(0, date - Date.now())
+    return undefined
   }
 
   private matchesNonRetryableStatus(status: number): boolean {

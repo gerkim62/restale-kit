@@ -146,6 +146,23 @@ describe('SSEInvalidatorClient', () => {
     expect(client.status.status).toBe('error')
   })
 
+  it('respects Retry-After for retryable responses when configured', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
+    })
+    const pending = client.connect()
+    pending.catch(() => {})
+    MockEventSource.instances[0]?.emitError(Object.assign(new Event('error'), {
+      responseCode: 429,
+      headers: { 'retry-after': ['2'] },
+    }))
+
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(MockEventSource.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
   it('recreates the sse.js stream through the managed backoff after a mid-stream drop', async () => {
     const client = new SSEInvalidatorClient('/sse', {
       reconnect: { baseDelayMs: 10, jitter: false },
