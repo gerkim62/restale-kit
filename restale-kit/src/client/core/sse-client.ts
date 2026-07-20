@@ -5,13 +5,14 @@ import type {
   ClientOptions,
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
+  RenewEventDetail,
 } from '@/client/core/client-contracts.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
-import { PROTOCOL_CONSTANTS, SSE_EVENTS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 
 /** Reads a string property from an unknown object without any cast. */
 function getStringProp(obj: object, key: string): string | undefined {
@@ -58,6 +59,8 @@ export class SSEInvalidatorClient<
   private attempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private revoked = false
+  private renewing = false
+  private renewRetryTimer: ReturnType<typeof setTimeout> | null = null
   private connectPromise: {
     promise: Promise<void>
     resolve: () => void
@@ -175,6 +178,7 @@ export class SSEInvalidatorClient<
     // Reset backoff counter and revoked flag for a fresh connect attempt
     this.attempt = 0
     this.revoked = false
+    this.renewing = false
 
     return this.createConnection()
   }
@@ -344,7 +348,7 @@ export class SSEInvalidatorClient<
       // Native EventSource will not auto-reconnect. Fall back to JS backoff retries.
       this.teardown()
 
-      if (!this.revoked && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
+      if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
         const delay = calculateBackoff(this.attempt, this.reconnectOptions)
         if (this.debug) {
           console.log(
@@ -361,6 +365,8 @@ export class SSEInvalidatorClient<
         if (this.debug) {
           const reason = this.revoked
             ? 'Server sent terminal revoke frame'
+            : this.renewing
+            ? 'Renew confirmatory reconnect in progress'
             : !this.jsBackoffAutoReconnect
             ? 'jsBackoff autoReconnect is disabled'
             : `Exhausted maxRetries (${String(this.maxRetries)})`
@@ -504,6 +510,11 @@ export class SSEInvalidatorClient<
     if (this.retryTimer !== null) {
       clearTimeout(this.retryTimer)
       this.retryTimer = null
+    }
+
+    if (this.renewRetryTimer !== null) {
+      clearTimeout(this.renewRetryTimer)
+      this.renewRetryTimer = null
     }
   }
 }

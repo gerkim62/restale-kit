@@ -5,6 +5,8 @@ import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
 import { extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
+import type { SSEChannelGroup } from '@/server/core/channel-group.js'
+import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
 /**
  * Attaches an SSE channel to a Node.js HTTP response.
@@ -17,11 +19,15 @@ import { extractConnectionId, extractLastEventId, extractRequestedTarget } from 
  *
  * Works with Express (`req, res`) and Fastify (`request.raw, reply.raw` —
  * call `reply.hijack()` first).
+ *
+ * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
+ *   `options` before creating the channel. Per-channel values always win over defaults.
  */
 export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal, unknown>
 ): SSEChannel<TSignal> {
   const rawUrl = req.url || '/'
   const searchIndex = rawUrl.indexOf('?')
@@ -31,12 +37,14 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => req.headers[name])
 
-  const channelOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
   }
+
+  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 

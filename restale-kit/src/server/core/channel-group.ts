@@ -5,6 +5,7 @@ import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
 /**
  * Manages subscription state and serialization for a specific topic.
@@ -151,6 +152,18 @@ export interface SSEChannelGroupOptions<
   eventStore?: EventStore
   eventBufferCapacity?: number
   controlTopic?: string
+  /**
+   * Fallback defaults for Frame Guard options that are typically uniform across an
+   * entire app (`lifetime`, `guardKeepalive`), so they don't need to be repeated at
+   * every `attachSSE()` / `toSSEResponse()` call site.
+   *
+   * A channel-level value always wins over a group default — the default only fills
+   * a gap left by the channel. `beforeFrame` is per-connection by nature and is
+   * deliberately NOT supported here (spec §1).
+   *
+   * Merge semantics are presence-based, not truthiness-based — see `mergeChannelDefaults`.
+   */
+  channelDefaults?: ChannelDefaults
 }
 
 /**
@@ -170,6 +183,7 @@ export class SSEChannelGroup<
   private readonly pubsub?: PubSubAdapter
   readonly eventStore?: EventStore
   readonly controlTopic: string
+  readonly channelDefaults?: ChannelDefaults
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
@@ -177,6 +191,7 @@ export class SSEChannelGroup<
   constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
+    this.channelDefaults = options.channelDefaults
 
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {

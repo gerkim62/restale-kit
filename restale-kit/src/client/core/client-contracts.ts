@@ -43,7 +43,8 @@ export function makeAdaptedCallback<
  * - `closed` — stream has been shut down:
  *   - `reason: 'manual'` — caller called `client.close()`.
  *   - `reason: 'unmount'` — React hook unmounted the component.
- *   - `reason: 'revoked'` — server sent a terminal `revoke` frame (e.g. logout, ban).
+ *   - `reason: 'revoked'` — server sent a terminal `revoke` frame (e.g. logout, ban),
+ *     or a `renew`-triggered confirmatory reconnect exhausted its attempt budget.
  *     Auto-reconnect is suppressed until `connect()` is called explicitly.
  * - `error` — connection failed and retry limit was reached (or `autoReconnect` is off).
  */
@@ -161,4 +162,30 @@ export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> 
    * to access the `requested`/`supported` fields for `'unsupported-target'`.
    */
   revoke: CustomEvent<RevokeEventDetail>
+  /**
+   * Emitted when the server sends a `renew` frame, indicating the connection is ending
+   * intentionally (deadline reached) but the client is NOT being told it is unauthorized.
+   *
+   * The client will make up to `detail.maxAttempts` confirmatory reconnect attempts
+   * automatically. This event fires once, at the moment the `renew` frame is received,
+   * before any reconnect attempt begins. Listening to it is optional — reconnection
+   * happens regardless.
+   *
+   * If all confirmatory attempts fail, a `statuschange` event is emitted with
+   * `{ status: 'closed', reason: 'revoked' }` and a `revoke` event fires with
+   * `{ reason: 'deadline' }`.
+   */
+  renew: CustomEvent<RenewEventDetail>
+}
+
+/**
+ * Payload carried by the `renew` CustomEvent.
+ */
+export interface RenewEventDetail {
+  /** Always `'deadline'` — the only reason a server currently sends `renew`. */
+  reason: 'deadline'
+  /** How many confirmatory reconnect attempts the client will make. */
+  maxAttempts: number
+  /** Base delay in milliseconds between attempts when `maxAttempts > 1`. */
+  retryDelayMs: number
 }

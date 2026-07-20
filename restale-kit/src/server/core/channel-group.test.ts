@@ -1129,3 +1129,31 @@ describe('channel-group', () => {
     )
   })
 })
+
+// ─── channelDefaults tests ────────────────────────────────────────────────────
+
+describe('SSEChannelGroup — channelDefaults', () => {
+  it('exposes channelDefaults from constructor options', () => {
+    const group = new SSEChannelGroup({
+      channelDefaults: { guardKeepalive: true, lifetime: { ttlMs: 5000 } },
+    })
+    expect(group.channelDefaults).toEqual({ guardKeepalive: true, lifetime: { ttlMs: 5000 } })
+  })
+
+  it('channelDefaults is undefined when not provided', () => {
+    const group = new SSEChannelGroup()
+    expect(group.channelDefaults).toBeUndefined()
+  })
+
+  it('channelDefaults is available after construction with only guardKeepalive', () => {
+    const group = new SSEChannelGroup({ channelDefaults: { guardKeepalive: false } })
+    expect(group.channelDefaults?.guardKeepalive).toBe(false)
+  })
+
+  it('channelDefaults is available after construction with only lifetime', () => {
+    const group = new SSEChannelGroup({
+      channelDefaults: { lifetime: { ttlMs: 10000, onDeadline: 'revoke' } },
+    })
+    expect(group.channelDefaults?.lifetime).toEqual({ ttlMs: 10000, onDeadline: 'revoke' })
+  })
+})
