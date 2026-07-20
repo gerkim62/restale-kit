@@ -992,3 +992,343 @@ describe('requestedTarget negotiation', () => {
     expect(after.map((e) => e.id)).toContain(id2)
   })
 })
+
+// ─── Frame Guard tests ────────────────────────────────────────────────────────
+
+describe('Frame Guard — beforeFrame', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('send result — frame is delivered normally', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: () => ({ action: 'send' }),
+    })
+    channel.invalidate({ key: ['items'] })
+    const text = await readStreamChunk(channel.stream)
+    expect(text).toContain('"key":["items"]')
+  })
+
+  it('skip result — frame is dropped, channel stays open, invalidate returns empty string', () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: () => ({ action: 'skip' }),
+    })
+    const id = channel.invalidate({ key: ['items'] })
+    expect(id).toBe('')
+    expect(channel.state).toBe('open')
+  })
+
+  it('close result — revoke frame sent, channel closes, invalidate throws ChannelClosedError', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: () => ({ action: 'close', reason: 'unauthorized' }),
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('"reason":"unauthorized"')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('close result without reason uses default revoke reason', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: () => ({ action: 'close' }),
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('"reason":"revoked"')
+  })
+
+  it('ctx.signal contains the outgoing signal', () => {
+    const capturedCtx: Array<{ signal: unknown; frameType: string }> = []
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: (ctx) => { capturedCtx.push({ signal: ctx.signal, frameType: ctx.frameType }); return { action: 'send' } },
+    })
+    channel.invalidate({ key: ['todos'] })
+    expect(capturedCtx).toHaveLength(1)
+    expect(capturedCtx[0].frameType).toBe('signal')
+    expect(capturedCtx[0].signal).toMatchObject({ target: 'swr', key: ['todos'] })
+  })
+
+  it('ctx.connectionId and ctx.requestedTarget are populated', () => {
+    let capturedCtx: ReturnType<Parameters<typeof createSSEChannel>[0]['beforeFrame'] & {}> | undefined
+    const channel = createSSEChannel({
+      target: 'swr',
+      connectionId: 'conn-abc',
+      requestedTarget: 'swr',
+      beforeFrame: (ctx) => { capturedCtx = ctx as any; return { action: 'send' } },
+    })
+    channel.invalidate({ key: ['x'] })
+    expect((capturedCtx as any).connectionId).toBe('conn-abc')
+    expect((capturedCtx as any).requestedTarget).toBe('swr')
+  })
+
+  it('ctx.isResume is false for a fresh connection', () => {
+    let isResume: boolean | undefined
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: (ctx) => { isResume = ctx.isResume; return { action: 'send' } },
+    })
+    channel.invalidate({ key: ['x'] })
+    expect(isResume).toBe(false)
+  })
+
+  it('ctx.isResume is true when lastEventId is present', () => {
+    const store = createEventStore({ capacity: 10 })
+    let isResume: boolean | undefined
+    const channel = createSSEChannel({
+      target: 'swr',
+      lastEventId: 'some-id',
+      eventStore: store,
+      beforeFrame: (ctx) => { isResume = ctx.isResume; return { action: 'send' } },
+    })
+    channel.invalidate({ key: ['x'] })
+    expect(isResume).toBe(true)
+  })
+
+  it('beforeFrame throwing an error is treated as close', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const channel = createSSEChannel({
+      target: 'swr',
+      beforeFrame: () => { throw new Error('guard exploded') },
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['x'] })).toThrow(ChannelClosedError)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('event: revoke')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[WARN][createSSEChannel] beforeFrame threw an unhandled error'),
+      expect.any(String),
+      expect.any(String),
+    )
+    warnSpy.mockRestore()
+  })
+
+  it('schema validation runs before beforeFrame', () => {
+    const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
+    const channel = createSSEChannel({
+      target: 'swr',
+      signalSchema: {
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          validate: () => ({ issues: [{ message: 'invalid' }] }),
+        },
+      },
+      beforeFrame: guardSpy,
+    })
+    expect(() => channel.invalidate({ key: ['x'] } as any)).toThrow()
+    expect(guardSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('Frame Guard — guardKeepalive', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('guardKeepalive: false — beforeFrame not called on keepalive ticks', async () => {
+    const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
+    const channel = createSSEChannel({
+      target: 'swr',
+      keepaliveIntervalMs: 1000,
+      beforeFrame: guardSpy,
+      guardKeepalive: false,
+    })
+    const reader = channel.stream.getReader()
+    await vi.advanceTimersByTimeAsync(1000)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(guardSpy).not.toHaveBeenCalled()
+    channel.close()
+  })
+
+  it('guardKeepalive: true — beforeFrame called for keepalive, ctx.signal is undefined and frameType is keepalive', async () => {
+    const capturedCtxs: Array<{ signal: unknown; frameType: string }> = []
+    const channel = createSSEChannel({
+      target: 'swr',
+      keepaliveIntervalMs: 1000,
+      beforeFrame: (ctx) => { capturedCtxs.push({ signal: ctx.signal, frameType: ctx.frameType }); return { action: 'send' } },
+      guardKeepalive: true,
+    })
+    const reader = channel.stream.getReader()
+    await vi.advanceTimersByTimeAsync(1000)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(capturedCtxs).toHaveLength(1)
+    expect(capturedCtxs[0].frameType).toBe('keepalive')
+    expect(capturedCtxs[0].signal).toBeUndefined()
+    channel.close()
+  })
+
+  it('guardKeepalive: true, skip result — keepalive is silently dropped, channel stays open', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      keepaliveIntervalMs: 1000,
+      beforeFrame: () => ({ action: 'skip' }),
+      guardKeepalive: true,
+    })
+    const reader = channel.stream.getReader()
+    await vi.advanceTimersByTimeAsync(1000)
+    // No frame should have been enqueued — channel is still open so no done yet
+    expect(channel.state).toBe('open')
+    channel.close()
+    const { done } = await reader.read()
+    reader.releaseLock()
+    expect(done).toBe(true)
+  })
+
+  it('guardKeepalive: true, close result — channel is revoked on keepalive tick', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      keepaliveIntervalMs: 1000,
+      beforeFrame: () => ({ action: 'close', reason: 'kicked' }),
+      guardKeepalive: true,
+    })
+    const reader = channel.stream.getReader()
+    await vi.advanceTimersByTimeAsync(1000)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('"reason":"kicked"')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('guardKeepalive: false with no beforeFrame — no-op, keepalive emitted normally', async () => {
+    // guardKeepalive alone (no beforeFrame) must be a no-op (spec §4.3)
+    const channel = createSSEChannel({
+      target: 'swr',
+      keepaliveIntervalMs: 1000,
+      guardKeepalive: true, // set but no beforeFrame — should be inert
+    })
+    const reader = channel.stream.getReader()
+    await vi.advanceTimersByTimeAsync(1000)
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    channel.close()
+  })
+})
+
+describe('Frame Guard — lifetime', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('ttlMs: fires renew frame (default onDeadline) and closes channel', async () => {
+    const channel = createSSEChannel({ target: 'swr', lifetime: { ttlMs: 5000 } })
+    const reader = channel.stream.getReader()
+
+    // Advance past TTL + max jitter window
+    await vi.advanceTimersByTimeAsync(6000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+    const text = decoder.decode(value)
+    expect(text).toContain('event: renew')
+    expect(text).toContain('"reason":"deadline"')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('deadline: fires renew frame when absolute deadline is reached', async () => {
+    const now = Date.now()
+    const channel = createSSEChannel({ target: 'swr', lifetime: { deadline: now + 5000 } })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(6000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('event: renew')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('onDeadline: revoke — sends revoke frame instead of renew', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 5000, onDeadline: 'revoke' },
+    })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(6000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+    const text = decoder.decode(value)
+    expect(text).toContain('event: revoke')
+    expect(text).toContain('"reason":"deadline"')
+    expect(text).not.toContain('event: renew')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('onDeadline object form — renew frame carries custom maxAttempts and retryDelayMs', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 5000, onDeadline: { maxAttempts: 3, retryDelayMs: 400 } },
+    })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(6000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+    const text = decoder.decode(value)
+    expect(text).toContain('event: renew')
+    const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
+    const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
+    expect(payload.maxAttempts).toBe(3)
+    expect(payload.retryDelayMs).toBe(400)
+    expect(channel.state).toBe('closed')
+  })
+
+  it('lifetime timer is cleared when channel closes before deadline', async () => {
+    const channel = createSSEChannel({ target: 'swr', lifetime: { ttlMs: 10000 } })
+    channel.close()
+    expect(channel.state).toBe('closed')
+    // Advancing past TTL must not enqueue extra frames or throw
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(channel.state).toBe('closed')
+  })
+
+  it('already-past deadline still fires (after minimum delay floor), not immediately', async () => {
+    const past = Date.now() - 60000  // 1 minute in the past
+    const channel = createSSEChannel({ target: 'swr', lifetime: { deadline: past } })
+    const reader = channel.stream.getReader()
+
+    // Should NOT have fired synchronously at channel creation
+    expect(channel.state).toBe('open')
+
+    // Advance past the minimum delay floor (250 ms) + jitter window (500 ms)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toContain('event: renew')
+    expect(channel.state).toBe('closed')
+  })
+
+  it('no lifetime option — channel never closes on its own', async () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(channel.state).toBe('open')
+    channel.close()
+  })
+
+  it('lifetime timer fires onClose callbacks', async () => {
+    const cb = vi.fn()
+    const channel = createSSEChannel({ target: 'swr', lifetime: { ttlMs: 1000 } })
+    channel.onClose(cb)
+
+    // Drain stream so it doesn't block closeInternal
+    void channel.stream.getReader().read()
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+})

@@ -1,9 +1,30 @@
-import { isJSONValue, type InvalidateSignal, type ChannelState, type EventStore, type SignalTarget, type JSONValue, type TanStackQuerySignal, type SWRSignal, type RTKQuerySignal, type GenericInvalidateSignal } from '@/types/protocol.js'
+import {
+  isJSONValue,
+  type InvalidateSignal,
+  type ChannelState,
+  type EventStore,
+  type SignalTarget,
+  type JSONValue,
+  type TanStackQuerySignal,
+  type SWRSignal,
+  type RTKQuerySignal,
+  type GenericInvalidateSignal,
+  type LifetimeOptions,
+  type BeforeFrameFn,
+  type FrameGuardCtx,
+  type FrameGuardResult,
+} from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
-import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame } from '@/server/core/framing.js'
+import {
+  formatInvalidateFrame,
+  formatKeepalive,
+  formatRevokeFrame,
+  formatRetryFrame,
+  formatRenewFrame,
+} from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
-import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 
 /**
  * Configuration options for `createSSEChannel`.
@@ -42,6 +63,32 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * check rather than silently treated as "no preference".
    */
   requestedTarget?: string
+  /**
+   * A connection-level deadline after which the channel is closed.
+   *
+   * Express either as a relative duration from connection start (`ttlMs`) or as an
+   * absolute epoch-ms timestamp (`deadline`). The two are mutually exclusive.
+   *
+   * When the deadline fires, `onDeadline` (default `'reconnect'`) controls whether the
+   * channel sends a `renew` frame (asking the client to make one confirmatory reconnect
+   * through the real auth middleware) or a terminal `revoke` frame.
+   */
+  lifetime?: LifetimeOptions
+  /**
+   * Integrator-supplied guard function called synchronously before each outgoing frame.
+   *
+   * By default it runs before **signal frames only**. Set `guardKeepalive: true` to also
+   * run it before every keepalive tick (opt-in because keepalives are high-frequency).
+   *
+   * The function must be synchronous. Errors thrown inside it are the integrator's
+   * responsibility — an unhandled throw is treated as `{ action: 'close' }`.
+   */
+  beforeFrame?: BeforeFrameFn<TSignal>
+  /**
+   * When `true`, `beforeFrame` also runs before every keepalive tick.
+   * Has no effect if `beforeFrame` is not set. Default: `false`.
+   */
+  guardKeepalive?: boolean
 }
 
 /**
@@ -127,6 +174,10 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   const connectionId = options.connectionId ?? ''
   const target = options.target
   const requestedTarget = options.requestedTarget
+  const beforeFrame = options.beforeFrame as BeforeFrameFn | undefined
+  const guardKeepalive = options.guardKeepalive ?? false
+  // True if the client provided a Last-Event-ID header — i.e. this is a reconnect.
+  const isResume = lastEventId !== undefined
 
   // Track whether this channel owns its eventStore (created internally) or was given an
   // external one. When the store is external (shared with a group), the group is responsible
@@ -142,11 +193,96 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   let state: ChannelState = 'open'
   let controller: ReadableStreamDefaultController<Uint8Array>
   let keepaliveTimer: ReturnType<typeof setInterval> | undefined
+  let lifetimeTimer: ReturnType<typeof setTimeout> | undefined
   const closeCallbacks: Array<() => void> = []
+
+  // ── Lifetime timer helpers ────────────────────────────────────────────────
+
+  function resolveLifetimeMs(connectedAt: number): number | undefined {
+    if (options.lifetime === undefined) return undefined
+    const { ttlMs, deadline } = options.lifetime
+    if (ttlMs !== undefined) return connectedAt + ttlMs - connectedAt  // = ttlMs
+    if (deadline !== undefined) return deadline - connectedAt
+    return undefined
+  }
+
+  function scheduleLifetimeTimer(connectedAt: number): void {
+    const rawDelayMs = resolveLifetimeMs(connectedAt)
+    if (rawDelayMs === undefined) return
+
+    // Apply jitter so connections sharing the same TTL don't all send renew simultaneously.
+    const jitter = Math.random() * FRAME_GUARD_DEFAULTS.DEADLINE_JITTER_WINDOW_MS
+
+    // Enforce the minimum-fire floor: even a deadline already in the past must not fire
+    // immediately — it must wait at least DEADLINE_MIN_FIRE_DELAY_MS (spec §4.1.6).
+    const fireDelayMs = Math.max(
+      FRAME_GUARD_DEFAULTS.DEADLINE_MIN_FIRE_DELAY_MS,
+      rawDelayMs + jitter
+    )
+
+    lifetimeTimer = setTimeout(() => {
+      lifetimeTimer = undefined
+      if (state !== 'open') return
+      fireDeadline()
+    }, fireDelayMs)
+  }
+
+  function fireDeadline(): void {
+    if (state !== 'open') return
+
+    const onDeadline = options.lifetime?.onDeadline ?? 'reconnect'
+
+    if (onDeadline === 'revoke') {
+      channelObj.revoke('deadline')
+      return
+    }
+
+    // 'reconnect' (default) or object form — resolve maxAttempts / retryDelayMs.
+    const maxAttempts =
+      typeof onDeadline === 'object'
+        ? (onDeadline.maxAttempts ?? FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS)
+        : FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS
+    const retryDelayMs =
+      typeof onDeadline === 'object'
+        ? (onDeadline.retryDelayMs ?? FRAME_GUARD_DEFAULTS.RENEW_RETRY_DELAY_MS)
+        : FRAME_GUARD_DEFAULTS.RENEW_RETRY_DELAY_MS
+
+    try {
+      controller.enqueue(formatRenewFrame(maxAttempts, retryDelayMs))
+    } catch {
+      // controller already unusable — just close without the frame
+    }
+    closeInternal()
+  }
+
+  // ── Frame guard helper ────────────────────────────────────────────────────
+
+  /**
+   * Runs `beforeFrame` if it is configured for the given frame type.
+   * Returns the result, or `{ action: 'send' }` when no guard is configured.
+   * A thrown error inside `beforeFrame` is treated as `{ action: 'close' }` (spec §6).
+   */
+  function runGuard(ctx: FrameGuardCtx<TSignal>): FrameGuardResult {
+    if (beforeFrame === undefined) return { action: 'send' }
+    if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
+    try {
+      return (beforeFrame as BeforeFrameFn<TSignal>)(ctx)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      console.warn(
+        '[WARN][createSSEChannel] beforeFrame threw an unhandled error — treating as { action: \'close\' }.',
+        '\n  error:', error.stack || error.message
+      )
+      return { action: 'close' }
+    }
+  }
+
+  // ── Stream ────────────────────────────────────────────────────────────────
 
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
       controller = ctrl
+      const connectedAt = Date.now()
 
       // Validate the requested target before doing anything else.
       // If it is unsupported, emit a structured revoke frame and close immediately.
@@ -230,15 +366,34 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
       if (keepaliveIntervalMs > 0) {
         keepaliveTimer = setInterval(() => {
-          if (state === 'open') {
-            try {
-              controller.enqueue(formatKeepalive())
-            } catch {
-              closeInternal()
+          if (state !== 'open') return
+
+          // Run the guard before every keepalive tick when guardKeepalive is enabled.
+          if (beforeFrame !== undefined && guardKeepalive) {
+            const ctx: FrameGuardCtx<TSignal> = {
+              signal: undefined,
+              frameType: 'keepalive',
+              connectionId,
+              requestedTarget,
+              isResume,
             }
+            const result = runGuard(ctx)
+            if (result.action === 'skip') return
+            if (result.action === 'close') {
+              channelObj.revoke(result.reason)
+              return
+            }
+          }
+
+          try {
+            controller.enqueue(formatKeepalive())
+          } catch {
+            closeInternal()
           }
         }, keepaliveIntervalMs)
       }
+
+      scheduleLifetimeTimer(connectedAt)
     },
     cancel() {
       // Stream consumer cancelled — treat as disconnect
@@ -246,11 +401,18 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     },
   })
 
+  // ── closeInternal ─────────────────────────────────────────────────────────
+
   function closeInternal(): void {
     if (state === 'closed') return
     state = 'closed'
     if (keepaliveTimer !== undefined) {
       clearInterval(keepaliveTimer)
+      keepaliveTimer = undefined
+    }
+    if (lifetimeTimer !== undefined) {
+      clearTimeout(lifetimeTimer)
+      lifetimeTimer = undefined
     }
     try {
       controller.close()
@@ -268,6 +430,8 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     }
     closeCallbacks.length = 0
   }
+
+  // ── invalidate ────────────────────────────────────────────────────────────
 
   function invalidate(
     signal: TSignal | TSignal[] | InvalidateSignal | InvalidateSignal[],
@@ -313,6 +477,24 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
     }
 
+    // Run the frame guard before the signal frame is enqueued.
+    if (beforeFrame !== undefined) {
+      const ctx: FrameGuardCtx<TSignal> = {
+        signal: effectiveSignal as TSignal | TSignal[],
+        frameType: 'signal',
+        connectionId,
+        requestedTarget,
+        isResume,
+      }
+      const result = runGuard(ctx)
+      if (result.action === 'skip') return ''
+      if (result.action === 'close') {
+        channelObj.revoke(result.reason)
+        throw new ChannelClosedError()
+      }
+      // result.action === 'send' — fall through
+    }
+
     let eventId = customId
     if (eventId === undefined && idGenerator !== undefined) {
       eventId = idGenerator()
@@ -346,7 +528,9 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     return eventId ?? ''
   }
 
-  return {
+  // ── Public channel object ─────────────────────────────────────────────────
+
+  const channelObj: SSEChannel<TSignal> = {
     get state() {
       return state
     },
@@ -374,7 +558,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
     },
   }
+
+  return channelObj
 }
+
+// ── Target signal helpers ─────────────────────────────────────────────────────
 
 function isRecord(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
