@@ -43,17 +43,15 @@ function parseAndValidateKey(encryptionKey: string): Buffer {
 
 /**
  * Validates the pub/sub adapter options and extracts the encryption key.
+ * Encryption is disabled unless an encryption key is configured.
  */
-export function validateEncryptionOptions(options: unknown): { encryptionKey?: string } {
-  if (!isObject(options)) {
-    throw new Error('Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.')
-  }
+export function validateEncryptionOptions(options?: unknown): { encryptionKey?: string } {
+  if (options === undefined) return {}
+  if (!isObject(options)) throw new Error('Pub/Sub adapter options must be an object when provided.')
   const hasEncrypt = 'encrypt' in options
   const hasKey = 'encryptionKey' in options
 
-  if (!hasEncrypt && !hasKey) {
-    throw new Error('Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.')
-  }
+  if (!hasEncrypt && !hasKey) return {}
 
   if (hasEncrypt && options['encrypt'] === false) {
     if (hasKey) {
@@ -192,4 +190,3 @@ export function unwrapEnvelope<T extends InvalidateSignal>(
   }
   return null
 }
-

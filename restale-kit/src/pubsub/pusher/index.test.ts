@@ -14,9 +14,9 @@ function createMockPusherClient(validWebhook = true, events: any[] = []): Pusher
 }
 
 describe('pusherPubSubAdapter', () => {
-  it('triggers pusher invalidate event on publish', async () => {
+  it('defaults to unencrypted payloads when options are omitted', async () => {
     const client = createMockPusherClient()
-    const adapter = pusherPubSubAdapter(client, { encrypt: false })
+    const adapter = pusherPubSubAdapter(client)
 
     await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
 
@@ -234,5 +234,4 @@ describe('pusherPubSubAdapter', () => {
     consoleWarnSpy.mockRestore()
   })
 })
-
 

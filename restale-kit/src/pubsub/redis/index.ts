@@ -20,14 +20,14 @@ export interface RedisClient {
  * Creates a Pub/Sub adapter for Redis.
  *
  * @param client A RedisClient instance used for publishing.
- * @param options Configuration options.
+ * @param options Optional configuration options. Encryption is disabled by default.
  * @param options.subscribeClient An optional separate client instance to handle subscriptions. If omitted, `client.duplicate()` is called automatically.
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
- * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
+ * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
 export function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: RedisClient,
-  options: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
+  options: ({ subscribeClient?: RedisClient } & PubSubEncryptionOptions) = {}
 ): PubSubAdapter<TSignal> {
   const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
@@ -107,6 +107,5 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     },
   }
 }
-
 
 

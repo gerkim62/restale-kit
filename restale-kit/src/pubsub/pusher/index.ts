@@ -26,12 +26,13 @@ export interface PusherClient {
  *
  * @param pusherServerClient A PusherClient instance (`pusher` on npm) used to trigger/publish events.
  * @param options Configuration options.
+ * @param options Optional configuration options. Encryption is disabled by default.
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
- * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
+ * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
 export function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   pusherServerClient: PusherClient,
-  options: PubSubEncryptionOptions
+  options: PubSubEncryptionOptions = {}
 ): PubSubAdapter<TSignal> & {
   handleWebhook(body: string, headers: Record<string, string>): boolean
 } {
@@ -111,6 +112,5 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
     },
   }
 }
-
 
 

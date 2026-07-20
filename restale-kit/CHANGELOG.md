@@ -2,6 +2,10 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- Changed pub/sub payload encryption to opt-in: Redis, Ably, and Pusher adapters now default to unencrypted payloads when their options are omitted. Provide `encryptionKey` when in-transit payload privacy is needed.
+
 ## [0.2.0] - 2026-07-17
 
 - **Breaking Change**: Enforced encryption options configuration on `redisPubSubAdapter`, `ablyPubSubAdapter`, and `pusherPubSubAdapter`. Consumers must explicitly configure `{ encrypt: false }` or `{ encryptionKey: string }`.
@@ -15,4 +19,3 @@ All notable changes to this package are documented here.
 ## [0.1.0] - 2026-07-13
 
 - Initial public release with SSE invalidation clients, server adapters, and pub/sub adapters.
-

@@ -42,12 +42,14 @@ describe('pubsub envelope & encryption', () => {
       )
     })
 
-    it('throws correct message for empty options', () => {
-      expect(() => validateEncryptionOptions({})).toThrow(
-        'Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.'
-      )
+    it('defaults encryption to disabled when options are omitted', () => {
+      expect(validateEncryptionOptions()).toEqual({})
+      expect(validateEncryptionOptions({})).toEqual({})
+    })
+
+    it('rejects non-object options', () => {
       expect(() => validateEncryptionOptions(null)).toThrow(
-        'Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.'
+        'Pub/Sub adapter options must be an object when provided.'
       )
     })
 
@@ -183,4 +185,3 @@ describe('pubsub envelope & encryption', () => {
     })
   })
 })
-
