@@ -1,31 +1,94 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SSEInvalidatorClient } from './sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 
-describe('SSEInvalidatorClient', () => {
-  let originalEventSource: typeof globalThis.EventSource
+vi.mock('sse.js', async () => {
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  return { SSE }
+})
 
+import { SSEInvalidatorClient } from './sse-client.js'
+
+describe('SSEInvalidatorClient', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    originalEventSource = globalThis.EventSource
     MockEventSource.clear()
-    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    globalThis.EventSource = originalEventSource
   })
 
-  it('passes options and URL with connectionId to EventSource', () => {
+  it('passes options and URL with connectionId to sse.js', () => {
     const client = new SSEInvalidatorClient('/sse', { withCredentials: true })
     void client.connect()
 
     expect(MockEventSource.instances).toHaveLength(1)
     const instance = MockEventSource.instances[0]
     expect(instance.url).toBe(`/sse?__restale_cid__=${client.connectionId}`)
-    expect(instance.options).toEqual({ withCredentials: true })
+    expect(instance.options).toEqual({
+      withCredentials: true,
+      headers: {},
+      autoReconnect: false,
+      useLastEventId: false,
+    })
+  })
+
+  it('does not retry a configured HTTP status and exposes the rejection', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { nonRetryableStatuses: 401 },
+    })
+    const rejected = vi.fn()
+    client.addEventListener('rejected', (event: any) => rejected(event.detail))
+
+    const pending = client.connect()
+    pending.catch(() => {})
+    const error = Object.assign(new Event('error'), {
+      responseCode: 401,
+      headers: { 'www-authenticate': ['Bearer'] },
+    })
+    MockEventSource.instances[0]?.emitError(error)
+
+    expect(client.status).toEqual({
+      status: 'closed',
+      reason: 'rejected',
+      response: { status: 401, headers: { 'www-authenticate': ['Bearer'] } },
+    })
+    expect(rejected).toHaveBeenCalledWith({
+      status: 401,
+      headers: { 'www-authenticate': ['Bearer'] },
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
+  it('matches arrays, status classes, and inclusive status ranges', () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { nonRetryableStatuses: [403, '4xx', { from: 500, to: 502 }] },
+    })
+
+    expect((client as any).matchesNonRetryableStatus(403)).toBe(true)
+    expect((client as any).matchesNonRetryableStatus(402)).toBe(true)
+    expect((client as any).matchesNonRetryableStatus(501)).toBe(true)
+    expect((client as any).matchesNonRetryableStatus(503)).toBe(false)
+  })
+
+  it('preserves Last-Event-ID on a retry', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { maxRetries: 1, baseDelayMs: 10, jitter: false },
+    })
+    const pending = client.connect()
+    pending.catch(() => {})
+    const source = MockEventSource.instances[0]
+    source.emitOpen()
+    await pending
+    source.emitCustomEvent('invalidate', JSON.stringify({ key: ['todos'] }), 'evt-1')
+    source.emitError()
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(MockEventSource.instances[1]?.options).toMatchObject({
+      headers: { 'Last-Event-ID': 'evt-1' },
+    })
   })
 
   it('returns same pending promise while connecting', async () => {
@@ -83,8 +146,10 @@ describe('SSEInvalidatorClient', () => {
     expect(client.status.status).toBe('error')
   })
 
-  it('keeps same EventSource instance during native reconnect when readyState is CONNECTING', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+  it('recreates the sse.js stream through the managed backoff after a mid-stream drop', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { baseDelayMs: 10, jitter: false },
+    })
     const p = client.connect()
     const es = MockEventSource.instances[0]
     es?.emitOpen()
@@ -92,22 +157,23 @@ describe('SSEInvalidatorClient', () => {
 
     expect(client.status.status).toBe('open')
 
-    // Simulate transient mid-stream error while browser native EventSource is reconnecting (readyState CONNECTING)
+    // sse.js has its own retry loop disabled so the client can classify every request.
     if (es) {
       es.readyState = MockEventSource.CONNECTING
       es.emitError()
     }
 
     expect(client.status.status).toBe('connecting')
-    expect(MockEventSource.instances).toHaveLength(1) // No new instance created
-
-    // Simulate native EventSource completing reconnect
-    es?.emitOpen()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(MockEventSource.instances).toHaveLength(2)
+    MockEventSource.instances[1]?.emitOpen()
     expect(client.status.status).toBe('open')
   })
 
-  it('reuses existing EventSource when connect() is called while readyState is EventSource.CONNECTING', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+  it('connect() cancels a managed retry and reconnects immediately', async () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { baseDelayMs: 10, jitter: false },
+    })
     const p1 = client.connect()
     const es = MockEventSource.instances[0]
     es?.emitOpen()
@@ -115,7 +181,7 @@ describe('SSEInvalidatorClient', () => {
 
     expect(client.status.status).toBe('open')
 
-    // Simulate transient mid-stream error while browser native EventSource is reconnecting (readyState CONNECTING)
+    // Simulate a transient mid-stream error.
     if (es) {
       es.readyState = MockEventSource.CONNECTING
       es.emitError()
@@ -123,12 +189,11 @@ describe('SSEInvalidatorClient', () => {
 
     expect(client.status.status).toBe('connecting')
 
-    // Calling connect() while native reconnection is active should reuse existing EventSource
+    // Calling connect() while a retry is pending cancels its timer and reconnects now.
     const p2 = client.connect()
-    expect(MockEventSource.instances).toHaveLength(1)
+    expect(MockEventSource.instances).toHaveLength(2)
 
-    // Simulate native EventSource completing reconnect
-    es?.emitOpen()
+    MockEventSource.instances[1]?.emitOpen()
     await expect(p2).resolves.toBeUndefined()
     expect(client.status.status).toBe('open')
   })

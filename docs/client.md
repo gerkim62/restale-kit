@@ -44,6 +44,7 @@ useReStale(url: string, options: {
 
   // Revocation (optional)
   onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
+  onRejected?: (response: RejectedConnectionResponse) => void // called for a configured terminal HTTP status
 
   // Connection
   autoReconnect?: boolean       // default true
@@ -56,6 +57,7 @@ useReStale(url: string, options: {
     maxDelayMs?: number         // default 30_000
     jitter?: boolean            // default true
     maxRetries?: number         // default Infinity
+    nonRetryableStatuses?: number | '4xx' | '5xx' | { from: number, to: number }
   }
 
   // Validation & Target (optional)
@@ -86,6 +88,7 @@ type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
   | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
+  | { status: 'closed'; reason: 'rejected'; response: { status: number, headers: Record<string, string[]> } }
   | { status: 'error'; error: Event }
 ```
 
@@ -94,6 +97,25 @@ type ConnectionStatus =
 | `'manual'` | Caller invoked `close()` |
 | `'unmount'` | React component unmounted |
 | `'revoked'` | Server sent a terminal `revoke` frame — auto-reconnect is suppressed |
+| `'rejected'` | The HTTP handshake returned a configured non-retryable status — auto-reconnect is suppressed |
+
+### Stop retrying rejected HTTP handshakes
+
+The client uses `sse.js` internally, so it can inspect an SSE handshake's HTTP status. Configure statuses that should be terminal instead of consuming the reconnect budget:
+
+```ts
+useReStale('/sse', {
+  onInvalidate: tanstackAdapter(queryClient),
+  reconnect: {
+    nonRetryableStatuses: [401, 403, 404, '4xx'],
+  },
+  onRejected: ({ status }) => {
+    if (status === 401 || status === 403) auth.logout()
+  },
+})
+```
+
+Each matcher can be an exact status (`401`), a status class (`'4xx'`), or an inclusive range (`{ from: 400, to: 499 }`). The default is no matches, preserving normal retry behaviour. A rejected handshake sets the connection to `{ status: 'closed', reason: 'rejected' }` and calls `onRejected`; it is distinct from a server-sent `revoke` frame.
 
 ### Server-initiated revocation
 
@@ -407,14 +429,14 @@ function App() {
 
 ---
 
-When the SSE connection drops, `EventSource.onerror` fires internally.
+When the SSE connection drops, the `sse.js` transport emits an error internally. The client owns the retry schedule so it can inspect each HTTP handshake before deciding whether to retry.
 
-- **Mid-stream network drops (`readyState === CONNECTING`)**: Native browser `EventSource` stays active and automatically handles auto-reconnection on the same instance, preserving its internal event ID state and sending the official `Last-Event-ID` HTTP header upon reconnect. Status transitions to `{ status: 'connecting' }`. Mid-stream native reconnects do not consume or exhaust the JavaScript `maxRetries` retry budget.
-- **Initial connection failures or fatal errors (`readyState === CLOSED`)**: When the native `EventSource` cannot reconnect automatically (e.g. initial connection failure, HTTP 500/502/503), the client tears down the instance and falls back to JavaScript exponential backoff retries (which consume from `maxRetries`).
+- **Mid-stream network drops**: a fresh stream is scheduled with the configured exponential backoff. `Last-Event-ID` is retained and sent on the next request, so server event history can replay the gap.
+- **Initial connection failures or HTTP errors**: the same managed backoff applies, unless the status matches `nonRetryableStatuses`, in which case the client closes as `'rejected'` immediately.
 
 **With `autoReconnect: true` (default):**
 
-The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The native browser `EventSource` (or JS backoff for initial/fatal failures) attempts to reconnect. Note that `maxRetries` applies only to initial or fatal failures handled by JavaScript backoff; mid-stream native reconnects do not consume or exhaust retries. The cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
+The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. The managed backoff attempts a fresh stream. Every retry consumes from `maxRetries`; the cycle continues until the connection reopens (status → `'open'`) or retries are exhausted.
 
 ```text
 'open' → 'connecting'   ← disconnect detected

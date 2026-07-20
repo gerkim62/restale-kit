@@ -6,6 +6,7 @@ import type {
   ClientOptions,
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
+  RejectedConnectionResponse,
   AdaptedInvalidateCallback,
 } from '@/client/core/client-contracts.js'
 
@@ -68,6 +69,8 @@ export interface UseReStaleOptions<
    * ```
    */
   onRevoke?: (detail: RevokeEventDetail) => void
+  /** Called when the HTTP handshake returns a configured non-retryable status. */
+  onRejected?: (response: RejectedConnectionResponse) => void
 }
 
 /**
@@ -106,6 +109,8 @@ export function useReStale<
   onInvalidateRef.current = opts.onInvalidate
   const onRevokeRef = useRef(opts.onRevoke)
   onRevokeRef.current = opts.onRevoke
+  const onRejectedRef = useRef(opts.onRejected)
+  onRejectedRef.current = opts.onRejected
 
   // Stable client reference — only recreated when url changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
@@ -205,6 +210,18 @@ export function useReStale<
     client.addEventListener('invalidate', handler)
     return () => {
       client.removeEventListener('invalidate', handler)
+    }
+  }, [client])
+
+  // Wire up handshake rejection handling.
+  useEffect(() => {
+    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['rejected']) => {
+      onRejectedRef.current?.(event.detail)
+    }
+
+    client.addEventListener('rejected', handler)
+    return () => {
+      client.removeEventListener('rejected', handler)
     }
   }, [client])
 

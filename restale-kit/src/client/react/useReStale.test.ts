@@ -2,12 +2,18 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useReStale } from './useReStale.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
 import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
 import type { SignalTarget } from '@/types/protocol.js'
+
+vi.mock('sse.js', async () => {
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  return { SSE }
+})
+
+import { useReStale } from './useReStale.js'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 /**
  * Test helper: cast a plain function to a branded AdaptedInvalidateCallback so
@@ -18,16 +24,11 @@ function asAdapter<T extends SignalTarget>(fn: (...args: any[]) => any): Adapted
 }
 
 describe('useReStale', () => {
-  let originalEventSource: typeof globalThis.EventSource
-
   beforeEach(() => {
-    originalEventSource = globalThis.EventSource
     MockEventSource.clear()
-    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
   })
 
   afterEach(() => {
-    globalThis.EventSource = originalEventSource
     vi.restoreAllMocks()
   })
 
