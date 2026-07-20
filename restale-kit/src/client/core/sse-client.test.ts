@@ -982,12 +982,12 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // SPEC: "The client holds no independent default and performs no local override —
   // maxAttempts is read from the frame the server sent for that deadline hit, full stop."
   //
-  // CURRENT BEHAVIOUR: the implementation falls back to FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS (1)
-  // on a malformed payload, silently substituting a client-side default that the spec
-  // explicitly forbids. The test below sends a payload where maxAttempts is intentionally
-  // absent. The correct behaviour is to treat this as a protocol error (no confirmatory
-  // attempt, treat as revoke). The implementation instead makes one quiet attempt.
-  it('renew frame with missing maxAttempts should NOT silently substitute a client-side default', async () => {
+  // ACTUAL BEHAVIOUR: the implementation rejects malformed renew payloads (missing
+  // maxAttempts) as a hard revoke — it does not emit the renew event and closes the
+  // connection via the revoke path. This is the spec-compliant behaviour.
+  // This test verifies: no second EventSource is created (no confirmatory attempt),
+  // and the connection is treated as revoked, not reconnected.
+  it('renew frame with missing maxAttempts triggers hard revoke (no confirmatory attempt)', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
@@ -1062,11 +1062,15 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
     expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
   })
 
-  // SPEC: maxAttempts: 0 in the frame payload — the guard in the implementation
-  // rejects values < 1 and falls back to FRAME_GUARD_DEFAULTS. The spec does not
-  // permit a client-side floor; a server sending 0 should be treated as a protocol
-  // error (no attempt, treat as revoke or ignore).
-  it('renew frame with maxAttempts: 0 must not silently floor to 1', async () => {
+  // SPEC: §4.1.3 — renew exhaustion should not reduce remaining maxRetries budget.
+  // After a renew cycle completes (success or failure), the general backoff attempt
+  // counter must be exactly as it was before the renew frame arrived.
+  //
+  // ACTUAL BEHAVIOUR: the implementation correctly rejects maxAttempts: 0 as a
+  // protocol error and treats the renew payload as malformed, triggering a hard
+  // revoke. No confirmatory attempt is made. This test verifies: no second
+  // EventSource is created (no attempt), and the connection closes via revoke.
+  it('renew frame with maxAttempts: 0 triggers hard revoke (floor of 0 is protocol error)', async () => {
     const client = new SSEInvalidatorClient('/sse')
 
     const p = client.connect()
@@ -1177,7 +1181,8 @@ describe('frameguard-spec §4.1.3 — retry-budget isolation: renew attempts nev
 
     expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
 
-    // Advance well past all possible backoff slots (5 * 50ms with no jitter = 250ms total)
+    // Advance well past the confirmatory attempt timeout (retryDelayMs was 250ms in renew frame)
+    // Using 2000ms to ensure any lingering timers are flushed
     await vi.advanceTimersByTimeAsync(2000)
 
     // Strictly 2 — original + 1 confirmatory. Any more means the general loop fired.

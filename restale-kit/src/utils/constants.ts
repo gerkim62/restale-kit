@@ -74,6 +74,11 @@ export const FRAME_GUARD_DEFAULTS = {
    * Client-side jitter fraction applied on top of each `retryDelayMs` interval when
    * `maxAttempts > 1`. Each wait is multiplied by a factor uniformly distributed in
    * [1 - RENEW_JITTER_FACTOR, 1 + RENEW_JITTER_FACTOR] (spec §4.1.5).
+   * 
+   * This constant lives in the server-shared FRAME_GUARD_DEFAULTS object because the
+   * server places the `retryDelayMs` value in the `renew` frame, and clients must apply
+   * this jitter to that interval. By sharing the constant, client and server stay synchronized
+   * on the expected jitter semantics (spec §4.1.5).
    */
   RENEW_JITTER_FACTOR: 0.2,
 } as const

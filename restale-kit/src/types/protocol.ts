@@ -297,4 +297,20 @@ export type FrameGuardCtx<TSignal extends InvalidateSignal = InvalidateSignal> =
 export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
   (ctx: FrameGuardCtx<TSignal>) => FrameGuardResult
 
+/**
+ * The payload of a revoke SSE event frame.
+ *
+ * The `reason` field conveys why the server is revoking the connection:
+ * - `'revoked'` — generic or integrator-supplied reason (e.g. on logout)
+ * - `'unsupported-target'` — client requested a target not in the channel's supported set
+ * - `'deadline'` — frame guard deadline reached (client was sent a `renew` frame first)
+ * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`
+ *
+ * The optional `details` field carries extra context specific to each reason.
+ */
+export type RevokeEventDetail =
+  | { reason: 'revoked' | 'deadline' }
+  | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
+  | { reason: string; details?: unknown }
+
 

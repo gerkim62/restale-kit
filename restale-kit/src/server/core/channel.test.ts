@@ -1332,3 +1332,118 @@ describe('Frame Guard — lifetime', () => {
     expect(cb).toHaveBeenCalledTimes(1)
   })
 })
+
+
+  // FT-04: guardKeepalive + beforeFrame + default keepaliveIntervalMs
+  it('guardKeepalive: true with no keepaliveIntervalMs (default 0) — guard never fires on keepalives', async () => {
+    const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
+    const channel = createSSEChannel({
+      target: 'swr',
+      // keepaliveIntervalMs defaults to 0 — no keepalive ticks at all
+      beforeFrame: guardSpy,
+      guardKeepalive: true, // set, but will never fire because no keepalives
+    })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(10000)
+
+    // Guard should not have been called at all (no keepalive ticks)
+    expect(guardSpy).not.toHaveBeenCalled()
+    expect(channel.state).toBe('open')
+
+    channel.close()
+    reader.releaseLock()
+  })
+
+  // FT-05: onDeadline object form with partial fields
+  it('onDeadline object with only maxAttempts set uses spec default for retryDelayMs', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 1000, onDeadline: { maxAttempts: 5 } },
+    })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = decoder.decode(value)
+    expect(text).toContain('event: renew')
+    const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
+    const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
+    expect(payload.maxAttempts).toBe(5)
+    expect(payload.retryDelayMs).toBe(250) // spec default
+    channel.close()
+  })
+
+  it('onDeadline object with only retryDelayMs set uses spec default for maxAttempts', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 1000, onDeadline: { retryDelayMs: 1000 } },
+    })
+    const reader = channel.stream.getReader()
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = decoder.decode(value)
+    expect(text).toContain('event: renew')
+    const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
+    const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
+    expect(payload.maxAttempts).toBe(1) // spec default
+    expect(payload.retryDelayMs).toBe(1000)
+    channel.close()
+  })
+
+  // FT-06: beforeFrame.close does not take renew path
+  it('beforeFrame returns close action when onDeadline is reconnect — sends revoke, not renew', async () => {
+    const channel = createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 1000, onDeadline: 'reconnect' }, // default: would send renew
+      beforeFrame: (ctx) => {
+        // On deadline timeout, beforeFrame sees the renew frame about to go out
+        // Returning close should skip the renew and go straight to revoke
+        if (ctx.frameType === 'signal' && ctx.signal === undefined) {
+          return { action: 'close', reason: 'guard-rejected' }
+        }
+        return { action: 'send' }
+      },
+    })
+    const reader = channel.stream.getReader()
+
+    // Wait past deadline
+    await vi.advanceTimersByTimeAsync(2000)
+
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = decoder.decode(value)
+    // Should be revoke (from beforeFrame close), not renew
+    expect(text).toContain('event: revoke')
+    expect(text).toContain('"reason":"guard-rejected"')
+    expect(text).not.toContain('event: renew')
+    expect(channel.state).toBe('closed')
+  })
+
+  // FT-07: isResume with lastEventId but no eventStore
+  it('ctx.isResume is true when lastEventId is set even with no eventStore', async () => {
+    let capturedIsResume: boolean | undefined
+    const channel = createSSEChannel({
+      target: 'swr',
+      lastEventId: 'some-id', // triggers isResume=true
+      eventStore: undefined, // no store, so no replay happens
+      beforeFrame: (ctx) => {
+        capturedIsResume = ctx.isResume
+        return { action: 'send' }
+      },
+    })
+
+    channel.invalidate({ key: ['test'] })
+    expect(capturedIsResume).toBe(true)
+
+    channel.close()
+  })
+

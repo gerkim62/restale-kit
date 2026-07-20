@@ -105,12 +105,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * The unique connection ID sent by the client (`__restale_cid__`).
    * Use this to register connection-level metadata and support targeted revocation
    * (e.g. close a specific tab's connection on logout).
-   *
-   * @example
-   * const channel = attachSSE(req, res)
-   * group.register(channel, { userId })
    */
-  /** The unique connection ID sent by the client (`__restale_cid__`). */
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
   readonly target: SignalTarget | SignalTarget[]

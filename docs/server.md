@@ -136,6 +136,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
+| `channelDefaults` | `Partial<SSEChannelOptions>` | Frame Guard defaults distributed to all channels (`lifetime`, `beforeFrame`, `guardKeepalive`). Merge into each `attachSSE()`/`toSSEResponse()` call. |
 
 ---
 
@@ -215,6 +216,110 @@ The signal's `key` is matched against each channel's registered metadata (which 
 ### Broadcasting without metadata
 
 Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+
+---
+
+## Connection Lifecycle: Lifetime & Reconnection Guards
+
+The **Frame Guard** feature allows you to enforce automatic connection renewal on a deadline (e.g., tied to authentication token expiry) and to gate outgoing signals with custom guards before they are sent to clients.
+
+### Connection Lifetime & Deadline Renewal
+
+A channel can have an absolute or relative deadline after which it must be renewed:
+
+```ts
+// Relative: expire after 5 minutes
+const channel = attachSSE(req, res, {
+  target: 'swr',
+  lifetime: { ttlMs: 5 * 60 * 1000 }
+})
+
+// Absolute: expire at the token's exp claim (epoch ms)
+const channel = attachSSE(req, res, {
+  target: 'swr',
+  lifetime: { deadline: tokenPayload.exp * 1000 }
+})
+```
+
+When the deadline approaches (after applying jitter to prevent thundering herds), the channel sends a `renew` SSE event frame to the client. The client then makes **exactly one** confirmatory reconnect attempt through your real authentication middleware, allowing the server to refresh the client's session or reject the renewal based on auth state.
+
+The `renew` frame includes:
+- `maxAttempts` — how many times the client should retry if the reconnect fails (default: 1)
+- `retryDelayMs` — milliseconds to wait between retry attempts (default: 250ms)
+
+If the client's confirmatory reconnect succeeds, the connection is resumed from the new channel. If all attempts exhaust, the client closes.
+
+By default, when deadline fires, a `renew` frame is sent (equivalent to `onDeadline: 'reconnect'`). To send a terminal `revoke` instead (for cases where the deadline itself is authoritative, such as a signed token's `exp`), use:
+
+```ts
+lifetime: { deadline: tokenExp, onDeadline: 'revoke' }
+```
+
+Or customize the `maxAttempts` / `retryDelayMs` values sent in the `renew` frame:
+
+```ts
+lifetime: {
+  ttlMs: 5 * 60 * 1000,
+  onDeadline: { maxAttempts: 2, retryDelayMs: 500 }
+}
+```
+
+### Frame Guard (`beforeFrame`)
+
+Before each outgoing signal frame (and optionally keepalive frames), you can run a custom synchronous guard function to inspect or reject the frame:
+
+```ts
+const channel = attachSSE(req, res, {
+  target: 'swr',
+  beforeFrame: (ctx) => {
+    // ctx.signal: the signal about to be sent (undefined for keepalive)
+    // ctx.frameType: 'signal' or 'keepalive'
+    // ctx.connectionId: the connection ID
+    // ctx.requestedTarget: the client's requested target (if any)
+    // ctx.isResume: true if this connection started from Last-Event-ID
+
+    if (/* client no longer has permission */) {
+      return { action: 'close', reason: 'permission-denied' }
+    }
+    return { action: 'send' }
+  },
+  // By default, beforeFrame runs before signal frames only.
+  // Set guardKeepalive: true to also run it before keepalive ticks (if keepalive is enabled).
+  guardKeepalive: false,
+})
+```
+
+The guard function must be synchronous and can return one of three results:
+
+| Result | Effect |
+|---|---|
+| `{ action: 'send' }` | Frame is sent normally. |
+| `{ action: 'skip' }` | Frame is silently dropped; connection stays open. Useful for rate-limiting or sampling. |
+| `{ action: 'close', reason?: string }` | Send a terminal `revoke` frame with the supplied reason, then close the connection. No auto-reconnect. |
+
+Errors thrown in `beforeFrame` are treated as `{ action: 'close' }`.
+
+### Distributing defaults via `channelDefaults`
+
+In a multi-channel group, you can distribute Frame Guard settings to all channels created through the group:
+
+```ts
+const group = new SSEChannelGroup({
+  channelDefaults: {
+    lifetime: { ttlMs: 5 * 60 * 1000 },
+    guardKeepalive: true,
+    // More options can be added here
+  }
+})
+
+app.get('/sse', (req, res) => {
+  const channel = attachSSE(req, res, {
+    target: 'swr',
+    ...group.channelDefaults  // merge defaults into channel options
+  })
+  group.register(channel, { userId: req.user.id })
+})
+```
 
 ---
 

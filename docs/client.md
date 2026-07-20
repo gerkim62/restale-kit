@@ -130,6 +130,31 @@ await group.revokeWhere({ userId: req.user.id })
 
 To reconnect after a revocation (e.g. after the user re-authenticates), call `reconnect()` — this resets the revoked flag and opens a fresh connection.
 
+### Connection Renewal on Deadline (Frame Guard)
+
+When the server has a connection deadline (e.g., tied to an authentication token's expiry), it sends a `renew` SSE event frame before the deadline fires. The client must then make **exactly one** confirmatory reconnect attempt through your server's real authentication middleware, allowing the server to validate or refresh the session.
+
+The `renew` event includes:
+- `reason: 'deadline'` — signals this is a server-initiated renewal (not a transient error)
+- `maxAttempts` — how many times to retry if the reconnect fails (typically 1 for strict auth)
+- `retryDelayMs` — milliseconds to wait between retry attempts
+
+The client automatically handles this flow:
+
+```ts
+client.addEventListener('renew', (event) => {
+  const { reason, maxAttempts, retryDelayMs } = event.detail
+  console.log('Server requesting renewal:', { reason, maxAttempts, retryDelayMs })
+  // Client will make exactly maxAttempts confirmatory reconnect attempts
+  // at retryDelayMs intervals. On success, the session is renewed.
+  // On exhaustion, the connection closes with reason: 'revoked'.
+})
+```
+
+If the confirmatory reconnect succeeds, the connection resumes normally. If all attempts fail, the client closes with `{ status: 'closed', reason: 'revoked' }`.
+
+**Without server-side event history**, a momentary gap between the `renew` frame and the client's reconnect attempt may cause the client to miss recent invalidation signals. To avoid this, pair `lifetime` with a shared server-side `eventStore` (see [Reconnection & Event History Replay](./server.md#reconnection--event-history-replay)) so the client can replay missed history on reconnect.
+
 ### Conditional connection (e.g. unauthenticated users)
 
 ```tsx
@@ -205,6 +230,16 @@ client.addEventListener('revoke', (event) => {
   // e.g. redirect to login, clear session state
 })
 
+// Handle connection renewal on deadline (Frame Guard)
+// The server is asking the client to reconnect through auth once more to validate/refresh session.
+client.addEventListener('renew', (event) => {
+  const { reason, maxAttempts, retryDelayMs } = event.detail
+  console.log('Server requesting renewal:', { reason, maxAttempts, retryDelayMs })
+  // Client will automatically make exactly maxAttempts confirmatory reconnect attempts
+  // at retryDelayMs intervals. You typically do not need to take action here;
+  // on success the session resumes, on exhaustion the connection closes with reason: 'revoked'.
+})
+
 // Access client properties
 console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
 console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
@@ -244,7 +279,7 @@ client.close()
 | `'connecting'` (backoff) | Cancels the pending retry timer, opens a new connection, resets backoff |
 | `'closed'` (manual) | Opens a new connection, resets backoff |
 | `'closed'` (unmount) | Same as manual — allows reuse after re-mount |
-| `'closed'` (revoked) | Same as manual — resets the revoked flag and opens a fresh connection |
+| `'closed'` (revoked) | Resets the revoked flag and opens a fresh connection; resets backoff |
 | `'error'` | Cancels pending retry timer, opens a new connection, resets backoff |
 
 ---
