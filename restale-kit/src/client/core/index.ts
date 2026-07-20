@@ -4,6 +4,8 @@ export type {
   ConnectionStatus,
   ClientOptions,
   ReconnectOptions,
+  HttpStatusMatcher,
+  RejectedConnectionResponse,
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
   RenewEventDetail,

@@ -43,12 +43,13 @@ export interface AblyClient {
  * @param client An AblyRealtime client instance.
  * @param options Configuration options.
  * @param options.useNativeEchoSuppression If true, the adapter skips envelope wrapping/parsing and relies on Ably client's native self-echo suppression. The Ably client must be instantiated with `echoMessages: false`.
+ * @param options Optional configuration options. Encryption is disabled by default.
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
- * @param options.encrypt If false, encryption is disabled. Exclusive with encryptionKey.
+ * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
 export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: AblyClient,
-  options: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
+  options: ({ useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions) = {}
 ): PubSubAdapter<TSignal> {
   const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
@@ -160,6 +161,5 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     },
   }
 }
-
 
 

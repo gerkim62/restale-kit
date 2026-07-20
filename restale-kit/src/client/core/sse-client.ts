@@ -6,6 +6,8 @@ import type {
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
   RenewEventDetail,
+  RejectedConnectionResponse,
+  HttpStatusMatcher,
 } from '@/client/core/client-contracts.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
@@ -13,6 +15,7 @@ import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
+import { SSE, type SSEvent } from 'sse.js'
 
 /** Reads a string property from an unknown object without any cast. */
 function getStringProp(obj: object, key: string): string | undefined {
@@ -35,9 +38,15 @@ function getNumberProp(obj: object, key: string): number | undefined {
   return typeof val === 'number' ? val : undefined
 }
 
+function isStatusMatcherList(
+  value: HttpStatusMatcher | readonly HttpStatusMatcher[]
+): value is readonly HttpStatusMatcher[] {
+  return Array.isArray(value)
+}
+
 
 /**
- * Client-side SSE invalidation client built on native `EventSource`.
+ * Client-side SSE invalidation client built on `sse.js`.
  *
  * Framework-agnostic — emits typed events for connection status changes and
  * invalidation signals. UI framework wrappers (e.g., `restale-kit/react`)
@@ -61,7 +70,7 @@ export class SSEInvalidatorClient<
   private readonly currentConnectionId: string
 
   private opened = false
-  private eventSource: EventSource | null = null
+  private eventSource: SSE | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
   private attempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -156,9 +165,9 @@ export class SSEInvalidatorClient<
       return Promise.resolve()
     }
 
-    // Already connecting — handle active native reconnect or pending connect promise
+    // Already connecting — handle an active stream attempt or pending connect promise.
     if (this.currentStatus.status === 'connecting') {
-      if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
+      if (this.eventSource && this.eventSource.readyState === SSE.CONNECTING) {
         if (!this.connectPromise) {
           let resolveConnect: () => void = () => {}
           let rejectConnect: (error: Event) => void = () => {}
@@ -312,7 +321,14 @@ export class SSEInvalidatorClient<
       )
     }
 
-    const es = new EventSource(this.eventSourceUrl, { withCredentials: this.withCredentials })
+    const es = new SSE(this.eventSourceUrl, {
+      withCredentials: this.withCredentials,
+      headers: this.getReconnectHeaders(),
+      // Keep retry ownership here so each attempt can inspect its HTTP result and
+      // retain our retry budget and status-classification lifecycle.
+      autoReconnect: false,
+      useLastEventId: false,
+    })
     this.eventSource = es
 
     es.onopen = () => {
@@ -330,8 +346,8 @@ export class SSEInvalidatorClient<
       }
     }
 
-    es.onerror = (event: Event) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: event }))
+    es.onerror = (event: SSEvent) => {
+      this.dispatchEvent(new CustomEvent('error', { detail: event}))
       this.handleReconnectError(es, event)
     }
 
@@ -339,28 +355,33 @@ export class SSEInvalidatorClient<
   }
 
   /**
-   * Handles EventSource error events, implementing the reconnect decision tree.
-   * Checks for native reconnect (mid-stream drop), then JS backoff, then terminal failure.
+   * Handles transport errors, implementing status rejection and managed reconnect decisions.
    */
-  private handleReconnectError(es: EventSource, event: Event): void {
+  private handleReconnectError(es: SSE, event: SSEvent): void {
     if (this.eventSource !== es) return
 
-    if (this.opened && this.nativeAutoReconnect && es.readyState === EventSource.CONNECTING) {
-      if (this.debug) {
-        console.log(
-          `[restale-kit][SSEInvalidatorClient] Connection interrupted mid-stream (connectionId: ${this.currentConnectionId}). Native EventSource is auto-reconnecting.`
-        )
+    const rejectedResponse = this.getRejectedResponse(es, event)
+    if (rejectedResponse !== null) {
+      this.teardown()
+      this.setStatus({ status: 'closed', reason: 'rejected', response: rejectedResponse })
+      this.dispatchEvent(new CustomEvent('rejected', { detail: rejectedResponse }))
+      if (this.connectPromise) {
+        this.connectPromise.reject(event)
+        this.connectPromise = null
       }
-      this.setStatus({ status: 'connecting' })
       return
     }
 
-    // Initial connection failure or fatal response: Native EventSource will not auto-reconnect.
-    // Fall back to JS backoff retries.
+    // sse.js's own retry loop is disabled. Preserve the former `native` option's
+    // mid-stream behaviour while keeping retry budgeting under this client.
+    const canRetry = this.jsBackoffAutoReconnect || (this.opened && this.nativeAutoReconnect)
+    const retryAfterDelay = this.reconnectOptions?.retryAfter === 'respect'
+      ? this.getRetryAfterDelay(es, event)
+      : undefined
     this.teardown()
 
-    if (!this.revoked && !this.renewing && this.jsBackoffAutoReconnect && this.attempt < this.maxRetries) {
-      const delay = calculateBackoff(this.attempt, this.reconnectOptions)
+    if (!this.revoked && !this.renewing && canRetry && this.attempt < this.maxRetries) {
+      const delay = retryAfterDelay ?? calculateBackoff(this.attempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
@@ -379,8 +400,8 @@ export class SSEInvalidatorClient<
           ? 'Server sent terminal revoke frame'
           : this.renewing
           ? 'Renew confirmatory reconnect in progress'
-          : !this.jsBackoffAutoReconnect
-          ? 'jsBackoff autoReconnect is disabled'
+          : !canRetry
+          ? 'autoReconnect is disabled for this failure'
           : `Exhausted maxRetries (${String(this.maxRetries)})`
         console.log(
           `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
@@ -416,7 +437,7 @@ export class SSEInvalidatorClient<
    * Runs the validation pipeline (steps 1–7) and emits either `invalidate` or `error`.
    * On `revoke`, suppresses auto-reconnect and transitions to `{ status: 'closed', reason: 'revoked' }`.
    */
-  private wireInvalidateListener(es: EventSource): void {
+  private wireInvalidateListener(es: SSE): void {
     es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
       let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
@@ -621,20 +642,25 @@ export class SSEInvalidatorClient<
         }
 
         // Use the same EventSource URL — the browser will attach Last-Event-ID automatically.
-        const renewEs = new EventSource(this.eventSourceUrl, { withCredentials: this.withCredentials })
+        const renewEs = new SSE(this.eventSourceUrl, {
+          withCredentials: this.withCredentials,
+          headers: this.getReconnectHeaders(),
+          autoReconnect: false,
+          useLastEventId: false,
+        })
         this.eventSource = renewEs
 
         renewEs.onopen = () => {
           // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
-          renewEs.onopen = null
-          renewEs.onerror = null
+          renewEs.onopen = () => {}
+          renewEs.onerror = () => {}
           this.wireRenewSuccess(renewEs, onRenewOpen)
         }
 
         renewEs.onerror = () => {
           if (this.eventSource !== renewEs) return
-          renewEs.onopen = null
-          renewEs.onerror = null
+          renewEs.onopen = () => {}
+          renewEs.onerror = () => {}
           onRenewError()
         }
       }
@@ -648,7 +674,7 @@ export class SSEInvalidatorClient<
    * After a successful renew confirmatory reconnect, re-wires the full event listeners
    * (invalidate, revoke, renew) on the newly opened EventSource and transitions to `open`.
    */
-  private wireRenewSuccess(es: EventSource, onOpenCallback: () => void): void {
+  private wireRenewSuccess(es: SSE, onOpenCallback: () => void): void {
     this.opened = true
     this.attempt = 0
     this.setStatus({ status: 'open' })
@@ -663,9 +689,66 @@ export class SSEInvalidatorClient<
     this.wireInvalidateListener(es)
 
     // Wire onerror for mid-stream drops on the new connection.
-    es.onerror = (event: Event) => {
+    es.onerror = (event: SSEvent) => {
+      this.dispatchEvent(new CustomEvent('error', { detail: event }))
       this.handleReconnectError(es, event)
     }
+  }
+
+  private getReconnectHeaders(): Record<string, string> {
+    return this.currentLastEventId === null ? {} : { 'Last-Event-ID': this.currentLastEventId }
+  }
+
+  private getRejectedResponse(es: SSE, event: SSEvent): RejectedConnectionResponse | null {
+    const status = event.responseCode
+    if (typeof status !== 'number' || !this.matchesNonRetryableStatus(status)) return null
+    return { status, headers: event.headers ?? this.readResponseHeaders(es) }
+  }
+
+  private readResponseHeaders(es: SSE): Record<string, string[]> {
+    try {
+      const raw = es.xhr?.getAllResponseHeaders()
+      if (!raw) return {}
+      return raw.trim().split(/\r?\n/).reduce<Record<string, string[]>>((headers, line) => {
+        const separator = line.indexOf(':')
+        if (separator < 0) return headers
+        const name = line.slice(0, separator).trim().toLowerCase()
+        const value = line.slice(separator + 1).trim()
+        if (name !== '') (headers[name] ??= []).push(value)
+        return headers
+      }, {})
+    } catch {
+      // Browsers can withhold cross-origin response headers unless they are exposed.
+      return {}
+    }
+  }
+
+  private getRetryAfterDelay(es: SSE, event: SSEvent): number | undefined {
+    const headers: Partial<Record<string, string[]>> = event.headers ?? this.readResponseHeaders(es)
+    const retryAfter = headers['retry-after']?.[0]
+    if (retryAfter == undefined) return undefined
+
+    const seconds = Number(retryAfter)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds * 1_000)
+
+    const date = Date.parse(retryAfter)
+    if (!Number.isNaN(date)) return Math.max(0, date - Date.now())
+    return undefined
+  }
+
+  private matchesNonRetryableStatus(status: number): boolean {
+    const configured = this.reconnectOptions?.nonRetryableStatuses
+    if (configured === undefined) return false
+    const matchers: readonly HttpStatusMatcher[] = isStatusMatcherList(configured)
+      ? configured
+      : [configured]
+    return matchers.some((matcher) => this.matchesStatusMatcher(status, matcher))
+  }
+
+  private matchesStatusMatcher(status: number, matcher: HttpStatusMatcher): boolean {
+    if (typeof matcher === 'number') return status === matcher
+    if (typeof matcher === 'string') return Math.floor(status / 100) === Number.parseInt(matcher, 10)
+    return status >= matcher.from && status <= matcher.to
   }
 
   private setStatus(newStatus: ConnectionStatus): void {
@@ -676,8 +759,8 @@ export class SSEInvalidatorClient<
   private teardown(): void {
     this.opened = false
     if (this.eventSource) {
-      this.eventSource.onopen = null
-      this.eventSource.onerror = null
+      this.eventSource.onopen = () => {}
+      this.eventSource.onerror = () => {}
       this.eventSource.close()
       this.eventSource = null
     }

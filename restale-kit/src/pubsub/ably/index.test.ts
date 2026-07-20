@@ -35,9 +35,9 @@ describe('ablyPubSubAdapter', () => {
     )
   })
 
-  it('publishes wrapped envelope by default', async () => {
+  it('defaults to unencrypted payloads when options are omitted', async () => {
     const { client } = createMockAblyClient()
-    const adapter = ablyPubSubAdapter(client, { encrypt: false })
+    const adapter = ablyPubSubAdapter(client)
 
     await adapter.publish('channel-1', { kind: 'signal', data: { key: ['test'] } })
 
@@ -288,5 +288,4 @@ describe('ablyPubSubAdapter', () => {
     consoleWarnSpy.mockRestore()
   })
 })
-
 

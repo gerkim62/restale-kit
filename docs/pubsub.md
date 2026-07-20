@@ -26,14 +26,14 @@ Client ──SSE──► Instance 1 ──subscribe──► Broker ◄──pu
 
 ---
 
-## Encryption
+## Optional payload encryption
 
-Since message payloads are sent to third-party providers (Ably, Pusher, hosted Redis), they should be encrypted to prevent the provider from being able to read mutation keys and metadata in plain text.
+Pub/sub payload encryption is disabled by default. Use it when you need to keep mutation keys and metadata private while they travel through the broker, including from a hosted or third-party provider. It is not required for normal operation; the broker's own TLS and access controls may already meet your transport-security requirements.
 
-All pub/sub adapters require configuring encryption options: you must either pass `{ encrypt: false }` to disable encryption, or pass a valid, non-empty `{ encryptionKey: string }` (optionally with `{ encrypt: true }`) to enable AES-256-GCM symmetric encryption.
+To enable AES-256-GCM encryption, provide a valid, non-empty `encryptionKey`. You do not need to pass `{ encrypt: false }` when encryption is not needed.
 
 > [!IMPORTANT]
-> **Security Recommendation**: Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded via `openssl rand -base64 32` or `openssl rand -hex 32`), not a human-chosen passphrase.
+> **When enabled:** Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded via `openssl rand -base64 32` or `openssl rand -hex 32`), not a human-chosen passphrase. Encryption adds key-distribution and coordinated-rollout work, so enable it only where the added payload privacy is useful.
 >
 > **No Mixed-Mode Support**: You cannot mix encrypted and unencrypted publishers/subscribers in the same cluster. Mismatched messages are dropped. This constraint is critical to prevent an attacker with access to the pub/sub broker from injecting plain unencrypted payloads to bypass decryption and tamper with client invalidation states.
 >
@@ -53,9 +53,7 @@ import Redis from 'ioredis'
 const redis = new Redis(process.env.REDIS_URL)
 
 const group = new SSEChannelGroup({
-  pubsub: redisPubSubAdapter(redis, {
-    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-  }),
+  pubsub: redisPubSubAdapter(redis),
 })
 
 app.get('/sse', (req, res) => {
@@ -199,10 +197,15 @@ If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, 
 import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
 import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
 
-function myCustomAdapter(options: PubSubEncryptionOptions): PubSubAdapter {
+function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
+  // Omitted options keep broker payloads unencrypted.
+  const encryptionKey = options.encryptionKey
+
   return {
     async publish(topic, message) {
-      // Send PubSubMessage envelope to broker on topic.
+      // Send a PubSubMessage envelope to the broker on topic. When encryptionKey
+      // is defined, encrypt the envelope payload with it and bind it to topic;
+      // otherwise send the plaintext envelope.
       // message is a discriminated union:
       // - Signals: { kind: 'signal', data: TSignal | TSignal[], id?: string }
       //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }
@@ -227,7 +230,7 @@ function myCustomAdapter(options: PubSubEncryptionOptions): PubSubAdapter {
 ```
 
 **Adapter contract rules:**
-- **Encryption options:** Custom adapters must require explicit `PubSubEncryptionOptions` (either `{ encrypt: false }` or `{ encryptionKey: string }`) and encrypt message payloads when encryption is configured (e.g. using `wrapEnvelope`/`unwrapEnvelope` with topic AAD binding).
+- **Encryption options:** Custom adapters should default `PubSubEncryptionOptions` to no encryption and encrypt message payloads only when an `encryptionKey` is configured (e.g. using `wrapEnvelope`/`unwrapEnvelope` with topic AAD binding).
 - **Preserve batches:** If `publish(topic, [a, b])` is called, `onMessage` on the receiving side must fire once with `[a, b]`, not twice separately.
 - **Self-echo suppression:** `onMessage` must not be called for messages this adapter instance published (use an internal origin tag, not a mutation of the signal).
 - **Broker reconnects:** Adapters own their own retry logic. `onError` is for observability only.

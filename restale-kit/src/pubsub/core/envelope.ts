@@ -43,30 +43,27 @@ function parseAndValidateKey(encryptionKey: string): Buffer {
 
 /**
  * Validates the pub/sub adapter options and extracts the encryption key.
+ * Encryption is disabled unless an encryption key is configured.
  */
-export function validateEncryptionOptions(options: unknown): { encryptionKey?: string } {
-  if (!isObject(options)) {
-    throw new Error('Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.')
-  }
-  const hasEncrypt = 'encrypt' in options
-  const hasKey = 'encryptionKey' in options
+export function validateEncryptionOptions(options?: unknown): { encryptionKey?: string } {
+  if (options === undefined) return {}
+  if (!isObject(options)) throw new Error('Pub/Sub adapter options must be an object when provided.')
+  const encrypt = options['encrypt']
+  const key = options['encryptionKey']
 
-  if (!hasEncrypt && !hasKey) {
-    throw new Error('Pub/Sub adapter options are required. You must explicitly configure encryption: either pass encrypt: false or a valid encryptionKey.')
-  }
+  if (encrypt === undefined && key === undefined) return {}
 
-  if (hasEncrypt && options['encrypt'] === false) {
-    if (hasKey) {
+  if (encrypt === false) {
+    if (key !== undefined) {
       throw new Error('Exclusive option error: encrypt: false and encryptionKey are mutually exclusive.')
     }
     return {}
   }
 
-  if (hasEncrypt && options['encrypt'] !== true) {
+  if (encrypt !== undefined && encrypt !== true) {
     throw new Error('Invalid value for "encrypt": must be boolean false or true.')
   }
 
-  const key = options['encryptionKey']
   if (typeof key !== 'string' || key.trim() === '') {
     throw new Error('Invalid encryptionKey: must be a non-empty string.')
   }
@@ -192,4 +189,3 @@ export function unwrapEnvelope<T extends InvalidateSignal>(
   }
   return null
 }
-

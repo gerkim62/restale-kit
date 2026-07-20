@@ -52,7 +52,20 @@ export type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
   | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
+  | { status: 'closed'; reason: 'rejected'; response: RejectedConnectionResponse }
   | { status: 'error'; error: Event }
+
+/** HTTP response details exposed when an SSE handshake is intentionally not retried. */
+export interface RejectedConnectionResponse {
+  status: number
+  headers: Readonly<Record<string, readonly string[]>>
+}
+
+/** Matches one HTTP status, a status class, or an inclusive status-code range. */
+export type HttpStatusMatcher =
+  | number
+  | '1xx' | '2xx' | '3xx' | '4xx' | '5xx'
+  | { from: number; to: number }
 
 /**
  * Configuration for the exponential backoff reconnect strategy.
@@ -66,15 +79,19 @@ export interface ReconnectOptions {
   jitter?: boolean
   /** Maximum number of retry attempts before giving up. Default: Infinity. */
   maxRetries?: number
+  /** Statuses that close immediately instead of being retried. Defaults to no matches. */
+  nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
+  /** Respect a retryable response's `Retry-After` header for its next retry. Default: `'ignore'`. */
+  retryAfter?: 'respect' | 'ignore'
 }
 
 /**
  * Granular auto-reconnect settings for SSEInvalidatorClient.
  */
 export interface AutoReconnectOptions {
-  /** Enable native browser EventSource auto-reconnection on mid-stream network drops. Default: true. */
+  /** Enable managed reconnection after a mid-stream network drop. Default: true. */
   native?: boolean
-  /** Enable JavaScript exponential backoff retries on connection setup failure or closure. Default: true. */
+  /** Enable managed exponential-backoff retries on connection setup failure or HTTP errors. Default: true. */
   jsBackoff?: boolean
 }
 
@@ -160,6 +177,8 @@ export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> 
   invalidate: CustomEvent<TSignal | TSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
+  /** Emitted when a configured non-retryable HTTP status rejects the handshake. */
+  rejected: CustomEvent<RejectedConnectionResponse>
   /**
    * Emitted when the server sends a terminal `revoke` frame. Does not auto-reconnect.
    *

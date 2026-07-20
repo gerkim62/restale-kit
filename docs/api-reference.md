@@ -506,7 +506,7 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 type PubSubEncryptionOptions =
-  | { encrypt: false; encryptionKey?: never }
+  | { encrypt?: false; encryptionKey?: never }
   | { encrypt?: true; encryptionKey: string }
 
 class PubSubDecryptionError extends Error {
@@ -535,11 +535,11 @@ interface RedisClient {
 
 function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: RedisClient,
-  options: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
+  options?: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal>
 // Pass a single client — the adapter calls client.duplicate() internally for subscriptions.
 // Or pass a pre-created subscribeClient to use your own separate connection.
-// Requires providing either `{ encrypt: false }` or `{ encryptionKey: string }`.
+// Encryption is disabled by default. Pass `{ encryptionKey: string }` to enable it.
 
 ```
 
@@ -572,11 +572,11 @@ interface AblyClient {
 
 function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   client: AblyClient,
-  options: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
+  options?: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
 ): PubSubAdapter<TSignal>
 // When useNativeEchoSuppression is true, the Ably client must be instantiated with
 // echoMessages: false — otherwise the adapter throws at construction time.
-// Requires providing either `{ encrypt: false }` or `{ encryptionKey: string }`.
+// Encryption is disabled by default. Pass `{ encryptionKey: string }` to enable it.
 
 ```
 
@@ -601,7 +601,7 @@ interface PusherClient {
 
 function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   pusherServerClient: PusherClient,
-  options: PubSubEncryptionOptions
+  options?: PubSubEncryptionOptions
 ): PubSubAdapter<TSignal> & {
   // Required: call from your Pusher webhook route
   handleWebhook(rawBody: string, headers: Record<string, string>): boolean

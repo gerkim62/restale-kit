@@ -18,9 +18,9 @@ function createMockRedisClient(): { client: RedisClient; listeners: Record<strin
 }
 
 describe('redisPubSubAdapter', () => {
-  it('publishes wrapped envelope over Redis client', async () => {
+  it('defaults to unencrypted payloads when options are omitted', async () => {
     const { client } = createMockRedisClient()
-    const adapter = redisPubSubAdapter(client, { encrypt: false })
+    const adapter = redisPubSubAdapter(client)
 
     await adapter.publish('topic-1', { kind: 'signal', data: { key: ['todos'] } })
 
@@ -190,5 +190,4 @@ describe('redisPubSubAdapter', () => {
     consoleWarnSpy.mockRestore()
   })
 })
-
 

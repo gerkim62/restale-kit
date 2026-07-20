@@ -378,11 +378,9 @@ import Redis from 'ioredis'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const group = new SSEChannelGroup({
-  // Enforces symmetric encryption for message payloads sent to the provider.
-  // We recommend generating a key of 32+ bytes of entropy via a CSPRNG (e.g. base64 or hex encoded, not a human-chosen passphrase).
-  pubsub: redisPubSubAdapter(new Redis(process.env.REDIS_URL), {
-    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-  }),
+  // Encryption is disabled by default. Configure encryptionKey only when you
+  // need payload privacy while messages travel through the broker.
+  pubsub: redisPubSubAdapter(new Redis(process.env.REDIS_URL)),
 })
 
 

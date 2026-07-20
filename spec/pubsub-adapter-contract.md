@@ -73,15 +73,15 @@ connection revocation) with full type safety via the `kind` discriminant.
 
 ## Encryption & Security Contract
 
-Every PubSub adapter factory function (Redis, Ably, Pusher) requires explicit `PubSubEncryptionOptions`:
+Every PubSub adapter factory function (Redis, Ably, Pusher) accepts optional `PubSubEncryptionOptions`:
 
 ```ts
 export type PubSubEncryptionOptions =
-  | { encrypt: false; encryptionKey?: never }
+  | { encrypt?: false; encryptionKey?: never }
   | { encrypt?: true; encryptionKey: string }
 ```
 
-- **Explicit configuration mandatory:** Either `{ encrypt: false }` or `{ encryptionKey: string }` must be provided. Passing neither throws an error at initialization time.
+- **Default:** Encryption is disabled when options are omitted or no encryption key is supplied. Provide `{ encryptionKey: string }` to enable it.
 - **Key requirements:** `encryptionKey` must be a strictly encoded hex (>=64 chars) or base64 (>=44 chars) key that decodes to at least 32 bytes (AES-256).
 - **AES-256-GCM cipher:** When encryption is active, payloads published over the broker are encrypted using AES-256-GCM with a fresh 12-byte CSPRNG IV per message.
 - **Topic AAD Binding:** The pub/sub topic string is bound as Additional Authenticated Data (AAD) during encryption. A ciphertext published on topic A cannot be replayed onto topic B.
