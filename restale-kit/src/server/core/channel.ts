@@ -201,8 +201,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (options.lifetime === undefined) return undefined
     const { ttlMs, deadline } = options.lifetime
     if (ttlMs !== undefined) return ttlMs
-    if (deadline !== undefined) return deadline - connectedAt
-    return undefined
+    return deadline - connectedAt
   }
 
   function scheduleLifetimeTimer(connectedAt: number): void {

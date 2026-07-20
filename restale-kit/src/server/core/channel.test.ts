@@ -1436,7 +1436,7 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
   })
 
   // FT-07: isResume with lastEventId but no eventStore
-  it('ctx.isResume is true when lastEventId is set even with no eventStore', async () => {
+  it('ctx.isResume is true when lastEventId is set even with no eventStore', () => {
     let capturedIsResume: boolean | undefined
     const channel = createSSEChannel({
       target: 'swr',

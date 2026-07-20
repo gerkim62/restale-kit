@@ -1341,7 +1341,7 @@ describe('frameguard-spec §4.1.2 — renew event fires BEFORE the first confirm
     const order: string[] = []
 
     client.addEventListener('renew', () => {
-      order.push(`renew:instances=${MockEventSource.instances.length}`)
+      order.push(`renew:instances=${String(MockEventSource.instances.length)}`)
     })
 
     const p = client.connect()
