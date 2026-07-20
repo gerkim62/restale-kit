@@ -203,4 +203,118 @@ export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal>
  */
 export type ChannelState = 'open' | 'closed'
 
+// ─── Frame Guard ─────────────────────────────────────────────────────────────
+
+/**
+ * How a channel behaves when its deadline is reached.
+ *
+ * - `'reconnect'` (default) — sends a `renew` frame then closes, instructing the client
+ *   to make one confirmatory reconnect attempt through the real auth middleware.
+ *   Equivalent to `{ maxAttempts: 1, retryDelayMs: 250 }`.
+ * - `'revoke'` — sends a terminal `revoke` frame. Use when the deadline itself is
+ *   authoritative (e.g. derived directly from a signed token's `exp` claim).
+ * - Object form — same behaviour as `'reconnect'` but overrides the `maxAttempts` /
+ *   `retryDelayMs` values placed in the `renew` frame.
+ */
+export type OnDeadline =
+  | 'reconnect'
+  | 'revoke'
+  | { maxAttempts?: number; retryDelayMs?: number }
+
+/**
+ * A connection-level, always-on deadline after which the channel is closed.
+ *
+ * `ttlMs` and `deadline` are mutually exclusive — exactly one must be supplied.
+ * `onDeadline` (default `'reconnect'`) controls what happens when the deadline fires.
+ *
+ * @example
+ * // Relative duration from connection start
+ * { ttlMs: 5 * 60 * 1000 }
+ *
+ * @example
+ * // Absolute point in time (epoch ms) from a token's exp claim
+ * { deadline: tokenPayload.exp * 1000, onDeadline: 'revoke' }
+ */
+export type LifetimeOptions =
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
+
+/**
+ * The three outcomes `beforeFrame` may return.
+ *
+ * - `send`  — frame goes out normally.
+ * - `skip`  — this frame is silently dropped; connection stays open.
+ * - `close` — connection is closed through the revocation path (terminal frame sent,
+ *   no auto-reconnect). `reason` surfaces at the same place a `revokeWhere` reason would.
+ */
+export type FrameGuardResult =
+  | { action: 'send' }
+  | { action: 'skip' }
+  | { action: 'close'; reason?: string }
+
+/**
+ * The context object passed to `beforeFrame`.
+ *
+ * Every field here is structurally impossible for the caller to obtain via closure alone,
+ * or would require the caller to re-implement internal kit details. See spec §4.2.1.
+ */
+interface FrameGuardCtxBase {
+  /** The `__restale_cid__` for this connection. */
+  readonly connectionId: string
+  /** The `__restale_target__` the client requested, if any. */
+  readonly requestedTarget: string | undefined
+  /** `true` when this connection started from a `Last-Event-ID` header (reconnect). */
+  readonly isResume: boolean
+}
+
+export interface SignalFrameCtx<TSignal extends InvalidateSignal = InvalidateSignal>
+  extends FrameGuardCtxBase {
+  /** Whether the frame is a signal or a keepalive tick. */
+  readonly frameType: 'signal'
+  /** The signal about to be sent. */
+  readonly signal: TSignal | TSignal[]
+}
+
+export interface KeepaliveFrameCtx extends FrameGuardCtxBase {
+  /** Whether the frame is a signal or a keepalive tick. */
+  readonly frameType: 'keepalive'
+  /** `undefined` for keepalive frames. */
+  readonly signal: undefined
+}
+
+export type FrameGuardCtx<TSignal extends InvalidateSignal = InvalidateSignal> =
+  | SignalFrameCtx<TSignal>
+  | KeepaliveFrameCtx
+
+/**
+ * Integrator-supplied guard function evaluated before each outgoing frame.
+ *
+ * The function receives a `FrameGuardCtx` and returns (or synchronously resolves to)
+ * a `FrameGuardResult`. Async functions are NOT supported — `beforeFrame` is called on
+ * the synchronous invalidation path. Errors thrown inside this function are the
+ * integrator's responsibility; an unhandled throw will be treated as `{ action: 'close' }`.
+ */
+export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
+  (ctx: FrameGuardCtx<TSignal>) => FrameGuardResult
+
+/**
+ * The payload of a revoke SSE event frame.
+ *
+ * The `reason` field conveys why the server is revoking the connection:
+ * - `'deadline'` — Frame Guard deadline reached and all confirmatory reconnect attempts exhausted
+ * - `'unsupported-target'` — client requested a target not in the channel's supported set
+ * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`, or undefined
+ *
+ * The optional `details` field carries extra context specific to each reason.
+ *
+ * Note: This type describes the `detail` of the `revoke` CustomEvent dispatched by the client,
+ * not `ConnectionStatus.reason`. When a revoke event fires, the connection status becomes
+ * `{ status: 'closed', reason: 'revoked' }`, but the event detail's `reason` field contains
+ * the specific cause (e.g., 'deadline', server-supplied string).
+ */
+export type RevokeEventDetail =
+  | { reason: 'deadline' }
+  | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
+  | { reason: string; details?: unknown }
+
 

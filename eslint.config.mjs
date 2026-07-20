@@ -60,6 +60,9 @@ export default tseslint.config(
       // ❌ Require a reason on every eslint-disable comment
       '@eslint-community/eslint-comments/require-description': 'error',
 
+      // ℹ️ Disabled: flagging explicit default type args is more noise than signal
+      '@typescript-eslint/no-unnecessary-type-arguments': 'off',
+
       // ❌ Catch implicit `any` flowing through assignments/returns
       '@typescript-eslint/no-unsafe-assignment': 'error',
       '@typescript-eslint/no-unsafe-argument': 'error',

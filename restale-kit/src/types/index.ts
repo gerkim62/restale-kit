@@ -14,6 +14,11 @@ export type {
   PubSubMessage,
   SSEInvalidateEvent,
   ChannelState,
+  LifetimeOptions,
+  OnDeadline,
+  FrameGuardResult,
+  FrameGuardCtx,
+  BeforeFrameFn,
 } from './protocol.js'
 export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey, SIGNAL_TARGETS } from './protocol.js'
 

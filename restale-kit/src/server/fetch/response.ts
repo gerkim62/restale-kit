@@ -3,6 +3,8 @@ import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
 import { extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
+import type { SSEChannelGroup } from '@/server/core/channel-group.js'
+import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
 /**
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
@@ -14,10 +16,14 @@ import { extractConnectionId, extractLastEventId, extractRequestedTarget } from 
  * parameter is missing or invalid.
  *
  * Disconnect detection is wired to `request.signal.abort`.
+ *
+ * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
+ *   `options` before creating the channel. Per-channel values always win over defaults.
  */
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)
@@ -26,12 +32,14 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
-  const channelOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
   }
+
+  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
