@@ -1,3 +1,12 @@
+/**
+ * Pre-release Package Verification Script
+ *
+ * Verifies that the packed npm tarball (`npm pack`) installs cleanly into an isolated
+ * consumer project and that all 15 public subpath entrypoints (`restale-kit`, `restale-kit/server`,
+ * `restale-kit/client`, `restale-kit/react`, `restale-kit/tanstack-query`, `restale-kit/swr`, etc.)
+ * can be imported at runtime and typechecked with strict TypeScript settings (`Node16` resolution).
+ */
+
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

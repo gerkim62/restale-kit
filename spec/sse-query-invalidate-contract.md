@@ -782,12 +782,11 @@ Adapter that maps incoming signals to TanStack `QueryClient` cache operations:
 ```ts
 function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
-export const tanstackAdapter = tanstackQueryAdapter
 export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 ```
 
 Supports `TanStackQuerySignal` (and generic signals):
@@ -906,7 +905,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `SSEInvalidatorClientEventMap`, `RenewEventDetail`, `RevokeEventDetail`, `InvalidateSignal` |
 | `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
-| `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
+| `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter`, `SWRAdapterOptions`, `SWRMutator` |
 | `restale-kit/pubsub` | `PubSubAdapter`, `PubSubEncryptionOptions`, `PubSubDecryptionError` |
 | `restale-kit/redis` | `redisPubSubAdapter`, `RedisClient` |
@@ -1106,7 +1105,7 @@ ensures untrusted wire events match the expected structure:
 ```ts
 import { z } from 'zod'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 const AppSignalSchema = z.object({
   key: z.array(z.unknown()),
@@ -1116,11 +1115,12 @@ const AppSignalSchema = z.object({
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
 
   // Hook inherits the schema's type
   useReStale('/sse', {
     signalSchema: AppSignalSchema,
-    onInvalidate: tanstackAdapter(queryClient) // ✅ Safely typed callback
+    onInvalidate, // ✅ Safely typed branded callback
   })
 }
 ```

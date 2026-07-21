@@ -15,6 +15,6 @@ Design documents, wire protocol contracts, and architectural decision records.
 | [pubsub-adapter-contract.md](./pubsub-adapter-contract.md) | Pub/Sub adapter interface, `SSEChannelGroup` integration, adapter rules |
 | [restale-kit-connection-revocation-spec.md](./restale-kit-connection-revocation-spec.md) | Connection revocation architecture, per-connection and cluster-wide revocation APIs |
 | [client-target-negotiation.md](./client-target-negotiation.md) | Client-server target negotiation protocol and unsupported target rejection flow |
-| [restale-kit-frame-guard-spec (7).md](./restale-kit-frame-guard-spec%20(7).md) | Frame Guard feature: connection lifetime, deadline handling, and signal gating |
-| [restale-kit-frame-guard-usage-matrix (1).md](./restale-kit-frame-guard-usage-matrix%20(1).md) | Frame Guard usage patterns and integration examples |
+| [restale-kit-frame-guard-spec.md](./restale-kit-frame-guard-spec.md) | Frame Guard feature: connection lifetime, deadline handling, and signal gating |
+| [restale-kit-frame-guard-usage-matrix.md](./restale-kit-frame-guard-usage-matrix.md) | Frame Guard usage patterns and integration examples |
 | [folder-structure.md](./folder-structure.md) | Source tree layout and import path → source entrypoint mapping |

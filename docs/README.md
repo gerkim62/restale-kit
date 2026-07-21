@@ -28,7 +28,7 @@ restale-kit/fetch          → toSSEResponse  (Bun, Deno, Cloudflare Workers)
 restale-kit/hono           → toSSEResponse  (re-exports from /fetch)
 restale-kit/client         → SSEInvalidatorClient  (vanilla JS)
 restale-kit/react          → useReStale  (React hook)
-restale-kit/tanstack-query → tanstackAdapter
+restale-kit/tanstack-query → tanstackQueryAdapter
 restale-kit/swr            → swrAdapter
 restale-kit/redis          → redisPubSubAdapter
 restale-kit/ably           → ablyPubSubAdapter
