@@ -317,4 +317,19 @@ export type RevokeEventDetail =
   | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
   | { reason: string; details?: unknown }
 
+/**
+ * Payload carried by the `renew` CustomEvent.
+ *
+ * When a Frame Guard deadline approaches, the server sends a `renew` frame asking the client
+ * to reconnect through real auth middleware to refresh credentials. This event detail specifies
+ * the reconnection budget.
+ */
+export interface RenewEventDetail {
+  /** Always `'deadline'` — the only reason a server currently sends `renew`. */
+  reason: 'deadline'
+  /** How many reconnect attempts the client should make (typically 1 for strict auth). */
+  maxAttempts: number
+  /** Milliseconds to wait between retry attempts. */
+  retryDelayMs: number
+}
 

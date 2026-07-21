@@ -19,6 +19,8 @@ export type {
   FrameGuardResult,
   FrameGuardCtx,
   BeforeFrameFn,
+  RevokeEventDetail,
+  RenewEventDetail,
 } from './protocol.js'
 export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey, SIGNAL_TARGETS } from './protocol.js'
 
