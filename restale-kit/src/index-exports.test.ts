@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SSEInvalidatorClient as ClientCoreExport } from './client/core/index.js'
 import { useReStale } from './client/react/index.js'
 import { swrAdapter } from './client/swr/index.js'
-import { tanstackAdapter } from './client/tanstack-query/index.js'
+import { tanstackQueryAdapter } from './client/tanstack-query/index.js'
 import { createEventStore, createSSEChannel, SSEChannelGroup } from './server/core/index.js'
 import { attachSSE as expressAttach } from './server/express/index.js'
 import { attachSSE as fastifyAttach } from './server/fastify/index.js'
@@ -28,7 +28,7 @@ describe('Entrypoint Re-exports', () => {
     expect(ClientCoreExport).toBeDefined()
     expect(useReStale).toBeDefined()
     expect(swrAdapter).toBeDefined()
-    expect(tanstackAdapter).toBeDefined()
+    expect(tanstackQueryAdapter).toBeDefined()
   })
 
   it('correctly exports server modules', () => {

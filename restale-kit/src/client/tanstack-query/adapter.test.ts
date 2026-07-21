@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackAdapter, tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
+import { tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TanStackQuerySignal } from '@/types/protocol.js'
 
@@ -118,7 +118,7 @@ describe('tanstackQueryAdapter', () => {
       invalidateQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
+    const adapter = tanstackQueryAdapter(queryClient)
     adapter({ key: ['legacy'] })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
