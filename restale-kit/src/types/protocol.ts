@@ -323,13 +323,17 @@ export type RevokeEventDetail =
  * When a Frame Guard deadline approaches, the server sends a `renew` frame asking the client
  * to reconnect through real auth middleware to refresh credentials. This event detail specifies
  * the reconnection budget.
+ *
+ * Contract: `maxAttempts` must be a finite non-negative integer, and `retryDelayMs` must be a
+ * finite non-negative number. Malformed values (negative, fractional for maxAttempts, NaN, or
+ * infinite) are rejected before the renew frame is sent.
  */
 export interface RenewEventDetail {
   /** Always `'deadline'` — the only reason a server currently sends `renew`. */
   reason: 'deadline'
-  /** How many reconnect attempts the client should make (typically 1 for strict auth). */
+  /** How many reconnect attempts the client should make (typically 1 for strict auth). Must be a finite non-negative integer. */
   maxAttempts: number
-  /** Milliseconds to wait between retry attempts. */
+  /** Milliseconds to wait between retry attempts. Must be a finite non-negative number. */
   retryDelayMs: number
 }
 
