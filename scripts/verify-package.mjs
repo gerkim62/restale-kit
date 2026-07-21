@@ -39,6 +39,9 @@ try {
       'ioredis',
       'ably',
       'pusher',
+      'typescript',
+      '@types/react',
+      '@types/react-dom',
     ],
     { cwd: temporaryDirectory }
   )
@@ -68,6 +71,44 @@ console.log('All public entry points imported successfully.')
 `
   )
   run('node', ['imports.mjs'], { cwd: temporaryDirectory })
+
+  // Type-check the imports to validate declaration exports
+  writeFileSync(
+    join(temporaryDirectory, 'types.ts'),
+    `import type {
+  JSONValue,
+  InvalidateSignal,
+  RevokeEventDetail,
+  RenewEventDetail,
+  ChannelClosedError,
+  SchemaValidationError,
+} from 'restale-kit'
+import type { SSEChannel } from 'restale-kit/server'
+import type { SSEInvalidatorClient } from 'restale-kit/client'
+import type { UseReStaleResult } from 'restale-kit/react'
+
+// Verify types are properly exported and resolved
+const _testTypes: JSONValue = 'test'
+const _testSignal: InvalidateSignal = { key: ['test'] }
+const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
+const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
+`
+  )
+  writeFileSync(
+    join(temporaryDirectory, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'Node16',
+        moduleResolution: 'Node16',
+        skipLibCheck: false,
+        strict: true,
+        noEmit: true,
+      },
+      include: ['types.ts'],
+    }, null, 2) + '\n'
+  )
+  run('npx', ['tsc', '--noEmit'], { cwd: temporaryDirectory })
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true })
 }

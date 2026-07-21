@@ -35,6 +35,12 @@ pnpm run validate
 pnpm run test:package
 ```
 
+This runs the library tests and then verifies the package is correctly configured by:
+1. Creating a fresh npm tarball
+2. Installing it in a temporary consumer project with all peer dependencies
+3. Importing all 15 public entry points to catch missing exports, broken paths, or import-time errors
+4. Type-checking the imports with TypeScript to validate declaration exports and type resolution
+
 To replicate the exact CI test run (with coverage):
 ```sh
 pnpm run test:ci
