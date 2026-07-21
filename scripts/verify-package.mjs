@@ -40,6 +40,8 @@ try {
       'ably',
       'pusher',
       'typescript',
+      '@types/react',
+      '@types/react-dom',
     ],
     { cwd: temporaryDirectory }
   )
