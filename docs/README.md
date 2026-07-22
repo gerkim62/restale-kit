@@ -20,12 +20,8 @@
 ## Quick orientation
 
 ```text
-restale-kit/server         → SSEChannelGroup, createSSEChannel
-restale-kit/node           → attachSSE  (raw Node http.IncomingMessage / ServerResponse)
-restale-kit/express        → attachSSE  (re-exports from /node)
-restale-kit/fastify        → attachSSE  (auto-calls reply.hijack() when passed Fastify objects)
-restale-kit/fetch          → toSSEResponse  (Bun, Deno, Cloudflare Workers)
-restale-kit/hono           → toSSEResponse  (re-exports from /fetch)
+restale-kit/server         → SSEChannelGroup, createEventStore
+restale-kit/testing        → createSSEChannel (test utility only)
 restale-kit/client         → SSEInvalidatorClient  (vanilla JS)
 restale-kit/react          → useReStale  (React hook)
 restale-kit/tanstack-query → tanstackQueryAdapter

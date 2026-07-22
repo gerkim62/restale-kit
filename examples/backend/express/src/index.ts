@@ -1,6 +1,5 @@
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 import {
   AppSignalSchema,
   CreateTodoSchema,
@@ -12,7 +11,9 @@ import {
 } from '@restale-kit-example/shared'
 
 const app = express()
-const group = new SSEChannelGroup<AppSignal, ClientMeta>()
+const group = new SSEChannelGroup<AppSignal, ClientMeta>({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
@@ -21,8 +22,10 @@ app.use(express.json())
 
 app.get('/sse', (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId })
+  group.attachChannel(req, res, {
+    signalSchema: AppSignalSchema,
+    meta: { userId },
+  })
 })
 
 app.get('/todos', (req, res) => res.json(todos.getTodos(UserIdSchema.parse(req.query.userId))))

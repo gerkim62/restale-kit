@@ -64,12 +64,8 @@ npm install pusher                        # Pusher pub/sub
 | Subpath | Contents |
 |---|---|
 | `restale-kit` | `JSONValue`, `InvalidateSignal`, `ChannelClosedError`, `SchemaValidationError` |
-| `restale-kit/server` | `createSSEChannel`, `SSEChannelGroup` |
-| `restale-kit/node` | `attachSSE` (Node `http`) |
-| `restale-kit/express` | `attachSSE` |
-| `restale-kit/fastify` | `attachSSE` (auto-calls `reply.hijack()` when passed Fastify objects) |
-| `restale-kit/fetch` | `toSSEResponse` (Bun, Deno, Cloudflare Workers) |
-| `restale-kit/hono` | `toSSEResponse` |
+| `restale-kit/server` | `SSEChannelGroup`, `ChannelSetupOptions`, `createEventStore` |
+| `restale-kit/testing` | `createSSEChannel` (Test utility only) |
 | `restale-kit/client` | `SSEInvalidatorClient` |
 | `restale-kit/react` | `useReStale` |
 | `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
@@ -88,18 +84,20 @@ npm install pusher                        # Pusher pub/sub
 ```ts
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 const app = express()
 app.use(express.json())
 
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
-  group.register(channel, {
-    userId: req.user.id,
-    sessionId: req.session.id,
+  group.attachChannel(req, res, {
+    meta: {
+      userId: req.user.id,
+      sessionId: req.session.id,
+    },
   })
 })
 

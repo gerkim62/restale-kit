@@ -46,24 +46,19 @@ To enable AES-256-GCM encryption, provide a valid, non-empty `encryptionKey`. Yo
 
 ```ts
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 import Redis from 'ioredis'
 
 const redis = new Redis(process.env.REDIS_URL)
 
 const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
   pubsub: redisPubSubAdapter(redis),
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'swr' })
-  const userId = req.user.id
-  const sessionId = req.session.id
-
-  // Register with metadata and topics this connection cares about
-  group.register(channel, { userId, sessionId }, {
-    topics: [`user:${userId}`, 'global'],
+  group.attachChannel(req, res, {
+    topics: [`user:${req.user.id}`, 'global'],
   })
 })
 

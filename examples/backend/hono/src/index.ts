@@ -2,7 +2,6 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { toSSEResponse } from 'restale-kit/hono'
 import {
   AppSignalSchema,
   CreateTodoSchema,
@@ -14,7 +13,9 @@ import {
 } from '@restale-kit-example/shared'
 
 const app = new Hono()
-const group = new SSEChannelGroup<AppSignal, ClientMeta>()
+const group = new SSEChannelGroup<AppSignal, ClientMeta>({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
@@ -23,8 +24,10 @@ app.use('*', cors())
 
 app.get('/sse', (c) => {
   const userId = UserIdSchema.parse(c.req.query('userId'))
-  const { response, channel } = toSSEResponse<AppSignal>(c.req.raw, { signalSchema: AppSignalSchema })
-  group.register(channel, { userId })
+  const { response } = group.createChannel(c.req.raw, {
+    signalSchema: AppSignalSchema,
+    meta: { userId },
+  })
   return response
 })
 

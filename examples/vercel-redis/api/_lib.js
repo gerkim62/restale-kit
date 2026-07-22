@@ -1,6 +1,5 @@
 import Redis from 'ioredis'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/node'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const redisUrl = process.env.REDIS_URL
@@ -10,6 +9,7 @@ if (!redisUrl) throw new Error('REDIS_URL is required.')
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1 })
 redis.on('error', (error) => console.error('[redis]', error))
 const group = new SSEChannelGroup({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
   pubsub: redisPubSubAdapter(redis, process.env.PUBSUB_ENCRYPTION_KEY !== undefined
     ? { encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY }
     : { encrypt: false }
@@ -29,7 +29,6 @@ export async function saveTodos(userId, todos) {
 }
 
 export function openSse(req, res, userId) {
-  const channel = attachSSE(req, res)
-  group.register(channel, undefined, { topics: [topic(userId)] })
+  group.attachChannel(req, res, { topics: [topic(userId)] })
 }
 

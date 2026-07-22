@@ -64,7 +64,6 @@ Pass a Standard Schema to enforce further type constraints at runtime:
 ```ts
 import { z } from 'zod'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 const AppSignalSchema = z.object({
   key: z.union([
@@ -77,12 +76,12 @@ const AppSignalSchema = z.object({
 })
 type AppSignal = z.infer<typeof AppSignalSchema>
 
-const group = new SSEChannelGroup<AppSignal>()
+const group = new SSEChannelGroup<AppSignal>({
+  channelDefaults: { target: 'tanstack-query' },
+})
 
 app.get('/sse', (req, res) => {
-  // channel is typed as SSEChannel<AppSignal>
-  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
-  group.register(channel)
+  group.attachChannel(req, res, { signalSchema: AppSignalSchema })
 })
 
 // TypeScript enforces valid signal shapes at compile time:
@@ -101,16 +100,18 @@ const ClientMetaSchema = z.object({
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
 const group = new SSEChannelGroup<AppSignal, ClientMeta>({
+  channelDefaults: { target: 'tanstack-query' },
   metaSchema: ClientMetaSchema,
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
-
-  // Throws SchemaValidationError if validation fails
-  group.register(channel, {
-    userId: req.user.id,
-    role: req.user.role,
+  // Throws SchemaValidationError if metadata validation fails
+  group.attachChannel(req, res, {
+    signalSchema: AppSignalSchema,
+    meta: {
+      userId: req.user.id,
+      role: req.user.role,
+    },
   })
 })
 

@@ -43,17 +43,15 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
-  // Build the supported targets list from options.target for the X-ReStale-Supported header
-  const supportedTargets = Array.isArray(options.target)
-    ? options.target.join(', ')
-    : options.target
+  const effectiveTarget = channelOptions.target
+  const targetHeader = Array.isArray(effectiveTarget)
+    ? effectiveTarget.join(', ')
+    : (effectiveTarget ?? '')
 
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: Array.isArray(options.target)
-      ? options.target.join(', ')
-      : options.target,
-    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedTargets,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: targetHeader,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: targetHeader,
   }
 
   const response = new Response(channel.stream, {

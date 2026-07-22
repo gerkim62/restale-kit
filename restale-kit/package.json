@@ -43,13 +43,9 @@
       "types": "./dist/server/core/index.d.ts",
       "import": "./dist/server/core/index.js"
     },
-    "./node": {
-      "types": "./dist/server/node/index.d.ts",
-      "import": "./dist/server/node/index.js"
-    },
-    "./fetch": {
-      "types": "./dist/server/fetch/index.d.ts",
-      "import": "./dist/server/fetch/index.js"
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
     },
     "./client": {
       "types": "./dist/client/core/index.d.ts",
@@ -82,18 +78,6 @@
     "./pusher": {
       "types": "./dist/pubsub/pusher/index.d.ts",
       "import": "./dist/pubsub/pusher/index.js"
-    },
-    "./express": {
-      "types": "./dist/server/express/index.d.ts",
-      "import": "./dist/server/express/index.js"
-    },
-    "./fastify": {
-      "types": "./dist/server/fastify/index.d.ts",
-      "import": "./dist/server/fastify/index.js"
-    },
-    "./hono": {
-      "types": "./dist/server/hono/index.d.ts",
-      "import": "./dist/server/hono/index.js"
     }
   },
   "scripts": {
@@ -150,6 +134,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@types/node": "*",
     "sse.js": "^2.8.0"
   }
 }

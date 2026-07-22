@@ -1,5 +1,5 @@
 import type { SSEChannelOptions } from '@/server/core/channel.js'
-import type { InvalidateSignal, LifetimeOptions, OnDeadline } from '@/types/protocol.js'
+import type { InvalidateSignal, LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -8,6 +8,7 @@ import type { InvalidateSignal, LifetimeOptions, OnDeadline } from '@/types/prot
  * (userId, sessionId) and has no meaningful group-wide default (spec §1).
  */
 export interface ChannelDefaults {
+  target?: SignalTarget | SignalTarget[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
 }
@@ -35,6 +36,15 @@ export function mergeChannelDefaults<TSignal extends InvalidateSignal>(
   if (defaults === undefined) return channelOptions
 
   let merged = channelOptions
+
+  // ── target ────────────────────────────────────────────────────────────────
+  // Only apply default target when channel options does not provide target (or is undefined).
+  if (
+    defaults.target !== undefined &&
+    (!Object.hasOwn(channelOptions, 'target') || channelOptions.target === undefined)
+  ) {
+    merged = { ...merged, target: defaults.target }
+  }
 
   // ── guardKeepalive ────────────────────────────────────────────────────────
   // Only apply the default when the channel options object does NOT contain the key.

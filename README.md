@@ -74,14 +74,14 @@ npm install restale-kit
 ```ts
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 const app = express()
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
-  group.register(channel, { userId: req.user.id })
+  group.attachChannel(req, res, { meta: { userId: req.user.id } })
 })
 
 app.post('/api/todos', async (req, res) => {

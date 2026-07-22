@@ -3,12 +3,8 @@ import { SSEInvalidatorClient as ClientCoreExport } from './client/core/index.js
 import { useReStale } from './client/react/index.js'
 import { swrAdapter } from './client/swr/index.js'
 import { tanstackQueryAdapter } from './client/tanstack-query/index.js'
-import { createEventStore, createSSEChannel, SSEChannelGroup } from './server/core/index.js'
-import { attachSSE as expressAttach } from './server/express/index.js'
-import { attachSSE as fastifyAttach } from './server/fastify/index.js'
-import { toSSEResponse as fetchToSSEResponse } from './server/fetch/index.js'
-import { toSSEResponse as honoToSSEResponse } from './server/hono/index.js'
-import { attachSSE as nodeAttach } from './server/node/index.js'
+import { createEventStore, SSEChannelGroup } from './server/core/index.js'
+import { createSSEChannel } from './testing/index.js'
 import { PubSubDecryptionError } from './pubsub/core/index.js'
 import { ablyPubSubAdapter } from './pubsub/ably/index.js'
 import { pusherPubSubAdapter } from './pubsub/pusher/index.js'
@@ -33,15 +29,13 @@ describe('Entrypoint Re-exports', () => {
     expect(tanstackQueryAdapter).toBeDefined()
   })
 
-  it('correctly exports server modules', () => {
-    expect(createSSEChannel).toBeDefined()
+  it('correctly exports server modules and testing utilities', () => {
     expect(SSEChannelGroup).toBeDefined()
     expect(createEventStore).toBeDefined()
-    expect(expressAttach).toBeDefined()
-    expect(fastifyAttach).toBeDefined()
-    expect(fetchToSSEResponse).toBeDefined()
-    expect(honoToSSEResponse).toBeDefined()
-    expect(nodeAttach).toBeDefined()
+    expect(SSEChannelGroup.prototype.createChannel).toBeDefined()
+    expect(SSEChannelGroup.prototype.attachChannel).toBeDefined()
+
+    expect(createSSEChannel).toBeDefined()
   })
 
   it('correctly exports pubsub modules', () => {

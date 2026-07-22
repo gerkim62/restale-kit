@@ -1,11 +1,12 @@
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
 import type { InvalidateSignal } from 'restale-kit'
-import { attachSSE } from 'restale-kit/fastify'
 import { createTodoApi } from '@restale-kit-example/shared'
 
 const app = Fastify()
-const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>()
+const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta?.userId === userId)
 
@@ -13,9 +14,10 @@ const todos = createTodoApi((userId) => {
 const userId = (query: unknown) => (query as { userId: string }).userId
 
 app.get('/sse', (request, reply) => {
-  // Pass request/reply directly — attachSSE calls reply.hijack() automatically
-  const channel = attachSSE(request, reply)
-  group.register(channel, { userId: userId(request.query) })
+  // Pass request/reply directly — attachChannel calls reply.hijack() automatically
+  group.attachChannel(request, reply, {
+    meta: { userId: userId(request.query) },
+  })
 })
 
 app.get('/todos', (request) => todos.getTodos(userId(request.query)))
