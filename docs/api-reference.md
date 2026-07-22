@@ -444,17 +444,17 @@ interface UseReStaleResult {
 ## `restale-kit/tanstack-query`
 
 ```ts
-import { tanstackQueryAdapterapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import type { QueryClient } from '@tanstack/react-query'
 
-function tanstackQueryAdapterapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
 /**
- * Memoized hook variant of tanstackQueryAdapterapter.
+ * Memoized hook variant of tanstackQueryAdapter.
  * Call at the component top level; returns a stable branded callback across renders.
- */tanstackQueryAdapter
+ */
 function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>

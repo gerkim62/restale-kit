@@ -34,11 +34,12 @@ Frame Guard is a property of `SSEChannelOptions`, and every adapter accepts the 
 ### Express / Node `http` / Fastify (wrapped)
 
 ```ts
+const sessionId = req.session.id
 const channel = attachSSE(req, res, {
   target: 'swr',
   lifetime: { ttlMs: 5 * 60 * 1000 },
   guardKeepalive: true,
-  beforeFrame: (ctx) => isSessionValid(req.session.id) ? { action: 'send' } : { action: 'close' },
+  beforeFrame: (ctx) => isSessionValid(sessionId) ? { action: 'send' } : { action: 'close' },
 })
 ```
 
@@ -48,10 +49,11 @@ No change beyond the existing `reply.hijack()` requirement — Frame Guard optio
 
 ```ts
 reply.hijack()
+const sessionId = request.session.id
 const channel = attachSSE(request.raw, reply.raw, {
   target: 'swr',
   lifetime: { ttlMs: 5 * 60 * 1000 },
-  beforeFrame: (ctx) => isSessionValid(request.session.id) ? { action: 'send' } : { action: 'close' },
+  beforeFrame: (ctx) => isSessionValid(sessionId) ? { action: 'send' } : { action: 'close' },
 })
 ```
 

@@ -80,7 +80,6 @@ type OnDeadline =
 #### 4.1.2 The `renew` frame
 
 A hit deadline configured with `onDeadline: 'reconnect'` must not be communicated by silently ending the stream and letting the client infer intent from timing or `readyState` — that relies on the native `EventSource` reconnection heuristics the integrator does not control, and is indistinguishable from a genuine network drop. Instead, the server sends a dedicated, named frame before closing:
-
 ```
 event: renew
 data: { "reason": "deadline", "maxAttempts": 1, "retryDelayMs": 250 }
@@ -91,7 +90,7 @@ This is a sibling of the existing `revoke` frame, not a variant of it — same m
 On receiving `renew`, the client:
 
 - Treats it as a *distinct* signal from the generic `onerror` path used for network drops — it does not fall into the shared `jsBackoffAutoReconnect` loop or consume the connection's `maxRetries` budget. Reusing that budget here would apply network-flakiness retry philosophy to a question that a single attempt already answers definitively (see §4.1.3).
-- Makes exactly `maxAttempts` confirmatory reconnect attempts, as specified in the `renew` frame's payload. The client holds no independent default and performs no local override — `maxAttempts` is read from the frame the server sent for *that* deadline hit, full stop. (A server implementation will commonly default to `1` when constructing the frame, but that is a server-side default, not a client-side one — the client never needs to know or assume what the typical value is.)
+- Makes up to `maxAttempts` confirmatory reconnect attempts (stopping immediately after the first successful reconnect rather than always executing the full count), as specified in the `renew` frame's payload. The client holds no independent default and performs no local override — `maxAttempts` is read from the frame the server sent for *that* deadline hit, full stop. (A server implementation will commonly default to `1` when constructing the frame, but that is a server-side default, not a client-side one — the client never needs to know or assume what the typical value is.)
 - If `maxAttempts` is greater than `1`, spaces attempts apart per `retryDelayMs` and the jitter rule in §4.1.5 — see there for why this is not exponential backoff. `retryDelayMs` is irrelevant and may be omitted when `maxAttempts` is `1`.
 - If the confirmatory attempt(s) fail, treats the connection as equivalent to having received `revoke` — final, no further retries, `status: 'closed'`.
 
@@ -104,13 +103,12 @@ Because a `renew`-triggered reconnect is confirmatory rather than resilience-ori
 - `maxRetries` + backoff (existing, network-drop path): *"conditions may change moment to moment, so it's worth trying again with increasing delay."*
 - `renew`'s `maxAttempts` (new, deadline path): *"this is a yes/no question about current validity, and a single attempt already answers it — repeating it on a backoff schedule doesn't change the answer, it only adds load."*
 
-Collapsing the two into one budget would mean a connection whose session is genuinely, permanently invalid gets retried the same number of times a flaky network connection would — hammering the server with requests that cannot succeed until `maxRetries` is exhausted. Keeping them separate bounds the worst case for a confirmed-dead session to exactly `maxAttempts` (default: one) extra request, regardless of how large `maxRetries` is configured for ordinary network resilience.
+Collapsing the two into one budget would mean a connection whose session is genuinely, permanently invalid gets retried the same number of times a flaky network connection would — hammering the server with requests that cannot succeed until `maxRetries` is exhausted. Keeping them separate bounds the worst case for a confirmed-dead session to at most `maxAttempts` (default: one) extra request(s), regardless of how large `maxRetries` is configured for ordinary network resilience.
 
 #### 4.1.4 Avoiding synchronized `renew` waves
 
 If many connections share the same TTL, they don't just each retry independently — their deadlines land at the same instant, producing a burst of simultaneous `renew` frames and reconnect attempts rather than a spread-out trickle. Because `renew` is server-sent, this is a server-side concern rather than something the client needs to reason about: jitter *when the server sends* `renew` for a given connection (within a small random window at or after the nominal deadline), rather than requiring every client to independently jitter its own deadline.
 
-#### 4.1.5 Spacing between confirmatory attempts (`maxAttempts` > 1)
 
 `maxAttempts` greater than `1` is not a resilience mechanism — it exists for one narrow, legitimate reason: giving eventually-consistent auth state (a replicated session store, a cache that hasn't yet observed a renewal) a brief window to catch up, when the server itself knows its own backing store has that kind of lag. It is not there to "try harder" against a session that is simply, definitively dead.
 
@@ -190,7 +188,7 @@ All combinations are valid, independent configurations — not special cases:
 ## 6. Failure Semantics
 
 - A **Close** result from `beforeFrame` is functionally equivalent to the integrator calling revocation directly: the client receives a terminal signal distinguishing an intentional close from a network error, and does not attempt to reconnect. Unlike a hit deadline, `beforeFrame` returning `Close` is a positive assertion by the integrator's own logic, not a hint — it is always treated as authoritative and always uses the hard revoke path, regardless of `onDeadline`.
-- A hit deadline is not a positive assertion — see §4.1.1–§4.1.4. Its default (`onDeadline: 'reconnect'`) sends an explicit `renew` frame rather than a revoke frame or a silent close, and allows a single confirmatory reconnection through the same auth path that gated the original connection — bounded to `maxAttempts`, isolated from the connection's general `maxRetries` budget.
+- A hit deadline is not a positive assertion — see §4.1.1–§4.1.4. Its default (`onDeadline: 'reconnect'`) sends an explicit `renew` frame rather than a revoke frame or a silent close, and allows up to `maxAttempts` confirmatory reconnection attempts through the same auth path that gated the original connection — bounded to `maxAttempts`, isolated from the connection's general `maxRetries` budget.
 - A **Skip** result must not be silently indistinguishable from normal quiet periods over the long term — integrators using `Skip` repeatedly instead of `Close` should be aware the client has no way to know frames are being withheld.
 - Errors or timeouts thrown by the guard function should be handled inside the function itself when possible (e.g. deciding whether an auth-service timeout should fail open or fail closed). If an unhandled error is thrown inside `beforeFrame`, restale-kit catches it, logs a warning, and fails closed by treating it as `{ action: 'close' }` to ensure security invariants are preserved.
 
@@ -201,4 +199,4 @@ Frame Guard and `revokeWhere`/`revokeByConnectionId` are complementary, not comp
 - `revokeWhere` / `revokeByConnectionId`: **event-driven** — use when the integrator's own code path already knows a session died (logout handler, ban action, admin panel).
 - Frame Guard: **poll/check-driven** — use when there is no natural event, only a fact that can be checked (has this session expired as of right now?).
 
-Both ultimately close the connection through the same underlying mechanism, so client-side behavior (no auto-reconnect, teardown callbacks) is consistent regardless of which path triggered it.
+Both ultimately close the connection through the same underlying mechanism, so client-side teardown behavior is consistent regardless of which path triggered it. However, the no-auto-reconnect client behavior applies strictly to hard-revoke paths (`revokeWhere`, `revokeByConnectionId`, `beforeFrame` returning `Close`, or `onDeadline: 'revoke'`). In contrast, Frame Guard's `onDeadline: 'reconnect'` option intentionally performs a confirmatory reconnect (up to `maxAttempts` via the `renew` frame flow) before permanently closing the connection if all attempts fail.

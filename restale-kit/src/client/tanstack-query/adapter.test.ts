@@ -125,6 +125,12 @@ describe('tanstackQueryAdapter', () => {
       queryKey: ['legacy'],
     })
   })
+
+  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
+    const queryClient = {} as unknown as QueryClient
+    const adapter = tanstackQueryAdapter(queryClient)
+    expect((adapter as any).__restaleTarget).toBe('tanstack-query')
+  })
 })
 
 describe('useTanstackQueryAdapter', () => {
@@ -148,6 +154,12 @@ describe('useTanstackQueryAdapter', () => {
     rerender({ client: queryClient })
     const cb2 = result.current
     expect(cb1).toBe(cb2)
+  })
+
+  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
+    const queryClient = {} as unknown as QueryClient
+    const { result } = renderHook(() => useTanstackQueryAdapter(queryClient))
+    expect((result.current as any).__restaleTarget).toBe('tanstack-query')
   })
 })
 
