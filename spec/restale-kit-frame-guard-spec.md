@@ -12,9 +12,9 @@ This is a general-purpose hook, not an "auth" feature specifically. Authorizatio
 
 ### 1.1 Where Frame Guard options live
 
-`lifetime`, `beforeFrame`, and `guardKeepalive` are fields on `SSEChannelOptions` — the object passed to `attachSSE()` / `toSSEResponse()` at channel-creation time. They are **not** part of `SSEChannelGroup` or `register()`. This is a deliberate placement, not an incidental one: `beforeFrame` closes over whatever local variables the caller already has in scope at that point (a `userId`, a `sessionId` read from the request) — it never needed anything `SSEChannelGroup` uniquely provides. One direct consequence: **Frame Guard is fully functional on a channel that is never registered with any group at all** — a standalone `attachSSE()` call, with signals pushed via `channel.invalidate(...)` directly, gets complete Frame Guard coverage with no group involved.
+`lifetime`, `beforeFrame`, and `guardKeepalive` are fields on `SSEChannelOptions` and `ChannelSetupOptions` — the options passed to `group.createChannel()` / `group.attachChannel()` (or low-level transport helpers) at channel-creation time. They are evaluated per-channel. This is a deliberate placement: `beforeFrame` closes over whatever local variables the caller already has in scope at that point (a `userId`, a `sessionId` read from the request) — it never needed anything `SSEChannelGroup` uniquely provides. One direct consequence: **Frame Guard is fully functional on a channel that is never registered with any group at all** — a standalone channel with signals pushed via `channel.invalidate(...)` directly gets complete Frame Guard coverage with no group involved.
 
-`SSEChannelGroup` may optionally supply **`channelDefaults`** — fallback values for the parts of Frame Guard that are typically uniform across an entire app (`lifetime`, `guardKeepalive`), so they don't need to be repeated at every `attachSSE()` call site:
+`SSEChannelGroup` may optionally supply **`channelDefaults`** — fallback values for the parts of Frame Guard that are typically uniform across an entire app (`lifetime`, `guardKeepalive`), so they don't need to be repeated at every channel setup call site:
 
 ```ts
 const group = new SSEChannelGroup({
@@ -25,7 +25,7 @@ const group = new SSEChannelGroup({
 })
 ```
 
-A channel-level value, when set directly on `attachSSE()`/`toSSEResponse()`, always wins over a group default — the default only fills a gap left by the channel. `beforeFrame` is per-connection by nature (it typically closes over that specific request's identity) and is not expected to have a meaningful group-wide default; it is set per-channel.
+A channel-level value, when set directly on `group.createChannel()`/`group.attachChannel()`, always wins over a group default — the default only fills a gap left by the channel. `beforeFrame` is per-connection by nature (it typically closes over that specific request's identity) and is not expected to have a meaningful group-wide default; it is set per-channel.
 
 **Merge semantics for `channelDefaults` are precise, not "shallow" or "deep":**
 

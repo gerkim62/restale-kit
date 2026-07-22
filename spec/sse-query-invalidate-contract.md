@@ -59,11 +59,7 @@ restale-kit/
   "exports": {
     ".": { "types": "./dist/types/index.d.ts", "import": "./dist/types/index.js" },
     "./server": { "types": "./dist/server/core/index.d.ts", "import": "./dist/server/core/index.js" },
-    "./node": { "types": "./dist/server/node/index.d.ts", "import": "./dist/server/node/index.js" },
-    "./express": { "types": "./dist/server/express/index.d.ts", "import": "./dist/server/express/index.js" },
-    "./fastify": { "types": "./dist/server/fastify/index.d.ts", "import": "./dist/server/fastify/index.js" },
-    "./fetch": { "types": "./dist/server/fetch/index.d.ts", "import": "./dist/server/fetch/index.js" },
-    "./hono": { "types": "./dist/server/hono/index.d.ts", "import": "./dist/server/hono/index.js" },
+    "./testing": { "types": "./dist/testing/index.d.ts", "import": "./dist/testing/index.js" },
     "./client": { "types": "./dist/client/core/index.d.ts", "import": "./dist/client/core/index.js" },
     "./react": { "types": "./dist/client/react/index.d.ts", "import": "./dist/client/react/index.js" },
     "./swr": { "types": "./dist/client/swr/index.d.ts", "import": "./dist/client/swr/index.js" },

@@ -292,18 +292,18 @@ In a multi-channel group, you can distribute Frame Guard settings to all channel
 ```ts
 const group = new SSEChannelGroup({
   channelDefaults: {
+    target: 'swr',
     lifetime: { ttlMs: 5 * 60 * 1000 },
     guardKeepalive: true,
   }
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, {
-    target: 'swr',
+  group.attachChannel(req, res, {
+    meta: { userId: req.user.id },
     // Channel-specific options can override defaults:
     // lifetime: { ttlMs: 10 * 60 * 1000 }
-  }, group)  // Pass group as fourth argument to apply channelDefaults
-  group.register(channel, { userId: req.user.id })
+  })
 })
 ```
 
@@ -381,16 +381,19 @@ To prevent missed invalidation signals during momentary network drops, create a 
 
 ```ts
 import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 // Shared event store (retains history for Last-Event-ID replay)
 const eventStore = createEventStore({ capacity: 100 })
-const group = new SSEChannelGroup({ eventStore })
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+  eventStore,
+})
 
 app.get('/sse', (req, res) => {
-  // Pass eventStore to transport helper so reconnecting channels replay missed history
-  const channel = attachSSE(req, res, { target: 'swr', eventStore })
-  group.register(channel, { userId: req.user.id })
+  // group.attachChannel automatically connects eventStore to channels
+  group.attachChannel(req, res, {
+    meta: { userId: req.user.id },
+  })
 })
 ```
 
