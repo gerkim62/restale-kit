@@ -529,13 +529,14 @@ objects at low frequency).
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options?: SSEChannelOptions<TSignal>
+  options?: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal>
 ```
 
 Extracts the `__restale_cid__` query parameter from the request URL and assigns it to the channel's
 `connectionId` property. Throws synchronously if the parameter is missing or empty — a channel registered
-without a `connectionId` cannot be revoked with per-connection precision.
+without a `connectionId` cannot be revoked with per-connection precision. When `group` is supplied, its `channelDefaults` are merged into the channel options before instantiating the channel.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 `Connection: keep-alive`). When `options.target` is configured (`'tanstack-query'`, `'swr'`, `'rtk-query'`, or `'generic'`), also emits `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed). Pipes `channel.stream` into `res` via `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
@@ -552,7 +553,8 @@ is called automatically. If you pass raw Node objects directly, call `reply.hija
 ```ts
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 ```
 

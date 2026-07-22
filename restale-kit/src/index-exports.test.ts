@@ -18,6 +18,8 @@ import {
   isJSONValue,
   isJSONValueArray,
   matchesInvalidateSignalKey,
+  RenewEventDetail,
+  RevokeEventDetail,
   SchemaValidationError,
   SIGNAL_TARGETS,
   validateStandardSchema,
@@ -57,5 +59,12 @@ describe('Entrypoint Re-exports', () => {
     expect(isJSONValueArray).toBeDefined()
     expect(matchesInvalidateSignalKey).toBeDefined()
     expect(SIGNAL_TARGETS).toBeDefined()
+
+    const revokeDetail: RevokeEventDetail = { reason: 'manual' }
+    const renewDetail: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
+    expect(revokeDetail.reason).toBe('manual')
+    expect(renewDetail.reason).toBe('deadline')
+    expect(renewDetail.maxAttempts).toBe(1)
+    expect(renewDetail.retryDelayMs).toBe(250)
   })
 })

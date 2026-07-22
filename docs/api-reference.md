@@ -137,14 +137,17 @@ interface SSEChannelOptions<TSignal> {
   eventBufferCapacity?: number
   idGenerator?: () => string
   connectionId?: string                               // unique connection ID from client
-  requestedTarget?: SignalTarget                      // target requested by the client via __restale_target__ query param
+  requestedTarget?: string                            // target requested by the client via __restale_target__ query param
+  lifetime?: LifetimeOptions                          // absolute or relative connection deadline
+  beforeFrame?: BeforeFrameFn<TSignal>                // synchronous guard function evaluated before outgoing frames (unhandled errors fail closed)
+  guardKeepalive?: boolean                            // when true, beforeFrame also runs before keepalive ticks
 }
 
 interface SSEChannel<TSignal> {
   readonly state: ChannelState
   readonly connectionId: string                       // unique connection ID from client
   readonly target: SignalTarget | SignalTarget[]       // configured target discriminator; required
-  readonly requestedTarget: SignalTarget | undefined  // target requested by this client via __restale_target__, if any
+  readonly requestedTarget: string | undefined        // target requested by this client via __restale_target__, if any
   readonly stream: ReadableStream<Uint8Array>
   /**
    * Enqueues a signal (or array of signals) into the SSE stream.
@@ -185,11 +188,13 @@ class SSEChannelGroup<
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
     controlTopic?: string                             // default '__restale_control__'
+    channelDefaults?: ChannelDefaults                // fallback Frame Guard defaults (lifetime, guardKeepalive)
   })
 
   readonly size: number
   readonly controlTopic: string
   readonly eventStore?: EventStore<TSignal>
+  readonly channelDefaults?: ChannelDefaults
 
   register(
     channel: SSEChannel<TSignal>,
@@ -260,11 +265,13 @@ import { attachSSE } from 'restale-kit/express'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal>
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // The returned channel's `connectionId` property is populated from the
 // `__restale_cid__` query parameter extracted from the request URL.
+// When `group` is passed, its `channelDefaults` are merged into the channel options.
 ```
 
 ```ts
@@ -275,7 +282,8 @@ import type { FastifyRequestLike, FastifyReplyLike } from 'restale-kit/fastify'
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal>
 
 interface FastifyRequestLike {
@@ -303,10 +311,12 @@ import { toSSEResponse } from 'restale-kit/hono'
 
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 // Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
 // `channel.connectionId` is populated from the `__restale_cid__` query parameter.
+// When `group` is passed, its `channelDefaults` are merged into the channel options.
 ```
 
 ---
