@@ -35,52 +35,55 @@ export interface SWRMutator {
 export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void {
-  return (signal) => {
-    const list = Array.isArray(signal) ? signal : [signal]
+): AdaptedInvalidateCallback<'swr', TSignal> {
+  return makeAdaptedCallback(
+    SIGNAL_TARGETS.SWR,
+    (signal) => {
+      const list = Array.isArray(signal) ? signal : [signal]
 
-    for (const item of list) {
-      if (!isObject(item)) continue
-      const target = item.target
-      if (target !== undefined && target !== SIGNAL_TARGETS.SWR && target !== SIGNAL_TARGETS.GENERIC) {
-        continue
-      }
-
-      const action = item.action
-      const isPurge = action === 'purge' || action === 'remove'
-      const isRevalidateFalse = item.revalidate === false
-
-      const filter = (key?: Arguments) => {
-        if (key === undefined || key === null) return false
-
-        if (options?.toInvalidateKey) {
-          const mapped = options.toInvalidateKey(key, item)
-          return mapped !== undefined && matchesInvalidateSignalKey(mapped, item)
+      for (const item of list) {
+        if (!isObject(item)) continue
+        const target = item.target
+        if (target !== undefined && target !== SIGNAL_TARGETS.SWR && target !== SIGNAL_TARGETS.GENERIC) {
+          continue
         }
 
-        // Native SWR string key matching
-        if (typeof item.key === 'string') {
-          if (typeof key === 'string') {
-            return item.match === 'exact' ? key === item.key : key.startsWith(item.key)
+        const action = item.action
+        const isPurge = action === 'purge' || action === 'remove'
+        const isRevalidateFalse = item.revalidate === false
+
+        const filter = (key?: Arguments) => {
+          if (key === undefined || key === null) return false
+
+          if (options?.toInvalidateKey) {
+            const mapped = options.toInvalidateKey(key, item)
+            return mapped !== undefined && matchesInvalidateSignalKey(mapped, item)
           }
-          if (Array.isArray(key) && typeof key[0] === 'string') {
-            return item.match === 'exact' ? (key.length === 1 && key[0] === item.key) : key[0].startsWith(item.key)
+
+          // Native SWR string key matching
+          if (typeof item.key === 'string') {
+            if (typeof key === 'string') {
+              return item.match === 'exact' ? key === item.key : key.startsWith(item.key)
+            }
+            if (Array.isArray(key) && typeof key[0] === 'string') {
+              return item.match === 'exact' ? (key.length === 1 && key[0] === item.key) : key[0].startsWith(item.key)
+            }
+            return false
           }
-          return false
+
+          // Tuple key matching
+          const invalidateKey = toCanonicalKey(key)
+          return invalidateKey !== undefined && matchesInvalidateSignalKey(invalidateKey, item)
         }
 
-        // Tuple key matching
-        const invalidateKey = toCanonicalKey(key)
-        return invalidateKey !== undefined && matchesInvalidateSignalKey(invalidateKey, item)
-      }
-
-      if (isPurge || isRevalidateFalse) {
-        void mutate(filter, undefined, false)
-      } else {
-        void mutate(filter)
+        if (isPurge || isRevalidateFalse) {
+          void mutate(filter, undefined, false)
+        } else {
+          void mutate(filter)
+        }
       }
     }
-  }
+  )
 }
 
 /**

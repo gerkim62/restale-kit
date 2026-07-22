@@ -21,7 +21,7 @@ flowchart LR
     end
     subgraph Client ["Client (React / Vanilla JS)"]
         wire --> client[useReStale / SSEInvalidatorClient]
-        client --> adapter[tanstackAdapter / swrAdapter]
+        client --> adapter[tanstackQueryAdapter / swrAdapter]
         adapter --> cache[TanStack Query / SWR]
         cache --> ui[UI Rerender]
     end
@@ -72,7 +72,7 @@ npm install pusher                        # Pusher pub/sub
 | `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient` |
 | `restale-kit/react` | `useReStale` |
-| `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
+| `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` |
 | `restale-kit/pubsub` | `PubSubAdapter` interface |
 | `restale-kit/redis` | `redisPubSubAdapter` |
@@ -127,14 +127,13 @@ app.listen(3000)
 ```tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
 
-  useReStale('/sse', {
-    onInvalidate: tanstackAdapter(queryClient),
-  })
+  useReStale('/sse', { onInvalidate })
 
   const { data: todos } = useQuery({
     queryKey: ['todos'],
@@ -361,7 +360,7 @@ group.broadcastToAll({ key: ['todos'] })           // ✅ valid
 ```tsx
 useReStale<AppSignal>('/sse', {
   signalSchema: AppSignalSchema,
-  onInvalidate: tanstackAdapter(queryClient),
+  onInvalidate: useTanstackQueryAdapter(queryClient),
 })
 ```
 

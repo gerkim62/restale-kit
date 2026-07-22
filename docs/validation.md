@@ -141,7 +141,7 @@ app.get('/sse', (req, res) => {
 ```tsx
 import { z } from 'zod'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 
 const AppSignalSchema = z.object({
@@ -153,11 +153,12 @@ type AppSignal = z.infer<typeof AppSignalSchema>
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter<AppSignal>(queryClient)
 
   // Incoming signals are validated; if they fail, 'error' is emitted instead of 'invalidate'
   useReStale<AppSignal>('/sse', {
     signalSchema: AppSignalSchema,
-    onInvalidate: tanstackAdapter(queryClient), // typed as (signal: AppSignal | AppSignal[]) => void
+    onInvalidate,
   })
 }
 ```

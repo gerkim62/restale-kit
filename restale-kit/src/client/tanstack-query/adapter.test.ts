@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackAdapter, tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
+import { tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TanStackQuerySignal } from '@/types/protocol.js'
 
@@ -118,12 +118,18 @@ describe('tanstackQueryAdapter', () => {
       invalidateQueries: vi.fn(),
     } as unknown as QueryClient
 
-    const adapter = tanstackAdapter(queryClient)
+    const adapter = tanstackQueryAdapter(queryClient)
     adapter({ key: ['legacy'] })
 
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['legacy'],
     })
+  })
+
+  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
+    const queryClient = {} as unknown as QueryClient
+    const adapter = tanstackQueryAdapter(queryClient)
+    expect((adapter as any).__restaleTarget).toBe('tanstack-query')
   })
 })
 
@@ -148,6 +154,12 @@ describe('useTanstackQueryAdapter', () => {
     rerender({ client: queryClient })
     const cb2 = result.current
     expect(cb1).toBe(cb2)
+  })
+
+  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
+    const queryClient = {} as unknown as QueryClient
+    const { result } = renderHook(() => useTanstackQueryAdapter(queryClient))
+    expect((result.current as any).__restaleTarget).toBe('tanstack-query')
   })
 })
 

@@ -1,7 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 type Todo = { id: string; text: string; completed: boolean }
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } })
@@ -10,6 +10,7 @@ function Todos() {
   const [userId, setUserId] = useState('ada')
   const [text, setText] = useState('')
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
   const todosKey = useMemo(() => ['todos', { userId }] as const, [userId])
   const todosUrl = `/api/todos?userId=${encodeURIComponent(userId)}`
   const { data: todos = [], isFetching } = useQuery<Todo[]>({
@@ -20,7 +21,7 @@ function Todos() {
       return response.json()
     },
   })
-  const { connection } = useReStale(`/api/sse?userId=${encodeURIComponent(userId)}`, { onInvalidate: tanstackAdapter(queryClient) })
+  const { connection } = useReStale(`/api/sse?userId=${encodeURIComponent(userId)}`, { onInvalidate })
 
   async function addTodo(event: FormEvent) {
     event.preventDefault()

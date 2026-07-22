@@ -529,13 +529,14 @@ objects at low frequency).
 function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage,
   res: ServerResponse,
-  options?: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal>
 ```
 
 Extracts the `__restale_cid__` query parameter from the request URL and assigns it to the channel's
 `connectionId` property. Throws synchronously if the parameter is missing or empty — a channel registered
-without a `connectionId` cannot be revoked with per-connection precision.
+without a `connectionId` cannot be revoked with per-connection precision. When `group` is supplied, its `channelDefaults` are merged into the channel options before instantiating the channel.
 
 Sets SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
 `Connection: keep-alive`). When `options.target` is configured (`'tanstack-query'`, `'swr'`, `'rtk-query'`, or `'generic'`), also emits `X-ReStale-Target: <target>` HTTP response header (comma-separated if an array is passed). Pipes `channel.stream` into `res` via `Readable.fromWeb(channel.stream).pipe(res)`, wires `req.on('close', channel.disconnect)`.
@@ -552,7 +553,8 @@ is called automatically. If you pass raw Node objects directly, call `reply.hija
 ```ts
 function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> }
 ```
 
@@ -782,12 +784,11 @@ Adapter that maps incoming signals to TanStack `QueryClient` cache operations:
 ```ts
 function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
-export const tanstackAdapter = tanstackQueryAdapter
 export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
   queryClient: QueryClient
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 ```
 
 Supports `TanStackQuerySignal` (and generic signals):
@@ -906,7 +907,7 @@ Each subpath export has a defined public API. Only these symbols are exported:
 | `restale-kit/fetch`, `restale-kit/hono` | `toSSEResponse` |
 | `restale-kit/client` | `SSEInvalidatorClient`, `ClientOptions`, `ReconnectOptions`, `ConnectionStatus`, `SSEInvalidatorClientEventMap`, `RenewEventDetail`, `RevokeEventDetail`, `InvalidateSignal` |
 | `restale-kit/react` | `useReStale`, `UseReStaleOptions`, `UseReStaleResult`, `ConnectionStatus` |
-| `restale-kit/tanstack-query` | `tanstackAdapter`, `useTanstackQueryAdapter` |
+| `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter`, `SWRAdapterOptions`, `SWRMutator` |
 | `restale-kit/pubsub` | `PubSubAdapter`, `PubSubEncryptionOptions`, `PubSubDecryptionError` |
 | `restale-kit/redis` | `redisPubSubAdapter`, `RedisClient` |
@@ -1106,7 +1107,7 @@ ensures untrusted wire events match the expected structure:
 ```ts
 import { z } from 'zod'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 const AppSignalSchema = z.object({
   key: z.array(z.unknown()),
@@ -1116,11 +1117,12 @@ const AppSignalSchema = z.object({
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
 
   // Hook inherits the schema's type
   useReStale('/sse', {
     signalSchema: AppSignalSchema,
-    onInvalidate: tanstackAdapter(queryClient) // ✅ Safely typed callback
+    onInvalidate, // ✅ Safely typed branded callback
   })
 }
 ```

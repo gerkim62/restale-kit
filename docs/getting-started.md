@@ -66,15 +66,14 @@ app.listen(3000)
 ```tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
 
   // Connect to SSE; automatically invalidates queries on signal
-  useReStale('/sse', {
-    onInvalidate: tanstackAdapter(queryClient),
-  })
+  useReStale('/sse', { onInvalidate })
 
   const { data: todos } = useQuery({
     queryKey: ['todos'],

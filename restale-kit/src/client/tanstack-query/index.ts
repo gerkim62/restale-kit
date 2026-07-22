@@ -1,1 +1,1 @@
-export { tanstackAdapter, useTanstackQueryAdapter } from './adapter.js'
+export { tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'

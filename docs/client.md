@@ -20,14 +20,13 @@ import { useReStale } from 'restale-kit/react'
 ```tsx
 import { useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
 function App() {
   const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
 
-  const { connection, reconnect, close } = useReStale('/sse', {
-    onInvalidate: tanstackAdapter(queryClient),
-  })
+  const { connection, reconnect, close } = useReStale('/sse', { onInvalidate })
 
   return <div>SSE: {connection.status}</div>
 }
@@ -106,7 +105,7 @@ The client uses `sse.js` internally, so it can inspect an SSE handshake's HTTP s
 
 ```ts
 useReStale('/sse', {
-  onInvalidate: tanstackAdapter(queryClient),
+  onInvalidate,
   reconnect: {
     nonRetryableStatuses: [401, 403, 404, '4xx'],
   },
@@ -130,7 +129,7 @@ When the server calls `channel.revoke()` (e.g. on logout or session expiry), it 
 
 ```tsx
 useReStale('/api/sse', {
-  onInvalidate: tanstackAdapter(queryClient),
+  onInvalidate,
   onRevoke: (detail) => {
     if (detail.reason === 'unsupported-target') {
       // Server doesn't support the requested target
@@ -187,7 +186,7 @@ const { user } = useAuth()
 
 useReStale('/sse', {
   disabled: !user,              // won't open until user is set
-  onInvalidate: tanstackAdapter(queryClient),
+  onInvalidate,
 })
 ```
 
@@ -196,9 +195,8 @@ useReStale('/sse', {
 ```tsx
 function SSEStatus() {
   const queryClient = useQueryClient()
-  const { connection, reconnect } = useReStale('/sse', {
-    onInvalidate: tanstackAdapter(queryClient),
-  })
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
+  const { connection, reconnect } = useReStale('/sse', { onInvalidate })
 
   if (connection.status === 'error') {
     return <button onClick={reconnect}>Reconnect</button>
@@ -217,7 +215,7 @@ When your SSE endpoint is on a different origin than your frontend, pass `withCr
 ```tsx
 useReStale('https://api.example.com/sse', {
   withCredentials: true,
-  onInvalidate: tanstackAdapter(queryClient),
+  onInvalidate,
 })
 ```
 
@@ -312,18 +310,17 @@ client.close()
 ## TanStack Query adapter
 
 ```ts
-import { tanstackAdapter } from 'restale-kit/tanstack-query'
+import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 ```
 
-`tanstackAdapter(queryClient)` returns an `onInvalidate` callback that maps signals to `queryClient` operations:
+`tanstackQueryAdapter(queryClient)` returns an `onInvalidate` callback that maps signals to `queryClient` operations:
 
 ```ts
 const queryClient = useQueryClient()
+const onInvalidate = useTanstackQueryAdapter(queryClient)
 
-useReStale('/sse', {
-  onInvalidate: tanstackAdapter(queryClient),
-})
+useReStale('/sse', { onInvalidate })
 ```
 
 **Action and filter mapping:**
@@ -346,7 +343,7 @@ Batch signals (arrays) are processed one-by-one in order.
 import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 ```
 
-Equivalent to `tanstackAdapter(queryClient)` but wrapped in `useCallback` for referential stability across renders. Call it at the top level of your component and pass the result to `useReStale`:
+Equivalent to `tanstackQueryAdapter(queryClient)` but wrapped in `useCallback` for referential stability across renders. Call it at the top level of your component and pass the result to `useReStale`:
 
 ```tsx
 function App() {
@@ -356,7 +353,7 @@ function App() {
 }
 ```
 
-Note: `useTanstackQueryAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need memoization (e.g. `queryClient` is module-level), use `tanstackAdapter` directly instead.
+Note: `useTanstackQueryAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need React hook memoization (e.g. outside React), use `tanstackQueryAdapter` directly instead.
 
 ---
 
