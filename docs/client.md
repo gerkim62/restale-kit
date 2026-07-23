@@ -60,13 +60,12 @@ useReStale(url: string, options: {
     retryAfter?: 'respect' | 'ignore' // default 'ignore'
   }
 
-  // Validation & Target (optional)
-  signalSchema?: StandardSchemaV1 // validate incoming signals at runtime
+  // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
 })
 ```
 
-> **Option stability note:** `autoReconnect`, `reconnect`, `signalSchema`, `target`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
+> **Option stability note:** `autoReconnect`, `reconnect`, `target`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
 >
 > **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 
@@ -199,7 +198,7 @@ function SSEStatus() {
   const { connection, reconnect } = useReStale('/sse', { onInvalidate })
 
   if (connection.status === 'error') {
-    return <button onClick={reconnect}>Reconnect</button>
+    return <button onClick={() => void reconnect()}>Reconnect</button>
   }
   if (connection.status === 'closed' && connection.reason === 'revoked') {
     return <span>Session ended by server</span>

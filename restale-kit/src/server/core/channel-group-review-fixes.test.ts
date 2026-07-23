@@ -263,23 +263,6 @@ describe('review-findings: meta validation before transport', () => {
     expect(threw).toBe(true)
     expect(group.size).toBe(0)
   })
-
-  it('signalSchema in options is still forwarded to the channel (not stripped by meta handling)', async () => {
-    const signalSchema = createInvalidSchema('bad signal')
-    const group = new SSEChannelGroup({
-      channelDefaults: { target: 'swr' },
-    })
-
-    const req = createMockRequest('/sse?__restale_cid__=c12')
-    const res = createMockResponse()
-
-    const { channel } = group.attachChannel(req, res, { signalSchema })
-
-    // The signal schema should cause invalidate to throw when the schema rejects
-    expect(() => {
-      channel.invalidate({ key: ['test'] })
-    }).toThrow(SchemaValidationError)
-  })
 })
 
 describe('review-findings: buildSSETargetHeaders', () => {

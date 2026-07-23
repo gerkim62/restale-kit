@@ -14,7 +14,6 @@ import {
   type FrameGuardCtx,
   type FrameGuardResult,
 } from '@/types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import {
   formatInvalidateFrame,
@@ -36,8 +35,6 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
   retryIntervalMs?: number
-  /** Optional Standard Schema for runtime signal validation. No schema = no validation. */
-  signalSchema?: StandardSchemaV1<unknown, TSignal>
   /** Last event ID received from the client (e.g. from standard Last-Event-ID HTTP header). */
   lastEventId?: string
   /** Shared EventStore for recording history and replaying missed events upon reconnect. */
@@ -167,19 +164,23 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   if (options.target === undefined) {
     throw new Error('[createSSEChannel] target is required.')
   }
+  const target = options.target
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
   const retryIntervalMs = options.retryIntervalMs
-  const signalSchema = options.signalSchema
   const lastEventId = options.lastEventId
   const idGenerator = options.idGenerator
   const connectionId = options.connectionId ?? ''
-  const target = options.target
   const requestedTarget = options.requestedTarget
   const beforeFrame = options.beforeFrame
   const guardKeepalive = options.guardKeepalive ?? false
   // True if the client provided a Last-Event-ID header — i.e. this is a reconnect.
   const isResume = lastEventId !== undefined
+
+  // Auto-allocate default buffer capacity when lifetime deadline renewal is set without an eventStore
+  const effectiveBufferCapacity =
+    options.eventBufferCapacity ??
+    (options.eventStore === undefined && options.lifetime !== undefined ? 50 : undefined)
 
   // Track whether this channel owns its eventStore (created internally) or was given an
   // external one. When the store is external (shared with a group), the group is responsible
@@ -187,8 +188,8 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   // call eventStore.add() a second time for the same event.
   const eventStore =
     options.eventStore ??
-    (options.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0
-      ? createEventStore({ capacity: options.eventBufferCapacity, idGenerator })
+    (effectiveBufferCapacity !== undefined && effectiveBufferCapacity > 0
+      ? createEventStore({ capacity: effectiveBufferCapacity, idGenerator })
       : undefined)
   const ownsEventStore = options.eventStore === undefined
 
@@ -491,13 +492,6 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     effectiveSignal: InvalidateSignal | InvalidateSignal[],
     customId?: string
   ): string {
-    if (signalSchema) {
-      const signals = Array.isArray(effectiveSignal) ? effectiveSignal : [effectiveSignal]
-      for (const s of signals) {
-        validateStandardSchema(s, signalSchema)
-      }
-    }
-
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
       const ctx: FrameGuardCtx<TSignal> = {

@@ -64,9 +64,9 @@ npm install pusher                        # Pusher pub/sub
 | Subpath | Contents |
 |---|---|
 | `restale-kit` | `JSONValue`, `InvalidateSignal`, `ChannelClosedError`, `SchemaValidationError` |
-| `restale-kit/server` | `SSEChannelGroup`, `ChannelSetupOptions`, `createEventStore` |
+| `restale-kit/server` | `SSEChannelGroup`, `ChannelSetupOptions`, `ChannelDefaults`, `createEventStore`, `EventStore`, `EventStoreOptions`, `EventRecord`, `EventStoreResult` |
 | `restale-kit/testing` | `createSSEChannel` (Test utility only) |
-| `restale-kit/client` | `SSEInvalidatorClient` |
+| `restale-kit/client` | `SSEInvalidatorClient`, `makeAdaptedCallback` |
 | `restale-kit/react` | `useReStale` |
 | `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` |

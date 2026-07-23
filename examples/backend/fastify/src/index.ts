@@ -20,7 +20,6 @@ app.get('/sse', (request, reply) => {
   const authenticatedUserId = parsed.data
   // Pass request/reply directly — attachChannel calls reply.hijack() automatically
   group.attachChannel(request, reply, {
-    signalSchema: AppSignalSchema,
     meta: { userId: authenticatedUserId },
   })
 })

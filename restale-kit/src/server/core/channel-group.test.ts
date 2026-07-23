@@ -328,10 +328,9 @@ describe('channel-group', () => {
   })
 
   it('aggregates errors on broadcast failures', () => {
-    const schema = createValidSchema()
     const group = new SSEChannelGroup<any, TestMeta>()
-    const badSchema = createInvalidSchema('Validation failed')
-    const ch = createSSEChannel({ target: 'swr', signalSchema: badSchema })
+    const ch = createSSEChannel({ target: 'swr' })
+    vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime invalidate error') })
 
     group.register(ch, { userId: 1 })
 
@@ -556,15 +555,15 @@ describe('channel-group', () => {
 
   it('broadcast does NOT deregister channels that throw non-ChannelClosedError', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
-    const badSchema = createInvalidSchema('Validation failed')
-    const ch = createSSEChannel({ target: 'swr', signalSchema: badSchema })
+    const ch = createSSEChannel({ target: 'swr' })
+    vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime error') })
 
     group.register(ch, { userId: 1 })
     expect(group.size).toBe(1)
 
     expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
 
-    // Channel should still be registered — it threw SchemaValidationError, not ChannelClosedError
+    // Channel should still be registered — it threw Error, not ChannelClosedError
     expect(group.size).toBe(1)
     expect(ch.state).toBe('open')
   })
@@ -599,8 +598,8 @@ describe('channel-group', () => {
   it('publish() logs but does not throw when channel.invalidate throws non-ChannelClosedError', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const group = new SSEChannelGroup<any, TestMeta>()
-    const badSchema = createInvalidSchema('Schema error')
-    const ch = createSSEChannel({ target: 'swr', signalSchema: badSchema })
+    const ch = createSSEChannel({ target: 'swr' })
+    vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime error') })
 
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
@@ -1345,6 +1344,33 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
         'X-ReStale-Target': 'swr',
       }))
+    })
+
+    it('inherits target from top-level group options', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({
+        target: 'tanstack-query',
+      })
+      const req = new EventEmitter() as any
+      req.url = '/sse?__restale_cid__=conn-node-top-target'
+      req.headers = {}
+      const res = createMockNodeRes()
+
+      const { channel } = group.attachChannel(req, res, {
+        meta: { userId: 99 },
+      })
+
+      expect(channel.target).toBe('tanstack-query')
+    })
+
+    it('auto-allocates event buffer when lifetime is set without eventStore', () => {
+      const ch = createSSEChannel({
+        target: 'generic',
+        lifetime: { ttlMs: 60000 },
+      })
+      // Emitting invalidations should assign an auto-increment ID because event store capacity was auto-allocated
+      const eventId = ch.invalidate({ key: ['todos'] })
+      expect(eventId).toBe('1')
+      ch.close()
     })
   })
 })

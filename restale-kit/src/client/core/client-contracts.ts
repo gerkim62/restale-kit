@@ -109,12 +109,10 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   autoReconnect?: boolean | AutoReconnectOptions
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
-  /** Optional Standard Schema for runtime payload validation. */
-  signalSchema?: StandardSchemaV1<unknown, TSignal>
   /**
    * Include credentials when opening the EventSource connection. Default: false.
    *
-   * **Note:** Like `autoReconnect`, `reconnect`, `signalSchema`, and `debug`, this option is applied
+   * **Note:** Like `autoReconnect`, `reconnect`, and `debug`, this option is applied
    * only when the client is initially created. In the React hook, changing this value on a
    * later render will not take effect until the `url` also changes (which recreates the client).
    */
@@ -122,7 +120,7 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   /**
    * Enable debug logging for connection lifecycle events. Default: false.
    *
-   * **Note:** Like `autoReconnect`, `reconnect`, `signalSchema`, and `withCredentials`, this option is applied
+   * **Note:** Like `autoReconnect`, `reconnect`, and `withCredentials`, this option is applied
    * only when the client is initially created. In the React hook, changing this value on a
    * later render will not take effect until the `url` also changes (which recreates the client).
    */

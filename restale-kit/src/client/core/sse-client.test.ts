@@ -337,23 +337,6 @@ describe('SSEInvalidatorClient', () => {
     expect(client.lastEventId).toBe('evt-100')
   })
 
-  it('runs optional signalSchema on invalidate event', async () => {
-    const schema = createValidSchema((s: any) => ({ key: s.key, action: 'refetch' as const }))
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema })
-
-    const invalidateSpy = vi.fn()
-    client.addEventListener('invalidate', (e: any) => invalidateSpy(e.detail))
-
-    const p = client.connect()
-    const es = MockEventSource.instances[0]
-    es.emitOpen()
-    await p
-
-    es.emitCustomEvent('invalidate', JSON.stringify({ key: ['todos'] }))
-
-    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['todos'], action: 'refetch' })
-  })
-
   it('dispatches error custom event on invalid payload structure', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const errorSpy = vi.fn()
@@ -535,65 +518,6 @@ describe('SSEInvalidatorClient', () => {
 
   // --- Client validation pipeline ordering ---
 
-  it('emits error event when signalSchema returns async Promise', async () => {
-    const asyncSchema = {
-      '~standard': {
-        version: 1 as const,
-        vendor: 'test',
-        validate() {
-          return Promise.resolve({ value: { key: ['test'] } })
-        },
-      },
-    }
-
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: asyncSchema })
-    const errorSpy = vi.fn()
-    client.addEventListener('error', errorSpy)
-    const invalidateSpy = vi.fn()
-    client.addEventListener('invalidate', invalidateSpy)
-
-    const p = client.connect()
-    MockEventSource.instances[0]?.emitOpen()
-    await p
-
-    MockEventSource.instances[0]?.emitCustomEvent(
-      'invalidate',
-      JSON.stringify({ key: ['test'] })
-    )
-
-    expect(errorSpy).toHaveBeenCalled()
-    expect(invalidateSpy).not.toHaveBeenCalled()
-  })
-
-  it('schema validation runs AFTER structural validation (steps 1-6 before step 7)', async () => {
-    const schemaSpy = vi.fn().mockReturnValue({ value: { key: ['test'] } })
-    const schema = {
-      '~standard': {
-        version: 1 as const,
-        vendor: 'test',
-        validate: schemaSpy,
-      },
-    }
-
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema })
-    const errorSpy = vi.fn()
-    client.addEventListener('error', errorSpy)
-
-    const p = client.connect()
-    MockEventSource.instances[0]?.emitOpen()
-    await p
-
-    // Send structurally invalid payload (missing key) — should fail at step 3
-    // and never reach the schema (step 7)
-    MockEventSource.instances[0]?.emitCustomEvent(
-      'invalidate',
-      JSON.stringify({ notAKey: true })
-    )
-
-    expect(errorSpy).toHaveBeenCalled()
-    expect(schemaSpy).not.toHaveBeenCalled() // schema was never consulted
-  })
-
   it('handles non-string data payload and missing ErrorEvent constructor during error dispatch', async () => {
     const originalErrorEvent = globalThis.ErrorEvent
     // @ts-expect-error override for test
@@ -620,28 +544,6 @@ describe('SSEInvalidatorClient', () => {
     } finally {
       globalThis.ErrorEvent = originalErrorEvent
     }
-  })
-
-  it('validates array batch payload against signalSchema', async () => {
-    const schema = createValidSchema((s: any) => ({ key: s.key, action: 'refetch' as const }))
-    const client = new SSEInvalidatorClient('/sse', { signalSchema: schema })
-
-    const invalidateSpy = vi.fn()
-    client.addEventListener('invalidate', (e: any) => invalidateSpy(e.detail))
-
-    const p = client.connect()
-    MockEventSource.instances[0]?.emitOpen()
-    await p
-
-    MockEventSource.instances[0]?.emitCustomEvent(
-      'invalidate',
-      JSON.stringify([{ key: ['todos'] }, { key: ['users'] }])
-    )
-
-    expect(invalidateSpy).toHaveBeenCalledWith([
-      { key: ['todos'], action: 'refetch' },
-      { key: ['users'], action: 'refetch' },
-    ])
   })
 
   it('rejects initial connectPromise when autoReconnect is false and error occurs', async () => {

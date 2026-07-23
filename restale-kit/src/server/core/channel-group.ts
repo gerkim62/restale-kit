@@ -159,8 +159,11 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
 
 export interface SSEChannelGroupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
 > {
+  /** Target discriminator or target array for automatic signal tagging across channels in this group. */
+  target?: SignalTarget | SignalTarget[]
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   pubsub?: PubSubAdapter
   eventStore?: EventStore
@@ -168,8 +171,8 @@ export interface SSEChannelGroupOptions<
   controlTopic?: string
   /**
    * Fallback defaults for Frame Guard options that are typically uniform across an
-   * entire app (`lifetime`, `guardKeepalive`), so they don't need to be repeated at
-   * every `attachSSE()` / `toSSEResponse()` call site.
+   * entire app (`target`, `lifetime`, `guardKeepalive`), so they don't
+   * need to be repeated at every `attachSSE()` / `toSSEResponse()` call site.
    *
    * A channel-level value always wins over a group default — the default only fills
    * a gap left by the channel. `beforeFrame` is per-connection by nature and is
@@ -202,10 +205,15 @@ export class SSEChannelGroup<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
-    this.channelDefaults = options.channelDefaults
+
+    const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
+    if (options.target !== undefined && mergedDefaults.target === undefined) {
+      mergedDefaults.target = options.target
+    }
+    this.channelDefaults = Object.keys(mergedDefaults).length > 0 ? mergedDefaults : undefined
 
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
@@ -680,12 +688,10 @@ export class SSEChannelGroup<
           this.deregister(channel)
         } else {
           const err = error instanceof Error ? error : new Error(String(error))
-          const issues = error instanceof SchemaValidationError ? error.issues : undefined
           console.error(
             "[ERROR][SSEChannelGroup.broadcast] Failed to invalidate channel",
             "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
             "\n  signal:", JSON.stringify(signal, null, 2).slice(0, 500),
-            issues ? "\n  schemaIssues: " + JSON.stringify(issues, null, 2) : "",
             "\n  error:", err.stack || err.message
           )
           errors.push(error)

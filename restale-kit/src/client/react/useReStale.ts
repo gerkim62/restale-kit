@@ -134,7 +134,6 @@ export function useReStale<
     pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
-      signalSchema: opts.signalSchema,
       withCredentials: opts.withCredentials,
       debug: opts.debug,
       // Auto-infer target from the adapter's brand when not set explicitly.

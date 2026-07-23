@@ -130,18 +130,19 @@ class SSEChannelGroup<
   TMeta = unknown
 > {
   constructor(options?: {
+    target?: SignalTarget | SignalTarget[]
     metaSchema?: StandardSchemaV1<unknown, TMeta>
-    pubsub?: PubSubAdapter<TSignal>
+    pubsub?: PubSubAdapter
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
     controlTopic?: string                             // default '__restale_control__'
-    channelDefaults?: ChannelDefaults                // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
+    channelDefaults?: ChannelDefaults                 // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
   })
 
   readonly size: number
   readonly controlTopic: string
   readonly eventStore?: EventStore<TSignal>
-  readonly channelDefaults?: ChannelDefaults
+  readonly channelDefaults?: ChannelDefaults<TSignal>
 
   /**
    * Creates an SSE channel from a Fetch API Request, registers it with the group, and returns { response, channel }.
@@ -244,7 +245,6 @@ interface ClientOptions<TSignal> {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
-  signalSchema?: StandardSchemaV1<unknown, TSignal>
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
 }
 

@@ -23,7 +23,6 @@ function TodoApp({ user, signOut }: { user: DemoUser; signOut: () => void }) {
   })
   const onInvalidate = useTanstackQueryAdapter<AppSignal>(client)
   const { connection } = useReStale<AppSignal>(`/api/sse?userId=${user.id}`, {
-    signalSchema: AppSignalSchema,
     onInvalidate,
   })
 
