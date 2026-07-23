@@ -151,14 +151,12 @@ function App() {
 ```ts
 import { Hono } from 'hono'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { toSSEResponse } from 'restale-kit/hono'
 
 const app = new Hono()
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
 
 app.get('/sse', (c) => {
-  const { response, channel } = toSSEResponse(c.req.raw)
-  group.register(channel)
+  const { response } = group.createChannel(c.req.raw, { target: 'swr' })
   return response
 })
 ```
@@ -166,25 +164,29 @@ app.get('/sse', (c) => {
 ### Fastify
 
 ```ts
-import { attachSSE } from 'restale-kit/fastify'
+import { SSEChannelGroup } from 'restale-kit/server'
+
+const app = Fastify()
+const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
-  const channel = attachSSE(request, reply)
-  group.register(channel)
+  group.attachChannel(request, reply, { target: 'swr' })
 })
 ```
 
 ### Native Node.js
 
 ```ts
-import { attachSSE } from 'restale-kit/node'
+import http from 'node:http'
+import { SSEChannelGroup } from 'restale-kit/server'
+
+const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const channel = attachSSE(req, res)
-    group.register(channel)
+    group.attachChannel(req, res, { target: 'swr' })
   }
 })
 ```
@@ -461,7 +463,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `attachSSE(req, res, options?)` | `SSEChannel<TSignal>` | Attaches SSE stream to Node HTTP response. For `restale-kit/fastify`, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
+| `attachSSE(req, res, options?)` | `SSEChannel<TSignal>` | Attaches SSE stream to Node HTTP response. For Fastify, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
 | `toSSEResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Creates Fetch API SSE response object. |
 
 ### `channel.invalidate(signal, customId?)`
