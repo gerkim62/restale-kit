@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SSEChannelGroup } from './channel-group.js'
 import { createSSEChannel } from './channel.js'
@@ -1069,7 +1070,7 @@ describe('channel-group', () => {
 
   it('delivers raw signal on broadcast to channel which frames multi-target signals', async () => {
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: ['swr', 'tanstack-query'] })
+    const ch = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
     group.register(ch)
 
     const reader = ch.stream.getReader()
@@ -1080,7 +1081,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["items"]},{"target":"tanstack-query","queryKey":["items"]}]\n\n'
+      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
     )
   })
 
@@ -1156,7 +1157,6 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
     expect(group.channelDefaults?.lifetime).toEqual({ ttlMs: 10000, onDeadline: 'revoke' })
   })
-})
 
   // FT-03: channelDefaults behavioral tests — verify that group channelDefaults
   // are merged into channel options when channels are created via the group
@@ -1200,5 +1200,151 @@ describe('SSEChannelGroup — channelDefaults', () => {
     expect(ch.state).toBe('closed')
 
     vi.useRealTimers()
-  
+  })
+
+  describe('createChannel (Fetch API)', () => {
+    it('creates a channel, registers it with the group, and returns response and channel reference', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-1')
+      const { response, channel } = group.createChannel(req, {
+        target: 'tanstack-query',
+        meta: { userId: 42 },
+        topics: ['user-42'],
+      })
+
+      expect(response).toBeInstanceOf(Response)
+      expect(channel).toBeDefined()
+      expect(group.size).toBe(1)
+
+      const invalidateSpy = vi.spyOn(channel, 'invalidate')
+      group.broadcastToAll({ key: ['items'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ key: ['items'] }, undefined)
+    })
+
+    it('automatically deregisters channel from group when channel closes', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-2')
+      const { channel } = group.createChannel(req, {
+        target: 'swr',
+        meta: { userId: 10 },
+      })
+
+      expect(group.size).toBe(1)
+      channel.close()
+      expect(group.size).toBe(0)
+    })
+
+    it('inherits target from group channelDefaults when target is omitted', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({
+        channelDefaults: { target: 'tanstack-query' },
+      })
+      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-3')
+      const { response, channel } = group.createChannel(req, {
+        meta: { userId: 99 },
+      })
+
+      expect(channel.target).toBe('tanstack-query')
+      expect(response.headers.get('x-restale-target')).toBe('tanstack-query')
+    })
+
+    it('throws synchronously when __restale_cid__ is missing', () => {
+      const group = new SSEChannelGroup({})
+      const req = new Request('http://localhost/sse')
+      expect(() => {
+        group.createChannel(req, { target: 'swr' })
+      }).toThrow('__restale_cid__')
+    })
+
+    it('throws synchronously when target is missing from options and defaults', () => {
+      const group = new SSEChannelGroup({})
+      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-4')
+      expect(() => {
+        group.createChannel(req, {})
+      }).toThrow('target is required')
+    })
+  })
+
+  describe('attachChannel (Node.js / Express / Fastify)', () => {
+    function createMockNodeRes(): any {
+      return Object.assign(new EventEmitter(), {
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      })
+    }
+
+    it('attaches channel to Node res, registers it with group, and returns channel reference', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const req = new EventEmitter() as any
+      req.url = '/sse?__restale_cid__=conn-node-1'
+      req.headers = {}
+      const res = createMockNodeRes()
+
+      const { channel } = group.attachChannel(req, res, {
+        target: 'swr',
+        meta: { userId: 100 },
+        topics: ['topic-a'],
+      })
+
+      expect(channel).toBeDefined()
+      expect(group.size).toBe(1)
+      expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'X-ReStale-Target': 'swr',
+      }))
+    })
+
+    it('supports Fastify reply object and calls hijack() if present', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const rawReq = Object.assign(new EventEmitter(), { url: '/sse?__restale_cid__=conn-fastify-1', headers: {} })
+      const req = { raw: rawReq } as any
+      const rawRes = createMockNodeRes()
+      const hijackSpy = vi.fn()
+      const reply = { raw: rawRes, hijack: hijackSpy } as any
+
+      const { channel } = group.attachChannel(req, reply, {
+        target: 'tanstack-query',
+        meta: { userId: 200 },
+      })
+
+      expect(hijackSpy).toHaveBeenCalled()
+      expect(channel).toBeDefined()
+      expect(group.size).toBe(1)
+    })
+
+    it('automatically deregisters channel on close', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const req = new EventEmitter() as any
+      req.url = '/sse?__restale_cid__=conn-node-2'
+      req.headers = {}
+      const res = createMockNodeRes()
+
+      const { channel } = group.attachChannel(req, res, {
+        target: 'swr',
+        meta: { userId: 55 },
+      })
+
+      expect(group.size).toBe(1)
+      channel.close()
+      expect(group.size).toBe(0)
+    })
+
+    it('inherits target from group channelDefaults when target is omitted', () => {
+      const group = new SSEChannelGroup<any, { userId: number }>({
+        channelDefaults: { target: 'swr' },
+      })
+      const req = new EventEmitter() as any
+      req.url = '/sse?__restale_cid__=conn-node-3'
+      req.headers = {}
+      const res = createMockNodeRes()
+
+      const { channel } = group.attachChannel(req, res, {
+        meta: { userId: 77 },
+      })
+
+      expect(channel.target).toBe('swr')
+      expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'X-ReStale-Target': 'swr',
+      }))
+    })
+  })
 })

@@ -1,11 +1,25 @@
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import type { SSEChannel } from '@/server/core/channel.js'
+import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
+import { toSSEResponse } from '@/server/fetch/response.js'
+import { attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
+
+/**
+ * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
+ */
+export type ChannelSetupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+> = Omit<SSEChannelOptions<TSignal>, 'target'> & {
+  target?: SignalTarget | SignalTarget[]
+  topics?: string[]
+} & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
 
 /**
  * Manages subscription state and serialization for a specific topic.
@@ -356,37 +370,58 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Registers a channel with its associated metadata and optional routing topics.
+   * Creates an SSE channel from a Fetch API `Request`, registers it with the group,
+   * and returns both the `Response` to hand to the framework and the `SSEChannel`.
    *
-   * If `metaSchema` was provided to the constructor, validates the metadata
-   * synchronously. Throws `SchemaValidationError` if validation fails or
-   * if the schema returns a Promise (async schemas are not supported).
+   * The channel is automatically deregistered when it closes.
    *
-   * The channel is automatically deregistered when it closes — no manual cleanup required.
-   * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
+   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
+   * or if `target` is missing in options and group `channelDefaults`.
    */
-  register(
-    channel: SSEChannel<TSignal>,
-    ...args: undefined extends TMeta
-      ? [meta?: TMeta, options?: { topics?: string[] }]
-      : [meta: TMeta, options?: { topics?: string[] }]
-  ): void {
-    const meta = args[0]
-    const options = args[1]
+  createChannel(
+    request: Request,
+    options: ChannelSetupOptions<TSignal, TMeta>
+  ): { response: Response; channel: SSEChannel<TSignal> } {
+    const { meta, topics, ...channelOpts } = options
+    const result = toSSEResponse<TSignal>(request, channelOpts, this)
+    this.doRegister(result.channel, meta, topics)
+    return result
+  }
 
+  /**
+   * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply),
+   * registers it with the group, and returns `{ channel }`.
+   *
+   * The channel is automatically deregistered when it closes.
+   *
+   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
+   * or if `target` is missing in options and group `channelDefaults`.
+   */
+  attachChannel(
+    req: IncomingMessage | FastifyRequestLike,
+    res: ServerResponse | FastifyReplyLike,
+    options: ChannelSetupOptions<TSignal, TMeta>
+  ): { channel: SSEChannel<TSignal> } {
+    const { meta, topics, ...channelOpts } = options
+    const channel = attachSSE<TSignal>(req, res, channelOpts, this)
+    this.doRegister(channel, meta, topics)
+    return { channel }
+  }
+
+  private doRegister(
+    channel: SSEChannel<TSignal>,
+    meta: TMeta | undefined,
+    topics?: string[]
+  ): void {
     let validatedMeta: TMeta
     if (this.metaSchema) {
       validatedMeta = validateStandardSchema(meta, this.metaSchema)
     } else {
-      // When no metaSchema is provided, `meta` is the raw args[0] value, typed as
-      // `TMeta | undefined`. The overload signature guarantees that `undefined` is
-      // only reachable here when `undefined extends TMeta` (i.e., undefined IS a
-      // valid TMeta), so this cast is always safe at runtime.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta (see overload)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
       validatedMeta = meta as TMeta
     }
 
-    const topicsList = options?.topics || []
+    const topicsList = topics || []
     const topicsSet = new Set(topicsList)
 
     const existingEntry = this.channels.get(channel)
@@ -450,6 +485,27 @@ export class SSEChannelGroup<
     if (!existingEntry) {
       channel.onClose(() => { this.deregister(channel) })
     }
+  }
+
+  /**
+   * Registers a channel with its associated metadata and optional routing topics.
+   *
+   * If `metaSchema` was provided to the constructor, validates the metadata
+   * synchronously. Throws `SchemaValidationError` if validation fails or
+   * if the schema returns a Promise (async schemas are not supported).
+   *
+   * The channel is automatically deregistered when it closes — no manual cleanup required.
+   * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
+   */
+  register(
+    channel: SSEChannel<TSignal>,
+    ...args: undefined extends TMeta
+      ? [meta?: TMeta, options?: { topics?: string[] }]
+      : [meta: TMeta, options?: { topics?: string[] }]
+  ): void {
+    const meta = args[0]
+    const options = args[1]
+    this.doRegister(channel, meta, options?.topics)
   }
 
   /** Deregisters a channel from the group. */

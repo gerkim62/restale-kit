@@ -25,7 +25,7 @@ already exists on both sides; this wires them together over the wire.
 | Server | `target` set in `SSEChannelOptions` by the developer. `processTargetSignals()` stamps untagged signals. `X-ReStale-Target` echoed in the SSE response headers (set by transport adapters). |
 | Client | `ClientOptions.target` exists but is **never sent to the server**. Used only locally in adapter callbacks to skip non-matching signals. |
 | Wire | No query param, no negotiation, no filtering. Every frame goes to every client regardless of its target. |
-| Transport | `SSEInvalidatorClient` uses **native `EventSource`** (`sse-client.ts` ~line 232). It has no access to `response.status` or response headers — the browser handles the HTTP handshake internally and only surfaces `onopen`/`onerror`/frame data. Any server-side rejection must be signaled as an SSE event frame, not an HTTP status code. |
+| Transport | `SSEInvalidatorClient` uses **`sse.js`** (`sse-client.ts`). `sse.js` enables inspecting handshake HTTP status codes (`nonRetryableStatuses`, `onRejected`, `Retry-After`) while handling standard SSE event streams. Rejections sent via server SSE event frames (e.g. `revoke`) are also handled directly by `wireInvalidateListener`. |
 
 ---
 
@@ -39,7 +39,7 @@ GET /sse?__restale_cid__=abc123&__restale_target__=swr
 
 - Parameter name: `__restale_target__`
 - Single value only (not an array). One connection = one target.
-- Optional. If absent, behavior is unchanged (server sends all targets, no filtering).
+- Required when connecting to a channel configured with multiple supported targets. If absent on a multi-target channel, the server rejects the connection with an `unsupported-target` revocation frame (`reason: 'unsupported-target'`). On single-target channels, defaults to the channel's sole target if absent.
 - The client sends whatever is in `ClientOptions.target`. Framework adapters (`useSwrAdapter`,
   `useTanstackQueryAdapter`) already default `target` — they will now also append the param
   automatically.

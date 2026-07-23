@@ -6,25 +6,29 @@ The server side has two concerns:
 
 ---
 
-## Framework adapters
+## Establishing channels via `SSEChannelGroup`
 
-All adapters create an `SSEChannel` and set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing all targets the channel is configured to support — useful for debugging in browser devtools (native `EventSource` cannot read response headers from JavaScript at runtime). Adapters also wire up disconnect detection automatically — when the client disconnects, the adapter calls `channel.disconnect()` to close the transport stream.
+`SSEChannelGroup` is the single entry point for establishing and managing channels. Creating and registering channels occurs atomically in a single method call:
+- `group.createChannel(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
+- `group.attachChannel(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
 
-The channel is also **automatically deregistered** from the group when it closes — you do not need a manual cleanup listener. The auto-deregister hook is wired by `group.register()` on first registration.
+All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
 
 ### Express
 
 ```ts
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 const app = express()
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+})
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'swr' })
-  group.register(channel, { userId: req.user?.id })
+  group.attachChannel(req, res, {
+    meta: { userId: req.user?.id },
+  })
 })
 ```
 
@@ -33,79 +37,60 @@ app.get('/sse', (req, res) => {
 ```ts
 import http from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/node'
 
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+})
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    const channel = attachSSE(req, res, { target: 'swr' })
-    group.register(channel, { userId: req.user?.id })
+    group.attachChannel(req, res, {
+      meta: { userId: req.user?.id },
+    })
   }
 })
 ```
 
 ### Fastify
 
-`restale-kit/fastify` accepts either Fastify's wrapped `request`/`reply` objects or the raw `request.raw`/`reply.raw` Node objects. When you pass the wrapped objects, `attachSSE` automatically calls `reply.hijack()` for you — you don't need to do it manually.
-
-`reply.hijack()` tells Fastify to give up ownership of the underlying socket. Without it, Fastify's lifecycle hooks try to write their own response on top of the SSE stream after your handler returns, corrupting the output.
+`group.attachChannel` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachChannel` automatically calls `reply.hijack()` for you.
 
 ```ts
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/fastify'
-import { z } from 'zod'
 
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+})
 const app = Fastify()
 
-// Preferred: pass request/reply directly — reply.hijack() is called automatically
 app.get('/sse', (request, reply) => {
-  const channel = attachSSE(request, reply, { target: 'swr' })
-  group.register(channel, { userId: request.user?.id })
+  group.attachChannel(request, reply, {
+    meta: { userId: request.user?.id },
+  })
 })
 ```
 
-If you need to use the raw Node objects (e.g. in a middleware context), you must call `reply.hijack()` yourself before passing them:
+### Hono & Fetch API (Cloudflare Workers, Bun, Deno, edge)
 
-```ts
-app.get('/sse', (request, reply) => {
-  reply.hijack() // required when passing .raw objects directly
-  const channel = attachSSE(request.raw, reply.raw, { target: 'swr' })
-  group.register(channel, { userId: request.user?.id })
-})
-```
-
-### Hono (Cloudflare Workers, Bun, Deno, edge)
-
-Fetch-API runtimes use an inverted response model — `toSSEResponse` returns the `Response` to hand back to the framework and the `SSEChannel` to call `invalidate()` on. The connection ID is accessible as `channel.connectionId`.
+Fetch-API runtimes return both the `Response` object and the `SSEChannel` reference.
 
 ```ts
 import { Hono } from 'hono'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { toSSEResponse } from 'restale-kit/hono'
 
 const app = new Hono()
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+})
 
 app.get('/sse', (c) => {
-  const { response, channel } = toSSEResponse(c.req.raw, { target: 'swr' })
-  group.register(channel, { userId: c.req.header('X-User-ID') })
-  return response // hand it back to Hono
+  const { response } = group.createChannel(c.req.raw, {
+    meta: { userId: c.req.header('X-User-ID') },
+  })
+  return response
 })
-```
-
-### Generic Fetch API (`restale-kit/fetch`)
-
-For any other Fetch-API runtime (Bun, Deno, plain `Request`/`Response`):
-
-```ts
-import { toSSEResponse } from 'restale-kit/fetch'
-
-// Same API as restale-kit/hono
-const { response, channel } = toSSEResponse(request, { target: 'swr' })
 ```
 
 ---
@@ -307,18 +292,18 @@ In a multi-channel group, you can distribute Frame Guard settings to all channel
 ```ts
 const group = new SSEChannelGroup({
   channelDefaults: {
+    target: 'swr',
     lifetime: { ttlMs: 5 * 60 * 1000 },
     guardKeepalive: true,
   }
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, {
-    target: 'swr',
+  group.attachChannel(req, res, {
+    meta: { userId: req.user.id },
     // Channel-specific options can override defaults:
     // lifetime: { ttlMs: 10 * 60 * 1000 }
-  }, group)  // Pass group as fourth argument to apply channelDefaults
-  group.register(channel, { userId: req.user.id })
+  })
 })
 ```
 
@@ -396,16 +381,19 @@ To prevent missed invalidation signals during momentary network drops, create a 
 
 ```ts
 import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 // Shared event store (retains history for Last-Event-ID replay)
 const eventStore = createEventStore({ capacity: 100 })
-const group = new SSEChannelGroup({ eventStore })
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'swr' },
+  eventStore,
+})
 
 app.get('/sse', (req, res) => {
-  // Pass eventStore to transport helper so reconnecting channels replay missed history
-  const channel = attachSSE(req, res, { target: 'swr', eventStore })
-  group.register(channel, { userId: req.user.id })
+  // group.attachChannel automatically connects eventStore to channels
+  group.attachChannel(req, res, {
+    meta: { userId: req.user.id },
+  })
 })
 ```
 

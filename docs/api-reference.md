@@ -112,67 +112,14 @@ class SchemaValidationError extends Error {
 
 ---
 
+---
+
 ## `restale-kit/server`
 
 ```ts
-import { createSSEChannel, SSEChannelGroup, createEventStore } from 'restale-kit/server'
-import type { SSEChannel, SSEChannelOptions } from 'restale-kit/server'
+import { SSEChannelGroup, createEventStore } from 'restale-kit/server'
+import type { SSEChannel, SSEChannelOptions, SSEChannelGroupOptions, ChannelSetupOptions } from 'restale-kit/server'
 import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
-```
-
-### `createSSEChannel(options)`
-
-```ts
-function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions<TSignal>
-): SSEChannel<TSignal>
-
-interface SSEChannelOptions<TSignal> {
-  target: SignalTarget | SignalTarget[]               // required target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic')
-  keepaliveIntervalMs?: number                        // default 0 (disabled)
-  retryIntervalMs?: number                            // optional retry interval in ms for browser EventSource
-  signalSchema?: StandardSchemaV1<unknown, TSignal>
-  lastEventId?: string
-  eventStore?: EventStore<TSignal>
-  eventBufferCapacity?: number
-  idGenerator?: () => string
-  connectionId?: string                               // unique connection ID from client
-  requestedTarget?: string                            // target requested by the client via __restale_target__ query param
-  lifetime?: LifetimeOptions                          // absolute or relative connection deadline
-  beforeFrame?: BeforeFrameFn<TSignal>                // synchronous guard function evaluated before outgoing frames (unhandled errors fail closed)
-  guardKeepalive?: boolean                            // when true, beforeFrame also runs before keepalive ticks
-}
-
-interface SSEChannel<TSignal> {
-  readonly state: ChannelState
-  readonly connectionId: string                       // unique connection ID from client
-  readonly target: SignalTarget | SignalTarget[]       // configured target discriminator; required
-  readonly requestedTarget: string | undefined        // target requested by this client via __restale_target__, if any
-  readonly stream: ReadableStream<Uint8Array>
-  /**
-   * Enqueues a signal (or array of signals) into the SSE stream.
-   *
-   * Returns the SSE event ID string assigned to this frame. By default without an
-   * `eventStore` or `eventBufferCapacity` configured, IDs are absent or empty (`''`).
-   * Caller-supplied `customId` or custom `idGenerator` values may still be emitted
-   * without an event store, but such IDs cannot be replayed without history.
-   * When an `eventStore` or `eventBufferCapacity` is configured, event IDs are recorded
-   * for `Last-Event-ID` replay upon reconnect.
-   *
-   * Throws `ChannelClosedError` when `state` is `'closed'`.
-   * Throws `SchemaValidationError` when `signalSchema` validation fails.
-   */
-  invalidate(signal: TSignal | TSignal[], customId?: string): string
-  close(): void                                       // server-initiated close; idempotent
-  disconnect(): void                                  // called by transport on peer disconnect; idempotent
-  /**
-   * Sends a terminal `revoke` SSE event to the client, then closes the channel.
-   * The client will NOT auto-reconnect after receiving this frame.
-   * Idempotent — no-op if the channel is already closed.
-   */
-  revoke(reason?: string): void                       // default reason: 'revoked'
-  onClose(callback: () => void): void                 // register callback for when channel closes
-}
 ```
 
 ### `SSEChannelGroup(options?)`
@@ -188,7 +135,7 @@ class SSEChannelGroup<
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number
     controlTopic?: string                             // default '__restale_control__'
-    channelDefaults?: ChannelDefaults                // fallback Frame Guard defaults (lifetime, guardKeepalive)
+    channelDefaults?: ChannelDefaults                // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
   })
 
   readonly size: number
@@ -196,16 +143,31 @@ class SSEChannelGroup<
   readonly eventStore?: EventStore<TSignal>
   readonly channelDefaults?: ChannelDefaults
 
+  /**
+   * Creates an SSE channel from a Fetch API Request, registers it with the group, and returns { response, channel }.
+   * Throws synchronously if __restale_cid__ is missing or invalid.
+   */
+  createChannel(
+    request: Request,
+    options: ChannelSetupOptions<TSignal, TMeta>
+  ): { response: Response; channel: SSEChannel<TSignal> }
+
+  /**
+   * Attaches an SSE channel to a Node.js HTTP response or Fastify reply, registers it with the group, and returns { channel }.
+   * Throws synchronously if __restale_cid__ is missing or invalid.
+   */
+  attachChannel(
+    req: IncomingMessage | FastifyRequestLike,
+    res: ServerResponse | FastifyReplyLike,
+    options: ChannelSetupOptions<TSignal, TMeta>
+  ): { channel: SSEChannel<TSignal> }
+
   register(
     channel: SSEChannel<TSignal>,
     ...args: undefined extends TMeta
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
   ): void
-  // Omitting meta (or passing undefined) sets metadata to undefined.
-  // Channels without metadata are included in broadcastToAll and broadcast(),
-  // excluded from broadcastByKey(), and cannot be targeted by revokeWhere().
-  // Use revokeByConnectionId(connectionId) to revoke them.
 
   deregister(channel: SSEChannel<TSignal>): void
 
@@ -221,102 +183,28 @@ class SSEChannelGroup<
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
-  // Sends a terminal revoke SSE frame to each matched client before closing.
-  // Client receives { status: 'closed', reason: 'revoked' } and does NOT auto-reconnect.
-  // Channels registered without metadata cannot be matched by revokeWhere().
-  // Use revokeByConnectionId(connectionId) to revoke those channels instead.
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
-  // Also sends a terminal revoke frame before closing. Same client-side behavior as revokeWhere.
   dispose(): Promise<void>
 }
 ```
 
-### `revokeWhere(criteria)` security
-
-`criteria` subset-matches connection metadata. If a criterion includes a client-supplied `connectionId`, also include trusted metadata from your authentication layer (for example, `userId` and `sessionId`). A connection ID is an opaque correlation value, not proof that a caller is authorized to revoke that connection.
-
-### `controlTopic` and multi-group deployments
-
-Each `SSEChannelGroup` subscribes to its `controlTopic` on the pub/sub adapter to receive cross-instance revocation messages. The default topic name is `'__restale_control__'`.
-
-If you create **multiple `SSEChannelGroup` instances that share the same pub/sub adapter** (e.g. one group per tenant, or one group per resource type), each group must be given a unique `controlTopic`. Otherwise all groups will receive every revocation broadcast intended for any one of them, causing spurious connection closures:
-
-```ts
-// ❌ Both groups listen on '__restale_control__' — revocations bleed across groups
-const groupA = new SSEChannelGroup({ pubsub: adapter })
-const groupB = new SSEChannelGroup({ pubsub: adapter })
-
-// ✅ Each group has its own control channel
-const groupA = new SSEChannelGroup({ pubsub: adapter, controlTopic: '__restale_control_a__' })
-const groupB = new SSEChannelGroup({ pubsub: adapter, controlTopic: '__restale_control_b__' })
-```
-
 ---
 
-## `restale-kit/node` · `restale-kit/express` · `restale-kit/fastify`
+## `restale-kit/testing`
 
-`/node` and `/express` export `attachSSE` for raw Node.js `IncomingMessage`/`ServerResponse` objects. `/fastify` re-exports from `/node` but also accepts Fastify's wrapped request/reply objects directly and calls `reply.hijack()` automatically.
+Test utility entrypoint for unit testing server-side channel group behaviors without real HTTP requests.
 
 ```ts
-import { attachSSE } from 'restale-kit/node'
-// or
-import { attachSSE } from 'restale-kit/express'
-
-function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
-  req: IncomingMessage,
-  res: ServerResponse,
-  options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal>
-): SSEChannel<TSignal>
-// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
-// The returned channel's `connectionId` property is populated from the
-// `__restale_cid__` query parameter extracted from the request URL.
-// When `group` is passed, its `channelDefaults` are merged into the channel options.
+import { createSSEChannel } from 'restale-kit/testing'
+import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 ```
 
-```ts
-import { attachSSE } from 'restale-kit/fastify'
-import type { FastifyRequestLike, FastifyReplyLike } from 'restale-kit/fastify'
+### `createSSEChannel(options)`
 
-// Preferred: pass Fastify request/reply directly — reply.hijack() is called automatically
-function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
-  req: IncomingMessage | FastifyRequestLike,
-  res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal>
+```ts
+function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
-
-interface FastifyRequestLike {
-  raw: IncomingMessage
-}
-
-interface FastifyReplyLike {
-  raw: ServerResponse
-  hijack?: () => void
-}
-```
-
-> **Fastify auto-hijack:** When a `FastifyReplyLike` object (one with a `.raw` property) is passed as `res`, `attachSSE` automatically calls `reply.hijack()` before taking ownership of the socket. You do not need to call it yourself. Passing `request.raw` / `reply.raw` directly also works, but then you must call `reply.hijack()` manually before `attachSSE`.
-
----
-
-## `restale-kit/fetch` · `restale-kit/hono`
-
-Both export the same `toSSEResponse` function (Hono re-exports from `/fetch`).
-
-```ts
-import { toSSEResponse } from 'restale-kit/fetch'
-// or
-import { toSSEResponse } from 'restale-kit/hono'
-
-function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
-  request: Request,
-  options: SSEChannelOptions<TSignal>,
-  group?: SSEChannelGroup<TSignal>
-): { response: Response; channel: SSEChannel<TSignal> }
-// Throws synchronously if the `__restale_cid__` query parameter is missing or empty.
-// `channel.connectionId` is populated from the `__restale_cid__` query parameter.
-// When `group` is passed, its `channelDefaults` are merged into the channel options.
 ```
 
 ---

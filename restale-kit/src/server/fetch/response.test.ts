@@ -35,12 +35,28 @@ describe('fetch toSSEResponse', () => {
     expect(response.headers.get('x-restale-target')).toBe('swr')
   })
 
-  it('emits comma-separated X-ReStale-Target response header when target array is provided', () => {
+  it('rejects connection on multi-target channel when requestedTarget is absent', async () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-4')
     const { response, channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
-    expect(response.headers.get('x-restale-target')).toBe('swr, tanstack-query')
+    expect(response.headers.get('x-restale-target')).toBe('')
+
+    const reader = channel.stream.getReader()
+    await reader.read()
+    reader.releaseLock()
+
+    expect(channel.state).toBe('closed')
+  })
+
+  it('emits negotiated requested target in X-ReStale-Target response header when target array and requestedTarget are provided', () => {
+    const request = new Request(
+      'https://example.com/sse?__restale_cid__=conn-fetch-4b&__restale_target__=tanstack-query'
+    )
+    const { response, channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
+
+    expect(channel.requestedTarget).toBe('tanstack-query')
+    expect(response.headers.get('x-restale-target')).toBe('tanstack-query')
   })
 
   it('emits X-ReStale-Supported response header with the single supported target', () => {

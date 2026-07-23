@@ -62,11 +62,12 @@ export function extractLastEventId(
 /**
  * Extracts the `__restale_target__` query parameter.
  *
- * Returns `undefined` only if the parameter is absent or empty — callers
- * treat absence as "no preference; send everything."
+ * Returns `undefined` if the parameter is absent or empty. For single-target channels,
+ * absence defaults to the channel's single target. For multi-target channels, absence
+ * causes the connection to be rejected with an `unsupported-target` revocation frame.
  * Returns the raw string value for any non-empty value (known or unknown),
- * so the channel can issue an `unsupported-target` revoke for unrecognized
- * targets rather than silently treating them as "no preference."
+ * so the channel can validate it against supported targets and issue an
+ * `unsupported-target` revoke if unrecognized.
  */
 export function extractRequestedTarget(searchParams: URLSearchParams): string | undefined {
   const raw = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM)

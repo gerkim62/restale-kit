@@ -36,17 +36,17 @@ All peers are optional — only install what you use.
 ```ts
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { attachSSE } from 'restale-kit/express'
 
 const app = express()
 app.use(express.json())
 
-const group = new SSEChannelGroup()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: 'tanstack-query' },
+})
 
 // SSE endpoint — clients connect here
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'tanstack-query' })
-  group.register(channel)
+  group.attachChannel(req, res)
 })
 
 // After any mutation, broadcast the invalidation

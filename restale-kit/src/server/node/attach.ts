@@ -8,6 +8,15 @@ import { extractConnectionId, extractLastEventId, extractRequestedTarget } from 
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
+export interface FastifyReplyLike {
+  raw: ServerResponse
+  hijack?: () => void
+}
+
+export interface FastifyRequestLike {
+  raw: IncomingMessage
+}
+
 /**
  * Attaches an SSE channel to a Node.js HTTP response.
  *
@@ -17,25 +26,31 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
  * Throws an Error synchronously if the required `__restale_cid__` query
  * parameter is missing or invalid.
  *
- * Works with Express (`req, res`) and Fastify (`request.raw, reply.raw` —
- * call `reply.hijack()` first).
+ * Works with Express (`req, res`) and Fastify (`request, reply`).
  *
  * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
  *   `options` before creating the channel. Per-channel values always win over defaults.
  */
 export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
-  req: IncomingMessage,
-  res: ServerResponse,
+  req: IncomingMessage | FastifyRequestLike,
+  res: ServerResponse | FastifyReplyLike,
   options: SSEChannelOptions<TSignal>,
   group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal> {
-  const rawUrl = req.url || '/'
+  if ('hijack' in res && typeof res.hijack === 'function') {
+    res.hijack()
+  }
+
+  const actualReq = 'raw' in req ? req.raw : req
+  const actualRes = 'raw' in res ? res.raw : res
+
+  const rawUrl = actualReq.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
   const connectionId = extractConnectionId(searchParams)
   const requestedTarget = extractRequestedTarget(searchParams)
 
-  const lastEventId = options.lastEventId ?? extractLastEventId((name) => req.headers[name])
+  const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
   const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
@@ -48,29 +63,31 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
-  // Build the supported targets list from options.target for the X-ReStale-Supported header
-  const supportedTargets = Array.isArray(options.target)
-    ? options.target.join(', ')
-    : options.target
+  const effectiveTarget = channelOptions.target
+  const supportedTargets = Array.isArray(effectiveTarget)
+    ? effectiveTarget
+    : (effectiveTarget ? [effectiveTarget] : [])
+  const supportedHeader = supportedTargets.join(', ')
+  const activeTarget =
+    channelOptions.requestedTarget ??
+    (supportedTargets.length === 1 ? supportedTargets[0] : '')
 
   // Set SSE headers
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: Array.isArray(options.target)
-      ? options.target.join(', ')
-      : options.target,
-    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedTargets,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: activeTarget,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedHeader,
   }
 
-  res.writeHead(200, headers)
+  actualRes.writeHead(200, headers)
 
   // Pipe the ReadableStream into the Node response
   // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility
   const nodeReadable = Readable.fromWeb(channel.stream)
-  nodeReadable.pipe(res)
+  nodeReadable.pipe(actualRes)
 
   // Wire up disconnect detection
-  req.on('close', () => {
+  actualReq.on('close', () => {
     channel.disconnect()
   })
 

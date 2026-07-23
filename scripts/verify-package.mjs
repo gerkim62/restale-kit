@@ -49,6 +49,7 @@ try {
       'ably',
       'pusher',
       'typescript',
+      '@types/node',
       '@types/react',
       '@types/react-dom',
     ],
@@ -60,8 +61,7 @@ try {
     `const entryPoints = [
   'restale-kit',
   'restale-kit/server',
-  'restale-kit/node',
-  'restale-kit/fetch',
+  'restale-kit/testing',
   'restale-kit/client',
   'restale-kit/react',
   'restale-kit/swr',
@@ -70,9 +70,6 @@ try {
   'restale-kit/redis',
   'restale-kit/ably',
   'restale-kit/pusher',
-  'restale-kit/express',
-  'restale-kit/fastify',
-  'restale-kit/hono',
 ]
 
 await Promise.all(entryPoints.map((entryPoint) => import(entryPoint)))
@@ -93,6 +90,7 @@ console.log('All public entry points imported successfully.')
   SchemaValidationError,
 } from 'restale-kit'
 import type { SSEChannel } from 'restale-kit/server'
+import type { createSSEChannel } from 'restale-kit/testing'
 import type { SSEInvalidatorClient } from 'restale-kit/client'
 import type { UseReStaleResult } from 'restale-kit/react'
 
@@ -110,6 +108,7 @@ const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retry
         target: 'ES2022',
         module: 'Node16',
         moduleResolution: 'Node16',
+        types: ['node'],
         skipLibCheck: false,
         strict: true,
         noEmit: true,

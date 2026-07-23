@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
 import type { InvalidateSignal } from 'restale-kit'
-import { attachSSE } from 'restale-kit/node'
 import { createTodoApi } from '@restale-kit-example/shared'
 
-const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>()
+const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>({
+  channelDefaults: { target: ['swr', 'tanstack-query'] },
+})
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
@@ -26,8 +27,7 @@ createServer(async (req, res) => {
     const userId = url.searchParams.get('userId') as string
 
     if (req.method === 'GET' && url.pathname === '/sse') {
-      const channel = attachSSE(req, res)
-      group.register(channel, { userId })
+      group.attachChannel(req, res, { meta: { userId } })
       return
     }
     if (req.method === 'GET' && url.pathname === '/todos') return sendJson(res, 200, todos.getTodos(userId))

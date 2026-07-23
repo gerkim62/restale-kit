@@ -30,8 +30,8 @@ import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS, FRAME_GUARD_DEFAULTS } from '@/util
  * Configuration options for `createSSEChannel`.
  */
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required. */
-  target: SignalTarget | SignalTarget[]
+  /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
+  target?: SignalTarget | SignalTarget[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
@@ -164,6 +164,9 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
   options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
+  if (options.target === undefined) {
+    throw new Error('[createSSEChannel] target is required.')
+  }
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
   const retryIntervalMs = options.retryIntervalMs
@@ -284,9 +287,28 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       const connectedAt = Date.now()
 
       // Validate the requested target before doing anything else.
-      // If it is unsupported, emit a structured revoke frame and close immediately.
+      // If it is unsupported or missing on a multi-target channel, emit a structured revoke frame and close immediately.
+      const supportedTargets = Array.isArray(target) ? target : [target]
+      if (requestedTarget === undefined && supportedTargets.length > 1) {
+        const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
+        console.warn(
+          `[WARN][createSSEChannel] Rejected connection: no target requested for multi-target channel [${supportedTargets.join(', ')}]. connectionId: ${safeConnectionId}.`
+        )
+        try {
+          controller.enqueue(
+            formatRevokeFrame('unsupported-target', {
+              requested: '',
+              supported: supportedTargets,
+            })
+          )
+        } catch {
+          // controller unusable — just close
+        }
+        closeInternal()
+        return
+      }
+
       if (requestedTarget !== undefined) {
-        const supportedTargets = Array.isArray(target) ? target : [target]
         // @ts-expect-error includes not present for SignalTarget type
         if (!supportedTargets.includes(requestedTarget)) {
           const safeRequestedTarget = requestedTarget.replace(/\r\n|\r|\n/g, '\\n')
