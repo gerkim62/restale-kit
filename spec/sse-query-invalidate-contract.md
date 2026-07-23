@@ -44,6 +44,7 @@ restale-kit/
 │   │   ├── react/        # useReStale hook
 │   │   ├── swr/          # SWR integration
 │   │   └── tanstack-query/ # TanStack Query integration
+│   ├── testing/          # test utilities and test doubles
 │   └── pubsub/
 │       ├── core/         # contract and shared utilities
 │       ├── redis/

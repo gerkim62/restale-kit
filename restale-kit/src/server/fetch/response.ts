@@ -1,8 +1,7 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
-import { extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
+import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -43,20 +42,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
 
   const channel = createSSEChannel<TSignal>(channelOptions)
 
-  const effectiveTarget = channelOptions.target
-  const supportedTargets = Array.isArray(effectiveTarget)
-    ? effectiveTarget
-    : (effectiveTarget ? [effectiveTarget] : [])
-  const supportedHeader = supportedTargets.join(', ')
-  const activeTarget =
-    channelOptions.requestedTarget ??
-    (supportedTargets.length === 1 ? supportedTargets[0] : '')
-
-  const headers: Record<string, string> = {
-    ...SSE_HEADERS,
-    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: activeTarget,
-    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedHeader,
-  }
+  const headers = buildSSETargetHeaders(channelOptions)
 
   const response = new Response(channel.stream, {
     headers,

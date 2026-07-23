@@ -58,8 +58,7 @@ X-ReStale-Supported: tanstack-query, swr
 | `X-ReStale-Target` | The *single* target being returned | Already exists; semantics unchanged |
 | `X-ReStale-Supported` | Comma-separated list of all targets the channel supports | New |
 
-Both headers are informational for developers / devtools only. Native `EventSource` cannot read
-response headers from JS, so the client never parses these at runtime.
+Both headers are informational for developers and devtools, while `sse.js` enables inspecting handshake HTTP status codes and response headers at connection time.
 
 ### 3. Unsupported target: extend the existing `revoke` event (no new event type)
 
@@ -93,12 +92,11 @@ Consumers that care about *why* can branch on `detail.reason`; consumers that do
 treating every `revoke` identically, exactly as today.
 
 **Known limitation — `open` then immediate `revoke`:**
-Because native `EventSource` fires `onopen` on the raw 200 response (before any frame is read —
+Because `sse.js` fires `onopen` on the raw 200 response (before any frame is read —
 `sse-client.ts` ~line 238, which also resolves `connectPromise`), a rejected connection will
-always show `open` status for one tick before the `revoke` arrives. This is not fixable with
-`EventSource` as the transport; it should be documented as expected behavior, not treated as a
-bug. Any consumer that triggers side effects from `onOpen` (e.g. an initial fetch in
-`useReStale`) should treat `revoke` as authoritative if it arrives immediately after.
+always show `open` status for one tick before the `revoke` arrives. This should be documented
+as expected behavior, not treated as a bug. Any consumer that triggers side effects from `onOpen`
+(e.g. an initial fetch in `useReStale`) should treat `revoke` as authoritative if it arrives immediately after.
 
 ### 4. Server-side filtering
 
@@ -247,8 +245,7 @@ and the React hook, same as today.
 - Pubsub adapters — signal routing is unchanged.
 - The `X-ReStale-Target` response header — already set by both transport adapters; semantics
   unchanged.
-- Transport: still native `EventSource`. No move to `fetch()`-based streaming as part of this
-  change.
+- Transport: uses `sse.js` with HTTP status code and response header inspection.
 
 ---
 

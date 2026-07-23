@@ -87,6 +87,7 @@ import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = express()
 app.use(express.json())
+app.use(authenticateUserAndSession) // Require authentication & session middleware (populates req.user & req.session)
 
 const group = new SSEChannelGroup({
   channelDefaults: { target: ['swr', 'tanstack-query'] },
@@ -164,6 +165,7 @@ app.get('/sse', (c) => {
 ### Fastify
 
 ```ts
+import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = Fastify()

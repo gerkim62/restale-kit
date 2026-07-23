@@ -1,22 +1,27 @@
 import Fastify from 'fastify'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit'
-import { createTodoApi } from '@restale-kit-example/shared'
+import { AppSignalSchema, createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
+import type { AppSignal, ClientMeta } from '@restale-kit-example/shared'
 
 const app = Fastify()
-const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>({
+const group = new SSEChannelGroup<AppSignal, ClientMeta>({
   channelDefaults: { target: ['swr', 'tanstack-query'] },
 })
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta?.userId === userId)
-
 })
 const userId = (query: unknown) => (query as { userId: string }).userId
 
 app.get('/sse', (request, reply) => {
+  const parsed = UserIdSchema.safeParse((request.query as Record<string, unknown>)?.userId)
+  if (!parsed.success) {
+    return reply.code(401).send({ error: 'Unauthorized: invalid or missing session identity' })
+  }
+  const authenticatedUserId = parsed.data
   // Pass request/reply directly — attachChannel calls reply.hijack() automatically
   group.attachChannel(request, reply, {
-    meta: { userId: userId(request.query) },
+    signalSchema: AppSignalSchema,
+    meta: { userId: authenticatedUserId },
   })
 })
 

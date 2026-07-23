@@ -130,8 +130,10 @@ const group = new SSEChannelGroup<AppSignal, ClientMeta>({
 })
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
-  group.register(channel, { userId: req.user.id, role: req.user.role })
+  group.attachChannel(req, res, {
+    signalSchema: AppSignalSchema,
+    meta: { userId: req.user.id, role: req.user.role },
+  })
 })
 ```
 

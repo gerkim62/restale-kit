@@ -382,9 +382,12 @@ export class SSEChannelGroup<
     request: Request,
     options: ChannelSetupOptions<TSignal, TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
-    const { meta, topics, ...channelOpts } = options
+    const validatedMeta = this.validateMeta(options.meta)
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const result = toSSEResponse<TSignal>(request, channelOpts, this)
-    this.doRegister(result.channel, meta, topics)
+    this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
   }
 
@@ -402,25 +405,28 @@ export class SSEChannelGroup<
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TSignal, TMeta>
   ): { channel: SSEChannel<TSignal> } {
-    const { meta, topics, ...channelOpts } = options
+    const validatedMeta = this.validateMeta(options.meta)
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const channel = attachSSE<TSignal>(req, res, channelOpts, this)
-    this.doRegister(channel, meta, topics)
+    this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
   }
 
-  private doRegister(
+  private validateMeta(meta: TMeta | undefined): TMeta {
+    if (this.metaSchema) {
+      return validateStandardSchema(meta, this.metaSchema)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
+    return meta as TMeta
+  }
+
+  private doRegisterPrevalidated(
     channel: SSEChannel<TSignal>,
-    meta: TMeta | undefined,
+    validatedMeta: TMeta,
     topics?: string[]
   ): void {
-    let validatedMeta: TMeta
-    if (this.metaSchema) {
-      validatedMeta = validateStandardSchema(meta, this.metaSchema)
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
-      validatedMeta = meta as TMeta
-    }
-
     const topicsList = topics || []
     const topicsSet = new Set(topicsList)
 
@@ -505,7 +511,8 @@ export class SSEChannelGroup<
   ): void {
     const meta = args[0]
     const options = args[1]
-    this.doRegister(channel, meta, options?.topics)
+    const validatedMeta = this.validateMeta(meta)
+    this.doRegisterPrevalidated(channel, validatedMeta, options?.topics)
   }
 
   /** Deregisters a channel from the group. */

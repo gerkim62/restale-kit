@@ -22,13 +22,13 @@ restale-kit/
     │   ├── redis/
     │   ├── ably/
     │   └── pusher/
+    ├── testing/            # test utilities and test doubles
     ├── utils/              # internal constants, ID generation, and URL utilities
     └── test-fixtures/     # shared test doubles and network mocks
 ```
 
 
-The package has four stable top-level domains: `types`, `server`, `client`, and
-`pubsub`. Frameworks and providers are nested under the domain they extend.
+The package has five top-level entrypoint domains: `types`, `server`, `client`, `pubsub`, and `testing`. Frameworks and providers are nested under the domain they extend.
 
 | Import path | Source entrypoint |
 |---|---|
