@@ -8,7 +8,7 @@ The server side has two concerns:
 
 ## Establishing channels via `SSEChannelGroup`
 
-In v1.0, `SSEChannelGroup` is the single entry point for establishing and managing channels. Creating and registering channels occurs atomically in a single method call:
+`SSEChannelGroup` is the single entry point for establishing and managing channels. Creating and registering channels occurs atomically in a single method call:
 - `group.createChannel(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
 - `group.attachChannel(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
 
