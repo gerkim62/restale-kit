@@ -287,9 +287,28 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       const connectedAt = Date.now()
 
       // Validate the requested target before doing anything else.
-      // If it is unsupported, emit a structured revoke frame and close immediately.
+      // If it is unsupported or missing on a multi-target channel, emit a structured revoke frame and close immediately.
+      const supportedTargets = Array.isArray(target) ? target : [target]
+      if (requestedTarget === undefined && supportedTargets.length > 1) {
+        const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
+        console.warn(
+          `[WARN][createSSEChannel] Rejected connection: no target requested for multi-target channel [${supportedTargets.join(', ')}]. connectionId: ${safeConnectionId}.`
+        )
+        try {
+          controller.enqueue(
+            formatRevokeFrame('unsupported-target', {
+              requested: '',
+              supported: supportedTargets,
+            })
+          )
+        } catch {
+          // controller unusable — just close
+        }
+        closeInternal()
+        return
+      }
+
       if (requestedTarget !== undefined) {
-        const supportedTargets = Array.isArray(target) ? target : [target]
         // @ts-expect-error includes not present for SignalTarget type
         if (!supportedTargets.includes(requestedTarget)) {
           const safeRequestedTarget = requestedTarget.replace(/\r\n|\r|\n/g, '\\n')

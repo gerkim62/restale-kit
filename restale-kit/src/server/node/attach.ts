@@ -64,15 +64,19 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const channel = createSSEChannel<TSignal>(channelOptions)
 
   const effectiveTarget = channelOptions.target
-  const targetHeader = Array.isArray(effectiveTarget)
-    ? effectiveTarget.join(', ')
-    : (effectiveTarget ?? '')
+  const supportedTargets = Array.isArray(effectiveTarget)
+    ? effectiveTarget
+    : (effectiveTarget ? [effectiveTarget] : [])
+  const supportedHeader = supportedTargets.join(', ')
+  const activeTarget =
+    channelOptions.requestedTarget ??
+    (supportedTargets.length === 1 ? supportedTargets[0] : '')
 
   // Set SSE headers
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: targetHeader,
-    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: targetHeader,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: activeTarget,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedHeader,
   }
 
   actualRes.writeHead(200, headers)

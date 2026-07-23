@@ -77,7 +77,8 @@ describe('node attachSSE', () => {
     }))
   })
 
-  it('emits comma-separated X-ReStale-Target HTTP header when target array is specified', () => {
+  it('rejects connection on multi-target channel when requestedTarget is absent', async () => {
+    vi.useFakeTimers()
     const req = Object.assign(new EventEmitter(), {
       url: '/sse?__restale_cid__=req-multi-target',
       headers: {},
@@ -89,7 +90,28 @@ describe('node attachSSE', () => {
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       ...SSE_HEADERS,
-      'X-ReStale-Target': 'swr, tanstack-query',
+      'X-ReStale-Target': '',
+      'X-ReStale-Supported': 'swr, tanstack-query',
+    })
+
+    await vi.advanceTimersByTimeAsync(50)
+    expect(channel.state).toBe('closed')
+    vi.useRealTimers()
+  })
+
+  it('emits negotiated requested target in X-ReStale-Target HTTP header when target array and requestedTarget are specified', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse?__restale_cid__=req-multi-target-req&__restale_target__=tanstack-query',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+
+    expect(channel.requestedTarget).toBe('tanstack-query')
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      ...SSE_HEADERS,
+      'X-ReStale-Target': 'tanstack-query',
       'X-ReStale-Supported': 'swr, tanstack-query',
     })
   })

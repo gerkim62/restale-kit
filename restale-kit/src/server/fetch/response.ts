@@ -44,14 +44,18 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const channel = createSSEChannel<TSignal>(channelOptions)
 
   const effectiveTarget = channelOptions.target
-  const targetHeader = Array.isArray(effectiveTarget)
-    ? effectiveTarget.join(', ')
-    : (effectiveTarget ?? '')
+  const supportedTargets = Array.isArray(effectiveTarget)
+    ? effectiveTarget
+    : (effectiveTarget ? [effectiveTarget] : [])
+  const supportedHeader = supportedTargets.join(', ')
+  const activeTarget =
+    channelOptions.requestedTarget ??
+    (supportedTargets.length === 1 ? supportedTargets[0] : '')
 
   const headers: Record<string, string> = {
     ...SSE_HEADERS,
-    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: targetHeader,
-    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: targetHeader,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: activeTarget,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedHeader,
   }
 
   const response = new Response(channel.stream, {

@@ -1070,7 +1070,7 @@ describe('channel-group', () => {
 
   it('delivers raw signal on broadcast to channel which frames multi-target signals', async () => {
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: ['swr', 'tanstack-query'] })
+    const ch = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
     group.register(ch)
 
     const reader = ch.stream.getReader()
@@ -1081,7 +1081,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["items"]},{"target":"tanstack-query","queryKey":["items"]}]\n\n'
+      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
     )
   })
 

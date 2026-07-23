@@ -133,11 +133,12 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"target":"swr","key":["c"]}\n\n')
   })
 
-  it('Fetch: toSSEResponse emits X-ReStale-Target header', () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-target')
+  it('Fetch: toSSEResponse emits X-ReStale-Target and X-ReStale-Supported headers', () => {
+    const request = new Request('https://example.com/sse?__restale_cid__=e2e-target&__restale_target__=swr')
     const { response, channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
-    expect(response.headers.get('x-restale-target')).toBe('swr, tanstack-query')
+    expect(response.headers.get('x-restale-target')).toBe('swr')
+    expect(response.headers.get('x-restale-supported')).toBe('swr, tanstack-query')
   })
 })

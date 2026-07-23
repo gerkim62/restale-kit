@@ -427,15 +427,19 @@ describe('channel', () => {
     expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
-  it('natively fans out multi-target array when channel is configured with target array', async () => {
+  it('rejects connection when target array is specified without requestedTarget', async () => {
     const channel = createSSEChannel({ target: ['swr', 'tanstack-query'] })
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
 
-    channel.invalidate({ key: ['items', 1] })
-    const text = await readStreamChunk(channel.stream)
+    const reader = channel.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+
+    const text = new TextDecoder().decode(value)
     expect(text).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["items",1]},{"target":"tanstack-query","queryKey":["items",1]}]\n\n'
+      'event: revoke\ndata: {"reason":"unsupported-target","requested":"","supported":["swr","tanstack-query"]}\n\n'
     )
+    expect(channel.state).toBe('closed')
   })
 })
 
@@ -755,21 +759,19 @@ describe('processTargetSignals', () => {
 
   // ── Multi-target wire format on channel.invalidate ─────────────────────────
 
-  it('includes RTK target in multi-target fan-out', async () => {
-    const channel = createSSEChannel({ target: ['swr', 'rtk-query'] })
+  it('includes RTK target in multi-target channel when requested', async () => {
+    const channel = createSSEChannel({ target: ['swr', 'rtk-query'], requestedTarget: 'rtk-query' })
     channel.invalidate({ key: [], tags: [{ type: 'Todo' }] })
     const text = await readStreamChunk(channel.stream)
-    expect(text).toContain('"target":"swr"')
     expect(text).toContain('"target":"rtk-query"')
     expect(text).toContain('"tags":[{"type":"Todo"}]')
   })
 
-  it('includes generic target in multi-target fan-out', async () => {
-    const channel = createSSEChannel({ target: ['generic', 'tanstack-query'] })
+  it('includes generic target in multi-target channel when requested', async () => {
+    const channel = createSSEChannel({ target: ['generic', 'tanstack-query'], requestedTarget: 'generic' })
     channel.invalidate({ key: ['items'] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toContain('"target":"generic"')
-    expect(text).toContain('"target":"tanstack-query"')
   })
 })
 

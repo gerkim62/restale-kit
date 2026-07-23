@@ -39,7 +39,7 @@ GET /sse?__restale_cid__=abc123&__restale_target__=swr
 
 - Parameter name: `__restale_target__`
 - Single value only (not an array). One connection = one target.
-- Optional. If absent, behavior is unchanged (server sends all targets, no filtering).
+- Required when connecting to a channel configured with multiple supported targets. If absent on a multi-target channel, the server rejects the connection with an `unsupported-target` revocation frame (`reason: 'unsupported-target'`). On single-target channels, defaults to the channel's sole target if absent.
 - The client sends whatever is in `ClientOptions.target`. Framework adapters (`useSwrAdapter`,
   `useTanstackQueryAdapter`) already default `target` — they will now also append the param
   automatically.
