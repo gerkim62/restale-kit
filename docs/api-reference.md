@@ -134,7 +134,7 @@ class SSEChannelGroup<
     metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter
     eventStore?: EventStore<TSignal>
-    eventBufferCapacity?: number
+    eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
     controlTopic?: string                             // default '__restale_control__'
     channelDefaults?: ChannelDefaults                 // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
   })
@@ -142,7 +142,7 @@ class SSEChannelGroup<
   readonly size: number
   readonly controlTopic: string
   readonly eventStore?: EventStore<TSignal>
-  readonly channelDefaults?: ChannelDefaults<TSignal>
+  readonly channelDefaults?: ChannelDefaults
 
   /**
    * Creates an SSE channel from a Fetch API Request, registers it with the group, and returns { response, channel }.

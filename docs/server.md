@@ -119,7 +119,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
-| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
+| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
 | `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |

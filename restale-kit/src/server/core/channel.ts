@@ -39,7 +39,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
   lastEventId?: string
   /** Shared EventStore for recording history and replaying missed events upon reconnect. */
   eventStore?: EventStore
-  /** Capacity of automatically instantiated EventStore if `eventStore` is not provided. */
+  /** Capacity of automatically instantiated EventStore if `eventStore` is not provided. Defaults to 50 when `lifetime` options are set without an explicit `eventStore` or capacity. */
   eventBufferCapacity?: number
   /** Custom ID generator for assigned event frames. Ignored if an external `eventStore` is provided. */
   idGenerator?: () => string
