@@ -33,7 +33,7 @@ export interface FastifyRequestLike {
 export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions<TSignal>,
+  options: SSEChannelOptions,
   group?: SSEChannelGroup<TSignal>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
@@ -51,7 +51,7 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
-  const baseOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelOptions = {
     ...options,
     lastEventId,
     connectionId,

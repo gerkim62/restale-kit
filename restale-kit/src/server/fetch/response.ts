@@ -21,7 +21,7 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
  */
 export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>,
+  options: SSEChannelOptions,
   group?: SSEChannelGroup<TSignal>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
@@ -31,7 +31,7 @@ export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSigna
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
-  const baseOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelOptions = {
     ...options,
     lastEventId,
     connectionId,

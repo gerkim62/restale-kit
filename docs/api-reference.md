@@ -204,7 +204,7 @@ import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 
 ```ts
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions
 ): SSEChannel<TSignal>
 ```
 
@@ -224,7 +224,7 @@ import type { InvalidateSignal } from 'restale-kit/client' // re-exported for co
 class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   extends EventTarget
 {
-  constructor(url: string, options?: ClientOptions<TSignal>)
+  constructor(url: string, options?: ClientOptions)
   get connectionId(): string
   get endpointUrl(): string      // the URL passed to the constructor (without __restale_cid__)
   get status(): ConnectionStatus
@@ -241,7 +241,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   // standard removeEventListener overloads also available
 }
 
-interface ClientOptions<TSignal> {
+interface ClientOptions {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
@@ -303,7 +303,7 @@ function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
   options: UseReStaleOptions<TSignal>
 ): UseReStaleResult
 
-interface UseReStaleOptions<TSignal> extends ClientOptions<TSignal> {
+interface UseReStaleOptions<TSignal> extends ClientOptions {
   disabled?: boolean                // default false
   onInvalidate: (signal: TSignal | TSignal[]) => void  // required
   /**

@@ -37,7 +37,7 @@ import type {
 export interface UseReStaleOptions<
   TTarget extends SignalTarget,
   TSignal extends InvalidateSignal = InvalidateSignal,
-> extends Omit<ClientOptions<TSignal>, 'target'> {
+> extends Omit<ClientOptions, 'target'> {
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
   /**

@@ -1,5 +1,4 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -11,7 +10,6 @@ import type {
 } from '@/client/core/client-contracts.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
-import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
@@ -63,7 +61,7 @@ export class SSEInvalidatorClient<
   private readonly nativeAutoReconnect: boolean
   private readonly jsBackoffAutoReconnect: boolean
   private readonly maxRetries: number
-  private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
+  private readonly reconnectOptions: ClientOptions['reconnect']
   private readonly withCredentials: boolean
   private readonly debug: boolean
   private readonly currentConnectionId: string
@@ -83,7 +81,7 @@ export class SSEInvalidatorClient<
   } | null = null
   private currentLastEventId: string | null = null
 
-  constructor(url: string, opts?: ClientOptions<TSignal>) {
+  constructor(url: string, opts?: ClientOptions) {
     super()
     this.currentConnectionId = generateUUID()
     this.url = url

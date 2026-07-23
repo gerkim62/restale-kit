@@ -1,5 +1,5 @@
 import type { SSEChannelOptions } from '@/server/core/channel.js'
-import type { InvalidateSignal, LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
+import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -29,10 +29,10 @@ export interface ChannelDefaults {
  * If a channel sets only `{ ttlMs: 60_000 }`, it still inherits the group's `onDeadline`
  * default, because it never touched that field. A whole-object replace would silently drop it.
  */
-export function mergeChannelDefaults<TSignal extends InvalidateSignal>(
-  channelOptions: SSEChannelOptions<TSignal>,
+export function mergeChannelDefaults(
+  channelOptions: SSEChannelOptions,
   defaults: ChannelDefaults | undefined
-): SSEChannelOptions<TSignal> {
+): SSEChannelOptions {
   if (defaults === undefined) return channelOptions
 
   let merged = channelOptions

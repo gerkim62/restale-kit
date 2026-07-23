@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
-import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
+import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
@@ -13,10 +13,7 @@ import { attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/ser
 /**
  * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
  */
-export type ChannelSetupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-> = Omit<SSEChannelOptions<TSignal>, 'target'> & {
+export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'target'> & {
   target?: SignalTarget | SignalTarget[]
   topics?: string[]
 } & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
@@ -158,10 +155,7 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
-export interface SSEChannelGroupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-> {
+export interface SSEChannelGroupOptions<TMeta = unknown> {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: SignalTarget | SignalTarget[]
   metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -205,7 +199,7 @@ export class SSEChannelGroup<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TSignal, TMeta> = {}) {
+  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
 
@@ -388,7 +382,7 @@ export class SSEChannelGroup<
    */
   createChannel(
     request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }
@@ -411,7 +405,7 @@ export class SSEChannelGroup<
   attachChannel(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TMeta>
   ): { channel: SSEChannel<TSignal> } {
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }

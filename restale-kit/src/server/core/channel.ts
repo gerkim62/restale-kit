@@ -28,7 +28,7 @@ import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS, FRAME_GUARD_DEFAULTS } from '@/util
 /**
  * Configuration options for `createSSEChannel`.
  */
-export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+export interface SSEChannelOptions {
   /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
   target?: SignalTarget | SignalTarget[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
@@ -159,7 +159,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
  * pipe this stream into a response.
  */
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions<TSignal>
+  options: SSEChannelOptions
 ): SSEChannel<TSignal> {
   if (options.target === undefined) {
     throw new Error('[createSSEChannel] target is required.')

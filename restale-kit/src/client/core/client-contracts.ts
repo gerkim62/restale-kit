@@ -1,5 +1,4 @@
 import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
-import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
 /**
  * A phantom brand that marks an `onInvalidate` callback as having been produced
@@ -98,7 +97,7 @@ export interface AutoReconnectOptions {
 /**
  * Configuration options for `SSEInvalidatorClient`.
  */
-export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+export interface ClientOptions {
   /**
    * Whether to automatically reconnect on failure. Default: true.
    *

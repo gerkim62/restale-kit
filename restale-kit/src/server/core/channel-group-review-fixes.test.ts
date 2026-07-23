@@ -159,7 +159,7 @@ describe('review-findings: meta validation before transport', () => {
     expect(group.size).toBe(1)
   })
 
-  it('attachChannel auto-deregisters on channel close', async () => {
+  it('attachChannel auto-deregisters on channel close', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
