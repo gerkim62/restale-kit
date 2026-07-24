@@ -329,9 +329,9 @@ await client.connect()
 
 ---
 
-## 🛡️ Standard Schema Validation (Optional)
+## 🛡️ Signal Typing & Validation
 
-Pass a Zod (or any Standard Schema-compatible) schema to enforce types at compile time and validate at runtime.
+Define custom signal types to enforce type safety at compile time, complemented by built-in client-side structural validation at runtime.
 
 **Server:**
 ```ts

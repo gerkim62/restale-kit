@@ -1022,10 +1022,7 @@ declare namespace StandardSchemaV1 {
 
 ### Server-side validation with Zod
 
-By providing a schema to `attachSSE` or `toSSEResponse`, the channel is typed with the inferred
-schema output, and all inputs to `channel.invalidate()` are validated at runtime. Using
-`SSEChannelGroup` with a metadata schema validation allows enforcing connection metadata types at the
-same time:
+Signal schemas or types provide compile-time type safety for `channel.invalidate()`. Only `metaSchema` passed to `SSEChannelGroup` performs runtime validation (on connection metadata at registration time):
 
 ```ts
 import { z } from 'zod'
@@ -1048,7 +1045,7 @@ const ClientMetaSchema = z.object({
 
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
-// Create group with typed signals and metadata validation
+// Create group with typed signals and metadata validation (only metaSchema performs runtime validation)
 const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
   metaSchema: ClientMetaSchema,
 })
@@ -1056,7 +1053,7 @@ const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
 app.get('/sse', (req, res) => {
   const channel = attachSSE(req, res, { target: 'tanstack-query' })
   
-  // Validated synchronously upon registration; throws SchemaValidationError if invalid
+  // Metadata is validated synchronously upon registration; throws SchemaValidationError if invalid
   group.register(channel, { userId: req.user.id })
   
   // Enforces type safety at compile time:
