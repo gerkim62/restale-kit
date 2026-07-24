@@ -1,5 +1,4 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -11,7 +10,6 @@ import type {
 } from '@/client/core/client-contracts.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { calculateBackoff } from '@/client/core/backoff.js'
-import { SchemaValidationError } from '@/types/errors.js'
 import { generateUUID } from '@/utils/id.js'
 import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
@@ -63,8 +61,7 @@ export class SSEInvalidatorClient<
   private readonly nativeAutoReconnect: boolean
   private readonly jsBackoffAutoReconnect: boolean
   private readonly maxRetries: number
-  private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
-  private readonly signalSchema?: StandardSchemaV1<unknown, TSignal>
+  private readonly reconnectOptions: ClientOptions['reconnect']
   private readonly withCredentials: boolean
   private readonly debug: boolean
   private readonly currentConnectionId: string
@@ -84,7 +81,7 @@ export class SSEInvalidatorClient<
   } | null = null
   private currentLastEventId: string | null = null
 
-  constructor(url: string, opts?: ClientOptions<TSignal>) {
+  constructor(url: string, opts?: ClientOptions) {
     super()
     this.currentConnectionId = generateUUID()
     this.url = url
@@ -112,7 +109,6 @@ export class SSEInvalidatorClient<
     }
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
-    this.signalSchema = opts?.signalSchema
     this.withCredentials = opts?.withCredentials ?? false
     this.debug = opts?.debug ?? false
 
@@ -441,33 +437,15 @@ export class SSEInvalidatorClient<
     es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
       let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
       try {
-        // Steps 1–6: structural validation
+        // Built-in structural validation
         validated = validatePayload(event.data)
-
-        // Step 7: optional schema validation
-        if (this.signalSchema) {
-          const signals = Array.isArray(validated) ? validated : [validated]
-          const results: TSignal[] = []
-
-          for (const signal of signals) {
-            const value = validateStandardSchema(signal, this.signalSchema)
-            results.push(value)
-          }
-
-          // Step 8: emit validated, typed payload
-          const payload = Array.isArray(validated) ? results : results[0]
-          this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: payload }))
-        } else {
-          // No schema — emit as-is after structural validation
-          this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
-        }
+        this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
 
         if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
           this.currentLastEventId = event.lastEventId
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))
-        const issues = err instanceof SchemaValidationError ? err.issues : undefined
         // The raw incoming event payload that failed validation or processing
         console.error(
           "[ERROR][wireInvalidateListener] Failed to process invalidate event",
@@ -475,7 +453,6 @@ export class SSEInvalidatorClient<
           "\n  attempt:", this.attempt,
           "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
           "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
-          ...(issues ? ["\n  schemaIssues:", JSON.stringify(issues, null, 2)] : []),
           "\n  error:", error.stack || error.message
         )
         const message = error.message

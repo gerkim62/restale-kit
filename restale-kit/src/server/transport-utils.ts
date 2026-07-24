@@ -1,4 +1,4 @@
-import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SSE_HEADERS, SSE_RESPONSE_HEADERS } from '@/utils/constants.js'
 
 /**
  * Maximum accepted byte length for a Last-Event-ID header value.
@@ -75,4 +75,27 @@ export function extractRequestedTarget(searchParams: URLSearchParams): string | 
   // Return the raw string — the channel validates it against its supported set
   // and issues an unsupported-target revoke if unrecognized.
   return raw
+}
+
+/**
+ * Builds the SSE target and supported headers for Node and Fetch transport adapters.
+ */
+export function buildSSETargetHeaders(channelOptions: {
+  target?: string | string[]
+  requestedTarget?: string
+}): Record<string, string> {
+  const effectiveTarget = channelOptions.target
+  const supportedTargets = Array.isArray(effectiveTarget)
+    ? effectiveTarget
+    : (effectiveTarget ? [effectiveTarget] : [])
+  const supportedHeader = supportedTargets.join(', ')
+  const activeTarget =
+    channelOptions.requestedTarget ??
+    (supportedTargets.length === 1 ? supportedTargets[0] : '')
+
+  return {
+    ...SSE_HEADERS,
+    [SSE_RESPONSE_HEADERS.RESTALE_TARGET]: activeTarget,
+    [SSE_RESPONSE_HEADERS.RESTALE_SUPPORTED]: supportedHeader,
+  }
 }

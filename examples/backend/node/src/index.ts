@@ -1,14 +1,20 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { InvalidateSignal } from 'restale-kit'
-import { createTodoApi } from '@restale-kit-example/shared'
+import { createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
+import type { AppSignal, ClientMeta } from '@restale-kit-example/shared'
 
-const group = new SSEChannelGroup<InvalidateSignal, { userId: string }>({
+const group = new SSEChannelGroup<AppSignal, ClientMeta>({
   channelDefaults: { target: ['swr', 'tanstack-query'] },
 })
 const todos = createTodoApi((userId) => {
   group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
 })
+
+function getAuthenticatedUserId(req: IncomingMessage): string | null {
+  const authHeader = req.headers['x-user-id'] ?? req.headers['authorization']
+  const parsed = UserIdSchema.safeParse(authHeader)
+  return parsed.success ? parsed.data : null
+}
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {
   let body = ''
@@ -24,25 +30,28 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', 'http://localhost:3003')
-    const userId = url.searchParams.get('userId') as string
+    const queryUserId = url.searchParams.get('userId') as string
 
     if (req.method === 'GET' && url.pathname === '/sse') {
-      group.attachChannel(req, res, { meta: { userId } })
+      const authUserId = getAuthenticatedUserId(req) ?? (UserIdSchema.safeParse(queryUserId).success ? queryUserId : 'ada')
+      group.attachChannel(req, res, {
+        meta: { userId: authUserId },
+      })
       return
     }
-    if (req.method === 'GET' && url.pathname === '/todos') return sendJson(res, 200, todos.getTodos(userId))
+    if (req.method === 'GET' && url.pathname === '/todos') return sendJson(res, 200, todos.getTodos(queryUserId))
     if (req.method === 'POST' && url.pathname === '/todos') {
       const { text } = await readJson<{ text: string }>(req)
-      return sendJson(res, 201, todos.create(userId, text))
+      return sendJson(res, 201, todos.create(queryUserId, text))
     }
 
     const match = url.pathname.match(/^\/todos\/([^/]+)$/)
     if (match && req.method === 'PATCH') {
-      const todo = todos.update(userId, match[1], await readJson<{ text?: string; completed?: boolean }>(req))
+      const todo = todos.update(queryUserId, match[1], await readJson<{ text?: string; completed?: boolean }>(req))
       return todo ? sendJson(res, 200, todo) : sendJson(res, 404, { error: 'Todo not found' })
     }
     if (match && req.method === 'DELETE') {
-      if (!todos.delete(userId, match[1])) return sendJson(res, 404, { error: 'Todo not found' })
+      if (!todos.delete(queryUserId, match[1])) return sendJson(res, 404, { error: 'Todo not found' })
       res.writeHead(204).end()
       return
     }

@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
-import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
+import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
@@ -13,10 +13,7 @@ import { attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/ser
 /**
  * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
  */
-export type ChannelSetupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-> = Omit<SSEChannelOptions<TSignal>, 'target'> & {
+export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'target'> & {
   target?: SignalTarget | SignalTarget[]
   topics?: string[]
 } & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
@@ -158,9 +155,9 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
-export interface SSEChannelGroupOptions<
-  TMeta = unknown,
-> {
+export interface SSEChannelGroupOptions<TMeta = unknown> {
+  /** Target discriminator or target array for automatic signal tagging across channels in this group. */
+  target?: SignalTarget | SignalTarget[]
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   pubsub?: PubSubAdapter
   eventStore?: EventStore
@@ -168,8 +165,8 @@ export interface SSEChannelGroupOptions<
   controlTopic?: string
   /**
    * Fallback defaults for Frame Guard options that are typically uniform across an
-   * entire app (`lifetime`, `guardKeepalive`), so they don't need to be repeated at
-   * every `attachSSE()` / `toSSEResponse()` call site.
+   * entire app (`target`, `lifetime`, `guardKeepalive`), so they don't
+   * need to be repeated at every `attachSSE()` / `toSSEResponse()` call site.
    *
    * A channel-level value always wins over a group default — the default only fills
    * a gap left by the channel. `beforeFrame` is per-connection by nature and is
@@ -205,7 +202,12 @@ export class SSEChannelGroup<
   constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
-    this.channelDefaults = options.channelDefaults
+
+    const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
+    if (options.target !== undefined && mergedDefaults.target === undefined) {
+      mergedDefaults.target = options.target
+    }
+    this.channelDefaults = Object.keys(mergedDefaults).length > 0 ? mergedDefaults : undefined
 
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
@@ -380,11 +382,14 @@ export class SSEChannelGroup<
    */
   createChannel(
     request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
-    const { meta, topics, ...channelOpts } = options
+    const validatedMeta = this.validateMeta(options.meta)
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const result = toSSEResponse<TSignal>(request, channelOpts, this)
-    this.doRegister(result.channel, meta, topics)
+    this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
   }
 
@@ -400,27 +405,30 @@ export class SSEChannelGroup<
   attachChannel(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TMeta>
   ): { channel: SSEChannel<TSignal> } {
-    const { meta, topics, ...channelOpts } = options
+    const validatedMeta = this.validateMeta(options.meta)
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const channel = attachSSE<TSignal>(req, res, channelOpts, this)
-    this.doRegister(channel, meta, topics)
+    this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
   }
 
-  private doRegister(
+  private validateMeta(meta: TMeta | undefined): TMeta {
+    if (this.metaSchema) {
+      return validateStandardSchema(meta, this.metaSchema)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
+    return meta as TMeta
+  }
+
+  private doRegisterPrevalidated(
     channel: SSEChannel<TSignal>,
-    meta: TMeta | undefined,
+    validatedMeta: TMeta,
     topics?: string[]
   ): void {
-    let validatedMeta: TMeta
-    if (this.metaSchema) {
-      validatedMeta = validateStandardSchema(meta, this.metaSchema)
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
-      validatedMeta = meta as TMeta
-    }
-
     const topicsList = topics || []
     const topicsSet = new Set(topicsList)
 
@@ -505,7 +513,8 @@ export class SSEChannelGroup<
   ): void {
     const meta = args[0]
     const options = args[1]
-    this.doRegister(channel, meta, options?.topics)
+    const validatedMeta = this.validateMeta(meta)
+    this.doRegisterPrevalidated(channel, validatedMeta, options?.topics)
   }
 
   /** Deregisters a channel from the group. */
@@ -673,12 +682,10 @@ export class SSEChannelGroup<
           this.deregister(channel)
         } else {
           const err = error instanceof Error ? error : new Error(String(error))
-          const issues = error instanceof SchemaValidationError ? error.issues : undefined
           console.error(
             "[ERROR][SSEChannelGroup.broadcast] Failed to invalidate channel",
             "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
             "\n  signal:", JSON.stringify(signal, null, 2).slice(0, 500),
-            issues ? "\n  schemaIssues: " + JSON.stringify(issues, null, 2) : "",
             "\n  error:", err.stack || err.message
           )
           errors.push(error)

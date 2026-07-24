@@ -59,7 +59,7 @@ app.post('/api/todos', async (req, res) => {
 app.listen(3000)
 ```
 
-> **Note:** `attachSSE` requires the `__restale_cid__` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
+> **Note:** `group.attachChannel` / `group.createChannel` requires the `__restale_cid__` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
 
 ### 2. Client (React + TanStack Query)
 
@@ -86,12 +86,15 @@ function App() {
 
 That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
 
-> **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.register(channel)`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
+> **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachChannel(req, res)`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
 >
 > ```ts
+> app.use(authMiddleware) // auth middleware populates req.user
+>
 > app.get('/sse', (req, res) => {
->   const channel = attachSSE(req, res, { target: 'tanstack-query' })
->   group.register(channel, { userId: req.user.id }) // ← add metadata now
+>   group.attachChannel(req, res, {
+>     meta: { userId: req.user.id }, // ← add metadata now
+>   })
 > })
 > ```
 >

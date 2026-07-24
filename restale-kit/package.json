@@ -134,7 +134,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@types/node": "*",
+    "@types/node": "^22.0.0",
     "sse.js": "^2.8.0"
   }
 }

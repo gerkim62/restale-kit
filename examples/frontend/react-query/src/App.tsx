@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
 import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-import { AppSignalSchema, DemoUsers, type AppSignal, type DemoUser, type Todo } from '@restale-kit-example/shared'
+import { DemoUsers, type AppSignal, type DemoUser, type Todo } from '@restale-kit-example/shared'
 import './App.css'
 
 const client = new QueryClient({
@@ -22,8 +22,7 @@ function TodoApp({ user, signOut }: { user: DemoUser; signOut: () => void }) {
     },
   })
   const onInvalidate = useTanstackQueryAdapter<AppSignal>(client)
-  const { connection } = useReStale<AppSignal>(`/api/sse?userId=${user.id}`, {
-    signalSchema: AppSignalSchema,
+  const { connection } = useReStale(`/api/sse?userId=${user.id}`, {
     onInvalidate,
   })
 

@@ -44,6 +44,7 @@ restale-kit/
 │   │   ├── react/        # useReStale hook
 │   │   ├── swr/          # SWR integration
 │   │   └── tanstack-query/ # TanStack Query integration
+│   ├── testing/          # test utilities and test doubles
 │   └── pubsub/
 │       ├── core/         # contract and shared utilities
 │       ├── redis/
@@ -285,7 +286,6 @@ interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal>
   target: SignalTarget | SignalTarget[] // Required target discriminator or target array for multi-target fanout
   keepaliveIntervalMs?: number   // default 0 (disabled)
   retryIntervalMs?: number       // optional retry interval in ms for browser EventSource
-  signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   lastEventId?: string           // Last-Event-ID from the reconnecting client
   eventStore?: EventStore<TSignal> // shared store for recording history and replaying missed events
   eventBufferCapacity?: number   // auto-creates an EventStore with this capacity if eventStore is not provided
@@ -303,16 +303,6 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 ```
 
 `invalidate()` returns the event ID assigned to the frame. By default without an event store or buffer, IDs are absent or empty (`''`). Caller-supplied `customId` or custom `idGenerator` values may still be emitted without an event store, but such IDs cannot be replayed without history. When an `eventStore` or `eventBufferCapacity` is configured, IDs are recorded and used for `Last-Event-ID` replay upon reconnect.
-
-When `signalSchema` is provided, `invalidate()` validates each signal (unwrapping arrays) via
-`signalSchema['~standard'].validate(signal)` before framing. If the result contains `issues`,
-`invalidate()` throws `SchemaValidationError`. If the result is a `Promise`, `invalidate()` throws
-`SchemaValidationError` with message `"async schemas are not supported"` — the channel lifecycle
-is synchronous.
-
-When `signalSchema` is omitted, `invalidate()` frames the signal as-is with no validation overhead
-(identical to the current behavior). The generic defaults to `InvalidateSignal`, so existing code
-that doesn't pass a schema compiles unchanged.
 
 #### Event history and replay
 
@@ -612,7 +602,6 @@ type RevokeEventDetail =
 interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   reconnect?: ReconnectOptions
-  signalSchema?: StandardSchemaV1<unknown, TSignal>  // optional — no schema = no validation
   withCredentials?: boolean  // default false — include cookies/credentials in the EventSource request
   onRevoke?: (detail: RevokeEventDetail) => void  // callback invoked on terminal connection revocation
   target?: SignalTarget      // optional — overrides target auto-inferred from the adapter brand
@@ -714,27 +703,16 @@ event. A payload that fails validation emits `error` instead.
 5. If `action` is present, it must be a value valid for the detected target type's action union — otherwise error.
 6. **Extra unknown fields are ignored** — forward-compatible. A future protocol version can add
    optional fields without breaking existing clients.
-7. If `signalSchema` is provided: for each signal in the batch, call
-   `signalSchema['~standard'].validate(signal)`. If the result is a `Promise`, emit error
-   (`"async schemas are not supported"`). If `result.issues` is truthy, emit error
-   (`SchemaValidationError`). Otherwise use `result.value` as the typed output.
-8. Emit `'invalidate'` event with the validated, typed payload.
-
-Steps 1–6 (built-in structural validation) run **before** the user's schema (step 7). This means
-the schema can assume it's receiving a structurally valid `InvalidateSignal` and only needs to
-narrow the type further (e.g., constrain `key` to specific shapes).
+7. Emit `'invalidate'` event with the validated payload.
 
 #### Server-side validation and frame guards
 
 On the server side, the validation pipeline for `channel.invalidate()` is:
 
 1. Check if the channel state is `'closed'` — if so, throw `ChannelClosedError` (before any other checks).
-2. If `signalSchema` is provided, validate the signal. Throw `SchemaValidationError` on failure.
-3. If `beforeFrame` (frame guard) is configured, evaluate it synchronously. Return `skip` to drop the frame, `close` to revoke and close the channel, or `send` to proceed.
-   - When `beforeFrame` returns `{ action: 'close' }`, `invalidate()` calls `channel.revoke(reason)` and then throws `ChannelClosedError`. Callers that wrap `invalidate()` in a `try/catch` should handle this case alongside the schema-error case.
-4. Enqueue the SSE frame into the stream.
-
-**Ordering:** Schema validation (step 2) runs **before** `beforeFrame` (step 3). If the signal fails schema validation, `beforeFrame` is never called — there is no valid signal to pass to the guard.
+2. If `beforeFrame` (frame guard) is configured, evaluate it synchronously. Return `skip` to drop the frame, `close` to revoke and close the channel, or `send` to proceed.
+   - When `beforeFrame` returns `{ action: 'close' }`, `invalidate()` calls `channel.revoke(reason)` and then throws `ChannelClosedError`.
+3. Enqueue the SSE frame into the stream.
 
 ---
 
@@ -1044,10 +1022,7 @@ declare namespace StandardSchemaV1 {
 
 ### Server-side validation with Zod
 
-By providing a schema to `attachSSE` or `toSSEResponse`, the channel is typed with the inferred
-schema output, and all inputs to `channel.invalidate()` are validated at runtime. Using
-`SSEChannelGroup` with a metadata schema validation allows enforcing connection metadata types at the
-same time:
+Signal schemas or types provide compile-time type safety for `channel.invalidate()`. Only `metaSchema` passed to `SSEChannelGroup` performs runtime validation (on connection metadata at registration time):
 
 ```ts
 import { z } from 'zod'
@@ -1070,57 +1045,21 @@ const ClientMetaSchema = z.object({
 
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
-// Create group validating both signals and connection metadata
+// Create group with typed signals and metadata validation (only metaSchema performs runtime validation)
 const group = new SSEChannelGroup<TodoSignal, ClientMeta>({
   metaSchema: ClientMetaSchema,
 })
 
 app.get('/sse', (req, res) => {
-  // Pass schema to attachSSE to enforce it on the channel
-  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: TodoSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   
-  // Validated synchronously upon registration; throws SchemaValidationError if invalid
+  // Metadata is validated synchronously upon registration; throws SchemaValidationError if invalid
   group.register(channel, { userId: req.user.id })
   
   // Enforces type safety at compile time:
   channel.invalidate({ key: ['todos', { userId: '123' }] }) // ✅ Valid type
   // channel.invalidate({ key: ['posts'] }) // ❌ TypeScript compilation error
 })
-```
-
-At runtime, `channel.invalidate()` validates the signal against `TodoSignalSchema`.
-- If validation succeeds, the signal is framed and sent.
-- If validation fails, it throws a `SchemaValidationError`.
-- If the schema contains asynchronous validation logic (which returns a `Promise`), the call
-  throws a `SchemaValidationError` with the message `"async schemas are not supported"` since
-  SSE transmission is synchronous.
-
-### Client-side validation with Zod
-
-Similarly, providing a schema on the client restricts the events received by the cache adapter and
-ensures untrusted wire events match the expected structure:
-
-```ts
-import { z } from 'zod'
-import { useReStale } from 'restale-kit/react'
-import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-
-const AppSignalSchema = z.object({
-  key: z.array(z.unknown()),
-  exact: z.boolean().optional(),
-  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
-})
-
-function App() {
-  const queryClient = useQueryClient()
-  const onInvalidate = useTanstackQueryAdapter(queryClient)
-
-  // Hook inherits the schema's type
-  useReStale('/sse', {
-    signalSchema: AppSignalSchema,
-    onInvalidate, // ✅ Safely typed branded callback
-  })
-}
 ```
 
 ---

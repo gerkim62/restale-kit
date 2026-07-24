@@ -3,7 +3,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { SSEChannelGroup } from 'restale-kit/server'
 import {
-  AppSignalSchema,
   CreateTodoSchema,
   createTodoApi,
   type AppSignal,
@@ -25,7 +24,6 @@ app.use('*', cors())
 app.get('/sse', (c) => {
   const userId = UserIdSchema.parse(c.req.query('userId'))
   const { response } = group.createChannel(c.req.raw, {
-    signalSchema: AppSignalSchema,
     meta: { userId },
   })
   return response

@@ -56,6 +56,8 @@ const group = new SSEChannelGroup({
   pubsub: redisPubSubAdapter(redis),
 })
 
+app.use(authenticateUser) // Ensure req.user is populated by auth middleware
+
 app.get('/sse', (req, res) => {
   group.attachChannel(req, res, {
     topics: [`user:${req.user.id}`, 'global'],

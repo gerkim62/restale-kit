@@ -48,15 +48,6 @@ describe('channel', () => {
     expect(() => channel.invalidate({ key: ['test'] })).toThrow(ChannelClosedError)
   })
 
-  it('validates signals against signalSchema before enqueuing batch', () => {
-    const schema = createInvalidSchema('Invalid key')
-    const channel = createSSEChannel({ target: 'swr', signalSchema: schema })
-
-    expect(() => channel.invalidate([{ key: ['valid'] }, { key: ['invalid'] }])).toThrow(
-      SchemaValidationError
-    )
-  })
-
   it('enqueues framed invalidate event bytes into stream', async () => {
     const channel = createSSEChannel({ target: 'swr' })
     channel.invalidate({ key: ['items', 1] })
@@ -178,25 +169,6 @@ describe('channel', () => {
     )
 
     consoleSpy.mockRestore()
-  })
-
-  it('throws ChannelClosedError BEFORE schema validation when channel is closed', () => {
-    const schemaSpy = vi.fn().mockReturnValue({ value: { key: ['test'] } })
-    const schema = {
-      '~standard': {
-        version: 1 as const,
-        vendor: 'test',
-        validate: schemaSpy,
-      },
-    }
-
-    const channel = createSSEChannel({ target: 'swr', signalSchema: schema as any })
-    channel.close()
-
-    // Must throw ChannelClosedError, not SchemaValidationError
-    expect(() => channel.invalidate({ key: ['test'] } as any)).toThrow(ChannelClosedError)
-    // Schema should never have been consulted
-    expect(schemaSpy).not.toHaveBeenCalled()
   })
 
   it('sends a full-invalidate frame when lastEventId is evicted or unknown (stale cursor)', async () => {
@@ -1111,23 +1083,6 @@ describe('Frame Guard — beforeFrame', () => {
       expect.any(String),
     )
     warnSpy.mockRestore()
-  })
-
-  it('schema validation runs before beforeFrame', () => {
-    const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
-    const channel = createSSEChannel({
-      target: 'swr',
-      signalSchema: {
-        '~standard': {
-          version: 1 as const,
-          vendor: 'test',
-          validate: () => ({ issues: [{ message: 'invalid' }] }),
-        },
-      },
-      beforeFrame: guardSpy,
-    })
-    expect(() => channel.invalidate({ key: ['x'] } as any)).toThrow()
-    expect(guardSpy).not.toHaveBeenCalled()
   })
 })
 

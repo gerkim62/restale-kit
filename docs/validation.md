@@ -1,18 +1,18 @@
-# Validation Guide
+# Validation & Security Guide
 
-`restale-kit` integrates with the [Standard Schema spec v1](https://github.com/standard-schema/standard-schema), supported natively by **Zod**, **Valibot**, **ArkType**, and other schema libraries.
+In `restale-kit`, invalidation signals rely on **built-in wire-format structural validation** and **TypeScript compile-time type safety**. You do not need to supply or configure any schemas for invalidation signals.
 
-Validation is **optional**. Without a schema, the library uses plain `InvalidateSignal` types with built-in structural validation only.
+For connection metadata registered with `SSEChannelGroup`, optional runtime schema validation is available via `metaSchema` using standard schema libraries (Zod, Valibot, ArkType).
 
 ---
 
-## Built-in structural validation (always active)
+## Built-in Structural Validation (Always Active)
 
-Every incoming SSE payload is structurally validated before being emitted as an `invalidate` event, regardless of whether you provide a schema:
+Every incoming SSE payload is structurally validated by `restale-kit` before being emitted as an `invalidate` event:
 
 1. `JSON.parse` must succeed.
 2. Result must be a plain object or array of plain objects.
-3. Each object must be a valid `InvalidateSignal` shape for its detected target. The rules differ per target:
+3. Each object must be a valid `InvalidateSignal` shape for its detected target:
 
    **`TanStackQuerySignal`** (`target: 'tanstack-query'`):
    - `queryKey` must be present and be an `Array`.
@@ -36,78 +36,32 @@ Every incoming SSE payload is structurally validated before being emitted as an 
 
 4. Unknown fields are ignored (forward-compatible).
 
-If any of the above fail, the client emits an `error` event instead of `invalidate`.
-
-### Key matching rules (`matchesInvalidateSignalKey`)
-
-When matching a local cache key against an invalidation signal:
-- **Array cache keys (e.g. `['todos', { userId: '1' }]`):** Matched hierarchically against signal `key` or `queryKey`. For generic signals, array keys match by prefix (or exact match when `exact: true`).
-- **Scalar string cache keys (e.g. `'/api/user'`):** When `cacheKey` is a scalar string, `matchesInvalidateSignalKey` evaluates `true` for framework-specific `TanStackQuerySignal` and `SWRSignal` targets that supply matching `queryKey` or `key`. For `GenericInvalidateSignal`, scalar cache keys return `false` because generic signals require array cache keys for hierarchical prefix evaluation.
-
+If any of these structural checks fail, the client emits an `error` event instead of `invalidate`.
 
 ---
 
-## Schema validation (optional)
+## Metadata Validation with `metaSchema` (Optional)
 
-Pass a Standard Schema to enforce further type constraints at runtime:
-
-- **Server-side `signalSchema`** — validates signals before `channel.invalidate()` sends them.
-- **Server-side `metaSchema`** — validates connection metadata in `group.register()`.
-- **Client-side `signalSchema`** — validates received signals after structural validation (step 7 of the client validation pipeline).
-
----
-
-## Server-side validation with Zod
-
-### Signal validation
+When attaching channels to an `SSEChannelGroup`, you can pass a Standard Schema (Zod, Valibot, etc.) as `metaSchema` to validate client metadata at registration time:
 
 ```ts
 import { z } from 'zod'
 import { SSEChannelGroup } from 'restale-kit/server'
 
-const AppSignalSchema = z.object({
-  key: z.union([
-    z.tuple([z.literal('todos')]),
-    z.tuple([z.literal('todos'), z.object({ userId: z.string() })]),
-    z.tuple([z.literal('users'), z.string()]),
-  ]),
-  exact: z.boolean().optional(),
-  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
-})
-type AppSignal = z.infer<typeof AppSignalSchema>
-
-const group = new SSEChannelGroup<AppSignal>({
-  channelDefaults: { target: 'tanstack-query' },
-})
-
-app.get('/sse', (req, res) => {
-  group.attachChannel(req, res, { signalSchema: AppSignalSchema })
-})
-
-// TypeScript enforces valid signal shapes at compile time:
-group.broadcastToAll({ key: ['todos'] })                          // ✅
-group.broadcastToAll({ key: ['todos', { userId: '42' }] })        // ✅
-// group.broadcastToAll({ key: ['posts'] })                       // ❌ TypeScript error
-```
-
-### Metadata validation
-
-```ts
 const ClientMetaSchema = z.object({
   userId: z.string(),
   role: z.enum(['user', 'admin']),
 })
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
-const group = new SSEChannelGroup<AppSignal, ClientMeta>({
-  channelDefaults: { target: 'tanstack-query' },
+const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>({
+  target: 'tanstack-query',
   metaSchema: ClientMetaSchema,
 })
 
 app.get('/sse', (req, res) => {
   // Throws SchemaValidationError if metadata validation fails
   group.attachChannel(req, res, {
-    signalSchema: AppSignalSchema,
     meta: {
       userId: req.user.id,
       role: req.user.role,
@@ -115,127 +69,26 @@ app.get('/sse', (req, res) => {
   })
 })
 
-// Predicate is now fully typed against ClientMeta:
+// Predicate in broadcast is fully typed against ClientMeta:
 group.broadcast(
   { key: ['admin-data'] },
-  (meta) => meta.role === 'admin' // ✅ typed
+  (meta) => meta.role === 'admin' // ✅ fully typed
 )
 ```
 
-### Combining both schemas
-
-```ts
-const group = new SSEChannelGroup<AppSignal, ClientMeta>({
-  metaSchema: ClientMetaSchema,
-})
-
-app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
-  group.register(channel, { userId: req.user.id, role: req.user.role })
-})
-```
-
----
-
-## Client-side validation with Zod
-
-```tsx
-import { z } from 'zod'
-import { useReStale } from 'restale-kit/react'
-import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-import { useQueryClient } from '@tanstack/react-query'
-
-const AppSignalSchema = z.object({
-  key: z.array(z.unknown()),
-  exact: z.boolean().optional(),
-  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
-})
-type AppSignal = z.infer<typeof AppSignalSchema>
-
-function App() {
-  const queryClient = useQueryClient()
-  const onInvalidate = useTanstackQueryAdapter<AppSignal>(queryClient)
-
-  // Incoming signals are validated; if they fail, 'error' is emitted instead of 'invalidate'
-  useReStale<AppSignal>('/sse', {
-    signalSchema: AppSignalSchema,
-    onInvalidate,
-  })
-}
-```
-
----
-
-## Using with `SSEInvalidatorClient` directly
-
-```ts
-import { SSEInvalidatorClient } from 'restale-kit/client'
-
-const client = new SSEInvalidatorClient('/sse', {
-  signalSchema: AppSignalSchema,
-})
-
-client.addEventListener('error', (event) => {
-  // Fires when schema validation fails on an incoming signal
-  console.error('Validation error:', event.detail)
-})
-```
-
----
-
-## Async schemas
-
-`restale-kit` is **synchronous throughout**. If a schema's `validate` function returns a `Promise`, it throws `SchemaValidationError` with the message `"async schemas are not supported"`. Use synchronous schemas only.
-
----
-
-## Error types
-
 ### `SchemaValidationError`
+
+When metadata fails validation against `metaSchema`, `SchemaValidationError` is thrown synchronously during registration:
 
 ```ts
 import { SchemaValidationError } from 'restale-kit'
 
 try {
-  channel.invalidate({ key: ['posts'] }) // fails if schema doesn't allow 'posts'
+  group.attachChannel(req, res, { meta: invalidMeta })
 } catch (err) {
   if (err instanceof SchemaValidationError) {
-    console.error(err.message) // formatted string
-    console.error(err.issues)  // ReadonlyArray<StandardSchemaV1.Issue>
+    console.error(err.message) // formatted issue summary
+    console.error(err.issues)  // StandardSchemaV1.Issue array
   }
 }
-```
-
-### `ChannelClosedError`
-
-```ts
-import { ChannelClosedError } from 'restale-kit'
-
-try {
-  channel.invalidate({ key: ['todos'] })
-} catch (err) {
-  if (err instanceof ChannelClosedError) {
-    // Channel was already closed — deregister from group
-  }
-}
-```
-
-> **Note:** You normally don't need to catch these — `SSEChannelGroup` handles `ChannelClosedError` automatically during broadcast.
-
----
-
-## Standard Schema compatibility
-
-Any library implementing the Standard Schema v1 spec works. You don't need Zod specifically:
-
-```ts
-import * as v from 'valibot'
-
-const AppSignalSchema = v.object({
-  key: v.array(v.unknown()),
-  exact: v.optional(v.boolean()),
-  action: v.optional(v.picklist(['invalidate', 'refetch', 'remove'])),
-})
-
-const channel = attachSSE(req, res, { target: 'tanstack-query', signalSchema: AppSignalSchema })
 ```

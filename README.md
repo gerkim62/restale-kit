@@ -76,6 +76,9 @@ import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = express()
+app.use(express.json())
+app.use(authenticateUser) // Require authentication middleware that populates trusted req.user
+
 const group = new SSEChannelGroup({
   channelDefaults: { target: ['swr', 'tanstack-query'] },
 })

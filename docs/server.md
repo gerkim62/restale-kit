@@ -85,9 +85,11 @@ const group = new SSEChannelGroup({
   channelDefaults: { target: 'swr' },
 })
 
+app.use('*', authMiddleware) // Auth middleware sets userId on context
+
 app.get('/sse', (c) => {
   const { response } = group.createChannel(c.req.raw, {
-    meta: { userId: c.req.header('X-User-ID') },
+    meta: { userId: c.get('userId') },
   })
   return response
 })
@@ -116,12 +118,13 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 
 | Option | Type | Description |
 |---|---|---|
+| `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
-| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events. |
+| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `ChannelDefaults` | Frame Guard defaults (`lifetime`, `guardKeepalive`) applied to channels that don't set them directly. Pass `group` to `attachSSE()`/`toSSEResponse()` so the merge is applied automatically. `beforeFrame` is not supported here — it is per-connection by nature. |
+| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
 
 ---
 
@@ -377,7 +380,7 @@ When a pub/sub adapter is configured, `revokeWhere()` automatically broadcasts c
 
 ## Reconnection & Event History Replay
 
-To prevent missed invalidation signals during momentary network drops, create a shared `eventStore` and pass it to both `SSEChannelGroup` and your transport helper (`attachSSE` / `toSSEResponse`):
+To prevent missed invalidation signals during momentary network drops, create a shared `eventStore` and pass it to `SSEChannelGroup`:
 
 ```ts
 import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
@@ -397,7 +400,7 @@ app.get('/sse', (req, res) => {
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `attachSSE`/`toSSEResponse` extracts the header and passes `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `group.attachChannel` / `group.createChannel` extracts the header and connects `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
 
 > **Tip — pair with Frame Guard lifetime:** If you use `lifetime: { onDeadline: 'reconnect' }` (the default), configure a shared `eventStore` at the same time. During the brief close-and-reconnect window triggered by a deadline, any signals sent by the server may not be delivered to the client. An `eventStore` ensures those signals are replayed when the client reconnects with `Last-Event-ID`.
 
