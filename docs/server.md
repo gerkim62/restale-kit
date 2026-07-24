@@ -85,6 +85,8 @@ const group = new SSEChannelGroup({
   channelDefaults: { target: 'swr' },
 })
 
+app.use('*', authMiddleware) // Auth middleware sets userId on context
+
 app.get('/sse', (c) => {
   const { response } = group.createChannel(c.req.raw, {
     meta: { userId: c.get('userId') },

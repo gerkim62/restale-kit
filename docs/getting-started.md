@@ -89,6 +89,8 @@ That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, eve
 > **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachChannel(req, res)`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
 >
 > ```ts
+> app.use(authMiddleware) // auth middleware populates req.user
+>
 > app.get('/sse', (req, res) => {
 >   group.attachChannel(req, res, {
 >     meta: { userId: req.user.id }, // ← add metadata now
