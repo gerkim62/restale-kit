@@ -277,7 +277,7 @@ client.addEventListener('statuschange', (event) => {
   }
 })
 
-// Optionally catch validation errors (when signalSchema is set)
+// Catch transport / parse errors
 client.addEventListener('error', (event) => {
   console.error('SSE error:', event.detail)
 })

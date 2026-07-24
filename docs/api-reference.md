@@ -315,7 +315,7 @@ interface UseReStaleOptions<TSignal> extends ClientOptions {
    */
   onRevoke?: (detail: RevokeEventDetail) => void
 }
-// Option stability: autoReconnect, reconnect, signalSchema, and withCredentials are
+// Option stability: autoReconnect, reconnect, and withCredentials are
 // applied only at client creation time. Changing them after mount has no effect until
 // the url prop changes (which recreates the SSEInvalidatorClient).
 

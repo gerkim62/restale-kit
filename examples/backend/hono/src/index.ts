@@ -3,7 +3,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { SSEChannelGroup } from 'restale-kit/server'
 import {
-  AppSignalSchema,
   CreateTodoSchema,
   createTodoApi,
   type AppSignal,

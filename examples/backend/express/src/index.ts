@@ -1,7 +1,6 @@
 import express from 'express'
 import { SSEChannelGroup } from 'restale-kit/server'
 import {
-  AppSignalSchema,
   CreateTodoSchema,
   createTodoApi,
   type AppSignal,

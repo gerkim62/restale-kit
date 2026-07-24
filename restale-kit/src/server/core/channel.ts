@@ -118,8 +118,6 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * Enqueue an invalidation signal (or batch) into the stream.
    *
    * - When `state` is `'closed'`: throws `ChannelClosedError`.
-   * - When a `signalSchema` was provided and validation fails: throws `SchemaValidationError`.
-   * - When a `signalSchema` returns a Promise: throws `SchemaValidationError` ("async schemas are not supported").
    *
    * Returns the event ID assigned to the invalidation frame.
    */

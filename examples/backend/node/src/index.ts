@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
-import { AppSignalSchema, createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
+import { createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
 import type { AppSignal, ClientMeta } from '@restale-kit-example/shared'
 
 const group = new SSEChannelGroup<AppSignal, ClientMeta>({

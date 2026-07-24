@@ -335,22 +335,14 @@ Pass a Zod (or any Standard Schema-compatible) schema to enforce types at compil
 
 **Server:**
 ```ts
-import { z } from 'zod'
-
-const AppSignalSchema = z.object({
-  key: z.union([
-    z.tuple([z.literal('todos')]),
-    z.tuple([z.literal('todos'), z.object({ userId: z.string() })]),
-  ]),
-  exact: z.boolean().optional(),
-  action: z.enum(['invalidate', 'refetch', 'remove']).optional(),
-})
-type AppSignal = z.infer<typeof AppSignalSchema>
+type AppSignal =
+  | { key: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
+  | { key: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
 
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { signalSchema: AppSignalSchema })
+  const channel = attachSSE(req, res, { target: 'tanstack-query' })
   group.register(channel)
 })
 
@@ -361,7 +353,6 @@ group.broadcastToAll({ key: ['todos'] })           // ✅ valid
 **Client:**
 ```tsx
 useReStale<AppSignal>('/sse', {
-  signalSchema: AppSignalSchema,
   onInvalidate: useTanstackQueryAdapter(queryClient),
 })
 ```
@@ -427,7 +418,6 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
 | `onRevoke` | `(detail: RevokeEventDetail) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. Branch on `detail.reason` to handle `'unsupported-target'` vs application-level revocations. |
 | `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
-| `signalSchema` | `StandardSchemaV1` | `undefined` | Validate incoming signals with Zod / Valibot / ArkType. |
 | `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
 | `debug` | `boolean` | `false` | Enable verbose console debug logging for connection lifecycle events. |
@@ -443,7 +433,6 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|---|---|
 | `keepaliveIntervalMs` | `number` | `0` (disabled) | Periodic keepalive comment interval in ms (`: keepalive\n\n`) to prevent proxy/CDN connection drops (disabled by default). |
 | `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
-| `signalSchema` | `StandardSchemaV1` | `undefined` | Standard Schema to validate signals passed to `channel.invalidate()`. |
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
