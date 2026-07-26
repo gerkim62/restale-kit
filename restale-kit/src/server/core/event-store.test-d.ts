@@ -18,8 +18,16 @@ describe('createEventStore type assertions', () => {
     expectTypeOf(result.events).toEqualTypeOf<EventRecord<SWRSignal>[]>()
   })
 
+  test('createEventStore add rejects mismatched signal target', () => {
+    const store = createEventStore<SWRSignal>({ capacity: 50 })
+
+    // @ts-expect-error TanStackQuerySignal should be rejected on EventStore<SWRSignal>
+    store.add({ target: 'tanstack-query', queryKey: ['todos'] })
+  })
+
   test('createEventStore default generic is InvalidateSignal', () => {
     const store = createEventStore()
     expectTypeOf(store).toEqualTypeOf<EventStore<InvalidateSignal>>()
   })
 })
+

@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, test } from 'vitest'
-import { swrAdapter, type SWRMutator, type SWRAdapterOptions } from '@/client/swr/index.js'
+import { swrAdapter, useSwrAdapter, type SWRMutator, type SWRAdapterOptions } from '@/client/swr/index.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/index.js'
 import type { SWRSignal } from '@/types/index.js'
 
@@ -14,6 +14,17 @@ describe('swrAdapter type safety', () => {
     // Note: Intersection function type uses toMatchTypeOf per vitest expectTypeOf rules
     expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     expectTypeOf(adapter.__restaleTarget).toEqualTypeOf<'swr'>()
+  })
+
+  test('useSwrAdapter hook returns branded AdaptedInvalidateCallback<"swr">', () => {
+    const mockMutate: SWRMutator = Object.assign(
+      async () => [],
+      () => Promise.resolve([])
+    )
+
+    const adapterHook = useSwrAdapter(mockMutate)
+    expectTypeOf(adapterHook).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+    expectTypeOf(adapterHook.__restaleTarget).toEqualTypeOf<'swr'>()
   })
 
   test('swrAdapter options toInvalidateKey callback', () => {
@@ -51,5 +62,3 @@ describe('swrAdapter type safety', () => {
     }
   })
 })
-
-
