@@ -129,3 +129,21 @@ describe('RevokeEventDetail & RenewEventDetail', () => {
     expectTypeOf(renew.retryDelayMs).toEqualTypeOf<number>()
   })
 })
+
+describe('Signal payload strict narrowing', () => {
+  test('rejects invalid action string on SWRSignal', () => {
+    // @ts-expect-error 'unknown-action' is not a valid SWRAction
+    const _invalidSignal: SWRSignal = { target: 'swr', key: 'users', action: 'unknown-action' }
+  })
+
+  test('rejects invalid action string on TanStackQuerySignal', () => {
+    // @ts-expect-error 'purge' is not a valid TanStackQueryAction
+    const _invalidSignal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: ['users'], action: 'purge' }
+  })
+
+  test('rejects non-JSONValue in TanStackQuerySignal queryKey', () => {
+    // @ts-expect-error functions are not valid JSONValue elements in queryKey
+    const _invalidKeySignal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: [() => {}] }
+  })
+})
+

@@ -38,9 +38,21 @@ describe('PubSubAdapter interface typing', () => {
     })
   })
 
+  test('PubSubAdapter publish rejects mismatched generic signal', () => {
+    type Adapter = PubSubAdapter<SWRSignal>
+    const adapter = {} as Adapter
+
+    // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
+    adapter.publish('topic-name', {
+      kind: 'signal',
+      data: { target: 'tanstack-query', queryKey: ['todos'] },
+    })
+  })
+
   test('PubSubDecryptionError class', () => {
     const err = new PubSubDecryptionError('decryption failed')
     expectTypeOf(err).toEqualTypeOf<PubSubDecryptionError>()
     expectTypeOf(err.message).toEqualTypeOf<string>()
   })
 })
+

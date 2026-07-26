@@ -59,3 +59,22 @@ describe('AdaptedInvalidateCallback branding', () => {
     const _target = plainFn.__restaleTarget
   })
 })
+
+describe('ClientOptions misuse prevention', () => {
+  test('rejects invalid target in options', () => {
+    new SSEInvalidatorClient('https://example.com/sse', {
+      // @ts-expect-error target must be a valid SignalTarget
+      target: 'unsupported-client-target',
+    })
+  })
+
+  test('nonRetryableStatuses rejects invalid status formats', () => {
+    new SSEInvalidatorClient('https://example.com/sse', {
+      reconnect: {
+        // @ts-expect-error '6xx' is not a valid HttpStatusMatcher pattern
+        nonRetryableStatuses: ['6xx'],
+      },
+    })
+  })
+})
+

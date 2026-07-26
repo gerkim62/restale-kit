@@ -81,3 +81,34 @@ describe('SSEChannel interface surface types', () => {
     expectTypeOf(channel.onClose).toBeCallableWith(() => {})
   })
 })
+
+describe('SSEChannelOptions narrowing & misuse checks', () => {
+  test('invalid target string is rejected', () => {
+    // @ts-expect-error target must be valid SignalTarget or array of SignalTarget
+    createSSEChannel({ target: 'invalid-target-name' })
+  })
+
+  test('keepaliveIntervalMs must be number', () => {
+    // @ts-expect-error keepaliveIntervalMs cannot be string
+    createSSEChannel({ target: 'swr', keepaliveIntervalMs: '1000' })
+  })
+
+  test('beforeFrame requires valid FrameGuardResult', () => {
+    createSSEChannel({
+      target: 'swr',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          return { action: 'send' }
+        }
+        return { action: 'skip' }
+      },
+    })
+
+    createSSEChannel({
+      target: 'swr',
+      // @ts-expect-error invalid action in return object
+      beforeFrame: () => ({ action: 'invalid-action' }),
+    })
+  })
+})
+

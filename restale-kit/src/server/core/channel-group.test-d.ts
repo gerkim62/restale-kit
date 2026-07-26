@@ -82,4 +82,24 @@ describe('SSEChannelGroup revocation methods', () => {
     expectTypeOf(group.revokeByConnectionId).toBeCallableWith('conn-123')
     expectTypeOf(group.revokeByConnectionId).toBeCallableWith('conn-123', { tenantId: 't1' })
   })
+
+  test('revokeWhere rejects non-JSONValue criteria', () => {
+    const group = new SSEChannelGroup()
+
+    // @ts-expect-error functions are not valid JSONValue criteria
+    group.revokeWhere({ handler: () => {} })
+
+    // @ts-expect-error symbols are not valid JSONValue criteria
+    group.revokeWhere({ id: Symbol('test') })
+  })
+
+  test('broadcastByKey enforces TSignal generic', () => {
+    const group = new SSEChannelGroup<TanStackQuerySignal>({ target: 'tanstack-query' })
+
+    group.broadcastByKey({ target: 'tanstack-query', queryKey: ['todos'] })
+
+    // @ts-expect-error broadcastByKey with SWRSignal on TanStack group is a type error
+    group.broadcastByKey({ target: 'swr', key: ['todos'] })
+  })
 })
+

@@ -32,4 +32,12 @@ describe('swrAdapter type safety', () => {
     const adapter = swrAdapter(mockMutate, options)
     expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
   })
+
+  test('swrAdapter toInvalidateKey rejects non-JSONValue array return type', () => {
+    // @ts-expect-error toInvalidateKey cannot return array of functions/symbols
+    const _options: SWRAdapterOptions<SWRSignal> = {
+      toInvalidateKey: () => [() => {}],
+    }
+  })
 })
+
