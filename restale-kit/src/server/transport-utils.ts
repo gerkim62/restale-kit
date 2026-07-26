@@ -9,7 +9,7 @@ const MAX_LAST_EVENT_ID_LENGTH = 512
 
 /**
  * Extracts and validates the internal `__restale_cid__` query parameter.
- * Throws an Error synchronously if missing or invalid; transport functions (`attachSSE`, `toSSEResponse`)
+ * Throws an Error synchronously if missing or invalid; transport methods (`group.attachChannel`, `group.createChannel`)
  * enforce this try/catch contract at the route boundary before attaching streams.
  */
 export function extractConnectionId(searchParams: URLSearchParams): string {

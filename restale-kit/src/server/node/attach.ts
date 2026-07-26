@@ -17,20 +17,13 @@ export interface FastifyRequestLike {
 }
 
 /**
- * Attaches an SSE channel to a Node.js HTTP response.
+ * @internal
+ * **WARNING: INTERNAL ONLY.** Do not invoke directly in application code.
+ * Use `SSEChannelGroup.attachChannel(req, res, options)` instead.
  *
- * Sets the required SSE headers, pipes the channel's `ReadableStream` into
- * the response via `Readable.fromWeb()`, and wires up disconnect detection.
- *
- * Throws an Error synchronously if the required `__restale_cid__` query
- * parameter is missing or invalid.
- *
- * Works with Express (`req, res`) and Fastify (`request, reply`).
- *
- * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
- *   `options` before creating the channel. Per-channel values always win over defaults.
+ * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply).
  */
-export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function internal_attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
   options: SSEChannelOptions,

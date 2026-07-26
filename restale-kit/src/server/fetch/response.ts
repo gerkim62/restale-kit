@@ -6,20 +6,13 @@ import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
 /**
+ * @internal
+ * **WARNING: INTERNAL ONLY.** Do not invoke directly in application code.
+ * Use `SSEChannelGroup.createChannel(request, options)` instead.
+ *
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
- *
- * Returns the `Response` to hand back to the framework, and the `SSEChannel`
- * to call `invalidate()` on from application logic elsewhere.
- *
- * Throws an Error synchronously if the required `__restale_cid__` query
- * parameter is missing or invalid.
- *
- * Disconnect detection is wired to `request.signal.abort`.
- *
- * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
- *   `options` before creating the channel. Per-channel values always win over defaults.
  */
-export function toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function internal_toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options: SSEChannelOptions,
   group?: SSEChannelGroup<TSignal>

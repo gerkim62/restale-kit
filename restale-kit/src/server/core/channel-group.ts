@@ -7,8 +7,8 @@ import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
-import { toSSEResponse } from '@/server/fetch/response.js'
-import { attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
+import { internal_toSSEResponse } from '@/server/fetch/response.js'
+import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
 
 /**
  * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
@@ -388,7 +388,7 @@ export class SSEChannelGroup<
     const channelOpts = { ...options }
     delete channelOpts.meta
     delete channelOpts.topics
-    const result = toSSEResponse<TSignal>(request, channelOpts, this)
+    const result = internal_toSSEResponse<TSignal>(request, channelOpts, this)
     this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
   }
@@ -411,7 +411,7 @@ export class SSEChannelGroup<
     const channelOpts = { ...options }
     delete channelOpts.meta
     delete channelOpts.topics
-    const channel = attachSSE<TSignal>(req, res, channelOpts, this)
+    const channel = internal_attachSSE<TSignal>(req, res, channelOpts, this)
     this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
   }

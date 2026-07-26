@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { toSSEResponse } from './response.js'
+import { internal_toSSEResponse } from './response.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
 
-describe('fetch toSSEResponse', () => {
+describe('fetch internal_toSSEResponse', () => {
   it('creates SSE Response for Fetch API request and exposes connectionId on channel', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-1')
-    const { response, channel } = toSSEResponse(request, { target: 'swr' })
+    const { response, channel } = internal_toSSEResponse(request, { target: 'swr' })
 
     expect(channel.connectionId).toBe('conn-fetch-1')
     expect(channel.state).toBe('open')
@@ -20,7 +20,7 @@ describe('fetch toSSEResponse', () => {
       signal: controller.signal,
     })
 
-    const { channel } = toSSEResponse(request, { target: 'swr' })
+    const { channel } = internal_toSSEResponse(request, { target: 'swr' })
     expect(channel.state).toBe('open')
 
     controller.abort()
@@ -29,7 +29,7 @@ describe('fetch toSSEResponse', () => {
 
   it('emits X-ReStale-Target response header when single target option is provided', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-3')
-    const { response, channel } = toSSEResponse(request, { target: 'swr' })
+    const { response, channel } = internal_toSSEResponse(request, { target: 'swr' })
 
     expect(channel.target).toBe('swr')
     expect(response.headers.get('x-restale-target')).toBe('swr')
@@ -37,7 +37,7 @@ describe('fetch toSSEResponse', () => {
 
   it('rejects connection on multi-target channel when requestedTarget is absent', async () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-4')
-    const { response, channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
+    const { response, channel } = internal_toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
     expect(response.headers.get('x-restale-target')).toBe('')
@@ -53,7 +53,7 @@ describe('fetch toSSEResponse', () => {
     const request = new Request(
       'https://example.com/sse?__restale_cid__=conn-fetch-4b&__restale_target__=tanstack-query'
     )
-    const { response, channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
+    const { response, channel } = internal_toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.requestedTarget).toBe('tanstack-query')
     expect(response.headers.get('x-restale-target')).toBe('tanstack-query')
@@ -61,14 +61,14 @@ describe('fetch toSSEResponse', () => {
 
   it('emits X-ReStale-Supported response header with the single supported target', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-5')
-    const { response } = toSSEResponse(request, { target: 'swr' })
+    const { response } = internal_toSSEResponse(request, { target: 'swr' })
 
     expect(response.headers.get('x-restale-supported')).toBe('swr')
   })
 
   it('emits comma-separated X-ReStale-Supported response header when target array is provided', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-6')
-    const { response } = toSSEResponse(request, { target: ['tanstack-query', 'swr'] })
+    const { response } = internal_toSSEResponse(request, { target: ['tanstack-query', 'swr'] })
 
     expect(response.headers.get('x-restale-supported')).toBe('tanstack-query, swr')
   })
@@ -77,7 +77,7 @@ describe('fetch toSSEResponse', () => {
     const request = new Request(
       'https://example.com/sse?__restale_cid__=conn-fetch-7&__restale_target__=swr'
     )
-    const { channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
+    const { channel } = internal_toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.requestedTarget).toBe('swr')
   })
@@ -86,7 +86,7 @@ describe('fetch toSSEResponse', () => {
     const request = new Request(
       'https://example.com/sse?__restale_cid__=conn-fetch-8&__restale_target__=rtk-query'
     )
-    const { channel } = toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
+    const { channel } = internal_toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
 
     // Drain the stream to trigger the start callback
     const reader = channel.stream.getReader()
@@ -98,7 +98,7 @@ describe('fetch toSSEResponse', () => {
 
   it('requestedTarget is undefined when __restale_target__ param is absent', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-9')
-    const { channel } = toSSEResponse(request, { target: 'swr' })
+    const { channel } = internal_toSSEResponse(request, { target: 'swr' })
 
     expect(channel.requestedTarget).toBeUndefined()
   })
