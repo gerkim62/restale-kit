@@ -64,7 +64,7 @@ export default tseslint.config(
       // ℹ️ Disabled: flagging explicit default type args is more noise than signal
       '@typescript-eslint/no-unnecessary-type-arguments': 'off',
 
-      // ℹ️ Disabled: unnecessary condition checks in defensive code paths
+      // ℹ️ Disabled repo-wide: unnecessary condition checks in defensive code paths and runtime boundary validations
       '@typescript-eslint/no-unnecessary-condition': 'off',
 
       // ❌ Catch implicit `any` flowing through assignments/returns

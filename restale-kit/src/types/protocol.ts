@@ -85,7 +85,7 @@ export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] |
   [TTarget] extends [SignalTarget]
     ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
       Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
-    : ReStaleSignal | ReStaleSignal[]
+    : (ReStaleSignal & { target: SignalTarget }) | Array<ReStaleSignal & { target: SignalTarget }>
 
 /** Alias for default generic parameter bounds across channels & pubsub */
 export type InvalidateSignal = ReStaleSignal
