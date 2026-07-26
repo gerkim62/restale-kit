@@ -1,14 +1,8 @@
 import {
-  isJSONValue,
   type InvalidateSignal,
   type ChannelState,
   type EventStore,
   type SignalTarget,
-  type JSONValue,
-  type TanStackQuerySignal,
-  type SWRSignal,
-  type RTKQuerySignal,
-  type GenericInvalidateSignal,
   type LifetimeOptions,
   type BeforeFrameFn,
   type FrameGuardCtx,
@@ -23,7 +17,7 @@ import {
   formatRenewFrame,
 } from '@/server/core/framing.js'
 import { createEventStore } from '@/server/core/event-store.js'
-import { PROTOCOL_CONSTANTS, SIGNAL_TARGETS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 
 /**
  * Configuration options for `createSSEChannel`.
@@ -203,7 +197,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (options.lifetime === undefined) return undefined
     const { ttlMs, deadline } = options.lifetime
     if (ttlMs !== undefined) return ttlMs
-    if (deadline === undefined) return undefined // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- runtime guard against malformed options or merged defaults
+    if (deadline === undefined) return undefined  
     return deadline - connectedAt
   }
 
@@ -347,8 +341,18 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             // The cursor fell off the ring buffer or was never valid — the client missed
             // an unknown number of events. Send a full-invalidate signal (key: []) so the
             // client refetches everything rather than silently displaying stale data.
-            const staleTarget = (requestedTarget ?? (Array.isArray(target) ? target[0] : target)) as SignalTarget
-            controller.enqueue(formatInvalidateFrame({ target: staleTarget, key: [] } as InvalidateSignal))
+            const declaredList = Array.isArray(target) ? target : [target]
+            const foundTarget = declaredList.find((t) => t === requestedTarget)
+            const staleTarget: SignalTarget = foundTarget ?? declaredList[0] ?? 'generic'
+            const staleSignal: InvalidateSignal =
+              staleTarget === 'tanstack-query'
+                ? { target: 'tanstack-query', queryKey: [] }
+                : staleTarget === 'swr'
+                  ? { target: 'swr', key: [] }
+                  : staleTarget === 'rtk-query'
+                    ? { target: 'rtk-query', tags: [] }
+                    : { target: 'generic', key: [] }
+            controller.enqueue(formatInvalidateFrame(staleSignal))
           } else {
             for (const record of missed) {
               const replaySignal = record.signal
@@ -574,6 +578,10 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
 // ── Target signal validation ──────────────────────────────────────────────────
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 export function validateSignalTargets(
   signal: unknown,
   targetConfig: SignalTarget | SignalTarget[]
@@ -584,38 +592,39 @@ export function validateSignalTargets(
   const coveredTargets = new Set<string>()
 
   for (const s of signalList) {
-    if (!s || typeof s !== 'object') {
+    if (!isRecord(s)) {
+      const sStr = typeof s === 'string' ? s : JSON.stringify(s)
       throw new Error(
         `[invalidate] Every signal must be an object. ` +
-        `Got: ${JSON.stringify(s).slice(0, 200)}. ` +
+        `Got: ${sStr.slice(0, 200)}. ` +
         `Declared targets: [${declaredTargets.join(', ')}].`
       )
     }
 
-    const rec = s as Record<string, unknown>
-    let targetVal = rec.target
+    let targetStr = typeof s['target'] === 'string' ? s['target'] : ''
 
-    if (targetVal === undefined || typeof targetVal !== 'string' || targetVal === '') {
-      if (declaredTargets.length === 1) {
+    if (targetStr === '') {
+      if (declaredTargets.length === 1 && declaredTargets[0] !== undefined) {
         // Single-target channel: auto-fill target if omitted
-        targetVal = declaredTargets[0]
-        rec.target = targetVal
+        targetStr = declaredTargets[0]
+        s['target'] = targetStr
       } else {
+        const sStr = JSON.stringify(s)
         throw new Error(
           `[invalidate] Multi-target channel requires an explicit "target" field on every signal. ` +
-          `Got signal without target: ${JSON.stringify(s).slice(0, 200)}. ` +
+          `Got signal without target: ${sStr.slice(0, 200)}. ` +
           `Declared targets: [${declaredTargets.join(', ')}].`
         )
       }
     }
 
-    if (!declaredSet.has(targetVal as string)) {
+    if (!declaredSet.has(targetStr)) {
       throw new Error(
-        `[invalidate] Signal target "${targetVal}" is not in the channel's declared targets: ` +
+        `[invalidate] Signal target "${targetStr}" is not in the channel's declared targets: ` +
         `[${declaredTargets.join(', ')}].`
       )
     }
-    coveredTargets.add(targetVal as string)
+    coveredTargets.add(targetStr)
   }
 
   if (declaredTargets.length > 1) {

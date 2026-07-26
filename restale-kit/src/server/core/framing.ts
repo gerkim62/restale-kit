@@ -15,8 +15,9 @@ const encoder = new TextEncoder()
 
 function stripTargetFromSignal(item: unknown): unknown {
   if (item && typeof item === 'object' && 'target' in item) {
-    const { target, ...rest } = item as Record<string, unknown>
-    return rest
+    const copy = { ...(item as Record<string, unknown>) }
+    delete copy['target']
+    return copy
   }
   return item
 }
