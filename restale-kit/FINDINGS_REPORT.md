@@ -12,7 +12,7 @@ Running `pnpm run test:types` (`vitest run --typecheck`) surfaces **7 failing ty
 ### 0.1 Transport Adapters Excluded from Public Exports
 - **Severity:** High (Packaging / Export Surface Issue)
 - **Files Involved:** `package.json` (`exports`), `src/server/core/index.ts`, `src/server/{node,express,fastify,fetch,hono}/`
-- **Issue:** Transport adapters (`attachSSE`, `toSSEResponse`, etc.) implemented in `src/server/{node,express,fastify,fetch,hono}/` are NOT re-exported in `src/server/core/index.ts` nor exposed via `package.json` `exports`.
+- **Issue:** Transport adapters (`internal_attachSSE`, `internal_toSSEResponse`, etc.) implemented in `src/server/{node,express,fastify,fetch,hono}/` are internal functions wrapped by `attachNodeResponse` and `createFetchResponse`.
 - **Impact:** Consumers cannot import transport adapters via standard subpaths.
 - **Action:** Reported as a packaging gap. Left untouched per test-only constraints.
 
