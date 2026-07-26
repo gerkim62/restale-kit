@@ -55,7 +55,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     channel.invalidate({ key: ['todos', 1] })
     const text = await readStreamChunk(response.body!)
 
-    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["todos",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"key":["todos",1]}\n\n')
   })
 
   it('Fetch: toSSEResponse with eventStore emits id: field in SSE frame', async () => {
@@ -67,7 +67,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     expect(id).toBe('1') // auto-increment
 
     const text = await readStreamChunk(response.body!)
-    expect(text).toBe('id: 1\nevent: invalidate\ndata: {"target":"swr","key":["users"]}\n\n')
+    expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"]}\n\n')
   })
 
   it('Node: attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {
@@ -83,7 +83,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     await vi.advanceTimersByTimeAsync(50)
 
     const chunks = (res as any).__chunks as string[]
-    expect(chunks.join('')).toBe('event: invalidate\ndata: {"target":"swr","key":["products"]}\n\n')
+    expect(chunks.join('')).toBe('event: invalidate\ndata: {"key":["products"]}\n\n')
   })
 
   it('Fetch: batch invalidate produces single SSE frame with JSON array', async () => {
@@ -94,7 +94,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const text = await readStreamChunk(response.body!)
 
     expect(text).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["todos"]},{"target":"swr","key":["users"]}]\n\n'
+      'event: invalidate\ndata: [{"key":["todos"]},{"key":["users"]}]\n\n'
     )
   })
 
@@ -129,8 +129,8 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const { value: v2 } = await reader.read()
     reader.releaseLock()
 
-    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"target":"swr","key":["b"]}\n\n')
-    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"target":"swr","key":["c"]}\n\n')
+    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
+    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
   })
 
   it('Fetch: toSSEResponse emits X-ReStale-Target and X-ReStale-Supported headers', () => {

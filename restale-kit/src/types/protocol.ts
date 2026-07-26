@@ -59,18 +59,33 @@ export interface GenericInvalidateSignal {
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
 
-export type TargetInputSignal<TTarget extends SignalTarget> =
-  TTarget extends 'tanstack-query' ? Omit<TanStackQuerySignal, 'target'> & { target?: 'tanstack-query' } :
-  TTarget extends 'swr' ? Omit<SWRSignal, 'target'> & { target?: 'swr' } :
-  TTarget extends 'rtk-query' ? Omit<RTKQuerySignal, 'target'> & { target?: 'rtk-query' } :
-  Omit<GenericInvalidateSignal, 'target'> & { target?: 'generic' }
-
 /** Discriminated union of all supported wire signals */
 export type ReStaleSignal =
   | TanStackQuerySignal
   | SWRSignal
   | RTKQuerySignal
   | GenericInvalidateSignal
+
+/** Map a single SignalTarget discriminator to its specific signal type. */
+export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
+  TTarget extends typeof SIGNAL_TARGETS.TANSTACK
+    ? TanStackQuerySignal
+    : TTarget extends typeof SIGNAL_TARGETS.SWR
+      ? SWRSignal
+      : TTarget extends typeof SIGNAL_TARGETS.RTK
+        ? RTKQuerySignal
+        : GenericInvalidateSignal
+
+/**
+ * Computes allowable input signal types for invalidating/publishing.
+ * - Single target: `target` is optional and defaulted automatically to the single target.
+ * - Multi-target array: explicit `target` is strictly required on every signal.
+ */
+export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
+  [TTarget] extends [SignalTarget]
+    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
+      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
+    : ReStaleSignal | Array<ReStaleSignal & { target: SignalTarget }>
 
 /** Alias for default generic parameter bounds across channels & pubsub */
 export type InvalidateSignal = ReStaleSignal

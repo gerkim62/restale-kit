@@ -169,6 +169,12 @@ group.broadcastToAll([
 ])
 ```
 
+### Target Signal Requirements & Wire Optimization
+
+- **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` on signal objects (e.g. `{ key: ['todos'] }`). The channel automatically attaches `target: 'swr'` before recording to `EventStore` or passing to `pubsub`.
+- **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Every signal object MUST explicitly specify `target`, and invalidation batches must supply signals for all declared targets.
+- **Wire Optimization**: The outgoing SSE byte frame strips the `target` property from JSON data lines (`data: {"key":["todos"]}`), since the active target is specified in the connection header (`X-ReStale-Target`).
+
 `broadcastToAll` reaches **all** registered channels, including those registered without metadata.
 
 ### `broadcast(signal, predicate)` — filtered broadcast (preferred)

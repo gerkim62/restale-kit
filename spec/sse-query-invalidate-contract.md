@@ -275,7 +275,7 @@ interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
    * rather than being silently treated as "no preference".
    */
   readonly requestedTarget: string | undefined
-  invalidate(signal: TSignal | TSignal[], customId?: string): string
+  invalidate(signal: SignalInputForTarget<TTarget> | TSignal | TSignal[], customId?: string): string
   close(): void
   revoke(reason?: string): void   // sends a terminal event: revoke frame (default reason: 'revoked') before closing
   disconnect(): void   // called by a transport adapter when it detects the peer disconnected
