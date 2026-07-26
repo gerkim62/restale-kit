@@ -11,7 +11,7 @@ import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
 
 /**
- * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
+ * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
  */
 export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'target'> & {
   target?: SignalTarget | SignalTarget[]
@@ -166,7 +166,7 @@ export interface SSEChannelGroupOptions<TMeta = unknown> {
   /**
    * Fallback defaults for Frame Guard options that are typically uniform across an
    * entire app (`target`, `lifetime`, `guardKeepalive`), so they don't
-   * need to be repeated at every `attachSSE()` / `toSSEResponse()` call site.
+   * need to be repeated at every `attachNodeResponse()` / `createFetchResponse()` call site.
    *
    * A channel-level value always wins over a group default — the default only fills
    * a gap left by the channel. `beforeFrame` is per-connection by nature and is
@@ -372,15 +372,16 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Creates an SSE channel from a Fetch API `Request`, registers it with the group,
-   * and returns both the `Response` to hand to the framework and the `SSEChannel`.
+   * Creates a Web Standard Fetch API `Response` object containing the SSE stream,
+   * registers the channel with this group, and returns `{ response, channel }`.
    *
-   * The channel is automatically deregistered when it closes.
+   * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
    *
-   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
-   * or if `target` is missing in options and group `channelDefaults`.
+   * @example
+   * const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
+   * return response
    */
-  createChannel(
+  createFetchResponse(
     request: Request,
     options: ChannelSetupOptions<TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
@@ -394,15 +395,17 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply),
-   * registers it with the group, and returns `{ channel }`.
+   * Attaches an SSE channel to a Node.js HTTP response (`res`) or Fastify `reply`,
+   * registers it with this group, and returns `{ channel }`.
    *
    * The channel is automatically deregistered when it closes.
    *
-   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
-   * or if `target` is missing in options and group `channelDefaults`.
+   * @framework Node.js, Express, Fastify
+   *
+   * @example
+   * group.attachNodeResponse(req, res, { target: 'swr' })
    */
-  attachChannel(
+  attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TMeta>

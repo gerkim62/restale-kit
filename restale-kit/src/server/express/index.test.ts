@@ -22,13 +22,13 @@ function createMockExpressResponse(): ServerResponse {
   return res
 }
 
-describe('server/express integration via attachChannel', () => {
+describe('server/express integration via attachNodeResponse', () => {
   it('attaches SSE headers and exposes connectionId on the returned channel', () => {
     const group = new SSEChannelGroup({})
     const req = createMockExpressRequest('/sse?__restale_cid__=express-123')
     const res = createMockExpressResponse()
 
-    const { channel } = group.attachChannel(req, res, { target: 'swr' })
+    const { channel } = group.attachNodeResponse(req, res, { target: 'swr' })
 
     expect(channel.connectionId).toBe('express-123')
     expect(SSE_HEADERS).toEqual({
@@ -50,7 +50,7 @@ describe('server/express integration via attachChannel', () => {
     const req = createMockExpressRequest('/sse')
     const res = createMockExpressResponse()
 
-    expect(() => group.attachChannel(req, res, { target: 'swr' })).toThrow(
+    expect(() => group.attachNodeResponse(req, res, { target: 'swr' })).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })

@@ -8,7 +8,7 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 /**
  * @internal
  * **WARNING: INTERNAL ONLY.** Do not invoke directly in application code.
- * Use `SSEChannelGroup.createChannel(request, options)` instead.
+ * Use `SSEChannelGroup.createFetchResponse(request, options)` instead.
  *
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
  */

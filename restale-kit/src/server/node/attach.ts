@@ -19,7 +19,7 @@ export interface FastifyRequestLike {
 /**
  * @internal
  * **WARNING: INTERNAL ONLY.** Do not invoke directly in application code.
- * Use `SSEChannelGroup.attachChannel(req, res, options)` instead.
+ * Use `SSEChannelGroup.attachNodeResponse(req, res, options)` instead.
  *
  * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply).
  */

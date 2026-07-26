@@ -1,7 +1,7 @@
 /**
  * Tests for the changes introduced by the review-findings fix:
  *
- * 1. Meta validation before transport side-effects (createChannel / attachChannel)
+ * 1. Meta validation before transport side-effects (createFetchResponse / attachNodeResponse)
  * 2. buildSSETargetHeaders shared helper
  * 3. Regression: existing behavior preserved after refactor
  */
@@ -42,7 +42,7 @@ describe('review-findings: meta validation before transport', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('attachChannel throws SchemaValidationError BEFORE writing HTTP headers when meta is invalid', () => {
+  it('attachNodeResponse throws SchemaValidationError BEFORE writing HTTP headers when meta is invalid', () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -53,7 +53,7 @@ describe('review-findings: meta validation before transport', () => {
     const res = createMockResponse()
 
     expect(() => {
-      group.attachChannel(req, res, { meta: { userId: 'u1' } })
+      group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
     }).toThrow(SchemaValidationError)
 
     // The critical assertion: writeHead must NOT have been called because
@@ -61,7 +61,7 @@ describe('review-findings: meta validation before transport', () => {
     expect(res.writeHead).not.toHaveBeenCalled()
   })
 
-  it('attachChannel does NOT register the channel when meta validation fails', () => {
+  it('attachNodeResponse does NOT register the channel when meta validation fails', () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -72,13 +72,13 @@ describe('review-findings: meta validation before transport', () => {
     const res = createMockResponse()
 
     expect(() => {
-      group.attachChannel(req, res, { meta: { userId: 'u1' } })
+      group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
     }).toThrow(SchemaValidationError)
 
     expect(group.size).toBe(0)
   })
 
-  it('createChannel throws SchemaValidationError BEFORE creating a Response when meta is invalid', () => {
+  it('createFetchResponse throws SchemaValidationError BEFORE creating a Response when meta is invalid', () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -88,14 +88,14 @@ describe('review-findings: meta validation before transport', () => {
     const request = new Request('http://localhost/sse?__restale_cid__=c3')
 
     expect(() => {
-      group.createChannel(request, { meta: { userId: 'u1' } })
+      group.createFetchResponse(request, { meta: { userId: 'u1' } })
     }).toThrow(SchemaValidationError)
 
     // No channel should be registered
     expect(group.size).toBe(0)
   })
 
-  it('attachChannel succeeds and registers channel when meta passes validation', () => {
+  it('attachNodeResponse succeeds and registers channel when meta passes validation', () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -105,7 +105,7 @@ describe('review-findings: meta validation before transport', () => {
     const req = createMockRequest('/sse?__restale_cid__=c4')
     const res = createMockResponse()
 
-    const result = group.attachChannel(req, res, { meta: { userId: 'u1' } })
+    const result = group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
 
     expect(result.channel).toBeDefined()
     expect(result.channel.state).toBe('open')
@@ -115,7 +115,7 @@ describe('review-findings: meta validation before transport', () => {
     }))
   })
 
-  it('createChannel succeeds and registers channel when meta passes validation', () => {
+  it('createFetchResponse succeeds and registers channel when meta passes validation', () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -123,14 +123,14 @@ describe('review-findings: meta validation before transport', () => {
     })
 
     const request = new Request('http://localhost/sse?__restale_cid__=c5')
-    const result = group.createChannel(request, { meta: { userId: 'u1' } })
+    const result = group.createFetchResponse(request, { meta: { userId: 'u1' } })
 
     expect(result.response).toBeInstanceOf(Response)
     expect(result.channel).toBeDefined()
     expect(group.size).toBe(1)
   })
 
-  it('attachChannel works without metaSchema (no validation, backward compat)', () => {
+  it('attachNodeResponse works without metaSchema (no validation, backward compat)', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
@@ -138,13 +138,13 @@ describe('review-findings: meta validation before transport', () => {
     const req = createMockRequest('/sse?__restale_cid__=c6')
     const res = createMockResponse()
 
-    const result = group.attachChannel(req, res, {})
+    const result = group.attachNodeResponse(req, res, {})
 
     expect(result.channel.state).toBe('open')
     expect(group.size).toBe(1)
   })
 
-  it('attachChannel passes topics through to registration', () => {
+  it('attachNodeResponse passes topics through to registration', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
@@ -152,14 +152,14 @@ describe('review-findings: meta validation before transport', () => {
     const req = createMockRequest('/sse?__restale_cid__=c7')
     const res = createMockResponse()
 
-    group.attachChannel(req, res, {
+    group.attachNodeResponse(req, res, {
       topics: ['user:123', 'global'],
     })
 
     expect(group.size).toBe(1)
   })
 
-  it('attachChannel auto-deregisters on channel close', () => {
+  it('attachNodeResponse auto-deregisters on channel close', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
@@ -167,7 +167,7 @@ describe('review-findings: meta validation before transport', () => {
     const req = createMockRequest('/sse?__restale_cid__=c8')
     const res = createMockResponse()
 
-    group.attachChannel(req, res, {})
+    group.attachNodeResponse(req, res, {})
     expect(group.size).toBe(1)
 
     // Simulate client disconnect
@@ -197,7 +197,7 @@ describe('review-findings: meta validation before transport', () => {
     const req = createMockRequest('/sse?__restale_cid__=c9')
     const res = createMockResponse()
 
-    group.attachChannel(req, res, { meta: { userId: 'alice', role: 'admin' } })
+    group.attachNodeResponse(req, res, { meta: { userId: 'alice', role: 'admin' } })
 
     const spy = vi.fn()
     const seenMetas: TestMeta[] = []
@@ -211,7 +211,7 @@ describe('review-findings: meta validation before transport', () => {
     expect(seenMetas).toEqual([{ userId: 'alice', role: 'admin' }])
   })
 
-  it('meta validation failure in attachChannel does not leave a half-attached stream', () => {
+  it('meta validation failure in attachNodeResponse does not leave a half-attached stream', () => {
     const metaSchema = createInvalidSchema('reject')
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -222,7 +222,7 @@ describe('review-findings: meta validation before transport', () => {
     const res = createMockResponse()
 
     try {
-      group.attachChannel(req, res, { meta: { userId: 'bad' } })
+      group.attachNodeResponse(req, res, { meta: { userId: 'bad' } })
     } catch {
       // expected
     }
@@ -231,7 +231,7 @@ describe('review-findings: meta validation before transport', () => {
     expect(res.writeHead).not.toHaveBeenCalled()
     expect(group.size).toBe(0)
 
-    // A subsequent valid attachChannel must work cleanly
+    // A subsequent valid attachNodeResponse must work cleanly
     const metaSchemaGood = createValidSchema<TestMeta>()
     const group2 = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -239,12 +239,12 @@ describe('review-findings: meta validation before transport', () => {
     })
     const req2 = createMockRequest('/sse?__restale_cid__=c10b')
     const res2 = createMockResponse()
-    const result = group2.attachChannel(req2, res2, { meta: { userId: 'good' } })
+    const result = group2.attachNodeResponse(req2, res2, { meta: { userId: 'good' } })
     expect(result.channel.state).toBe('open')
     expect(group2.size).toBe(1)
   })
 
-  it('meta validation failure in createChannel does not leave a half-created Response', () => {
+  it('meta validation failure in createFetchResponse does not leave a half-created Response', () => {
     const metaSchema = createInvalidSchema('reject')
     const group = new SSEChannelGroup<any, TestMeta>({
       channelDefaults: { target: 'swr' },
@@ -255,7 +255,7 @@ describe('review-findings: meta validation before transport', () => {
 
     let threw = false
     try {
-      group.createChannel(request, { meta: { userId: 'bad' } })
+      group.createFetchResponse(request, { meta: { userId: 'bad' } })
     } catch {
       threw = true
     }
@@ -341,7 +341,7 @@ describe('review-findings: attach/create regression (transport headers via build
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('attachChannel emits X-ReStale-Target and X-ReStale-Supported headers', () => {
+  it('attachNodeResponse emits X-ReStale-Target and X-ReStale-Supported headers', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: ['swr', 'tanstack-query'] },
     })
@@ -349,7 +349,7 @@ describe('review-findings: attach/create regression (transport headers via build
     const req = createMockRequest('/sse?__restale_cid__=h1&__restale_target__=swr')
     const res = createMockResponse()
 
-    group.attachChannel(req, res, {})
+    group.attachNodeResponse(req, res, {})
 
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       'X-ReStale-Target': 'swr',
@@ -357,20 +357,20 @@ describe('review-findings: attach/create regression (transport headers via build
     }))
   })
 
-  it('createChannel response includes correct SSE headers', () => {
+  it('createFetchResponse response includes correct SSE headers', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
 
     const request = new Request('http://localhost/sse?__restale_cid__=h2')
-    const { response } = group.createChannel(request, {})
+    const { response } = group.createFetchResponse(request, {})
 
     expect(response.headers.get('Content-Type')).toBe('text/event-stream')
     expect(response.headers.get('X-ReStale-Target')).toBe('swr')
     expect(response.headers.get('X-ReStale-Supported')).toBe('swr')
   })
 
-  it('attachChannel with channel-level target overrides group defaults in headers', () => {
+  it('attachNodeResponse with channel-level target overrides group defaults in headers', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { target: 'swr' },
     })
@@ -378,7 +378,7 @@ describe('review-findings: attach/create regression (transport headers via build
     const req = createMockRequest('/sse?__restale_cid__=h3')
     const res = createMockResponse()
 
-    group.attachChannel(req, res, { target: 'tanstack-query' })
+    group.attachNodeResponse(req, res, { target: 'tanstack-query' })
 
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       'X-ReStale-Target': 'tanstack-query',

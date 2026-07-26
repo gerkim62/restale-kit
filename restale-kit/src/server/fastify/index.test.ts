@@ -21,7 +21,7 @@ function createMockNodeResponse(): ServerResponse {
   return res
 }
 
-describe('server/fastify integration via attachChannel', () => {
+describe('server/fastify integration via attachNodeResponse', () => {
   it('automatically calls reply.hijack() and exposes connectionId on the returned channel', () => {
     const group = new SSEChannelGroup({})
     const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-1')
@@ -30,7 +30,7 @@ describe('server/fastify integration via attachChannel', () => {
     const mockRequest = { raw: rawReq }
     const mockReply = { raw: rawRes, hijack: vi.fn() }
 
-    const { channel } = group.attachChannel(mockRequest, mockReply, { target: 'swr' })
+    const { channel } = group.attachNodeResponse(mockRequest, mockReply, { target: 'swr' })
 
     expect(mockReply.hijack).toHaveBeenCalledTimes(1)
     expect(channel.connectionId).toBe('fastify-1')
@@ -43,7 +43,7 @@ describe('server/fastify integration via attachChannel', () => {
     const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-2')
     const rawRes = createMockNodeResponse()
 
-    const { channel } = group.attachChannel(rawReq, rawRes, { target: 'swr' })
+    const { channel } = group.attachNodeResponse(rawReq, rawRes, { target: 'swr' })
 
     expect(channel.connectionId).toBe('fastify-2')
     expect(channel.state).toBe('open')

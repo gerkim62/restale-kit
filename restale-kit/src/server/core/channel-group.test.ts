@@ -1204,11 +1204,11 @@ describe('SSEChannelGroup — channelDefaults', () => {
     vi.useRealTimers()
   })
 
-  describe('createChannel (Fetch API)', () => {
+  describe('createFetchResponse (Fetch API)', () => {
     it('creates a channel, registers it with the group, and returns response and channel reference', () => {
       const group = new SSEChannelGroup<any, { userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-1')
-      const { response, channel } = group.createChannel(req, {
+      const { response, channel } = group.createFetchResponse(req, {
         target: 'tanstack-query',
         meta: { userId: 42 },
         topics: ['user-42'],
@@ -1226,7 +1226,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
     it('automatically deregisters channel from group when channel closes', () => {
       const group = new SSEChannelGroup<any, { userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-2')
-      const { channel } = group.createChannel(req, {
+      const { channel } = group.createFetchResponse(req, {
         target: 'swr',
         meta: { userId: 10 },
       })
@@ -1241,7 +1241,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         channelDefaults: { target: 'tanstack-query' },
       })
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-3')
-      const { response, channel } = group.createChannel(req, {
+      const { response, channel } = group.createFetchResponse(req, {
         meta: { userId: 99 },
       })
 
@@ -1253,7 +1253,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const group = new SSEChannelGroup({})
       const req = new Request('http://localhost/sse')
       expect(() => {
-        group.createChannel(req, { target: 'swr' })
+        group.createFetchResponse(req, { target: 'swr' })
       }).toThrow('__restale_cid__')
     })
 
@@ -1261,12 +1261,12 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const group = new SSEChannelGroup({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-4')
       expect(() => {
-        group.createChannel(req, {})
+        group.createFetchResponse(req, {})
       }).toThrow('target is required')
     })
   })
 
-  describe('attachChannel (Node.js / Express / Fastify)', () => {
+  describe('attachNodeResponse (Node.js / Express / Fastify)', () => {
     function createMockNodeRes(): any {
       return Object.assign(new EventEmitter(), {
         writeHead: vi.fn(),
@@ -1282,7 +1282,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         target: 'swr',
         meta: { userId: 100 },
         topics: ['topic-a'],
@@ -1303,7 +1303,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const hijackSpy = vi.fn()
       const reply = { raw: rawRes, hijack: hijackSpy } as any
 
-      const { channel } = group.attachChannel(req, reply, {
+      const { channel } = group.attachNodeResponse(req, reply, {
         target: 'tanstack-query',
         meta: { userId: 200 },
       })
@@ -1320,7 +1320,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         target: 'swr',
         meta: { userId: 55 },
       })
@@ -1339,7 +1339,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         meta: { userId: 77 },
       })
 
@@ -1358,7 +1358,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         meta: { userId: 99 },
       })
 
