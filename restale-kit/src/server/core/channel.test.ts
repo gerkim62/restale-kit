@@ -421,20 +421,20 @@ describe('validateSignalTargets', () => {
     validateSignalTargets(s, 'swr')
     expect(s.target).toBe('swr')
 
-    expect(() => validateSignalTargets({ key: ['todos'] }, ['swr', 'tanstack-query'])).toThrow(
+    expect(() => { validateSignalTargets({ key: ['todos'] }, ['swr', 'tanstack-query']); }).toThrow(
       '[invalidate] Multi-target channel requires an explicit "target" field on every signal.'
     )
   })
 
   it('throws an Error when a signal target is not in the declared targets', () => {
-    expect(() => validateSignalTargets({ target: 'tanstack-query', queryKey: ['todos'] }, 'swr')).toThrow(
+    expect(() => { validateSignalTargets({ target: 'tanstack-query', queryKey: ['todos'] }, 'swr'); }).toThrow(
       '[invalidate] Signal target "tanstack-query" is not in the channel\'s declared targets: [swr].'
     )
   })
 
   it('throws an Error when a multi-target channel does not receive signals for all declared targets', () => {
     expect(() =>
-      validateSignalTargets({ target: 'swr', key: ['todos'] }, ['swr', 'tanstack-query'])
+      { validateSignalTargets({ target: 'swr', key: ['todos'] }, ['swr', 'tanstack-query']); }
     ).toThrow(
       '[invalidate] Multi-target channel requires signals for ALL declared targets. Missing target: "tanstack-query".'
     )
@@ -442,19 +442,19 @@ describe('validateSignalTargets', () => {
 
   it('succeeds when a single-target channel receives a signal with matching target', () => {
     expect(() =>
-      validateSignalTargets({ target: 'swr', key: ['todos'] }, 'swr')
+      { validateSignalTargets({ target: 'swr', key: ['todos'] }, 'swr'); }
     ).not.toThrow()
   })
 
   it('succeeds when a multi-target channel receives signals for all declared targets', () => {
     expect(() =>
-      validateSignalTargets(
+      { validateSignalTargets(
         [
           { target: 'swr', key: ['todos'] },
           { target: 'tanstack-query', queryKey: ['todos'] },
         ],
         ['swr', 'tanstack-query']
-      )
+      ); }
     ).not.toThrow()
   })
 })
