@@ -18,8 +18,8 @@ app.get('/sse', (request, reply) => {
     return reply.code(401).send({ error: 'Unauthorized: invalid or missing session identity' })
   }
   const authenticatedUserId = parsed.data
-  // Pass request/reply directly — attachChannel calls reply.hijack() automatically
-  group.attachChannel(request, reply, {
+  // Pass request/reply directly — attachNodeResponse calls reply.hijack() automatically
+  group.attachNodeResponse(request, reply, {
     meta: { userId: authenticatedUserId },
   })
 })

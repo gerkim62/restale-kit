@@ -172,19 +172,19 @@ class SSEChannelGroup<
   readonly channelDefaults?: ChannelDefaults
 
   /**
-   * Creates an SSE channel from a Fetch API Request, registers it with the group, and returns { response, channel }.
-   * Throws synchronously if __restale_cid__ is missing or invalid.
+   * Creates a Web Standard Fetch API Response object, registers the channel with the group, and returns { response, channel }.
+   * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
    */
-  createChannel(
+  createFetchResponse(
     request: Request,
     options: ChannelSetupOptions<TSignal, TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> }
 
   /**
    * Attaches an SSE channel to a Node.js HTTP response or Fastify reply, registers it with the group, and returns { channel }.
-   * Throws synchronously if __restale_cid__ is missing or invalid.
+   * @framework Node.js, Express, Fastify
    */
-  attachChannel(
+  attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TSignal, TMeta>

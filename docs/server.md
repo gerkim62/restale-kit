@@ -9,8 +9,8 @@ The server side has two concerns:
 ## Establishing channels via `SSEChannelGroup`
 
 `SSEChannelGroup` is the single entry point for establishing and managing channels. Creating and registering channels occurs atomically in a single method call:
-- `group.createChannel(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
-- `group.attachChannel(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
+- `group.createFetchResponse(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
+- `group.attachNodeResponse(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
 
 All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
 
@@ -26,7 +26,7 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  group.attachChannel(req, res, {
+  group.attachNodeResponse(req, res, {
     meta: { userId: req.user?.id },
   })
 })
@@ -45,7 +45,7 @@ const group = new SSEChannelGroup({
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    group.attachChannel(req, res, {
+    group.attachNodeResponse(req, res, {
       meta: { userId: req.user?.id },
     })
   }
@@ -54,7 +54,7 @@ const server = http.createServer((req, res) => {
 
 ### Fastify
 
-`group.attachChannel` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachChannel` automatically calls `reply.hijack()` for you.
+`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` automatically calls `reply.hijack()` for you.
 
 ```ts
 import Fastify from 'fastify'
@@ -66,7 +66,7 @@ const group = new SSEChannelGroup({
 const app = Fastify()
 
 app.get('/sse', (request, reply) => {
-  group.attachChannel(request, reply, {
+  group.attachNodeResponse(request, reply, {
     meta: { userId: request.user?.id },
   })
 })
@@ -88,7 +88,7 @@ const group = new SSEChannelGroup({
 app.use('*', authMiddleware) // Auth middleware sets userId on context
 
 app.get('/sse', (c) => {
-  const { response } = group.createChannel(c.req.raw, {
+  const { response } = group.createFetchResponse(c.req.raw, {
     meta: { userId: c.get('userId') },
   })
   return response
@@ -223,13 +223,13 @@ A channel can have an absolute or relative deadline after which it must be renew
 
 ```ts
 // Relative: expire after 5 minutes
-const channel = attachSSE(req, res, {
+const { channel } = group.attachNodeResponse(req, res, {
   target: 'swr',
   lifetime: { ttlMs: 5 * 60 * 1000 }
 })
 
 // Absolute: expire at the token's exp claim (epoch ms)
-const channel = attachSSE(req, res, {
+const { channel } = group.attachNodeResponse(req, res, {
   target: 'swr',
   lifetime: { deadline: tokenPayload.exp * 1000 }
 })
@@ -263,7 +263,7 @@ lifetime: {
 Before each outgoing signal frame (and optionally keepalive frames), you can run a custom synchronous guard function to inspect or reject the frame:
 
 ```ts
-const channel = attachSSE(req, res, {
+const { channel } = group.attachNodeResponse(req, res, {
   target: 'swr',
   beforeFrame: (ctx) => {
     // ctx.signal: the signal about to be sent (undefined for keepalive)
@@ -308,7 +308,7 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  group.attachChannel(req, res, {
+  group.attachNodeResponse(req, res, {
     meta: { userId: req.user.id },
     // Channel-specific options can override defaults:
     // lifetime: { ttlMs: 10 * 60 * 1000 }
@@ -399,14 +399,14 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  // group.attachChannel automatically connects eventStore to channels
-  group.attachChannel(req, res, {
+  // group.attachNodeResponse automatically connects eventStore to channels
+  group.attachNodeResponse(req, res, {
     meta: { userId: req.user.id },
   })
 })
 ```
 
-When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `group.attachChannel` / `group.createChannel` extracts the header and connects `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
+When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `group.attachNodeResponse` / `group.createFetchResponse` extracts the header and connects `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
 
 > **Tip — pair with Frame Guard lifetime:** If you use `lifetime: { onDeadline: 'reconnect' }` (the default), configure a shared `eventStore` at the same time. During the brief close-and-reconnect window triggered by a deadline, any signals sent by the server may not be delivered to the client. An `eventStore` ensures those signals are replayed when the client reconnects with `Last-Event-ID`.
 

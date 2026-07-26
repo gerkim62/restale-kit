@@ -61,7 +61,7 @@ const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>({
 
 app.get('/sse', (req, res) => {
   // Throws SchemaValidationError if metadata validation fails
-  group.attachChannel(req, res, {
+  group.attachNodeResponse(req, res, {
     meta: {
       userId: req.user.id,
       role: req.user.role,
@@ -84,7 +84,7 @@ When metadata fails validation against `metaSchema`, `SchemaValidationError` is 
 import { SchemaValidationError } from 'restale-kit'
 
 try {
-  group.attachChannel(req, res, { meta: invalidMeta })
+  group.attachNodeResponse(req, res, { meta: invalidMeta })
 } catch (err) {
   if (err instanceof SchemaValidationError) {
     console.error(err.message) // formatted issue summary

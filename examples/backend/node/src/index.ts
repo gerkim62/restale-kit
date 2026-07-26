@@ -34,7 +34,7 @@ createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/sse') {
       const authUserId = getAuthenticatedUserId(req) ?? (UserIdSchema.safeParse(queryUserId).success ? queryUserId : 'ada')
-      group.attachChannel(req, res, {
+      group.attachNodeResponse(req, res, {
         meta: { userId: authUserId },
       })
       return

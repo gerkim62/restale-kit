@@ -29,6 +29,6 @@ export async function saveTodos(userId, todos) {
 }
 
 export function openSse(req, res, userId) {
-  group.attachChannel(req, res, { topics: [topic(userId)] })
+  group.attachNodeResponse(req, res, { topics: [topic(userId)] })
 }
 
