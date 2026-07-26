@@ -580,6 +580,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isInvalidateSignal(value: unknown): value is InvalidateSignal {
+  return isRecord(value)
+}
+
 export function validateSignalTargets(
   signal: unknown,
   targetConfig: SignalTarget | SignalTarget[]
@@ -607,7 +611,11 @@ export function validateSignalTargets(
       if (declaredTargets.length === 1 && declaredTargets[0] !== undefined) {
         // Single-target channel: auto-fill target if omitted
         targetStr = declaredTargets[0]
-        normalizedSignal = { ...s, target: targetStr } as unknown as InvalidateSignal
+        const filledSignal: unknown = { ...s, target: targetStr }
+        if (!isInvalidateSignal(filledSignal)) {
+          throw new Error('[invalidate] Invalid signal structure.')
+        }
+        normalizedSignal = filledSignal
       } else {
         const sStr = JSON.stringify(s)
         throw new Error(
@@ -617,7 +625,10 @@ export function validateSignalTargets(
         )
       }
     } else {
-      normalizedSignal = s as unknown as InvalidateSignal
+      if (!isInvalidateSignal(s)) {
+        throw new Error('[invalidate] Invalid signal structure.')
+      }
+      normalizedSignal = s
     }
 
     if (!declaredSet.has(targetStr)) {
@@ -643,5 +654,5 @@ export function validateSignalTargets(
     }
   }
 
-  return Array.isArray(signal) ? resultArray : resultArray[0]!
+  return Array.isArray(signal) ? resultArray : resultArray[0]
 }
