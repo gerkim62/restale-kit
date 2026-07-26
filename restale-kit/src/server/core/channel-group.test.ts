@@ -39,7 +39,7 @@ describe('channel-group', () => {
     expect(group.size).toBe(1)
 
     const spy = vi.spyOn(channel, 'invalidate')
-    group.broadcastToAll({ key: ['test'] })
+    group.broadcastToAll({ target: 'swr', key: ['test'] })
     expect(spy).toHaveBeenCalled()
   })
 
@@ -59,11 +59,11 @@ describe('channel-group', () => {
     group.register(ch2)
     group.register(ch3)
 
-    group.broadcastToAll({ key: ['update'] })
+    group.broadcastToAll({ target: 'swr', key: ['update'] })
 
-    expect(spy1).toHaveBeenCalledWith({ key: ['update'] }, undefined)
-    expect(spy2).toHaveBeenCalledWith({ key: ['update'] }, undefined)
-    expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
+    expect(spy2).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
+    expect(spy3).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
   })
 
   it('enqueues framed SSE bytes with id line when group has eventBufferCapacity', async () => {
@@ -71,14 +71,14 @@ describe('channel-group', () => {
     const ch = createSSEChannel({ target: 'swr' })
     group.register(ch)
 
-    group.broadcastToAll({ key: ['todos'] })
+    group.broadcastToAll({ target: 'swr', key: ['todos'] })
 
     const decoder = new TextDecoder()
     const reader = ch.stream.getReader()
     const { value } = await reader.read()
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n')
+    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"key":["todos"]}\n\n')
   })
 
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
@@ -95,7 +95,7 @@ describe('channel-group', () => {
     group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
 
     const seenMetas: ({ userId: number } | undefined)[] = []
-    group.broadcast({ key: ['test'] }, (meta) => {
+    group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
       seenMetas.push(meta)
       return true
     })
@@ -119,7 +119,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 42 })
     group.register(chNoMeta)
 
-    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
+    group.broadcast({ target: 'swr', key: ['targeted'] }, (meta) => meta !== undefined)
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -138,7 +138,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 7 })
     group.register(chNoMeta) // undefined meta
 
-    group.broadcastByKey({ key: [{ userId: 7 }] })
+    group.broadcastByKey({ target: 'swr', key: [{ userId: 7 }] })
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -263,7 +263,7 @@ describe('channel-group', () => {
     group.register(channel, { userId: 1 })
 
     // Static check: meta.userId compiles without optional chaining
-    group.broadcast({ key: ['test'] }, (meta) => {
+    group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
       const _userId: number = meta.userId
       return _userId > 0
     })
@@ -292,9 +292,9 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ key: ['admin-data'] }, (meta) => meta.role === 'admin')
+    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta.role === 'admin')
 
-    expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
+    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
   })
 
@@ -309,7 +309,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1 })
     group.register(ch2, { userId: 2 })
 
-    group.broadcastToAll({ key: ['global-update'] })
+    group.broadcastToAll({ target: 'swr', key: ['global-update'] })
 
     expect(spy1).toHaveBeenCalled()
     expect(spy2).toHaveBeenCalled()
@@ -334,7 +334,7 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 1 })
 
-    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
+    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow(AggregateError)
   })
 
   it('publishes locally before publishing to broker pubsub', async () => {
@@ -347,12 +347,12 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 10 }, { topics: ['notifications'] })
 
-    await group.publish('notifications', { key: ['alert'] })
+    await group.publish('notifications', { target: 'swr', key: ['alert'] })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, undefined)
+    expect(invalidateSpy).toHaveBeenCalledWith({ target: 'swr', key: ['alert'] }, undefined)
     expect(publishSpy).toHaveBeenCalledWith('notifications', {
       kind: 'signal',
-      data: { key: ['alert'] },
+      data: { target: 'swr', key: ['alert'] },
       id: undefined,
     })
   })
@@ -365,13 +365,13 @@ describe('channel-group', () => {
     const ch = createSSEChannel({ target: 'swr' })
     group.register(ch, { userId: 10 }, { topics: ['notifications'] })
 
-    await group.publish('notifications', { key: ['alert'] })
+    await group.publish('notifications', { target: 'swr', key: ['alert'] })
 
     expect(publishSpy).toHaveBeenCalledWith(
       'notifications',
       expect.objectContaining({
         kind: 'signal',
-        data: { key: ['alert'] },
+        data: { target: 'swr', key: ['alert'] },
         id: expect.any(String),
       })
     )
@@ -394,7 +394,7 @@ describe('channel-group', () => {
       id: 'pubsub-evt-100',
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, 'pubsub-evt-100')
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['alert'] }), 'pubsub-evt-100')
   })
 
   it('revokes matching channels locally and publishes control message to pubsub', async () => {
@@ -502,7 +502,7 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 1 })
 
-    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow()
+    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow()
     expect(consoleSpy).toHaveBeenCalled()
     expect(consoleSpy.mock.calls[0][0]).toContain('[ERROR][SSEChannelGroup')
 
@@ -536,14 +536,14 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
-    group.broadcast({ key: ['broadcast-event'] }, () => true)
+    group.broadcast({ target: 'swr', key: ['broadcast-event'] }, () => true)
     // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
-    const r1 = store.add({ key: ['probe'] }) // id '2'
+    const r1 = store.add({ target: 'swr', key: ['probe'] }) // id '2'
     expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
     expect(store.getEventsAfter('0').stale).toBe(true) // '0' unknown → stale
 
-    await group.publish('chat', { key: ['publish-event'] })
-    const r3 = store.add({ key: ['probe2'] })
+    await group.publish('chat', { target: 'swr', key: ['publish-event'] })
+    const r3 = store.add({ target: 'swr', key: ['probe2'] })
     // broadcast-event='1', probe='2', publish-event='3', probe2='4'
     // getEventsAfter('1') → [probe, publish-event, probe2]
     const { events: allEvents, stale } = store.getEventsAfter('1')
@@ -561,7 +561,7 @@ describe('channel-group', () => {
     group.register(ch, { userId: 1 })
     expect(group.size).toBe(1)
 
-    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
+    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow(AggregateError)
 
     // Channel should still be registered — it threw Error, not ChannelClosedError
     expect(group.size).toBe(1)
@@ -577,12 +577,12 @@ describe('channel-group', () => {
     const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
 
     // No channels registered on 'orphan-topic'
-    await group.publish('orphan-topic', { key: ['remote-only'] })
+    await group.publish('orphan-topic', { target: 'swr', key: ['remote-only'] })
 
     // Broker should still receive the signal for remote instances
     expect(publishSpy).toHaveBeenCalledWith('orphan-topic', {
       kind: 'signal',
-      data: { key: ['remote-only'] },
+      data: { target: 'swr', key: ['remote-only'] },
     })
   })
 
@@ -590,7 +590,7 @@ describe('channel-group', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
 
     // Should not throw
-    await expect(group.publish('nonexistent', { key: ['test'] })).resolves.toBeUndefined()
+    await expect(group.publish('nonexistent', { target: 'swr', key: ['test'] })).resolves.toBeUndefined()
   })
 
   // --- deliverToChannel swallows non-ChannelClosedError in publish() context ---
@@ -604,7 +604,7 @@ describe('channel-group', () => {
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
     // publish() via deliverToChannel should log the error but NOT throw
-    await expect(group.publish('chat', { key: ['test'] })).resolves.toBeUndefined()
+    await expect(group.publish('chat', { target: 'swr', key: ['test'] })).resolves.toBeUndefined()
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('[ERROR][SSEChannelGroup.publish]'),
@@ -710,7 +710,7 @@ describe('channel-group', () => {
     })
 
     // ch.invalidate should have been called
-    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['remote-data'] }, undefined)
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['remote-data'] }), undefined)
   })
 
   // --- TopicManager edge cases for 100% line coverage ---
@@ -800,7 +800,7 @@ describe('channel-group', () => {
     group.register(ch, { userId: 99 })
 
     group.broadcastToAll({ key: ['auto-store-group'] })
-    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['auto-store-group'] }, '1')
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['auto-store-group'] }), '1')
   })
 
   it('preserves topic subscription when new channel registers while teardown is in-flight', async () => {
@@ -877,9 +877,9 @@ describe('channel-group', () => {
     group.register(ch2, { userId: 2 })
 
     // signal key [{ userId: 1 }] should match only ch1
-    group.broadcastByKey({ key: [{ userId: 1 }] })
+    group.broadcastByKey({ target: 'swr', key: [{ userId: 1 }] })
 
-    expect(spy1).toHaveBeenCalledWith({ key: [{ userId: 1 }] }, undefined)
+    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: [{ userId: 1 }] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
   })
 
@@ -895,7 +895,7 @@ describe('channel-group', () => {
     group.register(ch2, { role: 'user' })
 
     // empty key prefix matches every channel
-    group.broadcastByKey({ key: [] })
+    group.broadcastByKey({ target: 'swr', key: [] })
 
     expect(spy1).toHaveBeenCalled()
     expect(spy2).toHaveBeenCalled()
@@ -908,7 +908,7 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 5 })
 
-    group.broadcastByKey({ key: [{ userId: 99 }] })
+    group.broadcastByKey({ target: 'swr', key: [{ userId: 99 }] })
     expect(spy).not.toHaveBeenCalled()
   })
 
@@ -1067,20 +1067,23 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('delivers raw signal on broadcast to channel which frames multi-target signals', async () => {
+  it('delivers raw signals on broadcast to multi-target channel', async () => {
     const group = new SSEChannelGroup()
     const ch = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
     group.register(ch)
 
     const reader = ch.stream.getReader()
-    group.broadcastToAll({ key: ['items'] })
+    group.broadcastToAll([
+      { target: 'swr', key: ['items'] },
+      { target: 'tanstack-query', queryKey: ['items'] },
+    ])
 
     const { value } = await reader.read()
     reader.releaseLock()
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
+      'event: invalidate\ndata: [{"key":["items"]}]\n\n'
     )
   })
 
@@ -1090,42 +1093,42 @@ describe('channel-group', () => {
     group.register(ch)
 
     const reader = ch.stream.getReader()
-    group.broadcastToAll({ key: ['todos'] })
+    group.broadcastToAll({ target: 'swr', key: ['todos'] })
 
     const { value } = await reader.read()
     reader.releaseLock()
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n'
+      'event: invalidate\ndata: {"key":["todos"]}\n\n'
     )
   })
 
-  it('delivers raw signal to channel which applies its own target transform', () => {
+  it('delivers raw signal to channel on broadcast', () => {
     const group = new SSEChannelGroup()
     const ch = createSSEChannel({ target: 'tanstack-query' })
     group.register(ch)
 
     const spy = vi.spyOn(ch, 'invalidate')
-    group.broadcastToAll({ key: ['items'] })
+    group.broadcastToAll({ target: 'tanstack-query', queryKey: ['items'] })
 
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ key: ['items'] }), undefined)
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ target: 'tanstack-query', queryKey: ['items'] }), undefined)
   })
 
-  it('delivers raw signal on publish() to local topic subscribers which apply channel target transform', async () => {
+  it('delivers raw signal on publish() to local topic subscribers', async () => {
     const group = new SSEChannelGroup()
     const ch = createSSEChannel({ target: 'tanstack-query' })
     group.register(ch, undefined, { topics: ['items'] })
 
     const reader = ch.stream.getReader()
-    await group.publish('items', { key: ['posts'] })
+    await group.publish('items', { target: 'tanstack-query', queryKey: ['posts'] })
 
     const { value } = await reader.read()
     reader.releaseLock()
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"target":"tanstack-query","queryKey":["posts"]}\n\n'
+      'event: invalidate\ndata: {"queryKey":["posts"]}\n\n'
     )
   })
 })
@@ -1216,8 +1219,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
 
       const invalidateSpy = vi.spyOn(channel, 'invalidate')
-      group.broadcastToAll({ key: ['items'] })
-      expect(invalidateSpy).toHaveBeenCalledWith({ key: ['items'] }, undefined)
+      group.broadcastToAll({ target: 'tanstack-query', queryKey: ['items'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['items'] }, undefined)
     })
 
     it('automatically deregisters channel from group when channel closes', () => {
@@ -1368,7 +1371,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         lifetime: { ttlMs: 60000 },
       })
       // Emitting invalidations should assign an auto-increment ID because event store capacity was auto-allocated
-      const eventId = ch.invalidate({ key: ['todos'] })
+      const eventId = ch.invalidate({ target: 'generic', key: ['todos'] })
       expect(eventId).toBe('1')
       ch.close()
     })

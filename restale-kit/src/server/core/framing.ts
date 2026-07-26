@@ -13,6 +13,21 @@ export interface RenewFramePayload {
 
 const encoder = new TextEncoder()
 
+function stripTargetFromSignal(item: unknown): unknown {
+  if (item && typeof item === 'object' && 'target' in item) {
+    const { target, ...rest } = item as Record<string, unknown>
+    return rest
+  }
+  return item
+}
+
+function prepareWireSignal(signal: SSEInvalidateEvent): unknown {
+  if (Array.isArray(signal)) {
+    return signal.map(stripTargetFromSignal)
+  }
+  return stripTargetFromSignal(signal)
+}
+
 /**
  * Formats an invalidation signal (or batch) as an SSE event frame.
  *
@@ -30,7 +45,8 @@ const encoder = new TextEncoder()
  * the frame is never broken by embedded newline characters.
  */
 export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
-  const json = JSON.stringify(signal)
+  const wirePayload = prepareWireSignal(signal)
+  const json = JSON.stringify(wirePayload)
   const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
   const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
   // Split on any newline variant and prefix each line with "data: " per the SSE spec.

@@ -39,14 +39,14 @@ describe('ablyPubSubAdapter', () => {
     const { client } = createMockAblyClient()
     const adapter = ablyPubSubAdapter(client)
 
-    await adapter.publish('channel-1', { kind: 'signal', data: { key: ['test'] } })
+    await adapter.publish('channel-1', { kind: 'signal', data: { target: 'swr', key: ['test'] } })
 
     const channel = client.channels.get('channel-1')
     expect(channel.publish).toHaveBeenCalledWith(
       'invalidate',
       expect.objectContaining({
         origin: expect.any(String),
-        payload: { kind: 'signal', data: { key: ['test'] } },
+        payload: { kind: 'signal', data: { target: 'swr', key: ['test'] } },
       })
     )
   })
@@ -62,11 +62,11 @@ describe('ablyPubSubAdapter', () => {
     listener({
       data: {
         origin: 'remote-id',
-        payload: { kind: 'signal', data: { key: ['remote-item'] } },
+        payload: { kind: 'signal', data: { target: 'swr', key: ['remote-item'] } },
       },
     })
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['remote-item'] } })
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { target: 'swr', key: ['remote-item'] } })
   })
 
   it('supports native echo suppression when enabled', async () => {
@@ -75,18 +75,18 @@ describe('ablyPubSubAdapter', () => {
     const callback = vi.fn()
 
     await adapter.subscribe('channel-1', callback)
-    await adapter.publish('channel-1', { kind: 'signal', data: { key: ['native-test'] } })
+    await adapter.publish('channel-1', { kind: 'signal', data: { target: 'swr', key: ['native-test'] } })
 
     const channel = client.channels.get('channel-1')
     expect(channel.publish).toHaveBeenCalledWith('invalidate', {
       kind: 'signal',
-      data: { key: ['native-test'] },
+      data: { target: 'swr', key: ['native-test'] },
     })
 
     const listener = channelListeners[0]
-    listener({ data: { kind: 'signal', data: { key: ['native-test'] } } })
+    listener({ data: { kind: 'signal', data: { target: 'swr', key: ['native-test'] } } })
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['native-test'] } })
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { target: 'swr', key: ['native-test'] } })
   })
 
   it('handles state change listeners, custom onError handler, and unsubscribe errors', async () => {
@@ -205,7 +205,7 @@ describe('ablyPubSubAdapter', () => {
     const { client } = createMockAblyClient()
     const adapter = ablyPubSubAdapter(client, { encryptionKey: validKey })
 
-    await adapter.publish('channel-encrypted', { kind: 'signal', data: { key: ['todos'] } })
+    await adapter.publish('channel-encrypted', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
 
     const channel = client.channels.get('channel-encrypted')
     expect(channel.publish).toHaveBeenCalledWith(
@@ -225,7 +225,7 @@ describe('ablyPubSubAdapter', () => {
     const { client } = createMockAblyClient(false)
     const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: validKey })
 
-    await adapter.publish('channel-encrypted', { kind: 'signal', data: { key: ['todos'] } })
+    await adapter.publish('channel-encrypted', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
 
     const channel = client.channels.get('channel-encrypted')
     expect(channel.publish).toHaveBeenCalledWith('invalidate', expect.any(String))
@@ -242,12 +242,12 @@ describe('ablyPubSubAdapter', () => {
 
     await adapter.subscribe('channel-encrypted', callback)
 
-    const env = wrapEnvelope('remote-id', { kind: 'signal', data: { key: ['todos'] } }, validKey, 'channel-encrypted')
+    const env = wrapEnvelope('remote-id', { kind: 'signal', data: { target: 'swr', key: ['todos'] } }, validKey, 'channel-encrypted')
 
     const listener = channelListeners[0]
     listener({ data: env })
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { target: 'swr', key: ['todos'] } })
   })
 
   it('decrypts encrypted raw message correctly under native echo suppression mode', async () => {

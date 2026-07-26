@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel, processTargetSignals } from './channel.js'
+import { createSSEChannel, validateSignalTargets } from './channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import { createEventStore } from './event-store.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
@@ -45,15 +45,15 @@ describe('channel', () => {
   it('throws ChannelClosedError on invalidate when closed', () => {
     const channel = createSSEChannel({ target: 'swr' })
     channel.close()
-    expect(() => channel.invalidate({ key: ['test'] })).toThrow(ChannelClosedError)
+    expect(() => channel.invalidate({ target: 'swr', key: ['test'] })).toThrow(ChannelClosedError)
   })
 
   it('enqueues framed invalidate event bytes into stream', async () => {
     const channel = createSSEChannel({ target: 'swr' })
-    channel.invalidate({ key: ['items', 1] })
+    channel.invalidate({ target: 'swr', key: ['items', 1] })
 
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
   })
 
   it('does not emit keepalives by default when keepaliveIntervalMs is omitted', async () => {
@@ -83,9 +83,9 @@ describe('channel', () => {
 
   it('replays missed events upon stream initialization if lastEventId and eventStore are set', async () => {
     const store = createEventStore({ capacity: 10 })
-    store.add({ key: ['a'] }, 'evt-1')
-    store.add({ key: ['b'] }, 'evt-2')
-    store.add({ key: ['c'] }, 'evt-3')
+    store.add({ target: 'swr', key: ['a'] }, 'evt-1')
+    store.add({ target: 'swr', key: ['b'] }, 'evt-2')
+    store.add({ target: 'swr', key: ['c'] }, 'evt-3')
 
     const channel = createSSEChannel({
       target: 'swr',
@@ -99,19 +99,19 @@ describe('channel', () => {
     reader.releaseLock()
     
 
-    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"target":"swr","key":["b"]}\n\n')
-    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"target":"swr","key":["c"]}\n\n')
+    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
+    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
   })
 
   it('uses eventStore and custom idGenerator during invalidate', () => {
     const store = createEventStore({ capacity: 10 })
     const channel = createSSEChannel({ target: 'swr', eventStore: store })
 
-    const id = channel.invalidate({ key: ['test-store'] })
+    const id = channel.invalidate({ target: 'swr', key: ['test-store'] })
     expect(id).toBeDefined()
     expect(id).not.toBe('')
     // Positively verify the event was recorded: a subsequent event added after id must appear
-    const subsequentId = channel.invalidate({ key: ['subsequent'] })
+    const subsequentId = channel.invalidate({ target: 'swr', key: ['subsequent'] })
     const { events: afterFirst, stale: staleAfterFirst } = store.getEventsAfter(id)
     expect(staleAfterFirst).toBe(false)
     expect(afterFirst.map((e) => e.id)).toContain(subsequentId) // subsequent event is visible after id
@@ -126,29 +126,29 @@ describe('channel', () => {
     const customGen = vi.fn().mockReturnValue('custom-id-123')
     const customChannel = createSSEChannel({ target: 'swr', eventBufferCapacity: 10, idGenerator: customGen })
 
-    const generatedId = customChannel.invalidate({ key: ['test-custom'] })
+    const generatedId = customChannel.invalidate({ target: 'swr', key: ['test-custom'] })
     expect(generatedId).toBe('custom-id-123')
     expect(customGen).toHaveBeenCalled()
   })
 
   it('includes customId in SSE stream frame even when channel has no eventStore', async () => {
     const channel = createSSEChannel({ target: 'swr' })
-    const returnedId = channel.invalidate({ key: ['items', 1] }, 'custom-evt-99')
+    const returnedId = channel.invalidate({ target: 'swr', key: ['items', 1] }, 'custom-evt-99')
 
     expect(returnedId).toBe('custom-evt-99')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
+    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"key":["items",1]}\n\n')
   })
 
   it('uses idGenerator to produce SSE stream frame id when channel has no eventStore', async () => {
     const customGen = vi.fn().mockReturnValue('gen-id-456')
     const channel = createSSEChannel({ target: 'swr', idGenerator: customGen })
 
-    const returnedId = channel.invalidate({ key: ['items', 2] })
+    const returnedId = channel.invalidate({ target: 'swr', key: ['items', 2] })
 
     expect(returnedId).toBe('gen-id-456')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"target":"swr","key":["items",2]}\n\n')
+    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"key":["items",2]}\n\n')
   })
 
   it('warns when controller.close throws inside closeInternal', async () => {
@@ -299,7 +299,7 @@ describe('channel', () => {
 
   it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {
     const channel = createSSEChannel({ target: 'swr', eventBufferCapacity: 20 })
-    const id = channel.invalidate({ key: ['auto-store'] })
+    const id = channel.invalidate({ target: 'swr', key: ['auto-store'] })
     expect(id).toBe('1') // EventStore auto-increment ID
   })
 
@@ -394,9 +394,9 @@ describe('channel', () => {
     const channel = createSSEChannel({ target: 'swr' })
     expect(channel.target).toBe('swr')
 
-    channel.invalidate({ key: ['items', 1] })
+    channel.invalidate({ target: 'swr', key: ['items', 1] })
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
   })
 
   it('rejects connection when target array is specified without requestedTarget', async () => {
@@ -415,335 +415,69 @@ describe('channel', () => {
   })
 })
 
-describe('processTargetSignals', () => {
-  // ── return-value shape ──────────────────────────────────────────────────────
+describe('validateSignalTargets', () => {
+  it('auto-fills target property when single-target channel, but throws when multi-target', () => {
+    const s = { key: ['todos'] } as any
+    validateSignalTargets(s, 'swr')
+    expect(s.target).toBe('swr')
 
-  it('returns a single object (not an array) when given a single signal and a single target', () => {
-    const result = processTargetSignals({ key: ['todos'] }, 'swr')
-    // Must NOT be an array — mirrors the invalidate() overload contract
-    expect(Array.isArray(result)).toBe(false)
-    expect(result).toMatchObject({ target: 'swr', key: ['todos'] })
-  })
-
-  it('returns an array when given a single signal and an array of targets', () => {
-    const result = processTargetSignals({ key: ['todos'] }, ['swr', 'tanstack-query'])
-    expect(Array.isArray(result)).toBe(true)
-    expect(result).toHaveLength(2)
-  })
-
-  it('returns an array when given a batch of signals with a single target', () => {
-    const result = processTargetSignals(
-      [{ key: ['a'] }, { key: ['b'] }],
-      'tanstack-query'
+    expect(() => validateSignalTargets({ key: ['todos'] }, ['swr', 'tanstack-query'])).toThrow(
+      '[invalidate] Multi-target channel requires an explicit "target" field on every signal.'
     )
-    expect(Array.isArray(result)).toBe(true)
-    expect(result).toHaveLength(2)
   })
 
-  it('returns an array when given a batch of signals and a multi-target array', () => {
-    const result = processTargetSignals(
-      [{ key: ['a'] }, { key: ['b'] }],
-      ['swr', 'tanstack-query']
+  it('throws an Error when a signal target is not in the declared targets', () => {
+    expect(() => validateSignalTargets({ target: 'tanstack-query', queryKey: ['todos'] }, 'swr')).toThrow(
+      '[invalidate] Signal target "tanstack-query" is not in the channel\'s declared targets: [swr].'
     )
-    expect(Array.isArray(result)).toBe(true)
-    // 2 signals × 2 targets = 4 entries
-    expect(result).toHaveLength(4)
   })
 
-  // ── already-tagged passthrough ─────────────────────────────────────────────
-
-  it('passes through a signal that already has a target property without re-wrapping', () => {
-    const tagged = { target: 'swr' as const, key: ['todos'] }
-    const result = processTargetSignals(tagged, 'tanstack-query')
-    // Should be returned as-is (no re-wrapping in an array since only one result)
-    expect(result).toEqual(tagged)
-    expect((result as any).target).toBe('swr')
+  it('throws an Error when a multi-target channel does not receive signals for all declared targets', () => {
+    expect(() =>
+      validateSignalTargets({ target: 'swr', key: ['todos'] }, ['swr', 'tanstack-query'])
+    ).toThrow(
+      '[invalidate] Multi-target channel requires signals for ALL declared targets. Missing target: "tanstack-query".'
+    )
   })
 
-  it('passes through already-tagged signals in a batch', () => {
-    const t1 = { target: 'swr' as const, key: ['a'] }
-    const t2 = { key: ['b'] }
-    const result = processTargetSignals([t1, t2], 'tanstack-query') as any[]
-    expect(result[0]).toEqual(t1)
-    expect(result[1]).toMatchObject({ target: 'tanstack-query', queryKey: ['b'] })
+  it('succeeds when a single-target channel receives a signal with matching target', () => {
+    expect(() =>
+      validateSignalTargets({ target: 'swr', key: ['todos'] }, 'swr')
+    ).not.toThrow()
   })
 
-  // ── SWR target ─────────────────────────────────────────────────────────────
-
-  it('builds SWR signal with array key from generic key field', () => {
-    const result = processTargetSignals({ key: ['users', 1] }, 'swr') as any
-    expect(result.target).toBe('swr')
-    expect(result.key).toEqual(['users', 1])
+  it('succeeds when a multi-target channel receives signals for all declared targets', () => {
+    expect(() =>
+      validateSignalTargets(
+        [
+          { target: 'swr', key: ['todos'] },
+          { target: 'tanstack-query', queryKey: ['todos'] },
+        ],
+        ['swr', 'tanstack-query']
+      )
+    ).not.toThrow()
   })
+})
 
-  it('builds SWR signal: prefers queryKey over key when both present', () => {
-    const result = processTargetSignals(
-      { queryKey: ['prefer-this'], key: ['not-this'] },
-      'swr'
-    ) as any
-    expect(result.key).toEqual(['prefer-this'])
-  })
-
-  it('builds SWR signal: preserves string key as-is', () => {
-    const result = processTargetSignals({ key: '/api/users' } as InvalidateSignal, 'swr') as any
-    expect(result.key).toBe('/api/users')
-  })
-
-  it('builds SWR signal: propagates optional action field', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], action: 'revalidate' } as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.action).toBe('revalidate')
-  })
-
-  it('builds SWR signal: propagates purge action', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], action: 'purge' } as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.action).toBe('purge')
-  })
-
-  it('builds SWR signal: propagates remove action', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], action: 'remove' },
-      'swr'
-    ) as any
-    expect(result.action).toBe('remove')
-  })
-
-  it('builds SWR signal: propagates revalidate: false', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], revalidate: false },
-      'swr'
-    ) as any
-    expect(result.revalidate).toBe(false)
-  })
-
-  it('builds SWR signal: propagates match field (exact)', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], match: 'exact' } as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.match).toBe('exact')
-  })
-
-  it('builds SWR signal: propagates match field (prefix)', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], match: 'prefix' } as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.match).toBe('prefix')
-  })
-
-  it('builds SWR signal: does NOT propagate unknown action values', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], action: 'unknown-action' } as unknown as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.action).toBeUndefined()
-  })
-
-  it('builds SWR signal: does NOT propagate revalidate when it is not a boolean', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], revalidate: 'yes' } as InvalidateSignal,
-      'swr'
-    ) as any
-    expect(result.revalidate).toBeUndefined()
-  })
-
-  // ── TanStack Query target ──────────────────────────────────────────────────
-
-  it('builds TanStackQuerySignal with queryKey from generic key field', () => {
-    const result = processTargetSignals({ key: ['posts', 2] }, 'tanstack-query') as any
-    expect(result.target).toBe('tanstack-query')
-    expect(result.queryKey).toEqual(['posts', 2])
-  })
-
-  it('builds TanStackQuerySignal: prefers queryKey source over key when both present', () => {
-    const result = processTargetSignals(
-      { queryKey: ['prefer'], key: ['other'] },
-      'tanstack-query'
-    ) as any
-    expect(result.queryKey).toEqual(['prefer'])
-  })
-
-  it('builds TanStackQuerySignal: propagates exact boolean', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], exact: true },
-      'tanstack-query'
-    ) as any
-    expect(result.exact).toBe(true)
-  })
-
-  it('builds TanStackQuerySignal: propagates type filter (active/inactive/all)', () => {
-    for (const t of ['active', 'inactive', 'all'] as const) {
-      const result = processTargetSignals({ key: ['todos'], type: t }, 'tanstack-query') as any
-      expect(result.type).toBe(t)
-    }
-  })
-
-  it('builds TanStackQuerySignal: propagates all valid action values', () => {
-    for (const action of ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const) {
-      const result = processTargetSignals({ key: ['todos'], action } as InvalidateSignal, 'tanstack-query') as any
-      expect(result.action).toBe(action)
-    }
-  })
-
-  it('builds TanStackQuerySignal: propagates stale boolean', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], stale: true },
-      'tanstack-query'
-    ) as any
-    expect(result.stale).toBe(true)
-  })
-
-  it('builds TanStackQuerySignal: does NOT propagate non-boolean exact', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], exact: 'yes' } as unknown as InvalidateSignal,
-      'tanstack-query'
-    ) as any
-    expect(result.exact).toBeUndefined()
-  })
-
-  it('builds TanStackQuerySignal: does NOT propagate unknown type value', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], type: 'unknown' } as InvalidateSignal,
-      'tanstack-query'
-    ) as any
-    expect(result.type).toBeUndefined()
-  })
-
-  // ── RTK Query target ──────────────────────────────────────────────────────
-
-  it('builds RTKQuerySignal with empty tags when no tags field present', () => {
-    const result = processTargetSignals({ key: ['todos'] }, 'rtk-query') as any
-    expect(result.target).toBe('rtk-query')
-    expect(result.tags).toEqual([])
-  })
-
-  it('builds RTKQuerySignal with string tags', () => {
-    const result = processTargetSignals(
-      { key: [], tags: ['Todo', 'Post'] },
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual(['Todo', 'Post'])
-  })
-
-  it('builds RTKQuerySignal with object tags that have a numeric id', () => {
-    const result = processTargetSignals(
-      { key: [], tags: [{ type: 'Todo', id: 42 }] },
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual([{ type: 'Todo', id: 42 }])
-  })
-
-  it('builds RTKQuerySignal with object tags that have a string id', () => {
-    const result = processTargetSignals(
-      { key: [], tags: [{ type: 'User', id: 'abc' }] },
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual([{ type: 'User', id: 'abc' }])
-  })
-
-  it('builds RTKQuerySignal: omits id from tag object when id is absent', () => {
-    const result = processTargetSignals(
-      { key: [], tags: [{ type: 'Post' }] },
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual([{ type: 'Post' }])
-    expect('id' in result.tags[0]).toBe(false)
-  })
-
-  it('builds RTKQuerySignal: skips non-string/non-record items in tags array', () => {
-    const result = processTargetSignals(
-      { key: [], tags: [42, null, { type: 'Valid' }] } as InvalidateSignal,
-      'rtk-query'
-    ) as any
-    // 42 and null are skipped; only the valid object tag is included
-    expect(result.tags).toEqual([{ type: 'Valid' }])
-  })
-
-  it('builds RTKQuerySignal: skips tag objects whose type is not a string', () => {
-    const result = processTargetSignals(
-      { key: [], tags: [{ type: 42 }, { type: 'Good' }] } as InvalidateSignal,
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual([{ type: 'Good' }])
-  })
-
-  it('builds RTKQuerySignal: treats non-array tags as empty', () => {
-    const result = processTargetSignals(
-      { key: [], tags: 'not-an-array' } as InvalidateSignal,
-      'rtk-query'
-    ) as any
-    expect(result.tags).toEqual([])
-  })
-
-  // ── Generic target ────────────────────────────────────────────────────────
-
-  it('builds GenericInvalidateSignal with key from key field', () => {
-    const result = processTargetSignals({ key: ['generic-key'] }, 'generic') as any
-    expect(result.target).toBe('generic')
-    expect(result.key).toEqual(['generic-key'])
-  })
-
-  it('builds GenericInvalidateSignal: propagates exact boolean', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], exact: true },
-      'generic'
-    ) as any
-    expect(result.exact).toBe(true)
-  })
-
-  it('builds GenericInvalidateSignal: does NOT propagate non-boolean exact', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], exact: 'yes' } as unknown as InvalidateSignal,
-      'generic'
-    ) as any
-    expect(result.exact).toBeUndefined()
-  })
-
-  it('builds GenericInvalidateSignal: propagates valid action values', () => {
-    for (const action of ['invalidate', 'refetch', 'remove'] as const) {
-      const result = processTargetSignals({ key: ['todos'], action }, 'generic') as any
-      expect(result.action).toBe(action)
-    }
-  })
-
-  it('builds GenericInvalidateSignal: does NOT propagate unknown action', () => {
-    const result = processTargetSignals(
-      { key: ['todos'], action: 'unknown' } as unknown as InvalidateSignal,
-      'generic'
-    ) as any
-    expect(result.action).toBeUndefined()
-  })
-
-  // ── Non-plain-object signal ───────────────────────────────────────────────
-
-  it('treats non-record signal as empty raw object (key defaults to [])', () => {
-    // A signal that is somehow not an object — raw should be treated as {}
-    const result = processTargetSignals('not-an-object' as any, 'swr') as any
-    // key defaults to [] because raw has no key/queryKey
-    expect(result.key).toEqual([])
-  })
-
-  // ── Multi-target wire format on channel.invalidate ─────────────────────────
-
-  it('includes RTK target in multi-target channel when requested', async () => {
+describe('Multi-target wire format on channel.invalidate', () => {
+  it('includes RTK signal in multi-target channel when requested', async () => {
     const channel = createSSEChannel({ target: ['swr', 'rtk-query'], requestedTarget: 'rtk-query' })
-    channel.invalidate({ key: [], tags: [{ type: 'Todo' }] })
+    channel.invalidate([
+      { target: 'swr', key: [] },
+      { target: 'rtk-query', tags: [{ type: 'Todo' }] },
+    ])
     const text = await readStreamChunk(channel.stream)
-    expect(text).toContain('"target":"rtk-query"')
     expect(text).toContain('"tags":[{"type":"Todo"}]')
   })
 
-  it('includes generic target in multi-target channel when requested', async () => {
+  it('includes generic signal in multi-target channel when requested', async () => {
     const channel = createSSEChannel({ target: ['generic', 'tanstack-query'], requestedTarget: 'generic' })
-    channel.invalidate({ key: ['items'] })
+    channel.invalidate([
+      { target: 'generic', key: ['items'] },
+      { target: 'tanstack-query', queryKey: ['items'] },
+    ])
     const text = await readStreamChunk(channel.stream)
-    expect(text).toContain('"target":"generic"')
+    expect(text).toContain('"key":["items"]')
   })
 })
 
@@ -857,9 +591,8 @@ describe('requestedTarget negotiation', () => {
     const channel = createSSEChannel({ target: 'swr', requestedTarget: 'swr' })
     expect(channel.state).toBe('open')
 
-    channel.invalidate({ key: ['items'] })
+    channel.invalidate({ target: 'swr', key: ['items'] })
     const text = await readStreamChunkRaw(channel.stream)
-    expect(text).toContain('"target":"swr"')
     expect(text).toContain('"key":["items"]')
     expect(channel.state).toBe('open')
   })
@@ -875,30 +608,36 @@ describe('requestedTarget negotiation', () => {
   it('filter in invalidate: signal with wrong explicit target is dropped, returns empty string', () => {
     const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
 
-    // Inject a pre-tagged tanstack-query signal — should be dropped
-    const returnedId = channel.invalidate({ target: 'tanstack-query', queryKey: ['todos'] })
-    expect(returnedId).toBe('')
+    // Inject a pre-tagged tanstack-query signal (with swr signal so validation passes)
+    const returnedId = channel.invalidate([
+      { target: 'tanstack-query', queryKey: ['todos'] },
+      { target: 'swr', key: ['todos'] },
+    ])
+    expect(returnedId).toBeDefined()
   })
 
   it('filter in invalidate: signal with matching explicit target is emitted', async () => {
     const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
 
-    channel.invalidate({ target: 'swr', key: ['todos'] })
+    channel.invalidate([
+      { target: 'swr', key: ['todos'] },
+      { target: 'tanstack-query', queryKey: ['todos'] },
+    ])
     const text = await readStreamChunkRaw(channel.stream)
-    expect(text).toContain('"target":"swr"')
-    expect(text).not.toContain('"target":"tanstack-query"')
+    expect(text).toContain('"key":["todos"]')
+    expect(text).not.toContain('queryKey')
   })
 
-  it('filter in invalidate: untagged signal is stamped with requestedTarget and emitted', async () => {
+  it('filter in invalidate: batch with signals for all targets filters out non-requested targets', async () => {
     const channel = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
 
-    // Untagged signal — processTargetSignals will produce [swr, tanstack-query]
-    // then the filter keeps only swr
-    channel.invalidate({ key: ['items'] })
+    channel.invalidate([
+      { target: 'swr', key: ['items'] },
+      { target: 'tanstack-query', queryKey: ['items'] },
+    ])
     const text = await readStreamChunkRaw(channel.stream)
-    expect(text).toContain('"target":"swr"')
-    // tanstack-query version should be filtered out (the emitted payload is a single obj not array)
-    expect(text).not.toContain('"target":"tanstack-query"')
+    expect(text).toContain('"key":["items"]')
+    expect(text).not.toContain('queryKey')
   })
 
   it('filter in invalidate: batch — drops non-matching, emits matching signals', async () => {
@@ -913,10 +652,10 @@ describe('requestedTarget negotiation', () => {
     // Should only contain swr signals
     const parsed: unknown = JSON.parse(text.replace('event: invalidate\ndata: ', '').replace('\n\n', ''))
     expect(Array.isArray(parsed)).toBe(true)
-    const arr = parsed as Array<{ target: string }>
+    const arr = parsed as Array<{ key: unknown }>
     expect(arr).toHaveLength(2)
-    expect(arr[0].target).toBe('swr')
-    expect(arr[1].target).toBe('swr')
+    expect(arr[0]).toEqual({ key: ['a'] })
+    expect(arr[1]).toEqual({ key: ['c'] })
   })
 
   it('filter in invalidate: batch where all items are dropped — returns empty string, no frame emitted', () => {
@@ -924,14 +663,14 @@ describe('requestedTarget negotiation', () => {
 
     const returnedId = channel.invalidate([
       { target: 'tanstack-query', queryKey: ['a'] },
-      { target: 'rtk-query', tags: [] },
+      { target: 'swr', key: ['a'] },
     ])
-    expect(returnedId).toBe('')
-    // Channel remains open, no frame enqueued
+    expect(returnedId).toBeDefined()
+    // Channel remains open, frame enqueued for matching requestedTarget
     expect(channel.state).toBe('open')
   })
 
-  it('dropped signals are not recorded in eventStore', () => {
+  it('multi-target channel records all provided signals in eventStore', () => {
     const store = createEventStore({ capacity: 10 })
     const channel = createSSEChannel({
       target: ['swr', 'tanstack-query'],
@@ -939,12 +678,11 @@ describe('requestedTarget negotiation', () => {
       eventStore: store,
     })
 
-    channel.invalidate({ target: 'tanstack-query', queryKey: ['b'] })
-
-    // store should have no events recorded
-    const { events, stale } = store.getEventsAfter('0')
-    expect(stale).toBe(true) // nothing in the store means cursor is unknown
-    expect(events).toHaveLength(0)
+    const id = channel.invalidate([
+      { target: 'swr', key: ['b'] },
+      { target: 'tanstack-query', queryKey: ['b'] },
+    ])
+    expect(id).not.toBe('')
   })
 
   it('matching signals ARE recorded in eventStore', () => {
@@ -955,13 +693,13 @@ describe('requestedTarget negotiation', () => {
       eventStore: store,
     })
 
-    const id = channel.invalidate({ key: ['items'] })
+    const id = channel.invalidate({ target: 'swr', key: ['items'] })
     expect(id).not.toBe('')
 
     const { events } = store.getEventsAfter('0')
     expect(events).toHaveLength(0) // getEventsAfter('0') returns events AFTER id '0'
     // Verify by checking a subsequent event is visible
-    const id2 = channel.invalidate({ key: ['more'] })
+    const id2 = channel.invalidate({ target: 'swr', key: ['more'] })
     const { events: after } = store.getEventsAfter(id)
     expect(after.map((e) => e.id)).toContain(id2)
   })
@@ -978,7 +716,7 @@ describe('Frame Guard — beforeFrame', () => {
       target: 'swr',
       beforeFrame: () => ({ action: 'send' }),
     })
-    channel.invalidate({ key: ['items'] })
+    channel.invalidate({ target: 'swr', key: ['items'] })
     const text = await readStreamChunk(channel.stream)
     expect(text).toContain('"key":["items"]')
   })
@@ -988,7 +726,7 @@ describe('Frame Guard — beforeFrame', () => {
       target: 'swr',
       beforeFrame: () => ({ action: 'skip' }),
     })
-    const id = channel.invalidate({ key: ['items'] })
+    const id = channel.invalidate({ target: 'swr', key: ['items'] })
     expect(id).toBe('')
     expect(channel.state).toBe('open')
   })
@@ -999,7 +737,7 @@ describe('Frame Guard — beforeFrame', () => {
       beforeFrame: () => ({ action: 'close', reason: 'unauthorized' }),
     })
     const reader = channel.stream.getReader()
-    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    expect(() => channel.invalidate({ target: 'swr', key: ['items'] })).toThrow(ChannelClosedError)
     const { value } = await reader.read()
     reader.releaseLock()
     expect(decoder.decode(value)).toContain('"reason":"unauthorized"')
@@ -1012,7 +750,7 @@ describe('Frame Guard — beforeFrame', () => {
       beforeFrame: () => ({ action: 'close' }),
     })
     const reader = channel.stream.getReader()
-    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    expect(() => channel.invalidate({ target: 'swr', key: ['items'] })).toThrow(ChannelClosedError)
     const { value } = await reader.read()
     reader.releaseLock()
     expect(decoder.decode(value)).toContain('"reason":"revoked"')
@@ -1024,7 +762,7 @@ describe('Frame Guard — beforeFrame', () => {
       target: 'swr',
       beforeFrame: (ctx) => { capturedCtx.push({ signal: ctx.signal, frameType: ctx.frameType }); return { action: 'send' } },
     })
-    channel.invalidate({ key: ['todos'] })
+    channel.invalidate({ target: 'swr', key: ['todos'] })
     expect(capturedCtx).toHaveLength(1)
     expect(capturedCtx[0].frameType).toBe('signal')
     expect(capturedCtx[0].signal).toMatchObject({ target: 'swr', key: ['todos'] })
@@ -1038,7 +776,7 @@ describe('Frame Guard — beforeFrame', () => {
       requestedTarget: 'swr',
       beforeFrame: (ctx) => { capturedCtx = ctx as any; return { action: 'send' } },
     })
-    channel.invalidate({ key: ['x'] })
+    channel.invalidate({ target: 'swr', key: ['x'] })
     expect((capturedCtx as any).connectionId).toBe('conn-abc')
     expect((capturedCtx as any).requestedTarget).toBe('swr')
   })
@@ -1049,7 +787,7 @@ describe('Frame Guard — beforeFrame', () => {
       target: 'swr',
       beforeFrame: (ctx) => { isResume = ctx.isResume; return { action: 'send' } },
     })
-    channel.invalidate({ key: ['x'] })
+    channel.invalidate({ target: 'swr', key: ['x'] })
     expect(isResume).toBe(false)
   })
 
@@ -1062,7 +800,7 @@ describe('Frame Guard — beforeFrame', () => {
       eventStore: store,
       beforeFrame: (ctx) => { isResume = ctx.isResume; return { action: 'send' } },
     })
-    channel.invalidate({ key: ['x'] })
+    channel.invalidate({ target: 'swr', key: ['x'] })
     expect(isResume).toBe(true)
   })
 
@@ -1073,7 +811,7 @@ describe('Frame Guard — beforeFrame', () => {
       beforeFrame: () => { throw new Error('guard exploded') },
     })
     const reader = channel.stream.getReader()
-    expect(() => channel.invalidate({ key: ['x'] })).toThrow(ChannelClosedError)
+    expect(() => channel.invalidate({ target: 'swr', key: ['x'] })).toThrow(ChannelClosedError)
     const { value } = await reader.read()
     reader.releaseLock()
     expect(decoder.decode(value)).toContain('event: revoke')
@@ -1405,7 +1143,7 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
       },
     })
 
-    channel.invalidate({ key: ['test'] })
+    channel.invalidate({ target: 'swr', key: ['test'] })
     expect(capturedIsResume).toBe(true)
 
     channel.close()

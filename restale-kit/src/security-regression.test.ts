@@ -121,10 +121,10 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     const ch = createSSEChannel({ target: 'swr', eventStore: store })
     group.register(ch, { userId: 1 }, { topics: ['updates'] })
 
-    await group.publish('updates', { key: ['products'] })
+    await group.publish('updates', { target: 'swr', key: ['products'] })
 
     // Exactly one record — probe lands on id '2'
-    const probe = store.add({ key: ['probe'] })
+    const probe = store.add({ target: 'swr', key: ['probe'] })
     expect(probe.id).toBe('2')
     ch.close()
   })
@@ -133,10 +133,10 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     const store = createEventStore()
     const ch = createSSEChannel({ target: 'swr', eventStore: store })
 
-    ch.invalidate({ key: ['item'] })
-    ch.invalidate({ key: ['item2'] })
+    ch.invalidate({ target: 'swr', key: ['item'] })
+    ch.invalidate({ target: 'swr', key: ['item2'] })
 
-    const probe = store.add({ key: ['probe'] })
+    const probe = store.add({ target: 'swr', key: ['probe'] })
     expect(probe.id).toBe('3') // 2 events + 1 probe
     ch.close()
   })
@@ -151,10 +151,10 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     const ch = createSSEChannel({ target: 'swr', eventBufferCapacity: 10 })
     group.register(ch, undefined)
 
-    group.broadcastToAll({ key: ['data'] })
+    group.broadcastToAll({ target: 'swr', key: ['data'] })
 
     // Group store: exactly 1 event (id '1')
-    const probe = groupStore.add({ key: ['probe'] })
+    const probe = groupStore.add({ target: 'swr', key: ['probe'] })
     expect(probe.id).toBe('2') // broadcast-signal='1', probe='2'
 
     // The channel's internal store (not accessible directly) should have recorded
@@ -162,8 +162,8 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // on a fresh channel with its own store starts at '1' — not influenced by group's counter.
     const soloStore = createEventStore()
     const soloChannel = createSSEChannel({ target: 'swr', eventStore: soloStore })
-    soloChannel.invalidate({ key: ['x'] })
-    const soloProbe = soloStore.add({ key: ['probe'] })
+    soloChannel.invalidate({ target: 'swr', key: ['x'] })
+    const soloProbe = soloStore.add({ target: 'swr', key: ['probe'] })
     expect(soloProbe.id).toBe('2') // solo store is independent — starts at 1
 
     ch.close()

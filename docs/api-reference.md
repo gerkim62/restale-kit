@@ -80,12 +80,39 @@ type ReStaleSignal =
   | RTKQuerySignal
   | GenericInvalidateSignal
 
+type ReStaleSignalForTarget<TTarget extends SignalTarget> =
+  TTarget extends typeof SIGNAL_TARGETS.TANSTACK
+    ? TanStackQuerySignal
+    : TTarget extends typeof SIGNAL_TARGETS.SWR
+      ? SWRSignal
+      : TTarget extends typeof SIGNAL_TARGETS.RTK
+        ? RTKQuerySignal
+        : GenericInvalidateSignal
+
+/**
+ * Invalidation signal input type computed from target config.
+ * - Single target: `target` property is optional and automatically defaulted.
+ * - Multi-target array: explicit `target` is strictly required on every signal.
+ */
+type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
+  [TTarget] extends [SignalTarget]
+    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
+      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
+    : ReStaleSignal | ReStaleSignal[]
+
 type InvalidateSignal = ReStaleSignal
 
 type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
 
 type ChannelState = 'open' | 'closed'
 ```
+
+### Target & Wire Framing Behavior
+
+- **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` when calling `invalidate()`, `publish()`, or `broadcast()`. The single target is automatically attached internally.
+- **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Callers must pass an explicit `target` on every signal object and supply signals for all declared targets.
+- **Internal Storage & PubSub**: Signals stored in `EventStore` and sent across PubSub adapters retain the `target` property (`{ target: 'swr', key: [...] }`), keeping storage and pubsub fully target-aware.
+- **Wire Framing Optimization**: SSE data frames delivered over the wire strip the redundant `target` property (`data: {"key":["items"]}`), as the active target is already named in the connection header (`X-ReStale-Target`).
 
 ### Utilities
 

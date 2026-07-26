@@ -99,7 +99,7 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
   })
 
   it('returns false for invalid cache keys', () => {
-    const signal = { key: ['users'] }
+    const signal = { target: 'generic' as const, key: ['users'] }
     expect(matchesInvalidateSignalKey(null, signal)).toBe(false)
     expect(matchesInvalidateSignalKey('users', signal)).toBe(false)
     expect(matchesInvalidateSignalKey([new Date()], signal)).toBe(false)
@@ -138,7 +138,7 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
     const tanstackSignal = { target: 'tanstack-query' as const, queryKey: ['/api/user'] }
     expect(matchesInvalidateSignalKey('/api/user', tanstackSignal)).toBe(true)
 
-    const genericSignal = { key: ['/api/user'] }
+    const genericSignal = { target: 'generic' as const, key: ['/api/user'] }
     expect(matchesInvalidateSignalKey('/api/user', genericSignal)).toBe(false)
   })
 
@@ -153,10 +153,10 @@ describe('protocol - matchesInvalidateSignalKey & matchesJSONValue', () => {
   })
 
   it('matches nested arrays inside key elements', () => {
-    const signalPrefix = { key: ['todos', [1, 2]] }
+    const signalPrefix = { target: 'generic' as const, key: ['todos', [1, 2]] }
     expect(matchesInvalidateSignalKey(['todos', [1, 2, 3]], signalPrefix)).toBe(true)
 
-    const signalExact = { key: ['todos', [1, 2]], exact: true }
+    const signalExact = { target: 'generic' as const, key: ['todos', [1, 2]], exact: true }
     expect(matchesInvalidateSignalKey(['todos', [1, 2, 3]], signalExact)).toBe(false)
     expect(matchesInvalidateSignalKey(['todos', [1, 2]], signalExact)).toBe(true)
 

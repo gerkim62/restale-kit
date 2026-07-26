@@ -347,16 +347,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             // The cursor fell off the ring buffer or was never valid — the client missed
             // an unknown number of events. Send a full-invalidate signal (key: []) so the
             // client refetches everything rather than silently displaying stale data.
-            // For a targeted client the stale full-invalidate is still valid: it carries
-            // no explicit `target` field so processTargetSignals will stamp it with the
-            // channel's configured target — which the client's adapter will handle.
-            controller.enqueue(formatInvalidateFrame({ key: [] }))
+            const staleTarget = (requestedTarget ?? (Array.isArray(target) ? target[0] : target)) as SignalTarget
+            controller.enqueue(formatInvalidateFrame({ target: staleTarget, key: [] } as InvalidateSignal))
           } else {
             for (const record of missed) {
-              // Apply target transform during replay: the shared eventStore may store raw
-              // (target-less) signals recorded by a group. processTargetSignals is safe to
-              // call on already-tagged signals because hasTargetProperty passes them through.
-              const replaySignal = processTargetSignals(record.signal, target)
+              const replaySignal = record.signal
 
               // Apply requestedTarget filter: skip signals that don't match this client's
               // requested target (same semantics as the live invalidate() filter path).
@@ -461,10 +456,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       throw new ChannelClosedError()
     }
 
-    const effectiveSignal = processTargetSignals(signal, target)
+    validateSignalTargets(signal, target)
+
+    const effectiveSignal = signal
 
     // Filter by requestedTarget: drop signals that don't match the client's requested target.
-    // This runs after processTargetSignals so signals are already target-stamped.
     if (requestedTarget !== undefined) {
       if (Array.isArray(effectiveSignal)) {
         const filtered = effectiveSignal.filter((s) => {
@@ -576,92 +572,62 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   return channelObj
 }
 
-// ── Target signal helpers ─────────────────────────────────────────────────────
+// ── Target signal validation ──────────────────────────────────────────────────
 
-function isRecord(val: unknown): val is Record<string, unknown> {
-  return typeof val === 'object' && val !== null && !Array.isArray(val)
-}
-
-function hasTargetProperty(val: unknown): val is InvalidateSignal {
-  return isRecord(val) && typeof val.target === 'string'
-}
-
-export function processTargetSignals<TSignal extends InvalidateSignal = InvalidateSignal>(
-  signal: TSignal | TSignal[],
+export function validateSignalTargets(
+  signal: unknown,
   targetConfig: SignalTarget | SignalTarget[]
-): InvalidateSignal | InvalidateSignal[] {
+): void {
   const signalList = Array.isArray(signal) ? signal : [signal]
-  const targets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
-  const result: InvalidateSignal[] = []
+  const declaredTargets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
+  const declaredSet = new Set<string>(declaredTargets)
+  const coveredTargets = new Set<string>()
 
   for (const s of signalList) {
-    if (hasTargetProperty(s)) {
-      result.push(s)
-      continue
+    if (!s || typeof s !== 'object') {
+      throw new Error(
+        `[invalidate] Every signal must be an object. ` +
+        `Got: ${JSON.stringify(s).slice(0, 200)}. ` +
+        `Declared targets: [${declaredTargets.join(', ')}].`
+      )
     }
 
-    const raw = isRecord(s) ? s : {}
-    if (Array.isArray(targetConfig)) {
-      for (const t of targets) {
-        result.push(buildTargetSignal(raw, t))
-      }
-    } else {
-      result.push(buildTargetSignal(raw, targetConfig))
-    }
-  }
+    const rec = s as Record<string, unknown>
+    let targetVal = rec.target
 
-  return !Array.isArray(signal) && result.length === 1 ? result[0] : result
-}
-
-function buildTargetSignal(raw: Record<string, unknown>, t: SignalTarget): InvalidateSignal {
-  const keyVal = raw.queryKey ?? raw.key
-  const key: JSONValue[] = Array.isArray(keyVal) ? keyVal.filter(isJSONValue) : []
-
-  if (t === SIGNAL_TARGETS.TANSTACK) {
-    const res: TanStackQuerySignal = { target: SIGNAL_TARGETS.TANSTACK, queryKey: key }
-    if (typeof raw.exact === 'boolean') res.exact = raw.exact
-    if (raw.type === 'active' || raw.type === 'inactive' || raw.type === 'all') res.type = raw.type
-    if (raw.action === 'invalidate' || raw.action === 'refetch' || raw.action === 'reset' || raw.action === 'remove' || raw.action === 'cancel') {
-      res.action = raw.action
-    }
-    if (typeof raw.stale === 'boolean') res.stale = raw.stale
-    return res
-  }
-
-  if (t === SIGNAL_TARGETS.SWR) {
-    const swrKey: string | JSONValue[] = typeof raw.key === 'string' ? raw.key : key
-    const res: SWRSignal = { target: SIGNAL_TARGETS.SWR, key: swrKey }
-    if (raw.action === 'revalidate' || raw.action === 'purge' || raw.action === 'remove') {
-      res.action = raw.action
-    }
-    if (typeof raw.revalidate === 'boolean') res.revalidate = raw.revalidate
-    if (raw.match === 'exact' || raw.match === 'prefix') res.match = raw.match
-    return res
-  }
-
-  if (t === SIGNAL_TARGETS.RTK) {
-    const rawTags = raw.tags
-    const tags: RTKQuerySignal['tags'] = []
-    if (Array.isArray(rawTags)) {
-      for (const item of rawTags) {
-        if (typeof item === 'string') {
-          tags.push(item)
-        } else if (isRecord(item) && typeof item.type === 'string') {
-          const tagObj: { type: string; id?: string | number } = { type: item.type }
-          if (typeof item.id === 'string' || typeof item.id === 'number') {
-            tagObj.id = item.id
-          }
-          tags.push(tagObj)
-        }
+    if (targetVal === undefined || typeof targetVal !== 'string' || targetVal === '') {
+      if (declaredTargets.length === 1) {
+        // Single-target channel: auto-fill target if omitted
+        targetVal = declaredTargets[0]
+        rec.target = targetVal
+      } else {
+        throw new Error(
+          `[invalidate] Multi-target channel requires an explicit "target" field on every signal. ` +
+          `Got signal without target: ${JSON.stringify(s).slice(0, 200)}. ` +
+          `Declared targets: [${declaredTargets.join(', ')}].`
+        )
       }
     }
-    return { target: SIGNAL_TARGETS.RTK, tags }
+
+    if (!declaredSet.has(targetVal as string)) {
+      throw new Error(
+        `[invalidate] Signal target "${targetVal}" is not in the channel's declared targets: ` +
+        `[${declaredTargets.join(', ')}].`
+      )
+    }
+    coveredTargets.add(targetVal as string)
   }
 
-  const res: GenericInvalidateSignal = { target: SIGNAL_TARGETS.GENERIC, key }
-  if (typeof raw.exact === 'boolean') res.exact = raw.exact
-  if (raw.action === 'invalidate' || raw.action === 'refetch' || raw.action === 'remove') {
-    res.action = raw.action
+  if (declaredTargets.length > 1) {
+    for (const t of declaredTargets) {
+      if (!coveredTargets.has(t)) {
+        throw new Error(
+          `[invalidate] Multi-target channel requires signals for ALL declared targets. ` +
+          `Missing target: "${t}". ` +
+          `Declared: [${declaredTargets.join(', ')}], ` +
+          `Provided: [${[...coveredTargets].join(', ')}].`
+        )
+      }
+    }
   }
-  return res
 }
