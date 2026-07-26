@@ -13,4 +13,14 @@ describe('tanstackQueryAdapter type safety', () => {
     expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     expectTypeOf(adapter.__restaleTarget).toEqualTypeOf<'tanstack-query'>()
   })
+
+  test('tanstackQueryAdapter callback parameter should reject SWRSignal', () => {
+    const mockQueryClient = {} as QueryClient
+    const adapter = tanstackQueryAdapter(mockQueryClient)
+
+    // @ts-expect-error tanstackQueryAdapter callback should only accept TanStackQuerySignal, rejecting SWRSignal
+    adapter({ target: 'swr', key: ['users'] })
+  })
 })
+
+

@@ -33,6 +33,17 @@ describe('swrAdapter type safety', () => {
     expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
   })
 
+  test('swrAdapter callback parameter should reject TanStackQuerySignal', () => {
+    const mockMutate: SWRMutator = Object.assign(
+      async () => [],
+      () => Promise.resolve([])
+    )
+    const adapter = swrAdapter(mockMutate)
+
+    // @ts-expect-error swrAdapter callback should only accept SWRSignal, rejecting TanStackQuerySignal
+    adapter({ target: 'tanstack-query', queryKey: ['users'] })
+  })
+
   test('swrAdapter toInvalidateKey rejects non-JSONValue array return type', () => {
     // @ts-expect-error toInvalidateKey cannot return array of functions/symbols
     const _options: SWRAdapterOptions<SWRSignal> = {
@@ -40,4 +51,5 @@ describe('swrAdapter type safety', () => {
     }
   })
 })
+
 
