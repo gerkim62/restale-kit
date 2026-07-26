@@ -342,12 +342,10 @@ type AppSignal =
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res, { target: 'tanstack-query' })
-  group.register(channel)
+  group.attachChannel(req, res, { target: 'tanstack-query' })
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
-// group.broadcastToAll({ key: ['posts'] })        // ❌ TypeScript error
 ```
 
 **Client:**
@@ -377,11 +375,11 @@ const group = new SSEChannelGroup({
 
 
 app.get('/sse', (req, res) => {
-  const channel = attachSSE(req, res)
-  group.register(channel, {
-    userId: req.user.id,
-    sessionId: req.session.id,
-  }, {
+  group.attachChannel(req, res, {
+    meta: {
+      userId: req.user.id,
+      sessionId: req.session.id,
+    },
     topics: [`user:${req.user.id}`],
   })
 })
@@ -396,7 +394,9 @@ async function logoutUserConnection(userId: string, sessionId: string, connectio
 }
 
 // Revoke all sessions across cluster (ban / logout everywhere)
-await group.revokeWhere({ userId: 'user-123' })
+async function revokeAllUserSessions(userId: string) {
+  await group.revokeWhere({ userId })
+}
 ```
 
 Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
@@ -427,7 +427,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
 | `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
-### `createSSEChannel(options?)` / `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
+### `group.attachChannel(req, res, options?)` / `group.createChannel(request, options?)`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -437,7 +437,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
 | `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
-| `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport adapters (`attachSSE`, `toSSEResponse`). You never need to set or manage this parameter manually. |
+| `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport methods (`group.attachChannel`, `group.createChannel`). You never need to set or manage this parameter manually. |
 | `target` | `SignalTarget \| SignalTarget[]` | **required** | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
 
 ### `SSEChannelGroup(options?)`
@@ -450,18 +450,17 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
 
-### `attachSSE(req, res, options?)` / `toSSEResponse(request, options?)`
+### `group.attachChannel(req, res, options?)` / `group.createChannel(request, options?)`
 
 | Method | Returns | Description |
 |---|---|---|
-| `attachSSE(req, res, options?)` | `SSEChannel<TSignal>` | Attaches SSE stream to Node HTTP response. For Fastify, pass `request`/`reply` directly — `reply.hijack()` is called automatically. |
-| `toSSEResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Creates Fetch API SSE response object. |
+| `group.attachChannel(req, res, options?)` | `{ channel: SSEChannel<TSignal> }` | Attaches SSE stream to Node/Express/Fastify HTTP response and automatically registers the channel in the group in 1 step. For Fastify, pass `request`/`reply` directly (`reply.hijack()` is invoked automatically). |
+| `group.createChannel(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Creates Fetch API SSE response object for Hono/Edge/Next.js and automatically registers the channel in the group in 1 step. |
 
 ### `channel.invalidate(signal, customId?)`
 
 Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. If neither `eventBufferCapacity` nor `eventStore` is configured, the return value is `''` and can be ignored.
 
-→ Full API: [API Reference](https://github.com/gerkim62/restale-kit/blob/main/docs/api-reference.md)
 
 ---
 

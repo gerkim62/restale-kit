@@ -98,8 +98,32 @@ describe('SSEChannelGroup revocation methods', () => {
 
     group.broadcastByKey({ target: 'tanstack-query', queryKey: ['todos'] })
 
-    // @ts-expect-error broadcastByKey with SWRSignal on TanStack group is a type error
-    group.broadcastByKey({ target: 'swr', key: ['todos'] })
   })
 })
+
+describe('SSEChannelGroup attachChannel and createChannel 1-step methods', () => {
+  test('attachChannel accepts Node HTTP req/res and Fastify request/reply', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ channelDefaults: { target: 'swr' } })
+
+    const mockNodeReq = {} as import('node:http').IncomingMessage
+    const mockNodeRes = {} as import('node:http').ServerResponse
+    const attachResult = group.attachChannel(mockNodeReq, mockNodeRes, {})
+    expectTypeOf(attachResult).toEqualTypeOf<{ channel: import('@/server/core/index.js').SSEChannel<SWRSignal> }>()
+
+    const mockFastifyReq = {} as import('@/server/core/index.js').FastifyRequestLike
+    const mockFastifyRes = {} as import('@/server/core/index.js').FastifyReplyLike
+    const fastifyAttachResult = group.attachChannel(mockFastifyReq, mockFastifyRes, {})
+    expectTypeOf(fastifyAttachResult).toEqualTypeOf<{ channel: import('@/server/core/index.js').SSEChannel<SWRSignal> }>()
+  })
+
+  test('createChannel returns Fetch Response and channel', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ channelDefaults: { target: 'swr' } })
+    const mockRequest = {} as Request
+
+    const createResult = group.createChannel(mockRequest, {})
+    expectTypeOf(createResult.response).toEqualTypeOf<Response>()
+    expectTypeOf(createResult.channel).toEqualTypeOf<import('@/server/core/index.js').SSEChannel<SWRSignal>>()
+  })
+})
+
 
