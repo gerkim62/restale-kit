@@ -56,8 +56,8 @@ describe('swrAdapter type safety', () => {
   })
 
   test('swrAdapter toInvalidateKey rejects non-JSONValue array return type', () => {
-    // @ts-expect-error toInvalidateKey cannot return array of functions/symbols
     const _options: SWRAdapterOptions<SWRSignal> = {
+      // @ts-expect-error toInvalidateKey cannot return array of functions/symbols
       toInvalidateKey: () => [() => {}],
     }
   })
