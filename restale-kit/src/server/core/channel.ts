@@ -460,9 +460,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       throw new ChannelClosedError()
     }
 
-    validateSignalTargets(signal, target)
-
-    const effectiveSignal = signal
+    const effectiveSignal = validateSignalTargets(signal, target)
 
     // Filter by requestedTarget: drop signals that don't match the client's requested target.
     if (requestedTarget !== undefined) {
@@ -579,17 +577,18 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 // ── Target signal validation ──────────────────────────────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function validateSignalTargets(
   signal: unknown,
   targetConfig: SignalTarget | SignalTarget[]
-): void {
+): InvalidateSignal | InvalidateSignal[] {
   const signalList = Array.isArray(signal) ? signal : [signal]
   const declaredTargets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
   const declaredSet = new Set<string>(declaredTargets)
   const coveredTargets = new Set<string>()
+  const resultArray: InvalidateSignal[] = []
 
   for (const s of signalList) {
     if (!isRecord(s)) {
@@ -602,12 +601,13 @@ export function validateSignalTargets(
     }
 
     let targetStr = typeof s['target'] === 'string' ? s['target'] : ''
+    let normalizedSignal: InvalidateSignal
 
     if (targetStr === '') {
       if (declaredTargets.length === 1 && declaredTargets[0] !== undefined) {
         // Single-target channel: auto-fill target if omitted
         targetStr = declaredTargets[0]
-        s['target'] = targetStr
+        normalizedSignal = { ...s, target: targetStr } as unknown as InvalidateSignal
       } else {
         const sStr = JSON.stringify(s)
         throw new Error(
@@ -616,6 +616,8 @@ export function validateSignalTargets(
           `Declared targets: [${declaredTargets.join(', ')}].`
         )
       }
+    } else {
+      normalizedSignal = s as unknown as InvalidateSignal
     }
 
     if (!declaredSet.has(targetStr)) {
@@ -625,6 +627,7 @@ export function validateSignalTargets(
       )
     }
     coveredTargets.add(targetStr)
+    resultArray.push(normalizedSignal)
   }
 
   if (declaredTargets.length > 1) {
@@ -639,4 +642,6 @@ export function validateSignalTargets(
       }
     }
   }
+
+  return Array.isArray(signal) ? resultArray : resultArray[0]!
 }

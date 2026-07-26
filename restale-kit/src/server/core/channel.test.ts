@@ -416,13 +416,20 @@ describe('channel', () => {
 })
 
 describe('validateSignalTargets', () => {
-  it('auto-fills target property when single-target channel, but throws when multi-target', () => {
+  it('auto-fills target property on returned signal when single-target channel without mutating input, but throws when multi-target', () => {
     const s = { key: ['todos'] } as any
-    validateSignalTargets(s, 'swr')
-    expect(s.target).toBe('swr')
+    const res = validateSignalTargets(s, 'swr') as any
+    expect(s.target).toBeUndefined()
+    expect(res.target).toBe('swr')
 
     expect(() => { validateSignalTargets({ key: ['todos'] }, ['swr', 'tanstack-query']); }).toThrow(
       '[invalidate] Multi-target channel requires an explicit "target" field on every signal.'
+    )
+  })
+
+  it('throws when a signal in a batch is an array', () => {
+    expect(() => { validateSignalTargets([{ key: ['todos'] }, ['invalid-array-signal']], 'swr'); }).toThrow(
+      '[invalidate] Every signal must be an object.'
     )
   })
 
@@ -667,6 +674,14 @@ describe('requestedTarget negotiation', () => {
     ])
     expect(returnedId).toBeDefined()
     // Channel remains open, frame enqueued for matching requestedTarget
+    expect(channel.state).toBe('open')
+  })
+
+  it('filter in invalidate: batch signal where requestedTarget filters out entire batch returns empty string', () => {
+    const channel = createSSEChannel({ target: 'swr', requestedTarget: 'swr' })
+
+    const returnedId = channel.invalidate([])
+    expect(returnedId).toBe('')
     expect(channel.state).toBe('open')
   })
 

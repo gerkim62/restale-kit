@@ -394,7 +394,7 @@ describe('channel-group', () => {
       id: 'pubsub-evt-100',
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['alert'] }), 'pubsub-evt-100')
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, 'pubsub-evt-100')
   })
 
   it('revokes matching channels locally and publishes control message to pubsub', async () => {
@@ -710,7 +710,7 @@ describe('channel-group', () => {
     })
 
     // ch.invalidate should have been called
-    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['remote-data'] }), undefined)
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['remote-data'] }, undefined)
   })
 
   // --- TopicManager edge cases for 100% line coverage ---
@@ -800,7 +800,7 @@ describe('channel-group', () => {
     group.register(ch, { userId: 99 })
 
     group.broadcastToAll({ key: ['auto-store-group'] })
-    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ key: ['auto-store-group'] }), '1')
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['auto-store-group'] }, '1')
   })
 
   it('preserves topic subscription when new channel registers while teardown is in-flight', async () => {
