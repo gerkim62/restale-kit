@@ -77,8 +77,8 @@ describe('LifetimeOptions mutual exclusivity', () => {
   test('valid single option compiles', () => {
     const ttlOpt: LifetimeOptions = { ttlMs: 5000, onDeadline: 'reconnect' }
     const deadlineOpt: LifetimeOptions = { deadline: Date.now() + 5000, onDeadline: 'revoke' }
-    expectTypeOf(ttlOpt).toMatchTypeOf<LifetimeOptions>()
-    expectTypeOf(deadlineOpt).toMatchTypeOf<LifetimeOptions>()
+    expectTypeOf(ttlOpt).toExtend<LifetimeOptions>()
+    expectTypeOf(deadlineOpt).toExtend<LifetimeOptions>()
   })
 
   test('passing both ttlMs and deadline should be a compile error', () => {
@@ -115,7 +115,7 @@ describe('RevokeEventDetail & RenewEventDetail', () => {
       reason: 'unsupported-target',
       details: { requested: 'rtk', supported: ['swr'] },
     }
-    expectTypeOf(deadlineRevoke.reason).toEqualTypeOf<'deadline' | 'unsupported-target' | string>()
+    expectTypeOf(deadlineRevoke.reason).toEqualTypeOf<string>()
   })
 
   test('RenewEventDetail required fields', () => {
@@ -146,4 +146,3 @@ describe('Signal payload strict narrowing', () => {
     const _invalidKeySignal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: [() => {}] }
   })
 })
-

@@ -60,7 +60,7 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
     group.broadcastToAll({ target: 'swr', key: ['users'] })
 
     // @ts-expect-error SWRSignal should be rejected in publish
-    group.publish('users-topic', { target: 'swr', key: ['users'] })
+    void group.publish('users-topic', { target: 'swr', key: ['users'] })
   })
 
   test('multi-target group broadcast requires explicit target on every signal', () => {
@@ -70,7 +70,7 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
     multiGroup.broadcastToAll({ key: ['users'] })
 
     // @ts-expect-error multi-target group publish without explicit target on signal should be a type error
-    multiGroup.publish('topic-name', { key: ['users'] })
+    void multiGroup.publish('topic-name', { key: ['users'] })
   })
 })
 
@@ -87,10 +87,10 @@ describe('SSEChannelGroup revocation methods', () => {
     const group = new SSEChannelGroup()
 
     // @ts-expect-error functions are not valid JSONValue criteria
-    group.revokeWhere({ handler: () => {} })
+    void group.revokeWhere({ handler: () => {} })
 
     // @ts-expect-error symbols are not valid JSONValue criteria
-    group.revokeWhere({ id: Symbol('test') })
+    void group.revokeWhere({ id: Symbol('test') })
   })
 
   test('broadcastByKey enforces TSignal generic', () => {
@@ -125,5 +125,3 @@ describe('SSEChannelGroup attachNodeResponse and createFetchResponse 1-step meth
     expectTypeOf(createResult.channel).toEqualTypeOf<import('@/server/core/index.js').SSEChannel<SWRSignal>>()
   })
 })
-
-

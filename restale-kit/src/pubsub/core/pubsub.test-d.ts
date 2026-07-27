@@ -8,8 +8,8 @@ describe('PubSubEncryptionOptions mutual exclusivity', () => {
     const disabled: PubSubEncryptionOptions = { encrypt: false }
     const enabled: PubSubEncryptionOptions = { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' }
 
-    expectTypeOf(disabled).toMatchTypeOf<PubSubEncryptionOptions>()
-    expectTypeOf(enabled).toMatchTypeOf<PubSubEncryptionOptions>()
+    expectTypeOf(disabled).toExtend<PubSubEncryptionOptions>()
+    expectTypeOf(enabled).toExtend<PubSubEncryptionOptions>()
   })
 
   test('invalid combinations cause compile errors', () => {
@@ -43,7 +43,7 @@ describe('PubSubAdapter interface typing', () => {
     const adapter = {} as Adapter
 
     // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
-    adapter.publish('topic-name', {
+    void adapter.publish('topic-name', {
       kind: 'signal',
       data: { target: 'tanstack-query', queryKey: ['todos'] },
     })
@@ -55,4 +55,3 @@ describe('PubSubAdapter interface typing', () => {
     expectTypeOf(err.message).toEqualTypeOf<string>()
   })
 })
-

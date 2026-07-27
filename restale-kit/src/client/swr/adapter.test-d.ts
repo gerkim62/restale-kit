@@ -6,30 +6,29 @@ import type { SWRSignal } from '@/types/index.js'
 describe('swrAdapter type safety', () => {
   test('swrAdapter returns AdaptedInvalidateCallback<"swr">', () => {
     const mockMutate: SWRMutator = Object.assign(
-      async () => [],
+      () => Promise.resolve([]),
       () => Promise.resolve([])
     )
 
     const adapter = swrAdapter(mockMutate)
-    // Note: Intersection function type uses toMatchTypeOf per vitest expectTypeOf rules
-    expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     expectTypeOf(adapter.__restaleTarget).toEqualTypeOf<'swr'>()
   })
 
   test('useSwrAdapter hook returns branded AdaptedInvalidateCallback<"swr">', () => {
     const mockMutate: SWRMutator = Object.assign(
-      async () => [],
+      () => Promise.resolve([]),
       () => Promise.resolve([])
     )
 
     const adapterHook = useSwrAdapter(mockMutate)
-    expectTypeOf(adapterHook).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+    expectTypeOf(adapterHook).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     expectTypeOf(adapterHook.__restaleTarget).toEqualTypeOf<'swr'>()
   })
 
   test('swrAdapter options toInvalidateKey callback', () => {
     const mockMutate: SWRMutator = Object.assign(
-      async () => [],
+      () => Promise.resolve([]),
       () => Promise.resolve([])
     )
 
@@ -41,12 +40,12 @@ describe('swrAdapter type safety', () => {
     }
 
     const adapter = swrAdapter(mockMutate, options)
-    expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
   })
 
   test('swrAdapter callback parameter should reject TanStackQuerySignal', () => {
     const mockMutate: SWRMutator = Object.assign(
-      async () => [],
+      () => Promise.resolve([]),
       () => Promise.resolve([])
     )
     const adapter = swrAdapter(mockMutate)

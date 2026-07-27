@@ -9,8 +9,7 @@ describe('tanstackQueryAdapter type safety', () => {
     const mockQueryClient = {} as QueryClient
     const adapter = tanstackQueryAdapter(mockQueryClient)
 
-    // Note: Intersection function type uses toMatchTypeOf per vitest expectTypeOf rules
-    expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     expectTypeOf(adapter.__restaleTarget).toEqualTypeOf<'tanstack-query'>()
   })
 
@@ -18,7 +17,7 @@ describe('tanstackQueryAdapter type safety', () => {
     const mockQueryClient = {} as QueryClient
     const adapterHook = useTanstackQueryAdapter(mockQueryClient)
 
-    expectTypeOf(adapterHook).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+    expectTypeOf(adapterHook).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     expectTypeOf(adapterHook.__restaleTarget).toEqualTypeOf<'tanstack-query'>()
   })
 
@@ -29,7 +28,7 @@ describe('tanstackQueryAdapter type safety', () => {
     }
 
     const adapter = tanstackQueryAdapter<CustomTSQuerySignal>(mockQueryClient)
-    expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', CustomTSQuerySignal>>()
+    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', CustomTSQuerySignal>>()
   })
 
   test('tanstackQueryAdapter callback parameter should reject SWRSignal', () => {
@@ -40,6 +39,5 @@ describe('tanstackQueryAdapter type safety', () => {
     adapter({ target: 'swr', key: ['users'] })
   })
 })
-
 
 

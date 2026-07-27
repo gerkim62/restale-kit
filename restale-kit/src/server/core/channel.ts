@@ -11,7 +11,6 @@ import {
   type SignalInputForTarget,
   type TargetForSignal,
 } from '@/types/protocol.js'
-import { type SignalsForTargets } from '@/server/core/channel-group.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import {
   formatInvalidateFrame,
@@ -167,7 +166,9 @@ export function createSSEChannel<TTarget extends SignalTarget[]>(
   options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
 ): SSEChannel<SignalInputForTarget<TTarget>>
 export function createSSEChannel<
-  TSignal extends InvalidateSignal,
+  TSignal extends InvalidateSignal & (
+    TTarget extends SignalTarget ? ReStaleSignalForTarget<TTarget> : InvalidateSignal
+  ),
   TTarget extends SignalTarget | SignalTarget[] | string[] = TargetForSignal<TSignal>,
 >(
   options: SSEChannelOptions & { target: TTarget }

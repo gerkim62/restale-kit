@@ -20,8 +20,7 @@ describe('SSEInvalidatorClient type safety', () => {
     expectTypeOf(client.close).toEqualTypeOf<() => void>()
 
     client.addEventListener('statuschange', (event) => {
-      const customEv = event as CustomEvent<ConnectionStatus>
-      expectTypeOf(customEv.detail).toEqualTypeOf<ConnectionStatus>()
+      expectTypeOf(event.detail).toEqualTypeOf<ConnectionStatus>()
     })
   })
 })
@@ -49,7 +48,7 @@ describe('AdaptedInvalidateCallback branding', () => {
     const cb = makeAdaptedCallback('swr', (_signal: SWRSignal | SWRSignal[]) => {})
 
     expectTypeOf(cb.__restaleTarget).toEqualTypeOf<'swr'>()
-    expectTypeOf(cb).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+    expectTypeOf(cb).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
   })
 
   test('unbranded function lacks __restaleTarget brand property', () => {
@@ -77,4 +76,3 @@ describe('ClientOptions misuse prevention', () => {
     })
   })
 })
-

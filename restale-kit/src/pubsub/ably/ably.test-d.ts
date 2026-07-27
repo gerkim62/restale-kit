@@ -20,14 +20,13 @@ describe('ablyPubSubAdapter type safety', () => {
     const adapter = ablyPubSubAdapter<TanStackQuerySignal>(mockClient, { useNativeEchoSuppression: true })
 
     // @ts-expect-error SWRSignal data should be rejected on TanStackQuerySignal adapter
-    adapter.publish('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
+    void adapter.publish('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
   })
 
   test('ablyPubSubAdapter encryption options validation', () => {
     const mockClient = {} as AblyClient
 
     // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    ablyPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
+    void ablyPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
   })
 })
-

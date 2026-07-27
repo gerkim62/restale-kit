@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
-import type { InvalidateSignal, TargetForSignal, SignalTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
@@ -27,7 +27,7 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
   options: SSEChannelOptions,
-  group?: SSEChannelGroup<TSignal, any, any>
+  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
@@ -74,4 +74,3 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
 
   return channel
 }
-

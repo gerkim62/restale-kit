@@ -1,5 +1,5 @@
-import type { SSEChannelOptions, DirectSSEChannelOptions } from '@/server/core/channel.js'
-import type { LifetimeOptions, OnDeadline, SignalTarget, InvalidateSignal, TargetForSignal } from '@/types/protocol.js'
+import type { SSEChannelOptions } from '@/server/core/channel.js'
+import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -118,6 +118,8 @@ function resolveTimeValue(
   if ('ttlMs' in lifetime && lifetime.ttlMs !== undefined) {
     return { ttlMs: lifetime.ttlMs }
   }
-  // LifetimeOptions discriminant guarantees deadline is present when ttlMs is not.
-  return { deadline: (lifetime as { deadline: number }).deadline }
+  if ('deadline' in lifetime && lifetime.deadline !== undefined) {
+    return { deadline: lifetime.deadline }
+  }
+  throw new Error('[mergeChannelDefaults] lifetime requires ttlMs or deadline.')
 }

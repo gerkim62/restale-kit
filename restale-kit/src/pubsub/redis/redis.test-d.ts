@@ -20,14 +20,13 @@ describe('redisPubSubAdapter type safety', () => {
     const adapter = redisPubSubAdapter<SWRSignal>(mockClient)
 
     // @ts-expect-error TanStackQuerySignal data should be rejected on SWRSignal adapter
-    adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
+    void adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
   })
 
   test('redisPubSubAdapter encryption options validation', () => {
     const mockClient = {} as RedisClient
 
     // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    redisPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
+    void redisPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
   })
 })
-

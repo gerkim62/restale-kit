@@ -9,7 +9,7 @@ describe('pusherPubSubAdapter type safety', () => {
     const mockClient = {} as PusherClient
     const adapter = pusherPubSubAdapter<SWRSignal>(mockClient)
 
-    expectTypeOf(adapter).toMatchTypeOf<PubSubAdapter<SWRSignal>>()
+    expectTypeOf(adapter).toExtend<PubSubAdapter<SWRSignal>>()
     expectTypeOf(adapter.publish).toBeCallableWith('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
     expectTypeOf(adapter.subscribe).toBeCallableWith('topic', (_msg: PubSubMessage<SWRSignal>) => {})
     expectTypeOf(adapter.handleWebhook).toBeCallableWith('raw-body', { 'x-pusher-signature': 'sig' })
@@ -20,14 +20,13 @@ describe('pusherPubSubAdapter type safety', () => {
     const adapter = pusherPubSubAdapter<SWRSignal>(mockClient)
 
     // @ts-expect-error TanStackQuerySignal data should be rejected on SWRSignal adapter
-    adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
+    void adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
   })
 
   test('pusherPubSubAdapter encryption options validation', () => {
     const mockClient = {} as PusherClient
 
     // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    pusherPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
+    void pusherPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
   })
 })
-

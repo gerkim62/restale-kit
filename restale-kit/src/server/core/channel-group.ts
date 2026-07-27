@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { type InvalidateSignal, type SWRSignal, type TanStackQuerySignal, type RTKQuerySignal, type GenericInvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
@@ -184,7 +184,7 @@ export interface SSEChannelGroupOptions<
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
  */
-export class SSEChannelGroup<
+class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
@@ -201,11 +201,6 @@ export class SSEChannelGroup<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<SWRSignal, unknown, 'swr'>)
-  constructor(options: SSEChannelGroupOptions<TanStackQuerySignal, unknown, 'tanstack-query'>)
-  constructor(options: SSEChannelGroupOptions<SignalInputForTarget<['swr', 'tanstack-query']>, unknown, ['swr', 'tanstack-query']>)
-  constructor(options?: SSEChannelGroupOptions<TSignal, TMeta, TargetForSignal<TSignal>>)
-  constructor()
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
@@ -775,6 +770,30 @@ export class SSEChannelGroup<
   }
 }
 
+export type SSEChannelGroup<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
+
+interface SSEChannelGroupConstructor {
+  new <TTarget extends SignalTarget>(
+    options: SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
+  new <TTarget extends SignalTarget[]>(
+    options: SSEChannelGroupOptions<SignalInputForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
+  ): SSEChannelGroup<SignalInputForTarget<TTarget>, unknown, TTarget>
+  new <
+    TSignal extends InvalidateSignal = InvalidateSignal,
+    TMeta = unknown,
+    TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+  >(
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget> & { target?: TargetForSignal<TSignal> }
+  ): SSEChannelGroup<TSignal, TMeta, TTarget>
+}
+
+export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
+
 function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONValue): boolean {
   if (!isJSONValue(meta)) return false
 
@@ -815,4 +834,3 @@ function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONVal
 
   return false
 }
-
