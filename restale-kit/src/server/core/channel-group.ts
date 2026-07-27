@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
+import { type InvalidateSignal, type SWRSignal, type TanStackQuerySignal, type RTKQuerySignal, type GenericInvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
 import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
@@ -34,8 +34,8 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 
   constructor(
     private readonly topic: string,
-    private readonly pubsub: PubSubAdapter | undefined,
-    private readonly onMessage: (message: PubSubMessage) => void,
+    private readonly pubsub: PubSubAdapter<TSignal> | undefined,
+    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
     private readonly onTeardown?: (topic: string) => void
   ) {}
 
@@ -155,27 +155,28 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
-export interface SSEChannelGroupOptions<TMeta = unknown> {
+export type SignalsForTargets<TTarget> =
+  TTarget extends SignalTarget
+    ? ReStaleSignalForTarget<TTarget>
+    : TTarget extends SignalTarget[] | readonly SignalTarget[]
+      ? SignalInputForTarget<TTarget>
+      : InvalidateSignal
+
+export interface SSEChannelGroupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+> {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
-  target?: SignalTarget | SignalTarget[]
+  target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter
-  eventStore?: EventStore
+  pubsub?: PubSubAdapter<TSignal>
+  eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
-  /**
-   * Fallback defaults for Frame Guard options that are typically uniform across an
-   * entire app (`target`, `lifetime`, `guardKeepalive`), so they don't
-   * need to be repeated at every `attachNodeResponse()` / `createFetchResponse()` call site.
-   *
-   * A channel-level value always wins over a group default — the default only fills
-   * a gap left by the channel. `beforeFrame` is per-connection by nature and is
-   * deliberately NOT supported here (spec §1).
-   *
-   * Merge semantics are presence-based, not truthiness-based — see `mergeChannelDefaults`.
-   */
   channelDefaults?: ChannelDefaults
 }
+
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
@@ -186,20 +187,26 @@ export interface SSEChannelGroupOptions<TMeta = unknown> {
 export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
 > {
   private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly pubsub?: PubSubAdapter
-  readonly eventStore?: EventStore
+  private readonly pubsub?: PubSubAdapter<TSignal>
+  readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
   readonly channelDefaults?: ChannelDefaults
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
+  constructor(options: SSEChannelGroupOptions<SWRSignal, unknown, 'swr'>)
+  constructor(options: SSEChannelGroupOptions<TanStackQuerySignal, unknown, 'tanstack-query'>)
+  constructor(options: SSEChannelGroupOptions<SignalInputForTarget<['swr', 'tanstack-query']>, unknown, ['swr', 'tanstack-query']>)
+  constructor(options?: SSEChannelGroupOptions<TSignal, TMeta, TargetForSignal<TSignal>>)
+  constructor()
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
 
@@ -344,7 +351,7 @@ export class SSEChannelGroup<
    */
   private deliverToChannel(
     channel: SSEChannel<TSignal>,
-    signal: InvalidateSignal | InvalidateSignal[],
+    signal: TSignal | TSignal[],
     context: 'broadcast' | 'publish' | 'pubsub',
     topic?: string,
     eventId?: string

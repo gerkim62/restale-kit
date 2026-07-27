@@ -1,5 +1,5 @@
-import type { SSEChannelOptions } from '@/server/core/channel.js'
-import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
+import type { SSEChannelOptions, DirectSSEChannelOptions } from '@/server/core/channel.js'
+import type { LifetimeOptions, OnDeadline, SignalTarget, InvalidateSignal, TargetForSignal } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -8,7 +8,7 @@ import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol
  * (userId, sessionId) and has no meaningful group-wide default (spec §1).
  */
 export interface ChannelDefaults {
-  target?: SignalTarget | SignalTarget[]
+  target?: SignalTarget | SignalTarget[] | string[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
 }

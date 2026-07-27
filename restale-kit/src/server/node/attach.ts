@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, TargetForSignal, SignalTarget } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
@@ -27,7 +27,7 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
   options: SSEChannelOptions,
-  group?: SSEChannelGroup<TSignal>
+  group?: SSEChannelGroup<TSignal, any, any>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
@@ -52,8 +52,11 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   }
 
   const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
-
-  const channel = createSSEChannel<TSignal>(channelOptions)
+  if (channelOptions.target === undefined) {
+    throw new Error('[attachNodeResponse] target option is required.')
+  }
+  const directOptions = { ...channelOptions, target: channelOptions.target }
+  const channel = createSSEChannel<TSignal, SignalTarget | SignalTarget[] | string[]>(directOptions)
 
   const headers = buildSSETargetHeaders(channelOptions)
 

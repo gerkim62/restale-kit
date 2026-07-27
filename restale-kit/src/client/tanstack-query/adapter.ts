@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, TanStackQuerySignal, GenericInvalidateSignal } from '@/types/protocol.js'
 import type { QueryClient, QueryFilters, InvalidateQueryFilters } from '@tanstack/react-query'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
 import { SIGNAL_TARGETS } from '@/utils/constants.js'
@@ -10,6 +10,16 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
 }
 
+export type TanStackQuerySignalInput =
+  | TanStackQuerySignal
+export type TanStackCallbackSignal<TSignal extends InvalidateSignal> =
+  | TSignal
+  | TSignal[]
+  | GenericInvalidateSignal
+  | GenericInvalidateSignal[]
+  | (Omit<TanStackQuerySignal, 'target'> & { target?: typeof SIGNAL_TARGETS.TANSTACK })
+  | (Omit<TanStackQuerySignal, 'target'> & { target?: typeof SIGNAL_TARGETS.TANSTACK })[]
+
 /**
  * Creates an `onInvalidate` callback that maps wire signals to TanStack Query
  * cache operations.
@@ -17,12 +27,12 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
  * Supports `TanStackQuerySignal` with actions: `'invalidate'`, `'refetch'`, `'reset'`, `'remove'`, `'cancel'`,
  * and filters: `queryKey`, `exact`, `type`, `stale`.
  */
-export function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function tanstackQueryAdapter<TSignal extends InvalidateSignal = TanStackQuerySignal | GenericInvalidateSignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK,
-    (signal) => {
+    (signal: TSignal | TSignal[]) => {
       const list = Array.isArray(signal) ? signal : [signal]
 
       for (const s of list) {
@@ -32,7 +42,7 @@ export function tanstackQueryAdapter<TSignal extends InvalidateSignal = Invalida
           continue
         }
 
-        const queryKey = s.queryKey ?? s.key
+        const queryKey = ('queryKey' in s && Array.isArray(s.queryKey)) ? s.queryKey : ('key' in s && Array.isArray(s.key)) ? s.key : undefined
         if (!Array.isArray(queryKey)) continue
 
         const exact = typeof s.exact === 'boolean' ? s.exact : undefined
@@ -83,7 +93,7 @@ export function tanstackQueryAdapter<TSignal extends InvalidateSignal = Invalida
  * const onInvalidate = useTanstackQueryAdapter(queryClient)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
-export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = TanStackQuerySignal | GenericInvalidateSignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(

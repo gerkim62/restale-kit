@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, TargetForSignal, SignalTarget } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
@@ -15,7 +15,7 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 export function internal_toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
   options: SSEChannelOptions,
-  group?: SSEChannelGroup<TSignal>
+  group?: SSEChannelGroup<TSignal, any, any>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId = extractConnectionId(urlObj.searchParams)
@@ -32,8 +32,11 @@ export function internal_toSSEResponse<TSignal extends InvalidateSignal = Invali
   }
 
   const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
-
-  const channel = createSSEChannel<TSignal>(channelOptions)
+  if (channelOptions.target === undefined) {
+    throw new Error('[createSSEChannel] target is required.')
+  }
+  const directOptions = { ...channelOptions, target: channelOptions.target }
+  const channel = createSSEChannel<TSignal, SignalTarget | SignalTarget[] | string[]>(directOptions)
 
   const headers = buildSSETargetHeaders(channelOptions)
 

@@ -18,8 +18,13 @@ export type JSONValue =
 export const TANSTACK_QUERY_ACTIONS = ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const
 export type TanStackQueryAction = (typeof TANSTACK_QUERY_ACTIONS)[number]
 
+/** Base interface for all invalidation signals */
+export interface BaseInvalidateSignal {
+  target?: SignalTarget
+}
+
 /** Native TanStack Query invalidation signal payload */
-export interface TanStackQuerySignal {
+export interface TanStackQuerySignal extends BaseInvalidateSignal {
   target: typeof SIGNAL_TARGETS.TANSTACK
   queryKey: JSONValue[]
   exact?: QueryFilters['exact']
@@ -32,7 +37,7 @@ export const SWR_ACTIONS = ['revalidate', 'purge', 'remove'] as const
 export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */
-export interface SWRSignal {
+export interface SWRSignal extends BaseInvalidateSignal {
   target: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
   action?: SWRAction
@@ -41,7 +46,7 @@ export interface SWRSignal {
 }
 
 /** Native RTK Query invalidation signal payload */
-export interface RTKQuerySignal {
+export interface RTKQuerySignal extends BaseInvalidateSignal {
   target: typeof SIGNAL_TARGETS.RTK
   tags: Array<string | { type: string; id?: string | number }>
 }
@@ -50,7 +55,7 @@ export const GENERIC_ACTIONS = ['invalidate', 'refetch', 'remove'] as const
 export type GenericAction = (typeof GENERIC_ACTIONS)[number]
 
 /** Generic fallback signal for raw SSE listeners */
-export interface GenericInvalidateSignal {
+export interface GenericInvalidateSignal extends BaseInvalidateSignal {
   target?: typeof SIGNAL_TARGETS.GENERIC
   key: JSONValue[]
   exact?: boolean
@@ -66,6 +71,9 @@ export type ReStaleSignal =
   | RTKQuerySignal
   | GenericInvalidateSignal
 
+/** Alias for default generic parameter bounds across channels & pubsub */
+export type InvalidateSignal = ReStaleSignal
+
 /** Map a single SignalTarget discriminator to its specific signal type. */
 export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
   TTarget extends typeof SIGNAL_TARGETS.TANSTACK
@@ -76,19 +84,29 @@ export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
         ? RTKQuerySignal
         : GenericInvalidateSignal
 
+/** Extract Target from a signal type if present. */
+export type TargetForSignal<TSignal extends InvalidateSignal> =
+  TSignal extends { target: typeof SIGNAL_TARGETS.TANSTACK }
+    ? typeof SIGNAL_TARGETS.TANSTACK
+    : TSignal extends { target: typeof SIGNAL_TARGETS.SWR }
+      ? typeof SIGNAL_TARGETS.SWR
+      : TSignal extends { target: typeof SIGNAL_TARGETS.RTK }
+        ? typeof SIGNAL_TARGETS.RTK
+        : TSignal extends { target: typeof SIGNAL_TARGETS.GENERIC }
+          ? typeof SIGNAL_TARGETS.GENERIC
+          : SignalTarget | SignalTarget[]
+
 /**
  * Computes allowable input signal types for invalidating/publishing.
  * - Single target: `target` is optional and defaulted automatically to the single target.
  * - Multi-target array: explicit `target` is strictly required on every signal.
  */
-export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
-  [TTarget] extends [SignalTarget]
-    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
-      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
-    : ReStaleSignal | Array<ReStaleSignal & { target: SignalTarget }>
-
-/** Alias for default generic parameter bounds across channels & pubsub */
-export type InvalidateSignal = ReStaleSignal
+export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
+  TTarget extends SignalTarget
+    ? ReStaleSignalForTarget<TTarget>
+    : TTarget extends SignalTarget[] | readonly SignalTarget[]
+      ? ReStaleSignalForTarget<TTarget[number]> & { target: TTarget[number] }
+      : ReStaleSignal
 
 /** Returns whether a value can be used as a serializable ReStale key component. */
 export function isJSONValue(value: unknown): value is JSONValue {
@@ -149,7 +167,8 @@ export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSig
   }
 
   if ('key' in signal && Array.isArray(signal.key)) {
-    return matchKeyArray(cacheKey, signal.key, signal.exact === true)
+    const isExact = 'exact' in signal && signal.exact === true
+    return matchKeyArray(cacheKey, signal.key, isExact)
   }
 
   return false

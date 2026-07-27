@@ -24,9 +24,7 @@ describe('tanstackQueryAdapter type safety', () => {
 
   test('tanstackQueryAdapter supports custom TSignal generic type parameter', () => {
     const mockQueryClient = {} as QueryClient
-    interface CustomTSQuerySignal extends InvalidateSignal {
-      target: 'tanstack-query'
-      queryKey: string[]
+    interface CustomTSQuerySignal extends TanStackQuerySignal {
       customMeta?: string
     }
 

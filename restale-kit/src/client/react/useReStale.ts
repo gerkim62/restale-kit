@@ -49,7 +49,7 @@ export interface UseReStaleOptions<
    * Explicit target override. Must match the adapter's target — a mismatch is a type error.
    * You usually don't need to pass this; it is inferred from `onInvalidate`.
    */
-  target?: TTarget
+  target?: NoInfer<TTarget>
   /**
    * Called when the server sends a terminal revocation frame.
    *

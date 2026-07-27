@@ -7,7 +7,11 @@ import {
   type BeforeFrameFn,
   type FrameGuardCtx,
   type FrameGuardResult,
+  type ReStaleSignalForTarget,
+  type SignalInputForTarget,
+  type TargetForSignal,
 } from '@/types/protocol.js'
+import { type SignalsForTargets } from '@/server/core/channel-group.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import {
   formatInvalidateFrame,
@@ -24,7 +28,7 @@ import { PROTOCOL_CONSTANTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
  */
 export interface SSEChannelOptions {
   /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
-  target?: SignalTarget | SignalTarget[]
+  target?: SignalTarget | SignalTarget[] | string[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
@@ -103,7 +107,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
-  readonly target: SignalTarget | SignalTarget[]
+  readonly target: SignalTarget | SignalTarget[] | string[]
   /** The single target requested by this client via query param, if any. May be an unrecognized string if the client sent an unknown target. */
   readonly requestedTarget: string | undefined
   /** The SSE byte stream to pipe into a response. */
@@ -115,7 +119,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    *
    * Returns the event ID assigned to the invalidation frame.
    */
-  invalidate(signal: TSignal | TSignal[] | InvalidateSignal | InvalidateSignal[], customId?: string): string
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
   close(): void
   /**
@@ -143,6 +147,12 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
   onClose(callback: () => void): void
 }
 
+export interface DirectSSEChannelOptions<
+  TTarget extends SignalTarget | SignalTarget[] | string[] = SignalTarget | SignalTarget[] | string[],
+> extends SSEChannelOptions {
+  target: TTarget
+}
+
 /**
  * Creates a new SSE channel.
  *
@@ -150,6 +160,18 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
  * SSE-formatted events and periodic keepalive comments. Transport adapters
  * pipe this stream into a response.
  */
+export function createSSEChannel<TTarget extends SignalTarget>(
+  options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
+): SSEChannel<ReStaleSignalForTarget<TTarget>>
+export function createSSEChannel<TTarget extends SignalTarget[]>(
+  options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
+): SSEChannel<SignalInputForTarget<TTarget>>
+export function createSSEChannel<
+  TSignal extends InvalidateSignal,
+  TTarget extends SignalTarget | SignalTarget[] | string[] = TargetForSignal<TSignal>,
+>(
+  options: SSEChannelOptions & { target: TTarget }
+): SSEChannel<TSignal>
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
   options: SSEChannelOptions
 ): SSEChannel<TSignal> {
@@ -302,7 +324,6 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
 
       if (requestedTarget !== undefined) {
-        // @ts-expect-error includes not present for SignalTarget type
         if (!supportedTargets.includes(requestedTarget)) {
           const safeRequestedTarget = requestedTarget.replace(/\r\n|\r|\n/g, '\\n')
           const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
@@ -343,7 +364,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             // client refetches everything rather than silently displaying stale data.
             const declaredList = Array.isArray(target) ? target : [target]
             const foundTarget = declaredList.find((t) => t === requestedTarget)
-            const staleTarget: SignalTarget = foundTarget ?? declaredList[0] ?? 'generic'
+            const staleTarget: string = foundTarget ?? declaredList[0] ?? 'generic'
             const staleSignal: InvalidateSignal =
               staleTarget === 'tanstack-query'
                 ? { target: 'tanstack-query', queryKey: [] }
@@ -586,7 +607,7 @@ function isInvalidateSignal(value: unknown): value is InvalidateSignal {
 
 export function validateSignalTargets(
   signal: unknown,
-  targetConfig: SignalTarget | SignalTarget[]
+  targetConfig: SignalTarget | SignalTarget[] | string[]
 ): InvalidateSignal | InvalidateSignal[] {
   const signalList = Array.isArray(signal) ? signal : [signal]
   const declaredTargets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
