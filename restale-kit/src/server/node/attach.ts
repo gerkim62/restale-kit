@@ -3,7 +3,7 @@ import { Readable } from 'node:stream'
 import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractOptionalConnectionId, extractRequestedTarget } from '@/server/transport-utils.js'
+import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -39,9 +39,7 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   const rawUrl = actualReq.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  const connectionId = group === undefined
-    ? extractConnectionId(searchParams)
-    : (extractOptionalConnectionId(searchParams) ?? '')
+  const connectionId = extractConnectionId(searchParams)
   const requestedTarget = extractRequestedTarget(searchParams)
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])

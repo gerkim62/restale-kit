@@ -309,7 +309,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       // Validate the requested target before doing anything else.
       // If it is unsupported or missing on a multi-target channel, emit a structured revoke frame and close immediately.
       const supportedTargets = Array.isArray(target) ? target : [target]
-      if (requestedTarget === undefined && supportedTargets.length > 1) {
+      if (requestedTarget === undefined && supportedTargets.length > 1 && connectionId !== '') {
         const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
         console.warn(
           `[WARN][createSSEChannel] Rejected connection: no target requested for multi-target channel [${supportedTargets.join(', ')}]. connectionId: ${safeConnectionId}.`

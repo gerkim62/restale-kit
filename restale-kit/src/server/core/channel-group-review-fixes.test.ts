@@ -202,6 +202,7 @@ describe('review-findings: meta validation before transport', () => {
     const spy = vi.fn()
     const seenMetas: TestMeta[] = []
     group.broadcast({ key: ['test'] }, (meta) => {
+      if (meta === undefined) return false
       seenMetas.push(meta)
       spy()
       return true

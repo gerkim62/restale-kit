@@ -412,7 +412,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       }).toThrow()
     })
 
-    it('should accept valid topics in attachNodeResponse', () => {
+    it('should validate valid topics before enforcing the Node transport contract', () => {
       const group = new SSEChannelGroup<SWRSignal>()
       const mockReq = {} as any
       const mockRes = {} as any
@@ -422,7 +422,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
           target: 'swr',
           topics: ['topic1', 'topic2']
         })
-      }).not.toThrow()
+      }).toThrow(/__restale_cid__/)
     })
   })
 

@@ -55,7 +55,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     channel.invalidate({ key: ['todos', 1] })
     const text = await readStreamChunk(response.body!)
 
-    expect(text).toBe('event: invalidate\ndata: {"key":["todos",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"key":["todos",1],"target":"swr"}\n\n')
   })
 
   it('Fetch: internal_toSSEResponse with eventStore emits id: field in SSE frame', async () => {
@@ -67,7 +67,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     expect(id).toBe('1') // auto-increment
 
     const text = await readStreamChunk(response.body!)
-    expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"]}\n\n')
+    expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"],"target":"swr"}\n\n')
   })
 
   it('Node: internal_attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {
@@ -83,7 +83,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     await vi.advanceTimersByTimeAsync(50)
 
     const chunks = (res as any).__chunks as string[]
-    expect(chunks.join('')).toBe('event: invalidate\ndata: {"key":["products"]}\n\n')
+    expect(chunks.join('')).toBe('event: invalidate\ndata: {"key":["products"],"target":"swr"}\n\n')
   })
 
   it('Fetch: batch invalidate produces single SSE frame with JSON array', async () => {
@@ -94,7 +94,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const text = await readStreamChunk(response.body!)
 
     expect(text).toBe(
-      'event: invalidate\ndata: [{"key":["todos"]},{"key":["users"]}]\n\n'
+      'event: invalidate\ndata: [{"key":["todos"],"target":"swr"},{"key":["users"],"target":"swr"}]\n\n'
     )
   })
 

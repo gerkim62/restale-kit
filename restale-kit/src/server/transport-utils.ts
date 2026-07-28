@@ -13,19 +13,13 @@ const MAX_LAST_EVENT_ID_LENGTH = 512
  * enforce this try/catch contract at the route boundary before attaching streams.
  */
 export function extractConnectionId(searchParams: URLSearchParams): string {
-  const connectionId = extractOptionalConnectionId(searchParams)
-  if (connectionId === undefined) {
+  const connectionId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
+  if (!connectionId) {
     throw new Error(
       `Missing or invalid ${PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM} query parameter in request URL`
     )
   }
   return connectionId
-}
-
-/** Returns a connection ID when one was supplied, otherwise `undefined`. */
-export function extractOptionalConnectionId(searchParams: URLSearchParams): string | undefined {
-  const connectionId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
-  return connectionId === null || connectionId === '' ? undefined : connectionId
 }
 
 /**
