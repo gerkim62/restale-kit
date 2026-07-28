@@ -140,9 +140,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      group.register('test-channel', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       // @ts-expect-error - Single signal not allowed
       group.broadcast({ target: 'swr', key: ['todos'] });
@@ -153,9 +153,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      group.register('test-channel', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       // @ts-expect-error - Incomplete batch
       group.broadcast([
@@ -168,9 +168,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      group.register('test-channel', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       expect(() => {
         group.broadcast([
@@ -187,12 +187,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      group.register('channel-1', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
-      group.register('channel-2', createSSEChannel({ 
+      }), undefined);
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       // @ts-expect-error - Incomplete batch
       group.broadcastToAll([
@@ -205,12 +205,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      group.register('channel-1', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
-      group.register('channel-2', createSSEChannel({ 
+      }), undefined);
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       expect(() => {
         group.broadcastToAll([
@@ -229,9 +229,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         pubsub: { type: 'memory' }
       });
       
-      group.register('test-channel', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }), {
+      }), undefined, {
         topics: ['updates']
       });
       
@@ -248,9 +248,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         pubsub: { type: 'memory' }
       });
       
-      group.register('test-channel', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }), {
+      }), undefined, {
         topics: ['updates']
       });
       
@@ -308,12 +308,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       >();
       
       // Single-target channel
-      group.register('single', createSSEChannel({ target: 'swr' }));
+      group.register(createSSEChannel({ target: 'swr' }), undefined);
       
       // Multi-target channel
-      group.register('multi', createSSEChannel({ 
+      group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
-      }));
+      }), undefined);
       
       // Broadcasting to mixed group
       // Single-target channels accept single signals

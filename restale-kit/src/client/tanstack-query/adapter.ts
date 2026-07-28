@@ -12,22 +12,13 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
 
 export type TanStackQuerySignalInput =
   | TanStackQuerySignal
-export type TanStackCallbackSignal<TSignal extends InvalidateSignal> =
-  | TSignal
-  | TSignal[]
   | GenericInvalidateSignal
-  | GenericInvalidateSignal[]
-  | (Omit<TanStackQuerySignal, 'target'> & { target?: typeof SIGNAL_TARGETS.TANSTACK })
-  | (Omit<TanStackQuerySignal, 'target'> & { target?: typeof SIGNAL_TARGETS.TANSTACK })[]
 
 /**
- * Creates an `onInvalidate` callback that maps wire signals to TanStack Query
- * cache operations.
- *
- * Supports `TanStackQuerySignal` with actions: `'invalidate'`, `'refetch'`, `'reset'`, `'remove'`, `'cancel'`,
- * and filters: `queryKey`, `exact`, `type`, `stale`.
+ * Creates an `onInvalidate` callback for TanStack Query.
+ * Gap 8: Constrained specifically to TanStackQuerySignalInput.
  */
-export function tanstackQueryAdapter<TSignal extends InvalidateSignal = TanStackQuerySignal | GenericInvalidateSignal>(
+export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
@@ -85,6 +76,8 @@ export function tanstackQueryAdapter<TSignal extends InvalidateSignal = TanStack
 /**
  * React hook that returns a stable `onInvalidate` callback for TanStack Query.
  *
+ * Gap 8: Constrained specifically to TanStackQuerySignalInput.
+ *
  * The returned callback is branded as `AdaptedInvalidateCallback<'tanstack-query'>`.
  * Pass it directly to `useReStale` as `onInvalidate` — `target` will be inferred
  * automatically and a mismatch with an explicit `target` prop is a compile error.
@@ -93,7 +86,7 @@ export function tanstackQueryAdapter<TSignal extends InvalidateSignal = TanStack
  * const onInvalidate = useTanstackQueryAdapter(queryClient)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
-export function useTanstackQueryAdapter<TSignal extends InvalidateSignal = TanStackQuerySignal | GenericInvalidateSignal>(
+export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(

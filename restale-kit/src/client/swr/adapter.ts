@@ -42,9 +42,11 @@ export type SWRCallbackSignal<TSignal extends InvalidateSignal> =
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *
+ * Gap 8: Constrained specifically to SWRSignalInput.
+ *
  * Supports `SWRSignal` (with primitive string or tuple keys) and `GenericInvalidateSignal`.
  */
-export function swrAdapter<TSignal extends InvalidateSignal = SWRSignalInput>(
+export function swrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {
@@ -101,6 +103,8 @@ export function swrAdapter<TSignal extends InvalidateSignal = SWRSignalInput>(
 /**
  * React hook that returns a stable `onInvalidate` callback for SWR.
  *
+ * Gap 8: Constrained specifically to SWRSignalInput.
+ *
  * The returned callback is branded as `AdaptedInvalidateCallback<'swr'>`.
  * Pass it directly to `useReStale` as `onInvalidate` — `target` will be inferred
  * automatically and a mismatch with an explicit `target` prop is a compile error.
@@ -109,7 +113,7 @@ export function swrAdapter<TSignal extends InvalidateSignal = SWRSignalInput>(
  * const onInvalidate = useSwrAdapter(mutate)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'swr'
  */
-export function useSwrAdapter<TSignal extends InvalidateSignal = SWRSignalInput>(
+export function useSwrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {

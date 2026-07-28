@@ -1,4 +1,4 @@
-import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal } from '@/types/protocol.js'
 
 /**
  * A phantom brand that marks an `onInvalidate` callback as having been produced
@@ -96,8 +96,10 @@ export interface AutoReconnectOptions {
 
 /**
  * Configuration options for `SSEInvalidatorClient`.
+ *
+ * Gap 9: Target constrained to match signal's TargetForSignal<TSignal>.
  */
-export interface ClientOptions {
+export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /**
    * Whether to automatically reconnect on failure. Default: true.
    *
@@ -124,8 +126,8 @@ export interface ClientOptions {
    * later render will not take effect until the `url` also changes (which recreates the client).
    */
   debug?: boolean
-  /** Optional target discriminator expected by the client. */
-  target?: SignalTarget
+  /** Optional target discriminator expected by the client. Gap 9: Must match TargetForSignal<TSignal>. */
+  target?: TargetForSignal<TSignal>
 }
 
 /**

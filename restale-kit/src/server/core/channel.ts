@@ -27,9 +27,9 @@ import { PROTOCOL_CONSTANTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 /**
  * Configuration options for `createSSEChannel`.
  */
-export interface SSEChannelOptions {
+export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
-  target?: SignalTarget | SignalTarget[]
+  target?: SignalTarget | SignalTarget[] | readonly SignalTarget[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
@@ -77,13 +77,15 @@ export interface SSEChannelOptions {
   /**
    * Integrator-supplied guard function called synchronously before each outgoing frame.
    *
+   * Gap 7: Properly typed as BeforeFrameFn<TSignal> to infer from channel's target/signal type.
+   *
    * By default it runs before **signal frames only**. Set `guardKeepalive: true` to also
    * run it before every keepalive tick (opt-in because keepalives are high-frequency).
    *
    * The function must be synchronous. Errors thrown inside it are the integrator's
    * responsibility — an unhandled throw is treated as `{ action: 'close' }`.
    */
-  beforeFrame?: BeforeFrameFn<InvalidateSignal>
+  beforeFrame?: BeforeFrameFn<TSignal>
   /**
    * When `true`, `beforeFrame` also runs before every keepalive tick.
    * Has no effect if `beforeFrame` is not set. Default: `false`.
@@ -97,6 +99,8 @@ export interface SSEChannelOptions {
  * Runtime-agnostic — does not know about Node's `http` module or any specific
  * framework. Transport helpers (`restale-kit/node`, `restale-kit/fetch`) pipe
  * this stream into their runtime's response mechanism.
+ *
+ * Gap 6: Methods are readonly function properties (contravariant) not method declarations.
  */
 export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
   /** Current lifecycle state of the channel. */
@@ -120,14 +124,14 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    *
    * Returns the event ID assigned to the invalidation frame.
    */
-  invalidate(signal: TSignal | TSignal[], customId?: string): string
+  readonly invalidate: (signal: TSignal | TSignal[], customId?: string) => string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
-  close(): void
+  readonly close: () => void
   /**
    * Called by a transport adapter when it detects the remote peer disconnected.
    * Same effect as `close()`. Idempotent.
    */
-  disconnect(): void
+  readonly disconnect: () => void
   /**
    * Sends a terminal `revoke` SSE event frame to the client and then closes the channel.
    *
@@ -139,17 +143,17 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    *
    * @param reason - Human-readable reason string included in the event payload. Default: `'revoked'`.
    */
-  revoke(reason?: string): void
+  readonly revoke: (reason?: string) => void
   /**
    * Registers a one-shot callback invoked when the channel transitions to `'closed'`
    * (whether via `close()`, `disconnect()`, `revoke()`, or stream cancellation).
    * If the channel is already closed the callback fires synchronously.
    */
-  onClose(callback: () => void): void
+  readonly onClose: (callback: () => void) => void
 }
 
 export interface DirectSSEChannelOptions<
-  TTarget extends SignalTarget | SignalTarget[] = SignalTarget | SignalTarget[],
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = SignalTarget | SignalTarget[],
 > extends SSEChannelOptions {
   target: TTarget
 }
@@ -164,19 +168,14 @@ export interface DirectSSEChannelOptions<
 export function createSSEChannel<TTarget extends SignalTarget>(
   options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
 ): SSEChannel<ReStaleSignalForTarget<TTarget>>
-export function createSSEChannel<TTarget extends SignalTarget[]>(
+export function createSSEChannel<TTarget extends SignalTarget[] | readonly SignalTarget[]>(
   options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
 ): SSEChannel<SignalInputForTarget<TTarget>>
-export function createSSEChannel<
-  TSignal extends InvalidateSignal & (
-    TTarget extends SignalTarget ? ReStaleSignalForTarget<TTarget> : InvalidateSignal
-  ),
-  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
->(
-  options: SSEChannelOptions & { target: TTarget }
+export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal>
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions
+  options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
   if (options.target === undefined) {
     throw new Error('[createSSEChannel] target is required.')
@@ -288,7 +287,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
-      return beforeFrame(ctx)
+      return beforeFrame(ctx as FrameGuardCtx<TSignal>)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       console.warn(
@@ -308,8 +307,9 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
       // Validate the requested target before doing anything else.
       // If it is unsupported or missing on a multi-target channel, emit a structured revoke frame and close immediately.
+      // Gap 2: Remove connectionId check - missing requestedTarget alone should reject multi-target connections
       const supportedTargets = Array.isArray(target) ? target : [target]
-      if (requestedTarget === undefined && supportedTargets.length > 1 && connectionId !== '') {
+      if (requestedTarget === undefined && supportedTargets.length > 1) {
         const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
         console.warn(
           `[WARN][createSSEChannel] Rejected connection: no target requested for multi-target channel [${supportedTargets.join(', ')}]. connectionId: ${safeConnectionId}.`
@@ -318,11 +318,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
           controller.enqueue(
             formatRevokeFrame('unsupported-target', {
               requested: '',
-              supported: supportedTargets,
+              supported: [...supportedTargets],
             })
           )
         } catch {
-          // controller unusable — just close
+          // controller unusable
         }
         closeInternal()
         return

@@ -96,22 +96,52 @@ export type TargetForSignal<TSignal extends InvalidateSignal> =
           ? typeof SIGNAL_TARGETS.GENERIC
           : SignalTarget | SignalTarget[]
 
+export type ExplicitSignalForTarget<TTarget extends SignalTarget> =
+  ReStaleSignalForTarget<TTarget> & { target: TTarget }
+
+export type Permutations2<A extends SignalTarget, B extends SignalTarget> =
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>]
+
+export type Permutations3<A extends SignalTarget, B extends SignalTarget, C extends SignalTarget> =
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>, ExplicitSignalForTarget<C>]
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<C>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>, ExplicitSignalForTarget<C>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<C>, ExplicitSignalForTarget<A>]
+  | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>]
+
+export type CompleteBatchForTargets<TTarget extends readonly SignalTarget[]> =
+  TTarget extends readonly [infer A extends SignalTarget, infer B extends SignalTarget, infer C extends SignalTarget]
+    ? Permutations3<A, B, C>
+    : TTarget extends readonly [infer A extends SignalTarget, infer B extends SignalTarget]
+      ? Permutations2<A, B>
+      : TTarget extends readonly [infer A extends SignalTarget]
+        ? [ExplicitSignalForTarget<A>]
+        : Array<ExplicitSignalForTarget<TTarget[number]>>
+
 /**
  * Computes allowable input signal types for invalidating/publishing.
  * - Single target: `target` is optional and defaulted automatically to the single target.
- * - Multi-target array: explicit `target` is strictly required on every signal.
+ * - Multi-target array: explicit `target` is strictly required and a complete batch for ALL configured targets is required.
  */
 export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
   TTarget extends SignalTarget
     ? ReStaleSignalForTarget<TTarget>
-    : TTarget extends SignalTarget[] | readonly SignalTarget[]
-      ? ReStaleSignalForTarget<TTarget[number]> & { target: TTarget[number] }
-      : ReStaleSignal
+    : TTarget extends readonly SignalTarget[]
+      ? CompleteBatchForTargets<TTarget>
+      : TTarget extends SignalTarget[]
+        ? CompleteBatchForTargets<TTarget>
+        : ReStaleSignal
 
 /** Returns whether a value can be used as a serializable ReStale key component. */
 export function isJSONValue(value: unknown): value is JSONValue {
-  if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean') {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return true
+  }
+  // Gap 12: Reject NaN, Infinity, -Infinity which cannot survive JSON round-trip
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
   }
   if (Array.isArray(value)) return value.every(isJSONValue)
   if (typeof value !== 'object') return false
@@ -227,9 +257,9 @@ export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateS
  * An event history store interface for storing past events and replaying missed signals.
  */
 export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
-  add(signal: TSignal | TSignal[], customId?: string): EventRecord<TSignal>
-  getEventsAfter(lastEventId: string): EventStoreResult<TSignal>
-  clear(): void
+  readonly add: (signal: TSignal | TSignal[], customId?: string) => EventRecord<TSignal>
+  readonly getEventsAfter: (lastEventId: string) => EventStoreResult<TSignal>
+  readonly clear: () => void
 }
 
 /**
@@ -332,35 +362,29 @@ export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
   (ctx: FrameGuardCtx<TSignal>) => FrameGuardResult
 
 /**
- * The payload of a revoke SSE event frame.
+ * The payload of a revoke SSE event frame (Gap 13: unified with client contract).
  *
  * The `reason` field conveys why the server is revoking the connection:
  * - `'deadline'` — Frame Guard deadline reached and all confirmatory reconnect attempts exhausted
  * - `'unsupported-target'` — client requested a target not in the channel's supported set
  * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`, or undefined
  *
- * The optional `details` field carries extra context specific to each reason.
- *
- * Note: This type describes the `detail` of the `revoke` CustomEvent dispatched by the client,
- * not `ConnectionStatus.reason`. When a revoke event fires, the connection status becomes
- * `{ status: 'closed', reason: 'revoked' }`, but the event detail's `reason` field contains
- * the specific cause (e.g., 'deadline', server-supplied string).
+ * This is a discriminated union matching the client-side shape (top-level requested/supported fields).
  */
 export type RevokeEventDetail =
-  | { reason: 'deadline' }
-  | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
-  | { reason: string; details?: unknown }
+  | {
+      reason: 'unsupported-target'
+      requested: string
+      supported: string[]
+    }
+  | {
+      reason: 'deadline' | (string & {}) | undefined
+      requested?: never
+      supported?: never
+    }
 
 /**
  * Payload carried by the `renew` CustomEvent.
- *
- * When a Frame Guard deadline approaches, the server sends a `renew` frame asking the client
- * to reconnect through real auth middleware to refresh credentials. This event detail specifies
- * the reconnection budget.
- *
- * Contract: `maxAttempts` must be a finite non-negative integer, and `retryDelayMs` must be a
- * finite non-negative number. Malformed values (negative, fractional for maxAttempts, NaN, or
- * infinite) are rejected before the renew frame is sent.
  */
 export interface RenewEventDetail {
   /** Always `'deadline'` — the only reason a server currently sends `renew`. */
@@ -370,4 +394,5 @@ export interface RenewEventDetail {
   /** Milliseconds to wait between retry attempts. Must be a finite non-negative number. */
   retryDelayMs: number
 }
+
 

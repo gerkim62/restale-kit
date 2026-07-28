@@ -181,6 +181,8 @@ export interface SSEChannelGroupOptions<
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
  *
+ * Gap 6: Methods are readonly function properties (contravariant) not method declarations.
+ *
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
  */
@@ -218,8 +220,9 @@ class SSEChannelGroupImplementation<
     }
     this.channelDefaults = Object.keys(mergedDefaults).length > 0 ? mergedDefaults : undefined
 
+    // Gap 10: Validate controlTopic - reject blank/whitespace strings
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
-    if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
+    if (typeof rawControlTopic !== 'string' || rawControlTopic.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
       throw new Error(
         `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
         `Got: ${JSON.stringify(rawControlTopic)}`
@@ -443,11 +446,15 @@ class SSEChannelGroupImplementation<
     return meta
   }
 
-  private validateSetupTarget(target: SignalTarget | SignalTarget[] | undefined): void {
+  private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     const configuredTarget = this.channelDefaults?.target
+    // Gap 5: Allow subset target validation - channel target must be subset of group target
     if (target === undefined || configuredTarget === undefined) return
-    if (!targetsMatch(target, configuredTarget)) {
-      throw new Error('[SSEChannelGroup] setup target must match the group target configuration.')
+    if (!isTargetSubset(target, configuredTarget)) {
+      throw new Error(
+        '[SSEChannelGroup] Channel target must be a valid subset of the group target configuration. ' +
+        `Channel: ${JSON.stringify(target)}, Group: ${JSON.stringify(configuredTarget)}`
+      )
     }
   }
 
@@ -806,15 +813,15 @@ interface SSEChannelGroupConstructor {
   new <TTarget extends SignalTarget>(
     options: SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
   ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
-  new <TTarget extends SignalTarget[]>(
+  new <TTarget extends SignalTarget[] | readonly SignalTarget[]>(
     options: SSEChannelGroupOptions<SignalInputForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
   ): SSEChannelGroup<SignalInputForTarget<TTarget>, unknown, TTarget>
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
-    TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
   >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget> & { target?: TargetForSignal<TSignal> }
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget> & { target?: TTarget }
   ): SSEChannelGroup<TSignal, TMeta, TTarget>
 }
 
@@ -832,9 +839,19 @@ function validateTopics(topics: string[] | undefined): void {
 }
 
 function validateTopic(topic: string, label: string): void {
-  if (typeof topic !== 'string' || topic.replace(/[\s\u200B\u200C\u200D]/gu, '') === '') {
+  // Gap 10: Reject zero-width unicode whitespace and blank strings
+  if (typeof topic !== 'string' || topic.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
     throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
   }
+}
+
+function isTargetSubset(
+  subTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[],
+  groupTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[]
+): boolean {
+  const subList = Array.isArray(subTarget) ? subTarget : [subTarget]
+  const groupList = Array.isArray(groupTarget) ? groupTarget : [groupTarget]
+  return subList.every((target) => groupList.includes(target as SignalTarget))
 }
 
 function targetsMatch(first: SignalTarget | SignalTarget[], second: SignalTarget | SignalTarget[]): boolean {

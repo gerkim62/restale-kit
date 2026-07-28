@@ -10,6 +10,8 @@ const DEFAULT_JITTER = true
  * Formula: `min(baseDelayMs × 2^attempt, maxDelayMs)`
  * When jitter is enabled: `delay × random(0.5, 1.5)`
  *
+ * Gap 11: Validates numeric bounds - rejects NaN and negative values.
+ *
  * @param attempt - Zero-indexed attempt number. Resets to 0 on successful open.
  * @param options - Reconnect configuration.
  * @returns Delay in milliseconds before the next retry.
@@ -18,6 +20,17 @@ export function calculateBackoff(attempt: number, options?: ReconnectOptions): n
   const baseDelayMs = options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS
   const maxDelayMs = options?.maxDelayMs ?? DEFAULT_MAX_DELAY_MS
   const jitter = options?.jitter ?? DEFAULT_JITTER
+
+  // Gap 11: Validate numeric inputs
+  if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+    throw new RangeError('[calculateBackoff] baseDelayMs must be a non-negative finite number.')
+  }
+  if (!Number.isFinite(maxDelayMs) || maxDelayMs < 0) {
+    throw new RangeError('[calculateBackoff] maxDelayMs must be a non-negative finite number.')
+  }
+  if (!Number.isFinite(attempt) || attempt < 0) {
+    throw new RangeError('[calculateBackoff] attempt must be a non-negative finite number.')
+  }
 
   let delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs)
 
