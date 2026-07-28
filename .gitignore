@@ -21,3 +21,4 @@ coverage/
 audit/
 fixes/
 audit
+!restale-kit/src/__tests__/audit
