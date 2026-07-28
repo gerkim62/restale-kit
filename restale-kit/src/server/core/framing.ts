@@ -13,22 +13,6 @@ export interface RenewFramePayload {
 
 const encoder = new TextEncoder()
 
-function stripTargetFromSignal(item: unknown): unknown {
-  if (item && typeof item === 'object' && 'target' in item) {
-    const copy = { ...(item as Record<string, unknown>) }
-    delete copy['target']
-    return copy
-  }
-  return item
-}
-
-function prepareWireSignal(signal: SSEInvalidateEvent): unknown {
-  if (Array.isArray(signal)) {
-    return signal.map(stripTargetFromSignal)
-  }
-  return stripTargetFromSignal(signal)
-}
-
 /**
  * Formats an invalidation signal (or batch) as an SSE event frame.
  *
@@ -46,8 +30,9 @@ function prepareWireSignal(signal: SSEInvalidateEvent): unknown {
  * the frame is never broken by embedded newline characters.
  */
 export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
-  const wirePayload = prepareWireSignal(signal)
-  const json = JSON.stringify(wirePayload)
+  // `target` is the discriminator that lets the client validate and route
+  // target-specific payloads.  It is protocol data, not server-only metadata.
+  const json = JSON.stringify(signal)
   const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
   const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
   // Split on any newline variant and prefix each line with "data: " per the SSE spec.

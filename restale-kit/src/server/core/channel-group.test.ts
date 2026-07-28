@@ -78,7 +78,7 @@ describe('channel-group', () => {
     const { value } = await reader.read()
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"key":["todos"]}\n\n')
+    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n')
   })
 
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
@@ -1083,7 +1083,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"key":["items"]}]\n\n'
+      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
     )
   })
 
@@ -1100,7 +1100,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"key":["todos"]}\n\n'
+      'event: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n'
     )
   })
 
@@ -1128,7 +1128,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"queryKey":["posts"]}\n\n'
+      'event: invalidate\ndata: {"target":"tanstack-query","queryKey":["posts"]}\n\n'
     )
   })
 })
