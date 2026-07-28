@@ -1,4 +1,4 @@
-import type { SSEChannelOptions } from '@/server/core/channel.js'
+import { validateTargetConfiguration, type SSEChannelOptions } from '@/server/core/channel.js'
 import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
@@ -8,7 +8,7 @@ import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol
  * (userId, sessionId) and has no meaningful group-wide default (spec §1).
  */
 export interface ChannelDefaults {
-  target?: SignalTarget | SignalTarget[] | string[]
+  target?: SignalTarget | SignalTarget[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
 }
@@ -33,6 +33,8 @@ export function mergeChannelDefaults(
   channelOptions: SSEChannelOptions,
   defaults: ChannelDefaults | undefined
 ): SSEChannelOptions {
+  if (channelOptions.target !== undefined) validateTargetConfiguration(channelOptions.target)
+  if (defaults?.target !== undefined) validateTargetConfiguration(defaults.target)
   if (defaults === undefined) return channelOptions
 
   let merged = channelOptions

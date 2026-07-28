@@ -27,7 +27,7 @@ import { PROTOCOL_CONSTANTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
  */
 export interface SSEChannelOptions {
   /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
-  target?: SignalTarget | SignalTarget[] | string[]
+  target?: SignalTarget | SignalTarget[]
   /** Keepalive comment interval in milliseconds. Default: 0 (disabled). */
   keepaliveIntervalMs?: number
   /** Optional retry interval in milliseconds to send as a `retry: <ms>` frame on stream start. */
@@ -106,7 +106,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
-  readonly target: SignalTarget | SignalTarget[] | string[]
+  readonly target: SignalTarget | SignalTarget[]
   /** The single target requested by this client via query param, if any. May be an unrecognized string if the client sent an unknown target. */
   readonly requestedTarget: string | undefined
   /** The SSE byte stream to pipe into a response. */
@@ -147,7 +147,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
 }
 
 export interface DirectSSEChannelOptions<
-  TTarget extends SignalTarget | SignalTarget[] | string[] = SignalTarget | SignalTarget[] | string[],
+  TTarget extends SignalTarget | SignalTarget[] = SignalTarget | SignalTarget[],
 > extends SSEChannelOptions {
   target: TTarget
 }
@@ -169,7 +169,7 @@ export function createSSEChannel<
   TSignal extends InvalidateSignal & (
     TTarget extends SignalTarget ? ReStaleSignalForTarget<TTarget> : InvalidateSignal
   ),
-  TTarget extends SignalTarget | SignalTarget[] | string[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
 >(
   options: SSEChannelOptions & { target: TTarget }
 ): SSEChannel<TSignal>
@@ -180,6 +180,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
     throw new Error('[createSSEChannel] target is required.')
   }
   const target = options.target
+  validateTargetConfiguration(target)
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
   const retryIntervalMs = options.retryIntervalMs
@@ -594,6 +595,33 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   }
 
   return channelObj
+}
+
+/** Validates configured protocol targets before a channel or group is created. */
+export function validateTargetConfiguration(
+  target: SignalTarget | SignalTarget[]
+): void {
+  const targets = Array.isArray(target) ? target : [target]
+  if (targets.length === 0) {
+    throw new Error('[target] At least one target is required.')
+  }
+
+  const supportedTargets = new Set<SignalTarget>([
+    'tanstack-query',
+    'swr',
+    'rtk-query',
+    'generic',
+  ])
+  const seen = new Set<SignalTarget>()
+  for (const configuredTarget of targets) {
+    if (!supportedTargets.has(configuredTarget)) {
+      throw new Error(`[target] Unsupported target: ${JSON.stringify(configuredTarget)}.`)
+    }
+    if (seen.has(configuredTarget)) {
+      throw new Error(`[target] Duplicate target: ${JSON.stringify(configuredTarget)}.`)
+    }
+    seen.add(configuredTarget)
+  }
 }
 
 // ── Target signal validation ──────────────────────────────────────────────────

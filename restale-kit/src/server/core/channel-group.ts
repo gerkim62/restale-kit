@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
+import { validateTargetConfiguration, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -204,6 +204,13 @@ class SSEChannelGroupImplementation<
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.metaSchema = options.metaSchema
     this.pubsub = options.pubsub
+
+    if (options.target !== undefined) {
+      validateTargetConfiguration(options.target)
+    }
+    if (options.channelDefaults?.target !== undefined) {
+      validateTargetConfiguration(options.channelDefaults.target)
+    }
 
     const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
     if (options.target !== undefined && mergedDefaults.target === undefined) {
