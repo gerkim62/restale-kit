@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import { validateTargetConfiguration, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
+import { validateSignalPayload, validateTargetConfiguration, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -189,7 +189,7 @@ class SSEChannelGroupImplementation<
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
+  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -203,7 +203,7 @@ class SSEChannelGroupImplementation<
 
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.metaSchema = options.metaSchema
-    this.pubsub = options.pubsub
+    this.pubsub = hasPubSubMethods(options.pubsub) ? options.pubsub : undefined
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)
@@ -226,6 +226,10 @@ class SSEChannelGroupImplementation<
       )
     }
     this.controlTopic = rawControlTopic
+
+    if (options.eventBufferCapacity !== undefined && (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)) {
+      throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
+    }
 
     if (options.eventStore) {
       this.eventStore = options.eventStore
@@ -394,6 +398,8 @@ class SSEChannelGroupImplementation<
     request: Request,
     options: ChannelSetupOptions<TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
+    validateTopics(options.topics)
+    this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }
     delete channelOpts.meta
@@ -419,6 +425,8 @@ class SSEChannelGroupImplementation<
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TMeta>
   ): { channel: SSEChannel<TSignal> } {
+    validateTopics(options.topics)
+    this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }
     delete channelOpts.meta
@@ -428,20 +436,28 @@ class SSEChannelGroupImplementation<
     return { channel }
   }
 
-  private validateMeta(meta: TMeta | undefined): TMeta {
+  private validateMeta(meta: TMeta | undefined): TMeta | undefined {
     if (this.metaSchema) {
       return validateStandardSchema(meta, this.metaSchema)
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
-    return meta as TMeta
+    return meta
+  }
+
+  private validateSetupTarget(target: SignalTarget | SignalTarget[] | undefined): void {
+    const configuredTarget = this.channelDefaults?.target
+    if (target === undefined || configuredTarget === undefined) return
+    if (!targetsMatch(target, configuredTarget)) {
+      throw new Error('[SSEChannelGroup] setup target must match the group target configuration.')
+    }
   }
 
   private doRegisterPrevalidated(
     channel: SSEChannel<TSignal>,
-    validatedMeta: TMeta,
+    validatedMeta: TMeta | undefined,
     topics?: string[]
   ): void {
-    const topicsList = topics || []
+    validateTopics(topics)
+    const topicsList = topics ?? []
     const topicsSet = new Set(topicsList)
 
     const existingEntry = this.channels.get(channel)
@@ -670,7 +686,8 @@ class SSEChannelGroupImplementation<
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
-  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
+  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+    validateSignalPayload(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -755,6 +772,8 @@ class SSEChannelGroupImplementation<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+    validateTopic(topic, 'topic')
+    validateSignalPayload(signal)
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.
@@ -801,6 +820,29 @@ interface SSEChannelGroupConstructor {
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
 
+function hasPubSubMethods<TSignal extends InvalidateSignal>(
+  pubsub: PubSubAdapter<TSignal> | undefined
+): pubsub is PubSubAdapter<TSignal> {
+  return pubsub !== undefined && typeof pubsub.publish === 'function' && typeof pubsub.subscribe === 'function'
+}
+
+function validateTopics(topics: string[] | undefined): void {
+  if (topics === undefined) return
+  for (const topic of topics) validateTopic(topic, 'topics entry')
+}
+
+function validateTopic(topic: string, label: string): void {
+  if (typeof topic !== 'string' || topic.replace(/[\s\u200B\u200C\u200D]/gu, '') === '') {
+    throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
+  }
+}
+
+function targetsMatch(first: SignalTarget | SignalTarget[], second: SignalTarget | SignalTarget[]): boolean {
+  const firstTargets = Array.isArray(first) ? first : [first]
+  const secondTargets = Array.isArray(second) ? second : [second]
+  return firstTargets.length === secondTargets.length && firstTargets.every((target) => secondTargets.includes(target))
+}
+
 function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONValue): boolean {
   if (!isJSONValue(meta)) return false
 
@@ -818,8 +860,8 @@ function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONVal
   }
 
   // 3. Match on connectionId alone if criteria is an object containing connectionId
-  if (criteria && typeof criteria === 'object' && !Array.isArray(criteria)) {
-    const criteriaObj = criteria as Record<string, JSONValue>
+  if (isJSONRecord(criteria)) {
+    const criteriaObj = criteria
     if ('connectionId' in criteriaObj) {
       if (ch.connectionId !== criteriaObj.connectionId) {
         return false
@@ -840,4 +882,8 @@ function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONVal
   }
 
   return false
+}
+
+function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

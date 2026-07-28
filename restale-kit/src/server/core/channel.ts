@@ -10,6 +10,8 @@ import {
   type ReStaleSignalForTarget,
   type SignalInputForTarget,
   type TargetForSignal,
+  isJSONValueArray,
+  isJSONValue,
 } from '@/types/protocol.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import {
@@ -181,6 +183,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   }
   const target = options.target
   validateTargetConfiguration(target)
+  validateChannelOptions(options)
   const keepaliveIntervalMs =
     options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
   const retryIntervalMs = options.retryIntervalMs
@@ -281,7 +284,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
    * Returns the result, or `{ action: 'send' }` when no guard is configured.
    * A thrown error inside `beforeFrame` is treated as `{ action: 'close' }` (spec §6).
    */
-  function runGuard(ctx: FrameGuardCtx<TSignal>): FrameGuardResult {
+  function runGuard(ctx: FrameGuardCtx<InvalidateSignal>): FrameGuardResult {
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
@@ -326,7 +329,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       }
 
       if (requestedTarget !== undefined) {
-        if (!supportedTargets.includes(requestedTarget)) {
+        if (!supportedTargets.some((supportedTarget) => supportedTarget === requestedTarget)) {
           const safeRequestedTarget = requestedTarget.replace(/\r\n|\r|\n/g, '\\n')
           const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
           console.warn(
@@ -475,10 +478,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
   // ── invalidate ────────────────────────────────────────────────────────────
 
-  function invalidate(
-    signal: TSignal | TSignal[] | InvalidateSignal | InvalidateSignal[],
-    customId?: string
-  ): string {
+  function invalidate(signal: TSignal | TSignal[], customId?: string): string {
     if (state === 'closed') {
       throw new ChannelClosedError()
     }
@@ -513,8 +513,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   ): string {
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
-      const ctx: FrameGuardCtx<TSignal> = {
-        // @ts-expect-error am tired of fighting this error
+      const ctx: FrameGuardCtx<InvalidateSignal> = {
         signal: effectiveSignal,
         frameType: 'signal',
         connectionId,
@@ -631,7 +630,102 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isInvalidateSignal(value: unknown): value is InvalidateSignal {
-  return isRecord(value)
+  if (!isRecord(value) || !isJSONValue(value)) return false
+
+  const target = value.target
+  if (target === 'tanstack-query') return isJSONValueArray(value.queryKey)
+  if (target === 'swr') return typeof value.key === 'string' || isJSONValueArray(value.key)
+  if (target === 'rtk-query') return Array.isArray(value.tags) && value.tags.every(isRTKTag)
+  if (target !== undefined && target !== 'generic') return false
+  return isJSONValueArray(value.key)
+}
+
+function isRTKTag(value: unknown): boolean {
+  if (typeof value === 'string') return true
+  if (!isRecord(value) || typeof value.type !== 'string') return false
+  const id = value.id
+  return id === undefined || typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id))
+}
+
+function validateNonNegativeFinite(name: string, value: number | undefined): void {
+  if (value !== undefined && (!Number.isFinite(value) || value < 0 || !Number.isSafeInteger(value))) {
+    throw new RangeError(`[createSSEChannel] ${name} must be a non-negative safe integer.`)
+  }
+}
+
+function validateChannelOptions(options: SSEChannelOptions): void {
+  validateNonNegativeFinite('eventBufferCapacity', options.eventBufferCapacity)
+  validateNonNegativeFinite('retryIntervalMs', options.retryIntervalMs)
+  if (
+    options.keepaliveIntervalMs !== undefined &&
+    (!Number.isFinite(options.keepaliveIntervalMs) || options.keepaliveIntervalMs < 0)
+  ) {
+    throw new RangeError('[createSSEChannel] keepaliveIntervalMs must be a non-negative finite number.')
+  }
+  if (options.lifetime === undefined) return
+
+  const { ttlMs, deadline, onDeadline } = options.lifetime
+  if (ttlMs !== undefined && deadline !== undefined) {
+    throw new Error('[createSSEChannel] lifetime.ttlMs and lifetime.deadline are mutually exclusive.')
+  }
+  validateNonNegativeFinite('lifetime.ttlMs', ttlMs)
+  validateNonNegativeFinite('lifetime.deadline', deadline)
+  if (typeof onDeadline === 'object') {
+    validateNonNegativeFinite('lifetime.onDeadline.maxAttempts', onDeadline.maxAttempts)
+    validateNonNegativeFinite('lifetime.onDeadline.retryDelayMs', onDeadline.retryDelayMs)
+  }
+  if (isRecord(options.lifetime) && 'reconnect' in options.lifetime) {
+    validateReconnectOptions(options.lifetime.reconnect)
+  }
+}
+
+function validateReconnectOptions(value: unknown): void {
+  if (!isRecord(value)) throw new TypeError('[createSSEChannel] lifetime.reconnect must be an object.')
+  validateNonNegativeFinite('lifetime.reconnect.baseDelayMs', numberProperty(value, 'baseDelayMs'))
+  validateNonNegativeFinite('lifetime.reconnect.maxDelayMs', numberProperty(value, 'maxDelayMs'))
+  const maxAttempts = numberProperty(value, 'maxAttempts')
+  if (maxAttempts !== undefined && maxAttempts !== Infinity) {
+    validateNonNegativeFinite('lifetime.reconnect.maxAttempts', maxAttempts)
+  }
+  validateStatusMatchers(value.nonRetryableStatuses)
+}
+
+function numberProperty(record: Record<string, unknown>, name: string): number | undefined {
+  const value = record[name]
+  if (value === undefined) return undefined
+  if (typeof value !== 'number') throw new TypeError(`[createSSEChannel] ${name} must be a number.`)
+  return value
+}
+
+function validateStatusMatchers(value: unknown): void {
+  if (value === undefined) return
+  const matchers = Array.isArray(value) ? value : [value]
+  for (const matcher of matchers) {
+    if (typeof matcher === 'string') {
+      if (!['1xx', '2xx', '3xx', '4xx', '5xx'].includes(matcher)) {
+        throw new RangeError('[createSSEChannel] nonRetryableStatuses contains an invalid status class.')
+      }
+      continue
+    }
+    if (typeof matcher === 'number') {
+      validateHttpStatus(matcher)
+      continue
+    }
+    if (!isRecord(matcher)) throw new TypeError('[createSSEChannel] nonRetryableStatuses contains an invalid matcher.')
+    const from = numberProperty(matcher, 'from')
+    const to = numberProperty(matcher, 'to')
+    if (from === undefined || to === undefined || from > to) {
+      throw new RangeError('[createSSEChannel] nonRetryableStatuses range is invalid.')
+    }
+    validateHttpStatus(from)
+    validateHttpStatus(to)
+  }
+}
+
+function validateHttpStatus(status: number): void {
+  if (!Number.isSafeInteger(status) || status < 100 || status > 599) {
+    throw new RangeError('[createSSEChannel] HTTP status must be an integer from 100 through 599.')
+  }
 }
 
 export function validateSignalTargets(
@@ -705,4 +799,12 @@ export function validateSignalTargets(
   }
 
   return Array.isArray(signal) ? resultArray : resultArray[0]
+}
+
+/** Validates the JSON-safe wire shape of one signal or a non-empty signal batch. */
+export function validateSignalPayload(signal: unknown): void {
+  const signalList = Array.isArray(signal) ? signal : [signal]
+  if (signalList.length === 0 || !signalList.every(isInvalidateSignal)) {
+    throw new Error('[invalidate] Signals must be non-empty JSON-safe invalidation objects.')
+  }
 }

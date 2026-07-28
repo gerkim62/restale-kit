@@ -18,7 +18,15 @@ const DEFAULT_CAPACITY = 100
 export function createEventStore<TSignal extends InvalidateSignal = InvalidateSignal>(
   options?: EventStoreOptions
 ): EventStore<TSignal> {
+  const hasExplicitCapacity = options !== undefined && Object.hasOwn(options, 'capacity')
+  const suppliedCapacity: unknown = options?.capacity
+  if (hasExplicitCapacity && !Number.isSafeInteger(suppliedCapacity)) {
+    throw new RangeError('[createEventStore] capacity must be a positive safe integer.')
+  }
   const capacity = options?.capacity ?? DEFAULT_CAPACITY
+  if (capacity < 1) {
+    throw new RangeError('[createEventStore] capacity must be a positive safe integer.')
+  }
   const customIdGenerator = options?.idGenerator
 
   const records: EventRecord<TSignal>[] = []

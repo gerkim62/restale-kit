@@ -257,13 +257,14 @@ describe('channel-group', () => {
     expect(checkOptional).toBe(true)
   })
 
-  it('broadcast predicate receives TMeta (not TMeta | undefined) so no optional chaining is needed', () => {
+  it('broadcast predicate represents omitted metadata explicitly', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const channel = createSSEChannel({ target: 'swr' })
     group.register(channel, { userId: 1 })
 
-    // Static check: meta.userId compiles without optional chaining
+    // Static check: callers handle omitted metadata before reading fields.
     group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+      if (meta === undefined) return false
       const _userId: number = meta.userId
       return _userId > 0
     })
@@ -292,7 +293,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta.role === 'admin')
+    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
