@@ -281,13 +281,13 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     });
 
 
-    it('should reject batch with conflicting explicit targets', () => {
+    it('should reject batch invalidation with conflicting targets', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
       expect(() => {
-        // @ts-expect-error - Conflicting target in batch
         channel.invalidate([
           { key: ['todos'] },
+          // @ts-expect-error - Conflicting target in batch
           { target: 'tanstack-query', queryKey: ['users'] }
         ]);
       }).toThrow();
@@ -344,7 +344,7 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       expect(channel.invalidate({ key: ['test'] })).toBeTypeOf('string');
       
       // Explicit undefined might be treated differently
-      expect(channel.invalidate({ target: undefined, key: ['test'] } as any)).toBeTypeOf('string');
+      expect(channel.invalidate({ target: undefined, key: ['test'] })).toBeTypeOf('string');
     });
 
     it('should maintain type safety with variable assignment', () => {
@@ -389,7 +389,7 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
         channel.invalidate([
           { key: ['test'] },
           { queryKey: ['test'] }
-        ] as any);
+        ]);
       }).toThrow();
     });
 
@@ -409,7 +409,7 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
         multiTarget.invalidate([
           { key: ['test'] },
           { queryKey: ['test'] }
-        ] as any);
+        ]);
       }).toThrow();
     });
   });

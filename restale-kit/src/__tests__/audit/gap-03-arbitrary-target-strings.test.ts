@@ -109,8 +109,8 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       }).not.toThrow();
 
       expect(() => {
-        // @ts-expect-error - Invalid even with const
         const invalidTargets = ['not-real'] as const;
+        // @ts-expect-error - Invalid even with const
         createSSEChannel({ target: invalidTargets });
       }).toThrow();
     });
@@ -316,7 +316,7 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       const target: string = 'swr';
       expect(() => {
         // @ts-expect-error - Plain string too broad
-        createSSEChannel({ target: target as any });
+        createSSEChannel({ target });
       }).not.toThrow();
     });
 
@@ -324,7 +324,7 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       const targets: readonly ('swr' | 'tanstack-query')[] = ['swr', 'tanstack-query'];
       
       expect(() => {
-        createSSEChannel({ target: targets as any });
+        createSSEChannel({ target: targets });
       }).not.toThrow();
     });
 
@@ -332,7 +332,7 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       const targets = ['swr', 'tanstack-query'];
       expect(() => {
         // @ts-expect-error - Mutable array might contain invalid values
-        createSSEChannel({ target: targets as any, requestedTarget: 'swr' });
+        createSSEChannel({ target: targets, requestedTarget: 'swr' });
       }).not.toThrow();
     });
   });
@@ -364,7 +364,7 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       // If default is provided, it should be a valid target
       expect(() => {
         // @ts-expect-error - Target required
-        createSSEChannel({} as any);
+        createSSEChannel({});
       }).toThrow(/target.*required/i);
     });
 

@@ -255,8 +255,8 @@ describe('Gap 5: Transport setup target override', () => {
       }).not.toThrow();
       
       expect(() => {
-        // @ts-expect-error - Invalid target even with valid topics
         group.createFetchResponse(mockReq, {
+          // @ts-expect-error - Invalid target even with valid topics
           target: 'tanstack-query',
           topics: ['updates']
         });
@@ -278,8 +278,8 @@ describe('Gap 5: Transport setup target override', () => {
       }).not.toThrow();
       
       expect(() => {
-        // @ts-expect-error - Wrong target invalidates entire setup
         group.createFetchResponse(mockReq, {
+          // @ts-expect-error - Wrong target invalidates entire setup
           target: 'rtk-query',
           eventBufferCapacity: 100
         });

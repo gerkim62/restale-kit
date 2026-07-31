@@ -13,11 +13,15 @@ import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } fr
 /**
  * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
  */
-export type ChannelSetupOptions<TSignal extends InvalidateSignal = InvalidateSignal, TMeta = unknown> = Omit<
+export type ChannelSetupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
+> = Omit<
   SSEChannelOptions<TSignal>,
   'target'
 > & {
-  target?: TargetForSignal<TSignal> | (TSignal extends { target?: infer TTarget } ? TTarget extends SignalTarget ? TTarget[] | readonly TTarget[] : never : never)
+  target?: TTarget | TargetForSignal<TSignal> | (TSignal extends { target?: infer T } ? T extends SignalTarget ? T[] | readonly T[] : never : never)
   topics?: string[]
 } & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
 
@@ -404,7 +408,7 @@ class SSEChannelGroupImplementation<
    */
   createFetchResponse(
     request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
   ): { response: Response; channel: SSEChannel<TSignal> } {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
@@ -429,7 +433,7 @@ class SSEChannelGroupImplementation<
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta>
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
   ): { channel: SSEChannel<TSignal> } {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
