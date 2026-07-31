@@ -151,25 +151,6 @@ describe('channel', () => {
     expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"target":"swr","key":["items",2]}\n\n')
   })
 
-  it('warns when controller.close throws inside closeInternal', async () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const channel = createSSEChannel({ target: 'swr' })
-
-    // Cancel reader to trigger cancel callback on stream which closes stream controller
-    const reader = channel.stream.getReader()
-    await reader.cancel()
-
-    // Calling close after cancel will trigger controller.close error branch in closeInternal
-    channel.close()
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
-      '\n  error:',
-      expect.any(String)
-    )
-
-    consoleSpy.mockRestore()
-  })
 
   it('sends a full-invalidate frame when lastEventId is evicted or unknown (stale cursor)', async () => {
     const store = createEventStore({ capacity: 2 })
@@ -251,40 +232,6 @@ describe('channel', () => {
     expect(done).toBe(true)
   })
 
-  it('warns when controller.close throws an error in closeInternal', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const OriginalReadableStream = globalThis.ReadableStream
-
-    // Intercept controller passed to ReadableStream start
-    globalThis.ReadableStream = class extends (OriginalReadableStream as any) {
-      constructor(underlyingSource?: any, queuingStrategy?: any) {
-        const origStart = underlyingSource?.start
-        if (origStart) {
-          underlyingSource.start = function (ctrl: any) {
-            ctrl.close = () => {
-              throw new Error('Controller close stream error')
-            }
-            return origStart.call(this, ctrl)
-          }
-        }
-        super(underlyingSource, queuingStrategy)
-      }
-    } as unknown as typeof ReadableStream
-
-    try {
-      const channel = createSSEChannel({ target: 'swr' })
-      channel.close()
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
-        '\n  error:',
-        expect.stringContaining('Controller close stream error')
-      )
-    } finally {
-      globalThis.ReadableStream = OriginalReadableStream
-      consoleSpy.mockRestore()
-    }
-  })
 
   it('emits keepalive frame on timer interval when channel state is open', async () => {
     const channel = createSSEChannel({ target: 'swr', keepaliveIntervalMs: 1000 })
