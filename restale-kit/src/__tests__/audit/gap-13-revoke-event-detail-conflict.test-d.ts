@@ -246,9 +246,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
           supported?: string[]
         }>()
       } else {
-        expectTypeOf(detail).toMatchTypeOf<{
-          reason: string
-        }>()
+        expectTypeOf(detail.reason).toBeString()
       }
     })
   })

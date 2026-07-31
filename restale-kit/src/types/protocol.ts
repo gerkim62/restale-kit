@@ -265,7 +265,7 @@ export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateS
  * An event history store interface for storing past events and replaying missed signals.
  */
 export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
-  readonly _signalType?: TSignal
+  readonly _signalType?: (signal: TSignal) => void
   readonly add: (signal: TSignal | TSignal[], customId?: string) => EventRecord<TSignal>
   readonly getEventsAfter: (lastEventId: string) => EventStoreResult<TSignal>
   readonly clear: () => void
