@@ -25,7 +25,7 @@ export interface BaseInvalidateSignal {
 
 /** Native TanStack Query invalidation signal payload */
 export interface TanStackQuerySignal extends BaseInvalidateSignal {
-  target: typeof SIGNAL_TARGETS.TANSTACK
+  target?: typeof SIGNAL_TARGETS.TANSTACK
   queryKey: JSONValue[]
   exact?: QueryFilters['exact']
   type?: QueryFilters['type']
@@ -38,7 +38,7 @@ export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */
 export interface SWRSignal extends BaseInvalidateSignal {
-  target: typeof SIGNAL_TARGETS.SWR
+  target?: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
   action?: SWRAction | 'mutate'
   revalidate?: boolean
@@ -48,7 +48,7 @@ export interface SWRSignal extends BaseInvalidateSignal {
 
 /** Native RTK Query invalidation signal payload */
 export interface RTKQuerySignal extends BaseInvalidateSignal {
-  target: typeof SIGNAL_TARGETS.RTK
+  target?: typeof SIGNAL_TARGETS.RTK
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -376,14 +376,17 @@ export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
  * - `'unsupported-target'` — client requested a target not in the channel's supported set
  * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`, or undefined
  */
-export interface RevokeEventDetail {
-  /** The reason string conveyed by the server for revoking the connection. */
-  reason: string
-  /** Integrator-specific or protocol details associated with the revocation. */
-  details?: Record<string, unknown> & { requested?: string; supported?: SignalTarget[] }
-  requested?: never
-  supported?: never
-}
+export type RevokeEventDetail =
+  | {
+      reason: 'unsupported-target'
+      requested: string
+      supported: string[]
+    }
+  | {
+      reason?: 'deadline' | 'session-expired' | 'logout' | 'banned' | 'unauthorized' | 'custom' | (string & { readonly 'unsupported-target'?: never })
+      requested?: never
+      supported?: never
+    }
 
 /**
  * Payload carried by the `renew` CustomEvent.

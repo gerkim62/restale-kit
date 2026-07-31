@@ -483,14 +483,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       lifetimeTimer = undefined
     }
     try {
-      controller.close()
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      // The stream controller closed status during cleanup
-      console.warn(
-        "[WARN][closeInternal] Controller close threw an expected error (likely already closed)",
-        "\n  error:", error.stack || error.message
-      )
+      if (controller.desiredSize !== null) {
+        controller.close()
+      }
+    } catch {
+      // Controller was already closed or errored during stream cancellation
     }
     // Fire one-shot close callbacks
     for (const cb of closeCallbacks) {
