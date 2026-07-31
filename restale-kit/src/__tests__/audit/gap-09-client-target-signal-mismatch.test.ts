@@ -19,8 +19,8 @@ describe('Gap 9: Client target and payload type alignment', () => {
     it('should reject SWRSignal generic with tanstack-query target', () => {
       const url = 'http://localhost/sse';
       
-      // @ts-expect-error - Signal type must match target
       const client = new SSEInvalidatorClient<SWRSignal>(url, {
+        // @ts-expect-error - Signal type must match target
         target: 'tanstack-query'
       });
     });

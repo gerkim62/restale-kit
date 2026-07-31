@@ -15,9 +15,9 @@ import { createEventStore, type EventStore } from '../../server/core/event-store
 import type { 
   SWRSignal, 
   TanStackQuerySignal, 
-  RTKQuerySignal,
-  PubSubAdapter 
+  RTKQuerySignal
 } from '../../types/protocol.js';
+import type { PubSubAdapter } from '../../pubsub/core/index.js';
 
 describe('Gap 6: Structural assignability across incompatible signal types', () => {
   describe('SSEChannel cross-type assignment', () => {
@@ -150,9 +150,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
   describe('PubSubAdapter cross-type assignment', () => {
     it('should reject assigning TanStack adapter to SWR variable', () => {
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
-        type: 'memory',
         publish: async () => {},
-        subscribe: () => ({ unsubscribe: async () => {} })
+        subscribe: async () => async () => {}
       };
       
       // @ts-expect-error - Incompatible signal types
@@ -161,23 +160,21 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
 
     it('should reject passing incompatible adapter to group', () => {
       const rtkAdapter: PubSubAdapter<RTKQuerySignal> = {
-        type: 'custom',
         publish: async () => {},
-        subscribe: () => ({ unsubscribe: async () => {} })
+        subscribe: async () => async () => {}
       };
       
-      // @ts-expect-error - Adapter type must match group type
       const swrGroup = new SSEChannelGroup<SWRSignal>({
         target: 'swr',
+        // @ts-expect-error - Adapter type must match group type
         pubsub: rtkAdapter
       });
     });
 
     it('should accept compatible adapter', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
-        type: 'custom',
         publish: async () => {},
-        subscribe: () => ({ unsubscribe: async () => {} })
+        subscribe: async () => async () => {}
       };
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({
