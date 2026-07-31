@@ -15,7 +15,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannel with literal multi-target configuration', () => {
     it('should reject single signal on multi-target channel at compile time', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // @ts-expect-error - Single signal not allowed for multi-target channel
@@ -27,7 +28,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should reject incomplete array at compile time', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // @ts-expect-error - Missing tanstack-query signal
@@ -43,7 +45,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should reject incomplete batch at runtime', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // Currently compiles but should throw
@@ -51,12 +54,13 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         channel.invalidate([
           { target: 'swr', key: ['todos'] }
         ] as any);
-      }).toThrow(/all configured targets/i);
+      }).toThrow(/ALL declared targets|all configured targets/i);
     });
 
     it('should accept complete batch with all configured targets', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // Should compile and succeed
@@ -70,7 +74,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should enforce correct order independence for complete batches', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // Order shouldn't matter
@@ -86,7 +91,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannel with three-target configuration', () => {
     it('should reject incomplete batches with only one target', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query', 'rtk-query'] as const 
+        target: ['swr', 'tanstack-query', 'rtk-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // @ts-expect-error - Missing two targets
@@ -97,7 +103,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should reject incomplete batches with only two targets', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query', 'rtk-query'] as const 
+        target: ['swr', 'tanstack-query', 'rtk-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       // @ts-expect-error - Missing rtk-query
@@ -121,7 +128,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should accept complete batch with all three targets', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query', 'rtk-query'] as const 
+        target: ['swr', 'tanstack-query', 'rtk-query'] as const,
+        requestedTarget: 'swr' 
       });
       
       expect(() => {
@@ -267,7 +275,8 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
     it('should enforce same rules for tuple types', () => {
       type MultiTarget = readonly ['swr', 'tanstack-query'];
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as MultiTarget
+        target: ['swr', 'tanstack-query'] as MultiTarget,
+        requestedTarget: 'swr'
       });
       
       // @ts-expect-error - Single signal not allowed
@@ -284,7 +293,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should handle const assertions consistently', () => {
       const targets = ['swr', 'rtk-query'] as const;
-      const channel = createSSEChannel({ target: targets });
+      const channel = createSSEChannel({ target: targets, requestedTarget: 'swr' });
       
       // @ts-expect-error - Incomplete batch
       channel.invalidate([
@@ -308,19 +317,15 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       >();
       
       // Single-target channel
-      group.register(createSSEChannel({ target: 'swr' }), undefined);
+      group.register(createSSEChannel({ target: 'swr' }), {});
       
       // Multi-target channel
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
-      }), undefined);
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
+      }), {});
       
-      // Broadcasting to mixed group
-      // Single-target channels accept single signals
-      // Multi-target channels require batches
-      // Type system should guide correct usage
-      
-      group.broadcast({ target: 'swr', key: ['test'] });
+      group.broadcast({ target: 'swr', key: ['test'] }, () => true);
       
       // Multi-target channel in group needs special handling
       // This is a complex scenario that needs clear type guidance

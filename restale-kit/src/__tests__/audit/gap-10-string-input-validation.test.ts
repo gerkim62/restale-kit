@@ -128,7 +128,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       const group = new SSEChannelGroup<SWRSignal>({
         pubsub: { type: 'memory' }
       })
-      const mockRequest = new Request('http://localhost/sse')
+      const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       
       expect(() => {
         group.createFetchResponse(mockRequest, {
@@ -140,7 +140,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept empty topics array', () => {
       const group = new SSEChannelGroup<SWRSignal>()
-      const mockRequest = new Request('http://localhost/sse')
+      const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       
       expect(() => {
         group.createFetchResponse(mockRequest, {
@@ -152,7 +152,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept undefined topics', () => {
       const group = new SSEChannelGroup<SWRSignal>()
-      const mockRequest = new Request('http://localhost/sse')
+      const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       
       expect(() => {
         group.createFetchResponse(mockRequest, {
@@ -431,7 +431,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       const group = new SSEChannelGroup<SWRSignal>({
         pubsub: { type: 'memory' }
       })
-      const mockRequest = new Request('http://localhost/sse')
+      const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
       const invalidTopic = '   '
@@ -457,7 +457,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       const group = new SSEChannelGroup<SWRSignal>({
         pubsub: { type: 'memory' }
       })
-      const mockRequest = new Request('http://localhost/sse')
+      const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
       const validTopic = 'my-valid-topic'

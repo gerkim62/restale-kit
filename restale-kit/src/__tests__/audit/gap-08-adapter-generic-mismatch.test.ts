@@ -183,7 +183,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Adapter callback branding', () => {
     it('should brand TanStack callback with correct signal type', () => {
-      const queryClient = {} as any;
+      const queryClient = { invalidateQueries: () => Promise.resolve() } as any;
       const callback = tanstackQueryAdapter(queryClient);
 
       // Should handle TanStack signal
@@ -222,7 +222,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Generic type parameter constraints', () => {
     it('should enforce extends constraint on TanStack adapter', () => {
-      const queryClient = {} as any;
+      const queryClient = { invalidateQueries: () => Promise.resolve() } as any;
 
       type BadType = { foo: string };
       // @ts-expect-error - Plain object doesn't extend TanStackQuerySignal
@@ -252,7 +252,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Runtime behavior matches type constraints', () => {
     it('should process TanStack signals correctly', () => {
-      const queryClient = {} as any;
+      const queryClient = { invalidateQueries: () => Promise.resolve() } as any;
       const adapter = tanstackQueryAdapter(queryClient);
 
       const signal: TanStackQuerySignal = {
@@ -303,7 +303,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Custom signal extensions', () => {
     it('should allow extending TanStack signal with additional properties', () => {
-      const queryClient = {} as any;
+      const queryClient = { invalidateQueries: () => Promise.resolve() } as any;
 
       interface ExtendedTanStackSignal extends TanStackQuerySignal {
         priority?: 'high' | 'low';

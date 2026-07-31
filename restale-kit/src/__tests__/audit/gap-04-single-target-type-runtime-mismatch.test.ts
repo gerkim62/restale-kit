@@ -216,8 +216,8 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       const signal1 = { queryKey: ['test'] };
       const signal2 = { target: 'tanstack-query' as const, queryKey: ['test'] };
       
-      channel.invalidate(signal1);
-      channel.invalidate(signal2);
+      expect(channel.invalidate(signal1)).toBeTypeOf('string');
+      expect(channel.invalidate(signal2)).toBeTypeOf('string');
     });
 
     it('should infer RTKQuerySignal with optional target', () => {
@@ -309,21 +309,21 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       // Types should allow omitting target when channel has single target
       
       const swrChannel = createSSEChannel({ target: 'swr' });
-      swrChannel.invalidate({ key: ['test'] }); // ✓ should compile
+      expect(swrChannel.invalidate({ key: ['test'] })).toBeTypeOf('string'); // ✓ should compile
       
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
-      tanstackChannel.invalidate({ queryKey: ['test'] }); // ✓ should compile
+      expect(tanstackChannel.invalidate({ queryKey: ['test'] })).toBeTypeOf('string'); // ✓ should compile
       
       const rtkChannel = createSSEChannel({ target: 'rtk-query' });
-      rtkChannel.invalidate({ tags: [{ type: 'Test' }] }); // ✓ should compile
+      expect(rtkChannel.invalidate({ tags: [{ type: 'Test' }] })).toBeTypeOf('string'); // ✓ should compile
     });
 
     it('should document that explicit matching target is also valid', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
       // Both forms should be valid
-      channel.invalidate({ key: ['test'] }); // implicit
-      channel.invalidate({ target: 'swr', key: ['test'] }); // explicit
+      expect(channel.invalidate({ key: ['test'] })).toBeTypeOf('string'); // implicit
+      expect(channel.invalidate({ target: 'swr', key: ['test'] })).toBeTypeOf('string'); // explicit
     });
 
     it('should document that conflicting targets are rejected', () => {
@@ -348,10 +348,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
       // Omitted target
-      channel.invalidate({ key: ['test'] });
+      expect(channel.invalidate({ key: ['test'] })).toBeTypeOf('string');
       
       // Explicit undefined might be treated differently
-      channel.invalidate({ target: undefined, key: ['test'] } as any);
+      expect(channel.invalidate({ target: undefined, key: ['test'] } as any)).toBeTypeOf('string');
     });
 
     it('should maintain type safety with variable assignment', () => {
@@ -359,10 +359,12 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       
       // Signal assigned to variable
       const signal = { key: ['test'] };
-      channel.invalidate(signal);
+      expect(channel.invalidate(signal)).toBeTypeOf('string');
       
       // With type annotation
       const typedSignal: SWRSignal = { key: ['test'] };
+      expect(channel.invalidate(typedSignal)).toBeTypeOf('string');
+    });
       channel.invalidate(typedSignal);
     });
 

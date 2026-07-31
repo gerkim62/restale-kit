@@ -443,7 +443,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (isUnsupportedTarget(detail)) {
-        expectTypeOf(detail.details).toBeDefined()
+        expectTypeOf(detail.details).not.toEqualTypeOf<never>()
       }
     })
   })

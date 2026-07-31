@@ -42,7 +42,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
 
       // @ts-expect-error - SSEChannel is contravariant in TSignal (parameter position in invalidate)
       const genericChannel: SSEChannel<InvalidateSignal> = swrChannel
-    })
+    expectTypeOf(genericChannel).not.toEqualTypeOf<never>()
 
     test('should reject assigning specific channel to mixed union type', () => {
       const swrChannel = createSSEChannel<SWRSignal>({ target: 'swr' })
@@ -50,7 +50,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       // @ts-expect-error - SSEChannel is contravariant in TSignal
       const mixedChannel: SSEChannel<SWRSignal | TanStackQuerySignal> = swrChannel
     })
-  })
+  expectTypeOf(mixedChannel).not.toEqualTypeOf<never>()
 
   describe('SSEChannel method call validation', () => {
     test('should reject incompatible signal in invalidate method', () => {
@@ -67,9 +67,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const swrChannel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
       swrChannel.invalidate({ target: 'swr', key: ['test'] })
-      expectTypeOf(swrChannel).toBeDefined()
+      expectTypeOf(swrChannel).not.toEqualTypeOf<never>()
     })
-
+expectTypeOf(swrChannel).not.toEqualTypeOf<never>()
     test('should reject passing incompatible channel to function expecting specific type', () => {
       function processSWRChannel(channel: SSEChannel<SWRSignal>) {
         channel.invalidate({ target: 'swr', key: ['test'] })
@@ -109,9 +109,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       
       // Valid: SWRSignal extends InvalidateSignal union
       const genericStore: EventStore<InvalidateSignal> = swrStore
-      expectTypeOf(genericStore).toBeDefined()
+      expectTypeOf(genericStore).not.toEqualTypeOf<never>()
     })
-  })
+  expectTypeOf(genericStore).not.toEqualTypeOf<never>()
 
   describe('EventStore method call validation', () => {
     test('should reject incompatible signal in add method', () => {
@@ -128,9 +128,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const swrStore = createEventStore<SWRSignal>({ capacity: 10 })
       
       const record = swrStore.add({ target: 'swr', key: ['test'] })
-      expectTypeOf(record).toBeDefined()
+      expectTypeOf(record).not.toEqualTypeOf<never>()
     })
-
+expectTypeOf(record).not.toEqualTypeOf<never>()
     test('should reject passing incompatible store to function', () => {
       function processSWRStore(store: EventStore<SWRSignal>) {
         store.add({ target: 'swr', key: ['test'] })
@@ -182,9 +182,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       
       // Valid: SWRSignal extends InvalidateSignal union
       const genericAdapter: PubSubAdapter<InvalidateSignal> = swrAdapter
-      expectTypeOf(genericAdapter).toBeDefined()
+      expectTypeOf(genericAdapter).not.toEqualTypeOf<never>()
     })
-  })
+  expectTypeOf(genericAdapter).not.toEqualTypeOf<never>()
 
   describe('PubSubAdapter method call validation', () => {
     test('should reject incompatible signal in publish method', () => {
@@ -210,9 +210,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         kind: 'signal' as const,
         data: { target: 'swr' as const, key: ['test'] }
       })
-      expectTypeOf(swrAdapter).toBeDefined()
-    })
-
+      expectTypeOf(swrAdapter).not.toEqualTypeOf<never>()
     test('should reject passing incompatible adapter to function', () => {
       function processSWRAdapter(adapter: PubSubAdapter<SWRSignal>) {
         adapter.publish('topic', {
@@ -351,9 +349,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         pubsub: swrAdapter
       })
       
-      expectTypeOf(swrGroup).toBeDefined()
+      expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
     })
-  })
+  expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
 
   describe('Complex scenarios with multiple incompatibilities', () => {
     test('should reject group with all mismatched types', () => {
@@ -389,9 +387,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       })
       
       swrGroup.register(swrChannel)
-      expectTypeOf(swrGroup).toBeDefined()
+      expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
     })
-  })
 
   describe('Array and batch operations', () => {
     test('should reject array with mixed incompatible channel types', () => {
@@ -415,9 +412,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const swrChannel2 = createSSEChannel<SWRSignal>({ target: 'swr' })
       
       const channels: SSEChannel<SWRSignal>[] = [swrChannel1, swrChannel2]
-      expectTypeOf(channels).toBeDefined()
+      expectTypeOf(channels).not.toEqualTypeOf<never>()
     })
-  })
+  expectTypeOf(channels).not.toEqualTypeOf<never>()
 
   describe('Generic function type safety', () => {
     test('should maintain type safety in generic functions', () => {

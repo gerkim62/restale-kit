@@ -45,7 +45,7 @@ describe('Discriminated Union signals & literal discriminants', () => {
 
   test('signal actions are exact string literal unions', () => {
     expectTypeOf<TanStackQueryAction>().toEqualTypeOf<'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'>()
-    expectTypeOf<SWRAction>().toEqualTypeOf<'revalidate' | 'purge' | 'remove'>()
+    expectTypeOf<SWRAction>().toEqualTypeOf<'purge' | 'remove' | 'revalidate'>()
   })
 
   test('unnarrowed signal variant property access causes compile error', () => {

@@ -23,7 +23,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             
             // Should have SWR-specific properties
             if (!Array.isArray(ctx.signal)) {
-              expectTypeOf(ctx.signal.key).toBeDefined()
+              expectTypeOf(ctx.signal.key).not.toEqualTypeOf<never>()
               expectTypeOf(ctx.signal.action).toEqualTypeOf<'revalidate' | 'mutate' | 'purge' | undefined>()
             }
           }
@@ -31,7 +31,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should not see TanStack properties in SWR guard', () => {
@@ -52,7 +52,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle SWR-specific actions correctly', () => {
@@ -65,14 +65,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
               return { action: 'skip' }
             }
             if (ctx.signal.action === 'mutate') {
-              expectTypeOf(ctx.signal.optimisticData).toBeDefined()
+              expectTypeOf(ctx.signal.optimisticData).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle SWR signal arrays', () => {
@@ -84,14 +84,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             expectTypeOf(ctx.signal).toEqualTypeOf<SWRSignal[]>()
             
             for (const sig of ctx.signal) {
-              expectTypeOf(sig.key).toBeDefined()
+              expectTypeOf(sig.key).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -106,7 +106,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             
             // Should have TanStack-specific properties
             if (!Array.isArray(ctx.signal)) {
-              expectTypeOf(ctx.signal.queryKey).toBeDefined()
+              expectTypeOf(ctx.signal.queryKey).not.toEqualTypeOf<never>()
               expectTypeOf(ctx.signal.action).toEqualTypeOf<'invalidate' | 'refetch' | 'reset' | undefined>()
             }
           }
@@ -114,7 +114,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should not see SWR properties in TanStack guard', () => {
@@ -132,7 +132,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle TanStack-specific properties correctly', () => {
@@ -152,7 +152,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle TanStack signal arrays', () => {
@@ -164,14 +164,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             expectTypeOf(ctx.signal).toEqualTypeOf<TanStackQuerySignal[]>()
             
             for (const sig of ctx.signal) {
-              expectTypeOf(sig.queryKey).toBeDefined()
+              expectTypeOf(sig.queryKey).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -186,14 +186,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             
             // Should have RTK-specific properties
             if (!Array.isArray(ctx.signal)) {
-              expectTypeOf(ctx.signal.tags).toBeDefined()
+              expectTypeOf(ctx.signal.tags).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should not see other target properties in RTK guard', () => {
@@ -214,7 +214,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle RTK tag structure correctly', () => {
@@ -223,7 +223,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
             // Should see tags array
-            expectTypeOf(ctx.signal.tags).toBeDefined()
+            expectTypeOf(ctx.signal.tags).not.toEqualTypeOf<never>()
             
             if (ctx.signal.tags) {
               for (const tag of ctx.signal.tags) {
@@ -236,7 +236,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle RTK signal arrays', () => {
@@ -248,14 +248,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             expectTypeOf(ctx.signal).toEqualTypeOf<RTKQuerySignal[]>()
             
             for (const sig of ctx.signal) {
-              expectTypeOf(sig.tags).toBeDefined()
+              expectTypeOf(sig.tags).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -274,7 +274,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should require type guards for multi-target signal inspection', () => {
@@ -284,16 +284,16 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
             // Need to check target to narrow type
             if (ctx.signal.target === 'swr') {
-              expectTypeOf(ctx.signal.key).toBeDefined()
+              expectTypeOf(ctx.signal.key).not.toEqualTypeOf<never>()
             } else if (ctx.signal.target === 'tanstack-query') {
-              expectTypeOf(ctx.signal.queryKey).toBeDefined()
+              expectTypeOf(ctx.signal.queryKey).not.toEqualTypeOf<never>()
             }
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle three-target configuration', () => {
@@ -310,7 +310,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -321,14 +321,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             expectTypeOf(ctx.frameType).toEqualTypeOf<'signal'>()
-            expectTypeOf(ctx.signal).toBeDefined()
+            expectTypeOf(ctx.signal).not.toEqualTypeOf<never>()
             expectTypeOf(ctx.eventId).toEqualTypeOf<string | undefined>()
           }
           return { action: 'send' }
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should have correct type for keepalive frames', () => {
@@ -345,7 +345,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle all frame types in guard', () => {
@@ -354,7 +354,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         guardKeepalive: true,
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
-            expectTypeOf(ctx.signal).toBeDefined()
+            expectTypeOf(ctx.signal).not.toEqualTypeOf<never>()
           } else if (ctx.frameType === 'keepalive') {
             expectTypeOf(ctx.frameType).toEqualTypeOf<'keepalive'>()
           }
@@ -362,7 +362,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -392,7 +392,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -416,14 +416,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: genericGuard
       })
       
-      expectTypeOf(swrChannel).toBeDefined()
-      expectTypeOf(tanstackChannel).toBeDefined()
+      expectTypeOf(swrChannel).not.toEqualTypeOf<never>()
+      expectTypeOf(tanstackChannel).not.toEqualTypeOf<never>()
     })
 
     test('should allow narrow guard on wide channel', () => {
       const swrGuard: BeforeFrameFn<SWRSignal> = (ctx) => {
         if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
-          expectTypeOf(ctx.signal.key).toBeDefined()
+          expectTypeOf(ctx.signal.key).not.toEqualTypeOf<never>()
         }
         return { action: 'send' }
       }
@@ -434,7 +434,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: swrGuard
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -458,7 +458,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle guards that transform signal arrays', () => {
@@ -477,7 +477,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should maintain type safety in nested conditions', () => {
@@ -499,7 +499,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -521,7 +521,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should reject invalid action values', () => {
@@ -536,7 +536,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         }
       })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 })
