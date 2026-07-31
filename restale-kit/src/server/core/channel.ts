@@ -486,8 +486,8 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       if (controller.desiredSize !== null) {
         controller.close()
       }
-    } catch {
-      // Controller was already closed or errored during stream cancellation
+    } catch (err) {
+      console.warn('[WARN][closeInternal] Controller close threw an expected error\n  error:', String(err))
     }
     // Fire one-shot close callbacks
     for (const cb of closeCallbacks) {

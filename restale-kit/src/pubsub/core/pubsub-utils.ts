@@ -13,7 +13,7 @@ export function isObject(val: unknown): val is Record<string, unknown> {
  */
 function isValidSignalItem(item: unknown): boolean {
   if (!isObject(item)) return false
-  return Array.isArray(item['key']) || typeof item['key'] === 'string' || Array.isArray(item['queryKey']) || Array.isArray(item['tags'])
+  return Array.isArray(item['key']) || Array.isArray(item['queryKey']) || Array.isArray(item['tags'])
 }
 
 /**
