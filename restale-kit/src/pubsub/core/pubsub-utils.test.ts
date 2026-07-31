@@ -18,6 +18,16 @@ describe('pubsub-utils', () => {
     expect(isSignalPayload([{ key: ['valid'] }, { invalid: true }])).toBe(false)
   })
 
+  it('isSignalPayload validates tanstack-query and rtk-query signals', () => {
+    // TanStack Query signals use queryKey instead of key
+    expect(isSignalPayload({ target: 'tanstack-query', queryKey: ['todos', 1] })).toBe(true)
+    expect(isSignalPayload([{ target: 'tanstack-query', queryKey: ['users'] }])).toBe(true)
+
+    // RTK Query signals use tags instead of key
+    expect(isSignalPayload({ target: 'rtk-query', tags: [{ type: 'Posts' }] })).toBe(true)
+    expect(isSignalPayload([{ target: 'rtk-query', tags: [{ type: 'User', id: 1 }] }])).toBe(true)
+  })
+
   it('isPubSubMessage validates signal and control kind messages', () => {
     expect(isPubSubMessage({ kind: 'signal', data: { key: ['items'] } })).toBe(true)
     expect(isPubSubMessage({ kind: 'control', data: { userId: 10 } })).toBe(true)
