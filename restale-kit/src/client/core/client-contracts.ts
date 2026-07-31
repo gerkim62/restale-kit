@@ -39,14 +39,14 @@ export function makeAdaptedCallback<
 ): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
 export function makeAdaptedCallback<
   TTarget extends SignalTarget = SignalTarget,
-  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+  TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
 >(
   target: TTarget,
   fn: (signal: TSignal) => void
 ): AdaptedInvalidateCallback<TTarget, TSignal>
 export function makeAdaptedCallback<
   TTarget extends SignalTarget = SignalTarget,
-  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+  TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
 >(
   target: TTarget,
   fn: (signals: TSignal[]) => void
@@ -149,7 +149,7 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   withCredentials?: boolean
   /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
-  target?: SignalTarget
+  target?: TargetForSignal<TSignal>
   callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
