@@ -10,15 +10,13 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
 }
 
-export type TanStackQuerySignalInput =
-  | TanStackQuerySignal
-  | GenericInvalidateSignal
+export type TanStackQuerySignalInput = TanStackQuerySignal
 
 /**
  * Creates an `onInvalidate` callback for TanStack Query.
- * Gap 8: Constrained specifically to TanStackQuerySignalInput.
+ * Gap 8: Constrained specifically to TanStackQuerySignal.
  */
-export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
+export function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
@@ -86,7 +84,7 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
  * const onInvalidate = useTanstackQueryAdapter(queryClient)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
-export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
+export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClient
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(

@@ -13,7 +13,7 @@ import { SIGNAL_TARGETS } from '../../utils/constants.js'
 import type { AdaptedInvalidateCallback } from '../../client/core/client-contracts.js'
 import { makeAdaptedCallback } from '../../client/core/client-contracts.js'
 
-export type SWRSignalInput = SWRSignal | GenericInvalidateSignal
+export type SWRSignalInput = SWRSignal
 
 export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInput> {
   /**
@@ -34,19 +34,17 @@ export interface SWRMutator {
 export type SWRCallbackSignal<TSignal extends InvalidateSignal> =
   | TSignal
   | TSignal[]
-  | GenericInvalidateSignal
-  | GenericInvalidateSignal[]
   | (Omit<SWRSignal, 'target'> & { target?: typeof SIGNAL_TARGETS.SWR })
   | (Omit<SWRSignal, 'target'> & { target?: typeof SIGNAL_TARGETS.SWR })[]
 
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *
- * Gap 8: Constrained specifically to SWRSignalInput.
+ * Gap 8: Constrained specifically to SWRSignal.
  *
- * Supports `SWRSignal` (with primitive string or tuple keys) and `GenericInvalidateSignal`.
+ * Supports `SWRSignal` (with primitive string or tuple keys).
  */
-export function swrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
+export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {
@@ -113,7 +111,7 @@ export function swrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
  * const onInvalidate = useSwrAdapter(mutate)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'swr'
  */
-export function useSwrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
+export function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {

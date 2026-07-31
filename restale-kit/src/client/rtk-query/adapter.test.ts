@@ -36,7 +36,7 @@ describe('rtkQueryAdapter', () => {
     const api: RTKQueryApiLike = { util: { invalidateTags } }
     const adapter = rtkQueryAdapter(api)
 
-    adapter({ tags: ['Comments'] })
+    adapter({ target: 'rtk-query', tags: ['Comments'] })
 
     expect(invalidateTags).toHaveBeenCalledTimes(1)
     expect(invalidateTags).toHaveBeenNthCalledWith(1, ['Comments'])

@@ -1,11 +1,11 @@
 import { useCallback } from 'react'
-import type { RTKQuerySignal, GenericInvalidateSignal } from '@/types/protocol.js'
+import type { RTKQuerySignal } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
 import { SIGNAL_TARGETS } from '@/utils/constants.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
 import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
 
-export type RTKQuerySignalInput = RTKQuerySignal | GenericInvalidateSignal
+export type RTKQuerySignalInput = RTKQuerySignal
 
 export interface RTKQueryApiLike {
   util: {
@@ -13,7 +13,7 @@ export interface RTKQueryApiLike {
   }
 }
 
-export function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(
+export function rtkQueryAdapter<TSignal extends RTKQuerySignal = RTKQuerySignal>(
   api: RTKQueryApiLike
 ): AdaptedInvalidateCallback<'rtk-query', TSignal> {
   return makeAdaptedCallback(
@@ -34,7 +34,7 @@ export function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySi
   )
 }
 
-export function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(
+export function useRtkQueryAdapter<TSignal extends RTKQuerySignal = RTKQuerySignal>(
   api: RTKQueryApiLike
 ): AdaptedInvalidateCallback<'rtk-query', TSignal> {
   return makeAdaptedCallback(
