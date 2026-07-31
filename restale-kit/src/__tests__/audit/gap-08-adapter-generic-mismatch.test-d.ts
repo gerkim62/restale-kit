@@ -369,7 +369,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
 
     test('should handle unknown type appropriately', () => {
       const mockQueryClient = {} as any
-      expectTypeOf(broadCallback).not.toEqualTypeOf<never>()
+      
       // @ts-expect-error - unknown is not a valid signal type
       const adapter = tanstackQueryAdapter<unknown>(mockQueryClient)
     })
@@ -393,7 +393,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       // @ts-expect-error - Non-signal type incompatible
       const adapter = tanstackQueryAdapter<NotASignal>(mockQueryClient)
     })
-  expectTypeOf(adapter).not.toEqualTypeOf<never>()
+  })
 
   describe('Options parameter type consistency', () => {
     test('SWR adapter options should match signal type parameter', () => {

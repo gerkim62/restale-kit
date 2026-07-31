@@ -266,17 +266,18 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
   });
 
   describe('Batch operations with single-target channels', () => {
-    it('should not support batch without explicit targets', () => {
+    it('should support batch without explicit targets on single-target channels', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
-      // All signals in batch can omit target
+      // Single-target channels automatically supply the target ('swr') for each signal in a batch.
+      // Multi-target channels require explicit targets on each signal.
       expect(() => {
         channel.invalidate([
           { key: ['todos'] },
           { key: ['users'] },
           { key: ['posts'] }
         ]);
-      }).toThrow();
+      }).not.toThrow();
     });
 
 

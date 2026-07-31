@@ -6,6 +6,7 @@
  * This breaks type safety at the transport setup boundary.
  */
 
+import { EventEmitter } from 'node:events';
 import { describe, it, expect } from 'vitest';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
@@ -15,35 +16,44 @@ describe('Gap 5: Transport setup target override', () => {
     it('should reject mismatched target in createFetchResponse', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
-      // @ts-expect-error - TanStack target conflicts with SWR group
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        // @ts-expect-error - TanStack target conflicts with SWR group
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow();
       
-      // @ts-expect-error - RTK target conflicts with SWR group
-      group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      expect(() => {
+        // @ts-expect-error - RTK target conflicts with SWR group
+        group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      }).toThrow();
     });
 
     it('should accept matching target in createFetchResponse', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Should compile - target matches group type
-      const channel = group.createFetchResponse(mockReq, { target: 'swr' });
-      
-      expect(channel).toBeDefined();
+      expect(() => {
+        const result = group.createFetchResponse(mockReq, { target: 'swr' });
+        expect(result).toBeDefined();
+        expect(result.channel).toBeDefined();
+        expect(result.response).toBeDefined();
+      }).not.toThrow();
     });
 
     it('should accept omitted target when group has default', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Omitting target should use group default
-      const channel = group.createFetchResponse(mockReq, {});
-      
-      expect(channel).toBeDefined();
+      expect(() => {
+        const result = group.createFetchResponse(mockReq, {});
+        expect(result).toBeDefined();
+        expect(result.channel).toBeDefined();
+      }).not.toThrow();
     });
 
     it('should enforce type safety for multi-target groups', () => {
@@ -51,15 +61,25 @@ describe('Gap 5: Transport setup target override', () => {
         target: ['swr', 'tanstack-query'] as const
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Valid targets
-      group.createFetchResponse(mockReq, { target: 'swr' });
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
-      group.createFetchResponse(mockReq, { target: ['swr', 'tanstack-query'] as const });
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: 'swr' });
+      }).not.toThrow();
       
-      // @ts-expect-error - Invalid target
-      group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).not.toThrow();
+      
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: ['swr', 'tanstack-query'] as const });
+      }).not.toThrow();
+      
+      expect(() => {
+        // @ts-expect-error - Invalid target
+        group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      }).toThrow();
     });
   });
 
@@ -69,22 +89,24 @@ describe('Gap 5: Transport setup target override', () => {
         target: 'tanstack-query' 
       });
       
-      const mockReq = { headers: {} };
-      const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new EventEmitter() as any;
+      mockReq.url = '/sse?__restale_cid__=conn-1';
+      mockReq.headers = {};
       
-      // @ts-expect-error - SWR target conflicts with TanStack group
-      group.attachNodeResponse(mockReq as any, mockRes as any, { 
-        target: 'swr' 
-      });
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
       
-      // @ts-expect-error - RTK target conflicts with TanStack group
-      group.attachNodeResponse(mockReq as any, mockRes as any, { 
-        target: 'rtk-query' 
-      });
+      expect(() => {
+        // @ts-expect-error - SWR target conflicts with TanStack group
+        group.attachNodeResponse(mockReq, mockRes, { target: 'swr' });
+      }).toThrow();
+      
+      expect(() => {
+        // @ts-expect-error - RTK target conflicts with TanStack group
+        group.attachNodeResponse(mockReq, mockRes, { target: 'rtk-query' });
+      }).toThrow();
     });
 
     it('should accept matching target in attachNodeResponse', () => {
@@ -92,21 +114,21 @@ describe('Gap 5: Transport setup target override', () => {
         target: 'tanstack-query' 
       });
       
-      const mockReq = { headers: {} };
-      const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new EventEmitter() as any;
+      mockReq.url = '/sse?__restale_cid__=conn-1';
+      mockReq.headers = {};
+      
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
       
       // Should compile
-      const channel = group.attachNodeResponse(
-        mockReq as any, 
-        mockRes as any, 
-        { target: 'tanstack-query' }
-      );
-      
-      expect(channel).toBeDefined();
+      expect(() => {
+        const result = group.attachNodeResponse(mockReq, mockRes, { target: 'tanstack-query' });
+        expect(result).toBeDefined();
+        expect(result.channel).toBeDefined();
+      }).not.toThrow();
     });
 
     it('should use group default when target omitted', () => {
@@ -114,20 +136,19 @@ describe('Gap 5: Transport setup target override', () => {
         target: 'rtk-query' 
       });
       
-      const mockReq = { headers: {} };
-      const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new EventEmitter() as any;
+      mockReq.url = '/sse?__restale_cid__=conn-1';
+      mockReq.headers = {};
       
-      const channel = group.attachNodeResponse(
-        mockReq as any, 
-        mockRes as any, 
-        {}
-      );
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
       
-      expect(channel).toBeDefined();
+      expect(() => {
+        const result = group.attachNodeResponse(mockReq, mockRes, {});
+        expect(result).toBeDefined();
+      }).not.toThrow();
     });
   });
 
@@ -136,31 +157,36 @@ describe('Gap 5: Transport setup target override', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
       // Both methods should have same type constraints
-      const mockReq = new Request('http://localhost/sse');
-      const mockNodeReq = { headers: {} };
-      const mockNodeRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
+      const mockNodeReq = new EventEmitter() as any;
+      mockNodeReq.url = '/sse?__restale_cid__=conn-1';
+      mockNodeReq.headers = {};
+      
+      const mockNodeRes = new EventEmitter() as any;
+      mockNodeRes.writeHead = () => {};
+      mockNodeRes.write = () => {};
+      mockNodeRes.end = () => {};
       
       // Valid for both
-      const fetchChannel = group.createFetchResponse(mockReq, { target: 'swr' });
-      const nodeChannel = group.attachNodeResponse(
-        mockNodeReq as any,
-        mockNodeRes as any,
-        { target: 'swr' }
-      );
+      expect(() => {
+        const fetchResult = group.createFetchResponse(mockReq, { target: 'swr' });
+        expect(fetchResult.channel).toBeDefined();
+      }).not.toThrow();
       
-      // @ts-expect-error - Invalid for both
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        const nodeResult = group.attachNodeResponse(mockNodeReq, mockNodeRes, { target: 'swr' });
+        expect(nodeResult.channel).toBeDefined();
+      }).not.toThrow();
       
-      // @ts-expect-error - Invalid for both
-      group.attachNodeResponse(
-        mockNodeReq as any,
-        mockNodeRes as any,
-        { target: 'tanstack-query' }
-      );
+      expect(() => {
+        // @ts-expect-error - Invalid for both
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow();
+      
+      expect(() => {
+        // @ts-expect-error - Invalid for both
+        group.attachNodeResponse(mockNodeReq, mockNodeRes, { target: 'tanstack-query' });
+      }).toThrow();
     });
   });
 
@@ -168,15 +194,19 @@ describe('Gap 5: Transport setup target override', () => {
     it('should return correctly typed channel from createFetchResponse', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
-      const channel = group.createFetchResponse(mockReq, { target: 'swr' });
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
+      const { channel } = group.createFetchResponse(mockReq, { target: 'swr' });
       
       // Channel should be typed as SSEChannel<SWRSignal>
       // Should accept SWR signals
-      channel.invalidate({ target: 'swr', key: ['test'] });
+      expect(() => {
+        channel.invalidate({ target: 'swr', key: ['test'] });
+      }).not.toThrow();
       
-      // @ts-expect-error - Should reject TanStack signals
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      expect(() => {
+        // @ts-expect-error - Should reject TanStack signals
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      }).toThrow();
     });
 
     it('should return correctly typed channel from attachNodeResponse', () => {
@@ -184,24 +214,26 @@ describe('Gap 5: Transport setup target override', () => {
         target: 'tanstack-query' 
       });
       
-      const mockReq = { headers: {} };
-      const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new EventEmitter() as any;
+      mockReq.url = '/sse?__restale_cid__=conn-1';
+      mockReq.headers = {};
       
-      const channel = group.attachNodeResponse(
-        mockReq as any,
-        mockRes as any,
-        { target: 'tanstack-query' }
-      );
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
+      
+      const { channel } = group.attachNodeResponse(mockReq, mockRes, { target: 'tanstack-query' });
       
       // Should accept TanStack signals
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      expect(() => {
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      }).not.toThrow();
       
-      // @ts-expect-error - Should reject SWR signals
-      channel.invalidate({ target: 'swr', key: ['test'] });
+      expect(() => {
+        // @ts-expect-error - Should reject SWR signals
+        channel.invalidate({ target: 'swr', key: ['test'] });
+      }).toThrow();
     });
   });
 
@@ -212,38 +244,46 @@ describe('Gap 5: Transport setup target override', () => {
         pubsub: { type: 'memory' }
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Valid: matching target with topics
-      group.createFetchResponse(mockReq, {
-        target: 'swr',
-        topics: ['updates']
-      });
+      expect(() => {
+        group.createFetchResponse(mockReq, {
+          target: 'swr',
+          topics: ['updates']
+        });
+      }).not.toThrow();
       
-      // @ts-expect-error - Invalid target even with valid topics
-      group.createFetchResponse(mockReq, {
-        target: 'tanstack-query',
-        topics: ['updates']
-      });
+      expect(() => {
+        // @ts-expect-error - Invalid target even with valid topics
+        group.createFetchResponse(mockReq, {
+          target: 'tanstack-query',
+          topics: ['updates']
+        });
+      }).toThrow();
     });
 
     it('should validate other options with type-safe target', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // All these options should work with correct target
-      group.createFetchResponse(mockReq, {
-        target: 'swr',
-        eventBufferCapacity: 100,
-        keepaliveIntervalMs: 30000
-      });
+      expect(() => {
+        group.createFetchResponse(mockReq, {
+          target: 'swr',
+          eventBufferCapacity: 100,
+          keepaliveIntervalMs: 30000
+        });
+      }).not.toThrow();
       
-      // @ts-expect-error - Wrong target invalidates entire setup
-      group.createFetchResponse(mockReq, {
-        target: 'rtk-query',
-        eventBufferCapacity: 100
-      });
+      expect(() => {
+        // @ts-expect-error - Wrong target invalidates entire setup
+        group.createFetchResponse(mockReq, {
+          target: 'rtk-query',
+          eventBufferCapacity: 100
+        });
+      }).toThrow();
     });
   });
 
@@ -253,30 +293,41 @@ describe('Gap 5: Transport setup target override', () => {
         SWRSignal | TanStackQuerySignal
       >();
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Should accept either target from the union
-      group.createFetchResponse(mockReq, { target: 'swr' });
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: 'swr' });
+      }).not.toThrow();
       
-      // @ts-expect-error - RTK not in union
-      group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).not.toThrow();
+      
+      expect(() => {
+        // @ts-expect-error - RTK not in union
+        group.createFetchResponse(mockReq, { target: 'rtk-query' });
+      }).toThrow();
     });
 
     it('should prevent widening to generic InvalidateSignal', () => {
       // Group should maintain specific signal type, not widen
       const swrGroup = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
-      // @ts-expect-error - Cannot override to different specific type
-      swrGroup.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        // @ts-expect-error - Cannot override to different specific type
+        swrGroup.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow();
       
       // The returned channel must respect the group's signal type
-      const channel = swrGroup.createFetchResponse(mockReq, { target: 'swr' });
+      const { channel } = swrGroup.createFetchResponse(mockReq, { target: 'swr' });
       
-      // @ts-expect-error - Channel is typed for SWR, not generic
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      expect(() => {
+        // @ts-expect-error - Channel is typed for SWR, not generic
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      }).toThrow();
     });
   });
 
@@ -284,7 +335,7 @@ describe('Gap 5: Transport setup target override', () => {
     it('should throw at runtime for type-mismatched target', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Should throw when type-checking is bypassed
       expect(() => {
@@ -299,19 +350,17 @@ describe('Gap 5: Transport setup target override', () => {
         target: 'tanstack-query' 
       });
       
-      const mockReq = { headers: {} };
-      const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {}
-      };
+      const mockReq = new EventEmitter() as any;
+      mockReq.url = '/sse?__restale_cid__=conn-1';
+      mockReq.headers = {};
+      
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
       
       expect(() => {
-        group.attachNodeResponse(
-          mockReq as any,
-          mockRes as any,
-          { target: 'swr' } as any
-        );
+        group.attachNodeResponse(mockReq, mockRes, { target: 'swr' } as any);
       }).toThrow(/target/i);
     });
   });
@@ -324,7 +373,7 @@ describe('Gap 5: Transport setup target override', () => {
         target: ['swr', 'tanstack-query', 'rtk-query'] as const
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Each individual target should be allowed
       expect(() => {
@@ -347,7 +396,7 @@ describe('Gap 5: Transport setup target override', () => {
         target: ['swr', 'tanstack-query'] as const
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Can create channel with same multi-target config
       expect(() => {
@@ -364,14 +413,18 @@ describe('Gap 5: Transport setup target override', () => {
         target: ['swr', 'tanstack-query', 'rtk-query'] as const
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Individual targets from the set are fine
-      group.createFetchResponse(mockReq, { target: 'swr' });
+      expect(() => {
+        group.createFetchResponse(mockReq, { target: 'swr' });
+      }).not.toThrow();
       
       // But adding a target outside the group should fail
-      // @ts-expect-error - Generic signal not in configured union
-      group.createFetchResponse(mockReq, { target: 'unknown' });
+      expect(() => {
+        // @ts-expect-error - Generic signal not in configured union
+        group.createFetchResponse(mockReq, { target: 'unknown' });
+      }).toThrow();
     });
   });
 
@@ -384,17 +437,18 @@ describe('Gap 5: Transport setup target override', () => {
         }
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
       // Setup with matching target should inherit defaults
-      const channel = group.createFetchResponse(mockReq, { 
-        target: 'swr' 
-      });
+      expect(() => {
+        const result = group.createFetchResponse(mockReq, { target: 'swr' });
+        expect(result).toBeDefined();
+      }).not.toThrow();
       
-      expect(channel).toBeDefined();
-      
-      // @ts-expect-error - Mismatched target ignores defaults
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        // @ts-expect-error - Mismatched target ignores defaults
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow();
     });
 
     it('should not allow setup to override group target via defaults', () => {
@@ -405,10 +459,12 @@ describe('Gap 5: Transport setup target override', () => {
         }
       });
       
-      const mockReq = new Request('http://localhost/sse');
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
-      // @ts-expect-error - Cannot override group target constraint
-      group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      expect(() => {
+        // @ts-expect-error - Cannot override group target constraint
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow();
     });
   });
 });
