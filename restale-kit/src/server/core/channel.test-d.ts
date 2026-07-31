@@ -7,7 +7,8 @@ import type {
   TanStackQuerySignal,
   RTKQuerySignal,
   GenericInvalidateSignal,
-} from '@/types/index.js'
+  SignalTarget,
+} from '@/types/protocol.js'
 
 describe('1.1 — SSEChannel.invalidate() generic enforcement', () => {
   test('invalidate parameter should be restricted to channel TSignal', () => {
@@ -112,3 +113,57 @@ describe('SSEChannelOptions narrowing & misuse checks', () => {
   })
 })
 
+describe('SSEChannel.invalidate() return type', () => {
+  test('invalidate returns a string event ID', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    const eventId = channel.invalidate({ target: 'swr', key: ['test'] })
+    expectTypeOf(eventId).toEqualTypeOf<string>()
+  })
+
+  test('invalidate accepts optional customId parameter', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.invalidate).toBeCallableWith(
+      { target: 'swr', key: ['test'] },
+      'custom-id-123'
+    )
+  })
+})
+
+describe('SSEChannel.target property types', () => {
+  test('target is SignalTarget or readonly SignalTarget[]', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.target).toEqualTypeOf<SignalTarget | readonly SignalTarget[]>()
+  })
+
+  test('requestedTarget is string or undefined', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.requestedTarget).toEqualTypeOf<string | undefined>()
+  })
+})
+
+describe('SSEChannel.revoke() parameter types', () => {
+  test('revoke accepts optional reason string', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    // No args
+    expectTypeOf(channel.revoke).toBeCallableWith()
+    // With reason
+    expectTypeOf(channel.revoke).toBeCallableWith('session-expired')
+  })
+
+  test('revoke returns void', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.revoke()).toEqualTypeOf<void>()
+  })
+})
+
+describe('SSEChannel.onClose() callback type', () => {
+  test('onClose accepts a zero-arg callback returning void', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.onClose).toBeCallableWith(() => {})
+  })
+
+  test('onClose returns void', () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    expectTypeOf(channel.onClose(() => {})).toEqualTypeOf<void>()
+  })
+})

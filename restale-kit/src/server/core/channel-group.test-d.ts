@@ -125,3 +125,90 @@ describe('SSEChannelGroup attachNodeResponse and createFetchResponse 1-step meth
     expectTypeOf(createResult.channel).toEqualTypeOf<import('@/server/core/index.js').SSEChannel<SWRSignal>>()
   })
 })
+
+describe('SSEChannelGroup deregister and dispose types', () => {
+  test('deregister accepts SSEChannel<TSignal> and returns void', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+    const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(group.deregister).toBeCallableWith(channel)
+    expectTypeOf(group.deregister(channel)).toEqualTypeOf<void>()
+  })
+
+  test('dispose returns Promise<void>', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(group.dispose()).toEqualTypeOf<Promise<void>>()
+  })
+})
+
+describe('SSEChannelGroup publish type safety', () => {
+  test('publish returns Promise<void>', () => {
+    const group = new SSEChannelGroup<TanStackQuerySignal>({ target: 'tanstack-query' })
+
+    expectTypeOf(
+      group.publish('topic', { target: 'tanstack-query', queryKey: ['test'] })
+    ).toEqualTypeOf<Promise<void>>()
+  })
+
+  test('publish accepts batch signals', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(group.publish).toBeCallableWith('topic', [
+      { target: 'swr', key: ['a'] },
+      { target: 'swr', key: ['b'] },
+    ])
+  })
+})
+
+describe('SSEChannelGroup broadcastByKey type safety', () => {
+  test('broadcastByKey accepts a single TSignal', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(group.broadcastByKey).toBeCallableWith({
+      target: 'swr',
+      key: ['todos'],
+    })
+  })
+
+  test('broadcastByKey returns void', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(
+      group.broadcastByKey({ target: 'swr', key: ['test'] })
+    ).toEqualTypeOf<void>()
+  })
+
+  test('broadcastByKey rejects mismatched signal type', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    // @ts-expect-error TanStack signal rejected on SWR group
+    group.broadcastByKey({ target: 'tanstack-query', queryKey: ['test'] })
+  })
+})
+
+describe('SSEChannelGroup size property', () => {
+  test('size returns number', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(group.size).toEqualTypeOf<number>()
+  })
+})
+
+describe('SSEChannelGroup revokeByConnectionId return type', () => {
+  test('revokeByConnectionId returns Promise<{ closed: boolean }>', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(
+      group.revokeByConnectionId('conn-1')
+    ).toEqualTypeOf<Promise<{ closed: boolean }>>()
+  })
+
+  test('revokeWhere returns Promise<{ localClosed: number }>', () => {
+    const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
+
+    expectTypeOf(
+      group.revokeWhere({ userId: 'u1' })
+    ).toEqualTypeOf<Promise<{ localClosed: number }>>()
+  })
+})

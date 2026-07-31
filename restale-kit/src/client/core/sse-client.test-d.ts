@@ -76,3 +76,103 @@ describe('ClientOptions misuse prevention', () => {
     })
   })
 })
+
+describe('SSEInvalidatorClient typed event listeners', () => {
+  test('invalidate event detail is TSignal | TSignal[]', () => {
+    const client = new SSEInvalidatorClient<SWRSignal>('https://example.com/sse', {
+      target: 'swr',
+    })
+
+    client.addEventListener('invalidate', (event) => {
+      expectTypeOf(event.detail).toEqualTypeOf<SWRSignal | SWRSignal[]>()
+    })
+  })
+
+  test('revoke event detail carries RevokeEventDetail', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+
+    client.addEventListener('revoke', (event) => {
+      // Verify the detail type matches the RevokeEventDetail union
+      expectTypeOf(event.detail).toMatchTypeOf<{ reason?: string }>()
+    })
+  })
+
+  test('renew event detail is RenewEventDetail', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+
+    client.addEventListener('renew', (event) => {
+      expectTypeOf(event.detail.reason).toEqualTypeOf<'deadline'>()
+      expectTypeOf(event.detail.maxAttempts).toEqualTypeOf<number>()
+      expectTypeOf(event.detail.retryDelayMs).toEqualTypeOf<number>()
+    })
+  })
+
+  test('rejected event detail is RejectedConnectionResponse', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+
+    client.addEventListener('rejected', (event) => {
+      expectTypeOf(event.detail.status).toEqualTypeOf<number>()
+      expectTypeOf(event.detail.headers).toEqualTypeOf<Readonly<Record<string, readonly string[]>>>()
+    })
+  })
+
+  test('error event detail is Event', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+
+    client.addEventListener('error', (event) => {
+      expectTypeOf(event.detail).toEqualTypeOf<Event>()
+    })
+  })
+})
+
+describe('SSEInvalidatorClient additional properties', () => {
+  test('connectionId is string', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+    expectTypeOf(client.connectionId).toEqualTypeOf<string>()
+  })
+
+  test('endpointUrl is string', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+    expectTypeOf(client.endpointUrl).toEqualTypeOf<string>()
+  })
+
+  test('lastEventId is string | null', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+    expectTypeOf(client.lastEventId).toEqualTypeOf<string | null>()
+  })
+
+  test('closeWithUnmount returns void', () => {
+    const client = new SSEInvalidatorClient('https://example.com/sse')
+    expectTypeOf(client.closeWithUnmount()).toEqualTypeOf<void>()
+  })
+})
+
+describe('ClientOptions callback and hook types', () => {
+  test('callback option accepts AdaptedInvalidateCallback', () => {
+    const cb = makeAdaptedCallback('swr', (_signal: SWRSignal) => {})
+
+    new SSEInvalidatorClient<SWRSignal>('https://example.com/sse', {
+      target: 'swr',
+      callback: cb,
+    })
+  })
+
+  test('onConnect and onDisconnect accept Event handlers', () => {
+    new SSEInvalidatorClient('https://example.com/sse', {
+      onConnect: (event) => {
+        expectTypeOf(event).toEqualTypeOf<Event>()
+      },
+      onDisconnect: (event) => {
+        expectTypeOf(event).toEqualTypeOf<Event>()
+      },
+    })
+  })
+
+  test('onError accepts unknown error handler', () => {
+    new SSEInvalidatorClient('https://example.com/sse', {
+      onError: (error) => {
+        expectTypeOf(error).toEqualTypeOf<unknown>()
+      },
+    })
+  })
+})
