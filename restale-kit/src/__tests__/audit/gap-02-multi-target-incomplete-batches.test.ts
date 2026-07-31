@@ -19,11 +19,15 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr' 
       });
       
-      // @ts-expect-error - Single signal not allowed for multi-target channel
-      channel.invalidate({ target: 'swr', key: ['todos'] });
+      expect(() => {
+        // @ts-expect-error - Single signal not allowed for multi-target channel
+        channel.invalidate({ target: 'swr', key: ['todos'] });
+      }).toThrow();
       
-      // @ts-expect-error - Single signal not allowed for multi-target channel
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['todos'] });
+      expect(() => {
+        // @ts-expect-error - Single signal not allowed for multi-target channel
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['todos'] });
+      }).toThrow();
     });
 
     it('should reject incomplete array at compile time', () => {
@@ -32,15 +36,19 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr' 
       });
       
-      // @ts-expect-error - Missing tanstack-query signal
-      channel.invalidate([
-        { target: 'swr', key: ['todos'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing tanstack-query signal
+        channel.invalidate([
+          { target: 'swr', key: ['todos'] }
+        ]);
+      }).toThrow();
       
-      // @ts-expect-error - Missing swr signal
-      channel.invalidate([
-        { target: 'tanstack-query', queryKey: ['todos'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing swr signal
+        channel.invalidate([
+          { target: 'tanstack-query', queryKey: ['todos'] }
+        ]);
+      }).toThrow();
     });
 
     it('should reject incomplete batch at runtime', () => {
@@ -95,10 +103,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr' 
       });
       
-      // @ts-expect-error - Missing two targets
-      channel.invalidate([
-        { target: 'swr', key: ['todos'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing two targets
+        channel.invalidate([
+          { target: 'swr', key: ['todos'] }
+        ]);
+      }).toThrow();
     });
 
     it('should reject incomplete batches with only two targets', () => {
@@ -107,23 +117,29 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr' 
       });
       
-      // @ts-expect-error - Missing rtk-query
-      channel.invalidate([
-        { target: 'swr', key: ['todos'] },
-        { target: 'tanstack-query', queryKey: ['todos'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing rtk-query
+        channel.invalidate([
+          { target: 'swr', key: ['todos'] },
+          { target: 'tanstack-query', queryKey: ['todos'] }
+        ]);
+      }).toThrow();
       
-      // @ts-expect-error - Missing tanstack-query
-      channel.invalidate([
-        { target: 'swr', key: ['todos'] },
-        { target: 'rtk-query', tags: [{ type: 'Todo' }] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing tanstack-query
+        channel.invalidate([
+          { target: 'swr', key: ['todos'] },
+          { target: 'rtk-query', tags: [{ type: 'Todo' }] }
+        ]);
+      }).toThrow();
       
-      // @ts-expect-error - Missing swr
-      channel.invalidate([
-        { target: 'tanstack-query', queryKey: ['todos'] },
-        { target: 'rtk-query', tags: [{ type: 'Todo' }] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Missing swr
+        channel.invalidate([
+          { target: 'tanstack-query', queryKey: ['todos'] },
+          { target: 'rtk-query', tags: [{ type: 'Todo' }] }
+        ]);
+      }).toThrow();
     });
 
     it('should accept complete batch with all three targets', () => {
@@ -279,8 +295,10 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr'
       });
       
-      // @ts-expect-error - Single signal not allowed
-      channel.invalidate({ target: 'swr', key: ['test'] });
+      expect(() => {
+        // @ts-expect-error - Single signal not allowed
+        channel.invalidate({ target: 'swr', key: ['test'] });
+      }).toThrow();
       
       // Should require complete batch
       expect(() => {
@@ -295,10 +313,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       const targets = ['swr', 'rtk-query'] as const;
       const channel = createSSEChannel({ target: targets, requestedTarget: 'swr' });
       
-      // @ts-expect-error - Incomplete batch
-      channel.invalidate([
-        { target: 'swr', key: ['items'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Incomplete batch
+        channel.invalidate([
+          { target: 'swr', key: ['items'] }
+        ]);
+      }).toThrow();
       
       // Complete batch should work
       expect(() => {
@@ -325,7 +345,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         requestedTarget: 'swr'
       }), {});
       
-      group.broadcast({ target: 'swr', key: ['test'] }, () => true);
+      expect(() => {
+        group.broadcast({ target: 'swr', key: ['test'] }, () => true);
+      }).toThrow();
       
       // Multi-target channel in group needs special handling
       // This is a complex scenario that needs clear type guidance

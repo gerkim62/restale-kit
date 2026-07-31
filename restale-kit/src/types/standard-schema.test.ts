@@ -28,12 +28,9 @@ describe('validateStandardSchema', () => {
 
   it('formats issues without path segments', () => {
     const schema = createInvalidSchema('Payload invalid')
-    try {
-      validateStandardSchema(null, schema)
-    } catch (err) {
-      const error = err as SchemaValidationError
-      expect(error.message).toBe('Schema validation failed: Payload invalid')
-    }
+    expect(() => validateStandardSchema(null, schema)).toThrowError(
+      'Schema validation failed: Payload invalid'
+    )
   })
 
   it('synchronously rejects async schemas', () => {

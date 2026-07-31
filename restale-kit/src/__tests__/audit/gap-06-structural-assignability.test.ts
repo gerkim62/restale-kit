@@ -8,7 +8,7 @@
  * without a cast.
  */
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createSSEChannel, type SSEChannel } from '../../server/core/channel.js';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import { createEventStore, type EventStore } from '../../server/core/event-store.js';
@@ -49,8 +49,10 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
       
-      // @ts-expect-error - Type mismatch
-      processSWRChannel(tanstackChannel);
+      expect(() => {
+        // @ts-expect-error - Type mismatch
+        processSWRChannel(tanstackChannel);
+      }).toThrow();
     });
 
     it('should reject cross-type channel in function return', () => {
@@ -235,8 +237,10 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
       
-      // @ts-expect-error - Cannot pass TanStack channel to SWR consumer
-      swrConsumer(tanstackChannel);
+      expect(() => {
+        // @ts-expect-error - Cannot pass TanStack channel to SWR consumer
+        swrConsumer(tanstackChannel);
+      }).toThrow();
     });
 
     it('should enforce contravariance in store consumer', () => {

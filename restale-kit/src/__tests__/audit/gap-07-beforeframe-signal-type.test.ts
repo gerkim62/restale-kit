@@ -216,6 +216,7 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should receive configured union in beforeFrame for multi-target', () => {
       const channel = createSSEChannel({
         target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr',
         beforeFrame: (ctx) => {
           if (ctx.frameType !== 'signal') return { action: 'send' };
           const signal = ctx.signal;
@@ -248,6 +249,7 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should not include types outside configured targets', () => {
       const channel = createSSEChannel({
         target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr',
         beforeFrame: (ctx) => {
           if (ctx.frameType !== 'signal') return { action: 'send' };
           const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];

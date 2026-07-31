@@ -351,7 +351,7 @@ expectTypeOf(record).not.toEqualTypeOf<never>()
       
       expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
     })
-  expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
+  })
 
   describe('Complex scenarios with multiple incompatibilities', () => {
     test('should reject group with all mismatched types', () => {
@@ -389,6 +389,7 @@ expectTypeOf(record).not.toEqualTypeOf<never>()
       swrGroup.register(swrChannel)
       expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
     })
+  })
 
   describe('Array and batch operations', () => {
     test('should reject array with mixed incompatible channel types', () => {
@@ -414,7 +415,7 @@ expectTypeOf(record).not.toEqualTypeOf<never>()
       const channels: SSEChannel<SWRSignal>[] = [swrChannel1, swrChannel2]
       expectTypeOf(channels).not.toEqualTypeOf<never>()
     })
-  expectTypeOf(channels).not.toEqualTypeOf<never>()
+  })
 
   describe('Generic function type safety', () => {
     test('should maintain type safety in generic functions', () => {

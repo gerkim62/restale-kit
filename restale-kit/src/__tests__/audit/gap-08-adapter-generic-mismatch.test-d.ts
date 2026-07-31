@@ -419,13 +419,13 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
 
     test('should reject options with incompatible signal type in toInvalidateKey', () => {
       const mockMutate = {} as SWRMutator
-      expectTypeOf(signal.key).not.toEqualTypeOf<never>()
       const adapter = swrAdapter<SWRSignal>(mockMutate, {
         // @ts-expect-error - toInvalidateKey receives SWRSignal, not TanStack
         toInvalidateKey: (key, signal: TanStackQuerySignal) => {
           return [String(key)]
         }
       })
+      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
   })
-expectTypeOf(adapter).not.toEqualTypeOf<never>()
+})

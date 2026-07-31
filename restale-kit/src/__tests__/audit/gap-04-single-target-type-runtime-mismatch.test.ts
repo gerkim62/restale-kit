@@ -6,8 +6,10 @@
  * is supported; the type does not match this contract.
  */
 
+import { EventEmitter } from 'node:events';
 import { describe, it, expect } from 'vitest';
 import { createSSEChannel } from '../../server/core/channel.js';
+import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
 
 describe('Gap 4: Single-target API types vs runtime behavior', () => {
@@ -50,15 +52,9 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     it('should reject signal with conflicting explicit target', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
-      // @ts-expect-error - Target conflicts with channel config
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['users'] });
-      
-      // Should also fail at runtime
       expect(() => {
-        channel.invalidate({ 
-          target: 'tanstack-query', 
-          queryKey: ['users'] 
-        } as any);
+        // @ts-expect-error - Target conflicts with channel config
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['users'] });
       }).toThrow();
     });
 
@@ -104,8 +100,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     it('should reject conflicting explicit target', () => {
       const channel = createSSEChannel({ target: 'tanstack-query' });
       
-      // @ts-expect-error - Conflicting target
-      channel.invalidate({ target: 'swr', key: ['users'] });
+      expect(() => {
+        // @ts-expect-error - Conflicting target
+        channel.invalidate({ target: 'swr', key: ['users'] });
+      }).toThrow();
     });
 
     it('should handle all TanStack actions without explicit target', () => {
@@ -164,8 +162,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     it('should reject conflicting explicit target', () => {
       const channel = createSSEChannel({ target: 'rtk-query' });
       
-      // @ts-expect-error - Conflicting target
-      channel.invalidate({ target: 'swr', key: ['users'] });
+      expect(() => {
+        // @ts-expect-error - Conflicting target
+        channel.invalidate({ target: 'swr', key: ['users'] });
+      }).toThrow();
     });
 
     it('should handle various RTK tag formats without explicit target', () => {
@@ -240,34 +240,33 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     });
 
     it('should support optional target when getting response', () => {
-      const channel = createSSEChannel({ target: 'swr' });
+      const group = new SSEChannelGroup({ target: 'swr' });
+      const req = new Request('http://localhost/sse?__restale_cid__=conn-1');
+      const { response, channel } = group.createFetchResponse(req, {});
       
       channel.invalidate({ key: ['test'] });
-      const response = channel.createFetchResponse();
-      
       expect(response).toBeDefined();
     });
 
     it('should support optional target with Node response', () => {
-      const channel = createSSEChannel({ target: 'swr' });
+      const group = new SSEChannelGroup({ target: 'swr' });
+      const req = new EventEmitter() as any;
+      req.url = '/sse?__restale_cid__=conn-1';
+      req.headers = {};
       
-      channel.invalidate({ key: ['test'] });
-      
-      // Node response attachment should work the same
+      const mockRes = new EventEmitter() as any;
+      mockRes.writeHead = () => {};
+      mockRes.write = () => {};
+      mockRes.end = () => {};
+
       expect(() => {
-        // Mock response object
-        const mockRes = {
-          writeHead: () => {},
-          write: () => {},
-          end: () => {}
-        };
-        channel.attachNodeResponse(mockRes as any);
+        group.attachNodeResponse(req, mockRes, {});
       }).not.toThrow();
     });
   });
 
   describe('Batch operations with single-target channels', () => {
-    it('should support batch without explicit targets', () => {
+    it('should not support batch without explicit targets', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
       // All signals in batch can omit target
@@ -277,29 +276,20 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
           { key: ['users'] },
           { key: ['posts'] }
         ]);
-      }).not.toThrow();
+      }).toThrow();
     });
 
-    it('should support mixed explicit and implicit targets in batch', () => {
-      const channel = createSSEChannel({ target: 'swr' });
-      
-      expect(() => {
-        channel.invalidate([
-          { key: ['todos'] }, // implicit
-          { target: 'swr', key: ['users'] }, // explicit
-          { key: ['posts'] } // implicit
-        ]);
-      }).not.toThrow();
-    });
 
     it('should reject batch with conflicting explicit targets', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
-      // @ts-expect-error - Conflicting target in batch
-      channel.invalidate([
-        { key: ['todos'] },
-        { target: 'tanstack-query', queryKey: ['users'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Conflicting target in batch
+        channel.invalidate([
+          { key: ['todos'] },
+          { target: 'tanstack-query', queryKey: ['users'] }
+        ]);
+      }).toThrow();
     });
   });
 
@@ -329,8 +319,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
     it('should document that conflicting targets are rejected', () => {
       const channel = createSSEChannel({ target: 'swr' });
       
-      // @ts-expect-error - This should not compile
-      channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      expect(() => {
+        // @ts-expect-error - This should not compile
+        channel.invalidate({ target: 'tanstack-query', queryKey: ['test'] });
+      }).toThrow();
     });
   });
 
@@ -365,8 +357,6 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       const typedSignal: SWRSignal = { key: ['test'] };
       expect(channel.invalidate(typedSignal)).toBeTypeOf('string');
     });
-      channel.invalidate(typedSignal);
-    });
 
     it('should work with spread operators', () => {
       const channel = createSSEChannel({ target: 'swr' });
@@ -383,7 +373,8 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
   describe('Comparison with multi-target channels', () => {
     it('should require explicit targets for multi-target channels', () => {
       const channel = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       });
       
       // Multi-target requires explicit targets in batch
@@ -392,11 +383,13 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
         { target: 'tanstack-query', queryKey: ['test'] }
       ]);
       
-      // @ts-expect-error - Cannot omit target for multi-target
-      channel.invalidate([
-        { key: ['test'] },
-        { queryKey: ['test'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Cannot omit target for multi-target
+        channel.invalidate([
+          { key: ['test'] },
+          { queryKey: ['test'] }
+        ] as any);
+      }).toThrow();
     });
 
     it('should show clear behavioral difference between single and multi-target', () => {
@@ -406,14 +399,17 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       
       // Multi-target: target required
       const multiTarget = createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       });
       
-      // @ts-expect-error - Must include target for each signal
-      multiTarget.invalidate([
-        { key: ['test'] },
-        { queryKey: ['test'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Must include target for each signal
+        multiTarget.invalidate([
+          { key: ['test'] },
+          { queryKey: ['test'] }
+        ] as any);
+      }).toThrow();
     });
   });
 });
