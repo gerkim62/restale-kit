@@ -11,16 +11,19 @@ export function isObject(val: unknown): val is Record<string, unknown> {
 /**
  * Type guard to check if a value is a valid invalidation signal or array of signals.
  */
+function isValidSignalItem(item: unknown): boolean {
+  if (!isObject(item)) return false
+  return Array.isArray(item['key']) || typeof item['key'] === 'string' || Array.isArray(item['queryKey']) || Array.isArray(item['tags'])
+}
+
+/**
+ * Type guard to check if a value is a valid invalidation signal or array of signals.
+ */
 export function isSignalPayload<T extends InvalidateSignal>(val: unknown): val is T | T[] {
   if (Array.isArray(val)) {
-    for (const item of val) {
-      if (!isObject(item) || !Array.isArray(item['key'])) {
-        return false
-      }
-    }
-    return true
+    return val.length > 0 && val.every(isValidSignalItem)
   }
-  return isObject(val) && Array.isArray(val['key'])
+  return isValidSignalItem(val)
 }
 
 /**
