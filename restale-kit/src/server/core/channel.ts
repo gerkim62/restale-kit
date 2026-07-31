@@ -134,7 +134,7 @@ export interface SSEChannel<
    *
    * Gap 1.1 fix: Parameter is narrowed to TSignal only (not InvalidateSignal).
    */
-  invalidate(signal: TSignal | TSignal[] | SignalInputForTarget<TTarget>, customId?: string): string
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
   close(): void
   /**

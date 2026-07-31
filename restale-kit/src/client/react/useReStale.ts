@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, SignalTarget, ReStaleSignalForTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -102,14 +102,14 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  * Gap 1.5 fix: Overloads enforce that explicit target must match callback brand.
  */
 export function useReStale<
-  TTarget extends SignalTarget,
+  TTarget extends TargetForSignal<TSignal>,
   TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
 >(
   url: string,
   opts: UseReStaleOptions<TTarget, TSignal>
 ): UseReStaleResult
 export function useReStale<
-  TTarget extends SignalTarget,
+  TTarget extends TargetForSignal<TSignal>,
   TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
 >(
   url: string,

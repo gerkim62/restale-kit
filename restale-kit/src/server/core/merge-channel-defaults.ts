@@ -11,6 +11,7 @@ export interface ChannelDefaults {
   target?: SignalTarget | SignalTarget[] | readonly SignalTarget[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
+  eventBufferCapacity?: number
 }
 
 /**
@@ -55,6 +56,13 @@ export function mergeChannelDefaults<TSignal extends InvalidateSignal = Invalida
     !Object.hasOwn(channelOptions, 'guardKeepalive')
   ) {
     merged = { ...merged, guardKeepalive: defaults.guardKeepalive }
+  }
+
+  if (
+    defaults?.eventBufferCapacity !== undefined &&
+    !Object.hasOwn(channelOptions, 'eventBufferCapacity')
+  ) {
+    merged = { ...merged, eventBufferCapacity: defaults.eventBufferCapacity }
   }
 
   // ── lifetime ──────────────────────────────────────────────────────────────

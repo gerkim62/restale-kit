@@ -90,11 +90,13 @@ export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
         : GenericInvalidateSignal
 
 export type TargetForSignal<TSignal extends InvalidateSignal> =
-  TSignal extends { target?: infer TTarget }
-    ? TTarget extends SignalTarget
-      ? TTarget
+  TSignal extends InvalidateSignal
+    ? TSignal extends { target?: infer TTarget }
+      ? TTarget extends SignalTarget
+        ? TTarget
+        : SignalTarget
       : SignalTarget
-    : SignalTarget
+    : never
 
 export type ExplicitSignalForTarget<TTarget extends SignalTarget> =
   ReStaleSignalForTarget<TTarget> & { target: TTarget }
