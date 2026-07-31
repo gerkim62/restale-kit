@@ -31,7 +31,7 @@ describe('1.2 — Target-aware signal input (SignalInputForTarget)', () => {
   })
 
   test('multi-target channel signal input requirements', () => {
-    const multiChannel = createSSEChannel({ target: ['swr', 'tanstack-query'] })
+    const multiChannel = createSSEChannel({ target: ['swr', 'tanstack-query'] as const })
 
     // Valid multi-signal array for all declared targets should compile
     multiChannel.invalidate([

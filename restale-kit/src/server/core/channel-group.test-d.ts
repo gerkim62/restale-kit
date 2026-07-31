@@ -64,7 +64,7 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
   })
 
   test('multi-target group broadcast requires explicit target on every signal', () => {
-    const multiGroup = new SSEChannelGroup({ target: ['swr', 'tanstack-query'] })
+    const multiGroup = new SSEChannelGroup({ target: ['swr', 'tanstack-query'] as const })
 
     // @ts-expect-error multi-target group broadcast without explicit target on signal should be a type error
     multiGroup.broadcastToAll({ key: ['users'] })

@@ -172,7 +172,7 @@ export type SignalsForTargets<TTarget> =
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
@@ -813,7 +813,7 @@ class SSEChannelGroupImplementation<
 export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
 
 interface SSEChannelGroupConstructor {
@@ -826,7 +826,7 @@ interface SSEChannelGroupConstructor {
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
-    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
   >(
     options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
   ): SSEChannelGroup<TSignal, TMeta, TTarget>

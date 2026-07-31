@@ -8,9 +8,9 @@ import { describe, expect, it } from 'vitest'
 import { validatePayload } from '../../client/core/validation.js'
 import { createSSEChannel } from '../../server/core/channel.js'
 import { formatInvalidateFrame } from '../../server/core/framing.js'
-import type { ReStaleSignal, RTKQuerySignal, SWRSignal, TanStackQuerySignal } from '../../types/protocol.js'
+import type { ExplicitSignalForTarget, ReStaleSignal, RTKQuerySignal, SWRSignal, TanStackQuerySignal } from '../../types/protocol.js'
 
-type TargetedSignal = TanStackQuerySignal | SWRSignal | RTKQuerySignal
+type TargetedSignal = ExplicitSignalForTarget<'tanstack-query'> | ExplicitSignalForTarget<'swr'> | ExplicitSignalForTarget<'rtk-query'>
 
 function parseInvalidateFrame(frame: Uint8Array): unknown {
   const text = new TextDecoder().decode(frame)
