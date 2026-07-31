@@ -199,6 +199,7 @@ class SSEChannelGroupImplementation<
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
+  readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
   readonly channelDefaults?: ChannelDefaults
@@ -207,6 +208,7 @@ class SSEChannelGroupImplementation<
   private controlPendingOp: Promise<void> = Promise.resolve()
 
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
+    this.target = options.target
     this.metaSchema = options.metaSchema
     this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
 
@@ -448,6 +450,15 @@ class SSEChannelGroupImplementation<
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     if (target === undefined) return
     validateTargetConfiguration(target)
+    if (this.target !== undefined) {
+      const groupTargets = new Set(Array.isArray(this.target) ? this.target : [this.target])
+      const setupTargets = Array.isArray(target) ? target : [target]
+      for (const t of setupTargets) {
+        if (!groupTargets.has(t as SignalTarget)) {
+          throw new Error(`[target] Target "${t}" is not compatible with channel group targets.`)
+        }
+      }
+    }
   }
 
   private doRegisterPrevalidated(

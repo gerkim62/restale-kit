@@ -37,10 +37,10 @@ describe('JSONValue type safety and guards', () => {
 
 describe('Discriminated Union signals & literal discriminants', () => {
   test('signal target discriminants are exact string literals', () => {
-    expectTypeOf<TanStackQuerySignal['target']>().toEqualTypeOf<'tanstack-query'>()
-    expectTypeOf<SWRSignal['target']>().toEqualTypeOf<'swr'>()
-    expectTypeOf<RTKQuerySignal['target']>().toEqualTypeOf<'rtk-query'>()
-    expectTypeOf<NonNullable<GenericInvalidateSignal['target']>>().toEqualTypeOf<'generic'>()
+    expectTypeOf<TanStackQuerySignal['target']>().toEqualTypeOf<'tanstack-query' | undefined>()
+    expectTypeOf<SWRSignal['target']>().toEqualTypeOf<'swr' | undefined>()
+    expectTypeOf<RTKQuerySignal['target']>().toEqualTypeOf<'rtk-query' | undefined>()
+    expectTypeOf<GenericInvalidateSignal['target']>().toEqualTypeOf<'generic' | undefined>()
   })
 
   test('signal actions are exact string literal unions', () => {
