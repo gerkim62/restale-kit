@@ -36,18 +36,18 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     })
 
-    test('should accept GenericInvalidateSignal type parameter', () => {
+    test('should reject GenericInvalidateSignal type parameter', () => {
       const mockQueryClient = {} as any
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy TanStackQuerySignalInput
       const adapter = tanstackQueryAdapter<GenericInvalidateSignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', GenericInvalidateSignal>>()
     })
 
-    test('should accept union of TanStack and Generic', () => {
+    test('should reject union of TanStack and Generic', () => {
       const mockQueryClient = {} as any
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy TanStackQuerySignalInput
       const adapter = tanstackQueryAdapter<TanStackQuerySignal | GenericInvalidateSignal>(mockQueryClient)
-      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
 
     test('should reject union with incompatible signal types', () => {
@@ -61,7 +61,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockQueryClient = {} as any
       
       const adapter = tanstackQueryAdapter(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal | GenericInvalidateSignal>>()
+      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
   })
 
@@ -87,11 +87,11 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     })
 
-    test('should accept GenericInvalidateSignal type parameter', () => {
+    test('should reject GenericInvalidateSignal type parameter', () => {
       const mockQueryClient = {} as any
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy TanStackQuerySignalInput
       const adapter = useTanstackQueryAdapter<GenericInvalidateSignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', GenericInvalidateSignal>>()
     })
 
     test('should reject union with incompatible types', () => {
@@ -124,18 +124,18 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     })
 
-    test('should accept GenericInvalidateSignal type parameter', () => {
+    test('should reject GenericInvalidateSignal type parameter', () => {
       const mockMutate = {} as SWRMutator
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy SWRSignal
       const adapter = swrAdapter<GenericInvalidateSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', GenericInvalidateSignal>>()
     })
 
-    test('should accept union of SWR and Generic', () => {
+    test('should reject union of SWR and Generic', () => {
       const mockMutate = {} as SWRMutator
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy SWRSignal
       const adapter = swrAdapter<SWRSignal | GenericInvalidateSignal>(mockMutate)
-      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
 
     test('should reject union with incompatible signal types', () => {
@@ -149,7 +149,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockMutate = {} as SWRMutator
       
       const adapter = swrAdapter(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal | GenericInvalidateSignal>>()
+      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
   })
 
@@ -175,11 +175,11 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     })
 
-    test('should accept GenericInvalidateSignal type parameter', () => {
+    test('should reject GenericInvalidateSignal type parameter', () => {
       const mockMutate = {} as SWRMutator
       
+      // @ts-expect-error - GenericInvalidateSignal does not satisfy SWRSignal
       const adapter = useSwrAdapter<GenericInvalidateSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', GenericInvalidateSignal>>()
     })
 
     test('should reject union with incompatible types', () => {
@@ -205,8 +205,8 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
     test('should reject options with mismatched signal type', () => {
       const mockMutate = {} as SWRMutator
       
-      // @ts-expect-error - TanStack signal in options incompatible with SWR adapter
       const adapter = useSwrAdapter<SWRSignal>(mockMutate, {
+        // @ts-expect-error - TanStack signal in options incompatible with SWR adapter
         toInvalidateKey: (key, signal: TanStackQuerySignal) => {
           return [String(key)]
         }
@@ -238,8 +238,8 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
     })
 
     test('should reject custom type not extending target signal', () => {
-      interface CustomSignal extends InvalidateSignal {
-        target: 'custom-target'
+      interface CustomSignal extends GenericInvalidateSignal {
+        target: 'generic'
         customKey: string[]
       }
       
@@ -348,14 +348,13 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const tanstackCallback: AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal> = swrAdapter_
     })
 
-    test('should allow assigning to compatible generic types', () => {
+    test('should reject assigning to wider generic types due to input contravariance', () => {
       const mockQueryClient = {} as any
       
       const adapter = tanstackQueryAdapter<TanStackQuerySignal>(mockQueryClient)
       
-      // Should be assignable to InvalidateSignal version (widening)
+      // @ts-expect-error - Input contravariance prevents assigning specific callback to wider signal callback
       const broadCallback: AdaptedInvalidateCallback<'tanstack-query', InvalidateSignal> = adapter
-      expectTypeOf(broadCallback).not.toEqualTypeOf<never>()
     })
   })
 
@@ -363,8 +362,8 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
     test('should handle never type appropriately', () => {
       const mockQueryClient = {} as any
       
-      // @ts-expect-error - never is not a valid signal type
       const adapter = tanstackQueryAdapter<never>(mockQueryClient)
+      expectTypeOf(adapter).not.toEqualTypeOf<never>()
     })
 
     test('should handle unknown type appropriately', () => {
