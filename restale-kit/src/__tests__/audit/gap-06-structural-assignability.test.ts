@@ -11,11 +11,12 @@
 import { describe, it, expect } from 'vitest';
 import { createSSEChannel, type SSEChannel } from '../../server/core/channel.js';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
-import { createEventStore, type EventStore } from '../../server/core/event-store.js';
+import { createEventStore } from '../../server/core/event-store.js';
 import type { 
   SWRSignal, 
   TanStackQuerySignal, 
-  RTKQuerySignal
+  RTKQuerySignal,
+  EventStore
 } from '../../types/protocol.js';
 import type { PubSubAdapter } from '../../pubsub/core/index.js';
 
