@@ -175,7 +175,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
     it('should reject incomplete batch in broadcast', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >();
+      >({
+        target: ['swr', 'tanstack-query'] as const
+      });
       
       group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
@@ -184,13 +186,15 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       // @ts-expect-error - Incomplete batch
       group.broadcast([
         { target: 'swr', key: ['todos'] }
-      ]);
+      ], () => true);
     });
 
     it('should accept complete batch in broadcast', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >();
+      >({
+        target: ['swr', 'tanstack-query'] as const
+      });
       
       group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
@@ -200,7 +204,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         group.broadcast([
           { target: 'swr', key: ['todos'] },
           { target: 'tanstack-query', queryKey: ['todos'] }
-        ]);
+        ], () => true);
       }).not.toThrow();
     });
   });
@@ -209,7 +213,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
     it('should reject incomplete batch in broadcastToAll', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >();
+      >({
+        target: ['swr', 'tanstack-query'] as const
+      });
       
       group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
@@ -227,7 +233,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
     it('should accept complete batch in broadcastToAll', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >();
+      >({
+        target: ['swr', 'tanstack-query'] as const
+      });
       
       group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
