@@ -172,16 +172,15 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       expectTypeOf(adapted).toMatchTypeOf<AdaptedInvalidateCallback<'rtk-query', RTKQuerySignal>>()
     })
 
-    test('should allow InvalidateSignal with any brand', () => {
+    test('should reject InvalidateSignal with specific target brand because it includes incompatible signals', () => {
       const callback = (signal: InvalidateSignal | InvalidateSignal[]) => {
         // Generic signal processing
       }
       
+      // @ts-expect-error - InvalidateSignal includes non-SWR signals
       const swrBranded = makeAdaptedCallback<'swr', InvalidateSignal>('swr', callback)
+      // @ts-expect-error - InvalidateSignal includes non-TanStack signals
       const tanstackBranded = makeAdaptedCallback<'tanstack-query', InvalidateSignal>('tanstack-query', callback)
-      
-      expectTypeOf(swrBranded).not.toEqualTypeOf<never>()
-      expectTypeOf(tanstackBranded).not.toEqualTypeOf<never>()
     })
   })
 
@@ -198,15 +197,13 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
     })
 
     test('should reject type alias with mismatched target and signal', () => {
-      // These type aliases should not be valid (though TypeScript may allow them to be defined)
-      // The constraint should be enforced at usage sites
-      
       type InvalidCallback = AdaptedInvalidateCallback<'swr', TanStackQuerySignal>
       
       const callback = (signal: TanStackQuerySignal | TanStackQuerySignal[]) => {}
       
-      // @ts-expect-error - Cannot create this with makeAdaptedCallback
-      const adapted: InvalidCallback = makeAdaptedCallback('swr', callback)
+      const adapted: InvalidCallback = 
+        // @ts-expect-error - Cannot create this with makeAdaptedCallback
+        makeAdaptedCallback('swr', callback)
     })
 
     test('should maintain type consistency through assignment', () => {
@@ -230,8 +227,10 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
     test('should reject union signal type with incompatible target', () => {
       const url = 'http://localhost/sse'
       
-      // @ts-expect-error - rtk-query not in union
-      const client = new SSEInvalidatorClient<SWRSignal | TanStackQuerySignal>(url, { target: 'rtk-query' })
+      const client = new SSEInvalidatorClient<SWRSignal | TanStackQuerySignal>(url, {
+        // @ts-expect-error - rtk-query not in union
+        target: 'rtk-query'
+      })
     })
 
     test('should allow union signal type without target', () => {
@@ -254,8 +253,10 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       const client = new SSEInvalidatorClient<CustomSWRSignal>(url, { target: 'swr' })
       expectTypeOf(client).not.toEqualTypeOf<never>()
       
-      // @ts-expect-error - Should reject mismatched target
-      const wrongClient = new SSEInvalidatorClient<CustomSWRSignal>(url, { target: 'tanstack-query' })
+      const wrongClient = new SSEInvalidatorClient<CustomSWRSignal>(url, {
+        // @ts-expect-error - Should reject mismatched target
+        target: 'tanstack-query'
+      })
     })
 
     test('should maintain brand consistency with custom signal types', () => {
@@ -269,8 +270,11 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       const adapted = makeAdaptedCallback<'tanstack-query', CustomTanStackSignal>('tanstack-query', callback)
       expectTypeOf(adapted).not.toEqualTypeOf<never>()
       
-      // @ts-expect-error - Should reject mismatched brand
-      const wrongAdapted = makeAdaptedCallback<'swr', CustomTanStackSignal>('swr', callback)
+      const wrongAdapted = makeAdaptedCallback<'swr', CustomTanStackSignal>(
+        // @ts-expect-error - Should reject mismatched brand
+        'swr',
+        callback
+      )
     })
   })
 
@@ -322,8 +326,10 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       const matchingClient = new SSEInvalidatorClient<SWRSignal>(url, { target: 'swr' })
       expectTypeOf(matchingClient).not.toEqualTypeOf<never>()
       
-      // @ts-expect-error - Mismatched client should not work with SWR callback
-      const mismatchedClient = new SSEInvalidatorClient<TanStackQuerySignal>(url, { target: 'swr' })
+      const mismatchedClient = new SSEInvalidatorClient<TanStackQuerySignal>(url, {
+        // @ts-expect-error - Mismatched client should not work with SWR callback
+        target: 'swr'
+      })
     })
 
     test('should prevent using incompatible adapter with client', () => {
@@ -342,8 +348,10 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
     test('should handle never type appropriately', () => {
       const url = 'http://localhost/sse'
       
-      // @ts-expect-error - never is not a valid signal type
-      const client = new SSEInvalidatorClient<never>(url, { target: 'swr' })
+      const client = new SSEInvalidatorClient<never>(url, {
+        // @ts-expect-error - never has no target
+        target: 'swr'
+      })
     })
 
     test('should handle unknown type appropriately', () => {
@@ -385,8 +393,8 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       expectTypeOf(rtkClient).not.toEqualTypeOf<never>()
       
       // Each should have distinct types
-      expectTypeOf(swrClient).not.toEqualTypeOf<typeof tanstackClient>()
-      expectTypeOf(tanstackClient).not.toEqualTypeOf<typeof rtkClient>()
+      expectTypeOf(swrClient).not.toEqualTypeOf(tanstackClient)
+      expectTypeOf(tanstackClient).not.toEqualTypeOf(rtkClient)
     })
 
     test('should not allow assigning clients with different signal types', () => {

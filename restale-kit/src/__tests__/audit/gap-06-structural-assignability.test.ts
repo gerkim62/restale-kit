@@ -16,7 +16,8 @@ import type {
   SWRSignal, 
   TanStackQuerySignal, 
   RTKQuerySignal,
-  EventStore
+  EventStore,
+  InvalidateSignal
 } from '../../types/protocol.js';
 import type { PubSubAdapter } from '../../pubsub/core/index.js';
 
@@ -120,9 +121,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should reject passing incompatible EventStore to channel', () => {
       const tanstackStore = createEventStore<TanStackQuerySignal>({ capacity: 10 });
 
-      // @ts-expect-error - Store type must match channel type
       const swrChannel = createSSEChannel({
         target: 'swr',
+        // @ts-expect-error - Store type must match channel type
         eventStore: tanstackStore
       });
     });
@@ -189,45 +190,40 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should fail at variable assignment, not method invocation', () => {
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
       
-      // Type error should occur at assignment
-      // @ts-expect-error
+      // @ts-expect-error - Cannot assign TanStack channel to SWR variable
       const swrChannel: SSEChannel<SWRSignal> = tanstackChannel;
-      
-      // Not just when calling methods
-      // (If bivariance allows assignment, this would be the first failure point)
     });
 
     it('should fail when storing in typed array', () => {
-      const channels: SSEChannel<SWRSignal>[] = [];
-      
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
       
-      // @ts-expect-error - Cannot add incompatible channel to typed array
-      channels.push(tanstackChannel);
+      // @ts-expect-error - Cannot put TanStack channel in SWR array
+      const swrChannels: SSEChannel<SWRSignal>[] = [tanstackChannel];
     });
 
     it('should fail when storing in typed Map', () => {
-      const channelMap = new Map<string, SSEChannel<SWRSignal>>();
+      const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
+      const map = new Map<string, SSEChannel<SWRSignal>>();
       
-      const rtkChannel = createSSEChannel({ target: 'rtk-query' });
-      
-      // @ts-expect-error - Cannot add incompatible channel to typed Map
-      channelMap.set('test', rtkChannel);
+      // @ts-expect-error - Cannot put TanStack channel in SWR map
+      map.set('ch-1', tanstackChannel);
     });
 
     it('should fail in object literal', () => {
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
       
-      const config: { channel: SSEChannel<SWRSignal> } = {
-        // @ts-expect-error - Object expects SWR channel
-        channel: tanstackChannel
-      };
+      interface Config {
+        channel: SSEChannel<SWRSignal>;
+      }
+      
+      // @ts-expect-error - Cannot assign TanStack channel to SWR property
+      const config: Config = { channel: tanstackChannel };
     });
   });
 
   describe('Generic function parameter contravariance', () => {
     it('should enforce contravariance in channel consumer', () => {
-      type ChannelConsumer<T> = (channel: SSEChannel<T>) => void;
+      type ChannelConsumer<T extends InvalidateSignal> = (channel: SSEChannel<T>) => void;
       
       const swrConsumer: ChannelConsumer<SWRSignal> = (channel) => {
         channel.invalidate({ target: 'swr', key: ['test'] });
@@ -242,7 +238,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     });
 
     it('should enforce contravariance in store consumer', () => {
-      type StoreConsumer<T> = (store: EventStore<T>) => void;
+      type StoreConsumer<T extends InvalidateSignal> = (store: EventStore<T>) => void;
       
       const swrStoreConsumer: StoreConsumer<SWRSignal> = (store) => {
         // Process SWR store

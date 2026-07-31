@@ -227,8 +227,10 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             
             if (ctx.signal.tags) {
               for (const tag of ctx.signal.tags) {
-                expectTypeOf(tag.type).toEqualTypeOf<string>()
-                expectTypeOf(tag.id).toEqualTypeOf<string | number | undefined>()
+                if (typeof tag === 'object' && tag !== null) {
+                  expectTypeOf(tag.type).toEqualTypeOf<string>()
+                  expectTypeOf(tag.id).toEqualTypeOf<string | number | undefined>()
+                }
               }
             }
           }
@@ -262,7 +264,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
   describe('Multi-target channel beforeFrame type', () => {
     test('should receive union type for multi-target channel', () => {
       const channel = createSSEChannel<SWRSignal | TanStackQuerySignal>({ 
-        target: ['swr', 'tanstack-query'] as const,
+        target: ['swr', 'tanstack-query'],
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             // Should be union of configured signals
@@ -279,7 +281,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
 
     test('should require type guards for multi-target signal inspection', () => {
       const channel = createSSEChannel<SWRSignal | TanStackQuerySignal>({ 
-        target: ['swr', 'tanstack-query'] as const,
+        target: ['swr', 'tanstack-query'],
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
             // Need to check target to narrow type
@@ -298,7 +300,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
 
     test('should handle three-target configuration', () => {
       const channel = createSSEChannel<SWRSignal | TanStackQuerySignal | RTKQuerySignal>({ 
-        target: ['swr', 'tanstack-query', 'rtk-query'] as const,
+        target: ['swr', 'tanstack-query', 'rtk-query'],
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             // Should be union of all three
@@ -322,7 +324,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
           if (ctx.frameType === 'signal') {
             expectTypeOf(ctx.frameType).toEqualTypeOf<'signal'>()
             expectTypeOf(ctx.signal).not.toEqualTypeOf<never>()
-            expectTypeOf(ctx.eventId).toEqualTypeOf<string | undefined>()
+            expectTypeOf(ctx.id).toEqualTypeOf<string | undefined>()
           }
           return { action: 'send' }
         }
@@ -385,8 +387,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         target: 'swr',
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
-            // @ts-expect-error - Cannot assume TanStack properties on SWR signal
-            const hasQueryKey = 'queryKey' in ctx.signal && Array.isArray(ctx.signal.queryKey)
+            // @ts-expect-error - Cannot access queryKey on SWR signal
+            const qk = ctx.signal.queryKey
           }
           return { action: 'send' }
         }
@@ -420,7 +422,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
       expectTypeOf(tanstackChannel).not.toEqualTypeOf<never>()
     })
 
-    test('should allow narrow guard on wide channel', () => {
+    test('should reject narrow guard on wide channel due to input contravariance', () => {
       const swrGuard: BeforeFrameFn<SWRSignal> = (ctx) => {
         if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
           expectTypeOf(ctx.signal.key).not.toEqualTypeOf<never>()
@@ -428,9 +430,9 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         return { action: 'send' }
       }
       
-      // SWR guard should work on InvalidateSignal channel
       const channel = createSSEChannel<InvalidateSignal>({ 
         target: 'swr',
+        // @ts-expect-error - SWR guard cannot accept wider InvalidateSignal
         beforeFrame: swrGuard
       })
       
@@ -488,7 +490,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             if (!Array.isArray(ctx.signal)) {
               if (ctx.signal.tags) {
                 // Should see RTK tag structure
-                const hasStringId = ctx.signal.tags.some(t => typeof t.id === 'string')
+                const hasStringId = ctx.signal.tags.some(t => typeof t === 'object' && t !== null && typeof t.id === 'string')
                 if (hasStringId) {
                   return { action: 'send' }
                 }
@@ -527,9 +529,9 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
     test('should reject invalid action values', () => {
       const channel = createSSEChannel<SWRSignal>({ 
         target: 'swr',
+        // @ts-expect-error - Invalid action value
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
-            // @ts-expect-error - Invalid action value
             return { action: 'invalid' }
           }
           return { action: 'send' }

@@ -291,7 +291,7 @@ describe('Gap 5: Transport setup target override', () => {
     it('should handle union signal types in group', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >();
+      >({ target: ['swr', 'tanstack-query'] });
       
       const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
       
@@ -410,7 +410,7 @@ describe('Gap 5: Transport setup target override', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal | RTKQuerySignal
       >({
-        target: ['swr', 'tanstack-query', 'rtk-query'] as const
+        target: ['swr', 'tanstack-query', 'rtk-query']
       });
       
       const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
@@ -433,7 +433,7 @@ describe('Gap 5: Transport setup target override', () => {
       const group = new SSEChannelGroup<SWRSignal>({ 
         target: 'swr',
         channelDefaults: {
-          capacity: 50
+          eventBufferCapacity: 50
         }
       });
       

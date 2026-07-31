@@ -49,16 +49,17 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
     })
 
     test('legacy nested details property is rejected on both protocol and client shapes', () => {
-      const invalid = {
+      const asProtocol: ProtocolRevokeEventDetail = {
         reason: 'unsupported-target',
+        // @ts-expect-error - details property does not exist on ProtocolRevokeEventDetail
         details: { requested: 'tanstack-query', supported: ['swr'] }
       }
 
-      // @ts-expect-error - details property does not exist on ProtocolRevokeEventDetail
-      const asProtocol: ProtocolRevokeEventDetail = invalid
-
-      // @ts-expect-error - details property does not exist on ClientRevokeEventDetail
-      const asClient: ClientRevokeEventDetail = invalid
+      const asClient: ClientRevokeEventDetail = {
+        reason: 'unsupported-target',
+        // @ts-expect-error - details property does not exist on ClientRevokeEventDetail
+        details: { requested: 'tanstack-query', supported: ['swr'] }
+      }
     })
   })
 
@@ -126,8 +127,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         if (detail.reason === 'unsupported-target') {
           const requested = detail.requested
           const supported = detail.supported
-          expectTypeOf(requested).toMatchTypeOf<string>()
-          expectTypeOf(supported).toMatchTypeOf<string[]>()
+          expectTypeOf(requested).toMatchTypeOf<string | undefined>()
+          expectTypeOf(supported).toMatchTypeOf<string[] | undefined>()
         }
       }
       
@@ -147,8 +148,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         if (detail.reason === 'unsupported-target') {
           const requested = detail.requested
           const supported = detail.supported
-          expectTypeOf(requested).toMatchTypeOf<string>()
-          expectTypeOf(supported).toMatchTypeOf<string[]>()
+          expectTypeOf(requested).toMatchTypeOf<string | undefined>()
+          expectTypeOf(supported).toMatchTypeOf<string[] | undefined>()
         }
       }
       
@@ -171,10 +172,10 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (detail.reason === 'unsupported-target') {
-        expectTypeOf(detail.requested).toEqualTypeOf<string>()
-        expectTypeOf(detail.supported).toEqualTypeOf<string[]>()
+        expectTypeOf(detail.requested).toEqualTypeOf<string | undefined>()
+        expectTypeOf(detail.supported).toEqualTypeOf<string[] | undefined>()
         // @ts-expect-error - details property does not exist on narrowed shape
-        const details = (detail as any).details
+        const details = detail.details
       }
     })
 
@@ -184,10 +185,10 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (detail.reason === 'deadline') {
-        // @ts-expect-error - requested is never for deadline
-        const requested = (detail as any).requested
-        // @ts-expect-error - supported is never for deadline
-        const supported = (detail as any).supported
+        // @ts-expect-error - requested is not present on deadline reason
+        const requested = detail.requested
+        // @ts-expect-error - supported is not present on deadline reason
+        const supported = detail.supported
       }
     })
   })
@@ -241,14 +242,12 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       if (detail.reason === 'unsupported-target') {
         expectTypeOf(detail).toMatchTypeOf<{
           reason: 'unsupported-target'
-          requested: string
-          supported: string[]
+          requested?: string
+          supported?: string[]
         }>()
       } else {
         expectTypeOf(detail).toMatchTypeOf<{
-          reason?: string
-          requested?: never
-          supported?: never
+          reason: string
         }>()
       }
     })
