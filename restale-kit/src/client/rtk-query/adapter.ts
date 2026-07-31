@@ -23,7 +23,7 @@ export function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySi
       for (const s of list) {
         if (!isObject(s)) continue
         const target = s.target
-        if (target !== undefined && target !== SIGNAL_TARGETS.RTK && target !== SIGNAL_TARGETS.GENERIC) {
+        if (target !== undefined && target !== SIGNAL_TARGETS.RTK) {
           continue
         }
         if ('tags' in s && Array.isArray(s.tags)) {

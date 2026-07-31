@@ -29,7 +29,7 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
       for (const s of list) {
         if (!isObject(s)) continue
         const target = s.target
-        if (target !== undefined && target !== SIGNAL_TARGETS.TANSTACK && target !== SIGNAL_TARGETS.GENERIC) {
+        if (target !== undefined && target !== SIGNAL_TARGETS.TANSTACK) {
           continue
         }
 

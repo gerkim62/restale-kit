@@ -58,7 +58,7 @@ export function swrAdapter<TSignal extends SWRSignalInput = SWRSignalInput>(
       for (const item of list) {
         if (!isObject(item)) continue
         const target = item.target
-        if (target !== undefined && target !== SIGNAL_TARGETS.SWR && target !== SIGNAL_TARGETS.GENERIC) {
+        if (target !== undefined && target !== SIGNAL_TARGETS.SWR) {
           continue
         }
 
