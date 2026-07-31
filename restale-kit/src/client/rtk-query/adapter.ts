@@ -1,0 +1,44 @@
+import { useCallback } from 'react'
+import type { RTKQuerySignal, GenericInvalidateSignal } from '@/types/protocol.js'
+import { isObject } from '@/pubsub/core/pubsub-utils.js'
+import { SIGNAL_TARGETS } from '@/utils/constants.js'
+import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
+
+export type RTKQuerySignalInput = RTKQuerySignal | GenericInvalidateSignal
+
+export interface RTKQueryApiLike {
+  util: {
+    invalidateTags: (tags: RTKQuerySignal['tags']) => void
+  }
+}
+
+export function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(
+  api: RTKQueryApiLike
+): AdaptedInvalidateCallback<'rtk-query', TSignal> {
+  return makeAdaptedCallback(
+    SIGNAL_TARGETS.RTK,
+    (signal: TSignal | TSignal[]) => {
+      const list = Array.isArray(signal) ? signal : [signal]
+      for (const s of list) {
+        if (!isObject(s)) continue
+        const target = s.target
+        if (target !== undefined && target !== SIGNAL_TARGETS.RTK && target !== SIGNAL_TARGETS.GENERIC) {
+          continue
+        }
+        if ('tags' in s && Array.isArray(s.tags)) {
+          api.util.invalidateTags(s.tags)
+        }
+      }
+    }
+  )
+}
+
+export function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(
+  api: RTKQueryApiLike
+): AdaptedInvalidateCallback<'rtk-query', TSignal> {
+  return makeAdaptedCallback(
+    SIGNAL_TARGETS.RTK,
+    useCallback(rtkQueryAdapter<TSignal>(api), [api])
+  )
+}

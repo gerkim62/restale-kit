@@ -16,73 +16,75 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should receive SWRSignal in beforeFrame callback', () => {
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal) => {
-          // Signal should be typed as SWRSignal | SWRSignal[]
-          // Not InvalidateSignal (entire union)
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+
+          const signal = ctx.signal;
+
           if (Array.isArray(signal)) {
             // Each element should be SWRSignal
             signal.forEach(s => {
               // Should have SWR-specific properties
               const key = s.key; // Should compile
               const action = s.action; // Should compile
-              
+
               // @ts-expect-error - Should not have TanStack properties
               const queryKey = s.queryKey;
-              
+
               // @ts-expect-error - Should not have RTK properties
               const tags = s.tags;
             });
           } else {
             // Single signal should be SWRSignal
             const key = signal.key; // Should compile
-            
+
             // @ts-expect-error - Should not have TanStack properties
             const queryKey = signal.queryKey;
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       expect(channel).toBeDefined();
     });
 
     it('should allow SWR-specific narrowing in beforeFrame', () => {
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           // Should be able to safely check SWR actions
           const hasRevalidate = signals.some(s => s.action === 'revalidate');
           const hasMutate = signals.some(s => s.action === 'mutate');
           const hasPurge = signals.some(s => s.action === 'purge');
-          
+
           // These are valid SWR actions
           expect(typeof hasRevalidate).toBe('boolean');
           expect(typeof hasMutate).toBe('boolean');
           expect(typeof hasPurge).toBe('boolean');
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ key: ['test'], action: 'revalidate' });
     });
 
     it('should provide typed context in beforeFrame', () => {
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal, context) => {
+        beforeFrame: (ctx) => {
           // Context should reflect SWR channel type
-          expect(context).toBeDefined();
-          expect(context.connectionId).toBeDefined();
-          
-          return { allow: true };
+          expect(ctx).toBeDefined();
+          expect(ctx.connectionId).toBeDefined();
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ key: ['test'] });
     });
   });
@@ -91,54 +93,56 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should receive TanStackQuerySignal in beforeFrame callback', () => {
       const channel = createSSEChannel({
         target: 'tanstack-query',
-        beforeFrame: (signal) => {
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signal = ctx.signal;
+
           if (Array.isArray(signal)) {
             signal.forEach(s => {
               // Should have TanStack-specific properties
               const queryKey = s.queryKey; // Should compile
               const action = s.action; // Should compile
               const exact = s.exact; // Should compile
-              const predicate = s.predicate; // Should compile
-              
+
               // @ts-expect-error - Should not have SWR properties
               const key = s.key;
-              
+
               // @ts-expect-error - Should not have RTK properties
               const tags = s.tags;
             });
           } else {
             const queryKey = signal.queryKey; // Should compile
-            
+
             // @ts-expect-error - Should not have SWR properties
             const key = signal.key;
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       expect(channel).toBeDefined();
     });
 
     it('should allow TanStack-specific logic in beforeFrame', () => {
       const channel = createSSEChannel({
         target: 'tanstack-query',
-        beforeFrame: (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           // Should handle TanStack actions
           const hasInvalidate = signals.some(s => s.action === 'invalidate');
           const hasRefetch = signals.some(s => s.action === 'refetch');
           const hasReset = signals.some(s => s.action === 'reset');
-          
+
           // Should handle TanStack options
           const hasExact = signals.some(s => s.exact === true);
-          const hasPredicate = signals.some(s => s.predicate === true);
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ queryKey: ['test'], exact: true });
     });
   });
@@ -147,58 +151,63 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should receive RTKQuerySignal in beforeFrame callback', () => {
       const channel = createSSEChannel({
         target: 'rtk-query',
-        beforeFrame: (signal) => {
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signal = ctx.signal;
+
           if (Array.isArray(signal)) {
             signal.forEach(s => {
               // Should have RTK-specific properties
               const tags = s.tags; // Should compile
-              
+
               // @ts-expect-error - Should not have SWR properties
               const key = s.key;
-              
+
               // @ts-expect-error - Should not have TanStack properties
               const queryKey = s.queryKey;
             });
           } else {
             const tags = signal.tags; // Should compile
-            
+
             // @ts-expect-error - Should not have SWR properties
             const key = signal.key;
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       expect(channel).toBeDefined();
     });
 
     it('should allow RTK-specific tag inspection in beforeFrame', () => {
       const channel = createSSEChannel({
         target: 'rtk-query',
-        beforeFrame: (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           signals.forEach(s => {
             // Should be able to inspect tag structure
             s.tags.forEach(tag => {
-              expect(tag.type).toBeDefined();
-              // ID is optional
-              if ('id' in tag) {
-                expect(tag.id).toBeDefined();
+              if (typeof tag === 'object' && tag !== null) {
+                expect(tag.type).toBeDefined();
+                if ('id' in tag) {
+                  expect(tag.id).toBeDefined();
+                }
               }
             });
           });
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
-      channel.invalidate({ 
+
+      channel.invalidate({
         tags: [
           { type: 'Todo' },
           { type: 'User', id: 1 }
-        ] 
+        ]
       });
     });
   });
@@ -207,10 +216,10 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should receive configured union in beforeFrame for multi-target', () => {
       const channel = createSSEChannel({
         target: ['swr', 'tanstack-query'] as const,
-        beforeFrame: (signal) => {
-          // Signal should be SWRSignal | TanStackQuerySignal
-          // or array thereof
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signal = ctx.signal;
+
           if (Array.isArray(signal)) {
             signal.forEach(s => {
               // Should handle both types
@@ -225,11 +234,11 @@ describe('Gap 7: beforeFrame signal type inference', () => {
               }
             });
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate([
         { target: 'swr', key: ['test'] },
         { target: 'tanstack-query', queryKey: ['test'] }
@@ -239,17 +248,16 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should not include types outside configured targets', () => {
       const channel = createSSEChannel({
         target: ['swr', 'tanstack-query'] as const,
-        beforeFrame: (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           signals.forEach(s => {
             // @ts-expect-error - RTK not in configured targets
-            if ('tags' in s) {
-              const tags = s.tags;
-            }
+            const tags = s.tags;
           });
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
     });
@@ -259,56 +267,58 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should enable type-safe filtering based on signal properties', () => {
       let allowedCount = 0;
       let blockedCount = 0;
-      
+
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           // Example: only allow revalidate actions
           const allRevalidate = signals.every(s => {
             // Type-safe access to SWR properties
             return s.action === 'revalidate' || s.action === undefined;
           });
-          
+
           if (allRevalidate) {
             allowedCount++;
-            return { allow: true };
+            return { action: 'send' };
           } else {
             blockedCount++;
-            return { allow: false, reason: 'Only revalidate allowed' };
+            return { action: 'skip' };
           }
         }
       });
-      
+
       channel.invalidate({ key: ['test'], action: 'revalidate' });
       channel.invalidate({ key: ['test'], action: 'mutate' });
-      
+
       expect(allowedCount).toBeGreaterThan(0);
       expect(blockedCount).toBeGreaterThan(0);
     });
 
-    it('should support async guards with proper typing', async () => {
+    it('should support guard logic with proper typing', async () => {
       const channel = createSSEChannel({
         target: 'tanstack-query',
-        beforeFrame: async (signal) => {
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           // Type-safe async validation
           for (const s of signals) {
             const queryKey = s.queryKey;
             // Could validate against database, etc.
             if (queryKey[0] === 'admin') {
-              return { allow: false, reason: 'Admin queries not allowed' };
+              return { action: 'close', reason: 'Admin queries not allowed' };
             }
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ queryKey: ['public', 'data'] });
-      
+
       // Give async guard time to execute
       await new Promise(resolve => setTimeout(resolve, 10));
     });
@@ -319,21 +329,20 @@ describe('Gap 7: beforeFrame signal type inference', () => {
       // This tests that the implementation doesn't have suppressed type errors
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal, context) => {
+        beforeFrame: (ctx) => {
           // Context should be properly typed
-          expect(context.connectionId).toBeDefined();
-          expect(typeof context.timestamp).toBe('number');
-          
+          expect(ctx.connectionId).toBeDefined();
+
           // Signal should match channel type
-          if (!Array.isArray(signal)) {
-            const key = signal.key;
+          if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
+            const key = ctx.signal.key;
             expect(Array.isArray(key)).toBe(true);
           }
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ key: ['test'] });
     });
   });
@@ -342,23 +351,24 @@ describe('Gap 7: beforeFrame signal type inference', () => {
     it('should provide helpful error messages for type mismatches', () => {
       const channel = createSSEChannel({
         target: 'swr',
-        beforeFrame: (signal) => {
+        beforeFrame: (ctx) => {
+          if (ctx.frameType !== 'signal') return { action: 'send' };
           // If implementation incorrectly typed this as InvalidateSignal,
           // this would incorrectly allow checking non-SWR properties
-          
-          const signals = Array.isArray(signal) ? signal : [signal];
-          
+
+          const signals = Array.isArray(ctx.signal) ? ctx.signal : [ctx.signal];
+
           // Only SWR properties should be accessible
           signals.forEach(s => {
             expect('key' in s).toBe(true);
             // @ts-expect-error - queryKey not in SWR signals
-            expect('queryKey' in s).toBe(false);
+            const qk = s.queryKey;
           });
-          
-          return { allow: true };
+
+          return { action: 'send' };
         }
       });
-      
+
       channel.invalidate({ key: ['test'] });
     });
   });

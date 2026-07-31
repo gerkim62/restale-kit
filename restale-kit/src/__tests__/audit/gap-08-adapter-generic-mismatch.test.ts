@@ -11,30 +11,35 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { tanstackQueryAdapter } from '../../client/tanstack-query/adapter.js';
-import { swrAdapter } from '../../client/swr/adapter.js';
+import { swrAdapter, type SWRMutator } from '../../client/swr/adapter.js';
 import { rtkQueryAdapter } from '../../client/rtk-query/adapter.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
-import { QueryClient } from '@tanstack/query-core';
+
+function createMockMutate(): SWRMutator {
+  const fn = (matcher: (key?: unknown) => boolean) => Promise.resolve([]);
+  return fn as SWRMutator;
+}
 
 describe('Gap 8: Adapter generic parameters tied to target', () => {
   describe('tanstackQueryAdapter type safety', () => {
     it('should reject SWRSignal type argument', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       // @ts-expect-error - SWR signals not compatible with TanStack adapter
       const adapter = tanstackQueryAdapter<SWRSignal>(queryClient);
     });
 
     it('should reject RTKQuerySignal type argument', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       // @ts-expect-error - RTK signals not compatible with TanStack adapter
       const adapter = tanstackQueryAdapter<RTKQuerySignal>(queryClient);
     });
 
     it('should accept TanStackQuerySignal type argument', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       // Should compile
       const adapter = tanstackQueryAdapter<TanStackQuerySignal>(queryClient);
@@ -44,7 +49,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
     });
 
     it('should accept custom signal extending TanStackQuerySignal', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       // Custom signal that extends TanStack signal
       interface CustomTanStackSignal extends TanStackQuerySignal {
@@ -58,7 +63,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
     });
 
     it('should reject custom signal not extending TanStackQuerySignal', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       interface CustomSignal {
         target: 'custom';
@@ -72,44 +77,44 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('swrAdapter type safety', () => {
     it('should reject TanStackQuerySignal type argument', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       // @ts-expect-error - TanStack signals not compatible with SWR adapter
       const adapter = swrAdapter<TanStackQuerySignal>(mutate);
     });
 
     it('should reject RTKQuerySignal type argument', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       // @ts-expect-error - RTK signals not compatible with SWR adapter
       const adapter = swrAdapter<RTKQuerySignal>(mutate);
     });
 
     it('should accept SWRSignal type argument', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       // Should compile
       const adapter = swrAdapter<SWRSignal>(mutate);
-      
+
       expect(adapter).toBeDefined();
       expect(adapter.target).toBe('swr');
     });
 
     it('should accept custom signal extending SWRSignal', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       interface CustomSWRSignal extends SWRSignal {
         metadata?: Record<string, unknown>;
       }
-      
+
       // Should compile - custom type extends SWR
       const adapter = swrAdapter<CustomSWRSignal>(mutate);
-      
+
       expect(adapter).toBeDefined();
     });
 
     it('should reject custom signal not extending SWRSignal', () => {
-      const mutate = () => {};
+      const mutate = (() => Promise.resolve([])) as any;
       
       interface UnrelatedSignal {
         target: 'other';
@@ -178,28 +183,23 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Adapter callback branding', () => {
     it('should brand TanStack callback with correct signal type', () => {
-      const queryClient = new QueryClient();
-      const adapter = tanstackQueryAdapter(queryClient);
-      
-      // Callback should be branded for TanStack signals
-      const callback = adapter.callback;
-      
+      const queryClient = {} as any;
+      const callback = tanstackQueryAdapter(queryClient);
+
       // Should handle TanStack signal
       callback({ target: 'tanstack-query', queryKey: ['test'] });
-      
+
       // @ts-expect-error - Callback branded for TanStack, not SWR
       callback({ target: 'swr', key: ['test'] });
     });
 
     it('should brand SWR callback with correct signal type', () => {
-      const mutate = () => {};
-      const adapter = swrAdapter(mutate);
-      
-      const callback = adapter.callback;
-      
+      const mutate = (() => Promise.resolve([])) as any;
+      const callback = swrAdapter(mutate);
+
       // Should handle SWR signal
       callback({ target: 'swr', key: ['test'] });
-      
+
       // @ts-expect-error - Callback branded for SWR, not TanStack
       callback({ target: 'tanstack-query', queryKey: ['test'] });
     });
@@ -210,13 +210,11 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
           invalidateTags: () => {}
         }
       };
-      const adapter = rtkQueryAdapter(mockApi as any);
-      
-      const callback = adapter.callback;
-      
+      const callback = rtkQueryAdapter(mockApi as any);
+
       // Should handle RTK signal
       callback({ target: 'rtk-query', tags: [{ type: 'Test' }] });
-      
+
       // @ts-expect-error - Callback branded for RTK, not SWR
       callback({ target: 'swr', key: ['test'] });
     });
@@ -224,20 +222,18 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Generic type parameter constraints', () => {
     it('should enforce extends constraint on TanStack adapter', () => {
-      const queryClient = new QueryClient();
-      
-      // TSignal must extend TanStackQuerySignal
-      // @ts-expect-error - Plain object doesn't extend TanStackQuerySignal
+      const queryClient = {} as any;
+
       type BadType = { foo: string };
+      // @ts-expect-error - Plain object doesn't extend TanStackQuerySignal
       const adapter = tanstackQueryAdapter<BadType>(queryClient);
     });
 
     it('should enforce extends constraint on SWR adapter', () => {
       const mutate = () => {};
-      
-      // TSignal must extend SWRSignal
-      // @ts-expect-error - Plain object doesn't extend SWRSignal
+
       type BadType = { bar: number };
+      // @ts-expect-error - Plain object doesn't extend SWRSignal
       const adapter = swrAdapter<BadType>(mutate);
     });
 
@@ -247,40 +243,39 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
           invalidateTags: () => {}
         }
       };
-      
-      // TSignal must extend RTKQuerySignal
-      // @ts-expect-error - Plain object doesn't extend RTKQuerySignal
+
       type BadType = { baz: boolean };
+      // @ts-expect-error - Plain object doesn't extend RTKQuerySignal
       const adapter = rtkQueryAdapter<BadType>(mockApi as any);
     });
   });
 
   describe('Runtime behavior matches type constraints', () => {
     it('should process TanStack signals correctly', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       const adapter = tanstackQueryAdapter(queryClient);
-      
+
       const signal: TanStackQuerySignal = {
         target: 'tanstack-query',
         queryKey: ['users', 'list']
       };
-      
+
       expect(() => {
-        adapter.callback(signal);
+        adapter(signal);
       }).not.toThrow();
     });
 
     it('should process SWR signals correctly', () => {
       let called = false;
-      const mutate = () => { called = true; };
+      const mutate = ((filter: any) => { called = true; return Promise.resolve([]); }) as any;
       const adapter = swrAdapter(mutate);
-      
+
       const signal: SWRSignal = {
         target: 'swr',
         key: ['/api/users']
       };
-      
-      adapter.callback(signal);
+
+      adapter(signal);
       expect(called).toBe(true);
     });
 
@@ -293,64 +288,64 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
           }
         }
       };
-      
+
       const adapter = rtkQueryAdapter(mockApi as any);
-      
+
       const signal: RTKQuerySignal = {
         target: 'rtk-query',
         tags: [{ type: 'User', id: 1 }]
       };
-      
-      adapter.callback(signal);
+
+      adapter(signal);
       expect(calledTags).toHaveLength(1);
     });
   });
 
   describe('Custom signal extensions', () => {
     it('should allow extending TanStack signal with additional properties', () => {
-      const queryClient = new QueryClient();
-      
+      const queryClient = {} as any;
+
       interface ExtendedTanStackSignal extends TanStackQuerySignal {
         priority?: 'high' | 'low';
         source?: string;
       }
-      
+
       const adapter = tanstackQueryAdapter<ExtendedTanStackSignal>(queryClient);
-      
+
       const signal: ExtendedTanStackSignal = {
         target: 'tanstack-query',
         queryKey: ['users'],
         priority: 'high',
         source: 'webhook'
       };
-      
+
       expect(() => {
-        adapter.callback(signal);
+        adapter(signal);
       }).not.toThrow();
     });
 
     it('should allow extending SWR signal with metadata', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       interface ExtendedSWRSignal extends SWRSignal {
         timestamp?: number;
         reason?: string;
       }
-      
+
       const adapter = swrAdapter<ExtendedSWRSignal>(mutate);
-      
+
       const signal: ExtendedSWRSignal = {
         target: 'swr',
         key: ['/api/posts'],
         timestamp: Date.now(),
         reason: 'user action'
       };
-      
-      adapter.callback(signal);
+
+      adapter(signal);
     });
 
     it('should require extended signal to maintain base properties', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       interface BrokenExtension {
         // Missing required TanStack properties
@@ -364,7 +359,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
   describe('Cross-adapter type isolation', () => {
     it('should not allow using TanStack adapter with SWR signal type', () => {
-      const queryClient = new QueryClient();
+      const queryClient = {} as any;
       
       // This should fail at type level
       // @ts-expect-error
@@ -372,16 +367,16 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
     });
 
     it('should not allow using SWR adapter with TanStack signal type', () => {
-      const mutate = () => {};
-      
+      const mutate = (() => Promise.resolve([])) as any;
+
       // @ts-expect-error
       const badAdapter = swrAdapter<TanStackQuerySignal>(mutate);
     });
 
     it('should maintain type safety in adapter composition', () => {
-      const queryClient = new QueryClient();
-      const mutate = () => {};
-      
+      const queryClient = {} as any;
+      const mutate = (() => Promise.resolve([])) as any;
+
       const tanstackAdapter = tanstackQueryAdapter(queryClient);
       const swrAdapterInstance = swrAdapter(mutate);
       

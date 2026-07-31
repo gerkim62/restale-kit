@@ -1,4 +1,4 @@
-import type { InvalidateSignal, SignalTarget, TargetForSignal } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 
 /**
  * A phantom brand that marks an `onInvalidate` callback as having been produced
@@ -11,9 +11,10 @@ import type { InvalidateSignal, SignalTarget, TargetForSignal } from '@/types/pr
  * You never construct this directly — adapter hooks return it for you.
  */
 export type AdaptedInvalidateCallback<
-  TTarget extends SignalTarget,
+  TTarget extends SignalTarget = SignalTarget,
   TSignal extends InvalidateSignal = InvalidateSignal,
 > = ((signal: TSignal | TSignal[]) => void) & {
+  readonly target: TTarget
   readonly __restaleTarget: TTarget
 }
 
@@ -25,13 +26,44 @@ export type AdaptedInvalidateCallback<
  * which TypeScript verifies structurally — no cast required.
  */
 export function makeAdaptedCallback<
-  TTarget extends SignalTarget,
   TSignal extends InvalidateSignal = InvalidateSignal,
 >(
+  fn: (signal: TSignal) => void,
+  target?: TargetForSignal<TSignal>
+): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
+export function makeAdaptedCallback<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+>(
+  fn: (signals: TSignal[]) => void,
+  target?: TargetForSignal<TSignal>
+): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
+export function makeAdaptedCallback<
+  TTarget extends SignalTarget = SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+>(
   target: TTarget,
-  fn: (signal: TSignal | TSignal[]) => void
-): AdaptedInvalidateCallback<TTarget, TSignal> {
-  return Object.assign(fn, { __restaleTarget: target } as const)
+  fn: (signal: TSignal) => void
+): AdaptedInvalidateCallback<TTarget, TSignal>
+export function makeAdaptedCallback<
+  TTarget extends SignalTarget = SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+>(
+  target: TTarget,
+  fn: (signals: TSignal[]) => void
+): AdaptedInvalidateCallback<TTarget, TSignal>
+export function makeAdaptedCallback(
+  arg1: unknown,
+  arg2?: unknown
+): unknown {
+  if (typeof arg1 === 'function') {
+    const target = typeof arg2 === 'string' ? arg2 : 'generic'
+    return Object.assign(arg1, { target, __restaleTarget: target })
+  }
+  if (typeof arg2 === 'function') {
+    const target = typeof arg1 === 'string' ? arg1 : 'generic'
+    return Object.assign(arg2, { target, __restaleTarget: target })
+  }
+  return arg1
 }
 
 /**
@@ -111,23 +143,17 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
   /**
-   * Include credentials when opening the EventSource connection. Default: false.
-   *
-   * **Note:** Like `autoReconnect`, `reconnect`, and `debug`, this option is applied
-   * only when the client is initially created. In the React hook, changing this value on a
-   * later render will not take effect until the `url` also changes (which recreates the client).
+   * Pass credentials (cookies, authorization headers) with cross-origin SSE requests.
+   * Default: `false`.
    */
   withCredentials?: boolean
-  /**
-   * Enable debug logging for connection lifecycle events. Default: false.
-   *
-   * **Note:** Like `autoReconnect`, `reconnect`, and `withCredentials`, this option is applied
-   * only when the client is initially created. In the React hook, changing this value on a
-   * later render will not take effect until the `url` also changes (which recreates the client).
-   */
+  /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
-  /** Optional target discriminator expected by the client. Gap 9: Must match TargetForSignal<TSignal>. */
-  target?: TargetForSignal<TSignal>
+  target?: SignalTarget
+  callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
+  onConnect?: (event: Event) => void
+  onDisconnect?: (event: Event) => void
+  onError?: (error: unknown) => void
 }
 
 /**
@@ -153,18 +179,7 @@ export type RevokeEventDetail =
       supported: string[]
     }
   | {
-      /**
-       * Any application-level revocation reason. Known values:
-       * - `'deadline'`: A Frame Guard lifetime deadline fired and the confirmatory
-       *   reconnect cycle exhausted all attempts. The client will not auto-reconnect.
-       * - `'session-expired'`, `'logout'`, `'banned'` (or any custom string): integrator-
-       *   supplied reason from a server-side `channel.revoke(reason)` call.
-       * - `undefined`: the server sent a malformed or reason-less revoke frame.
-       *
-       * Explicitly excludes `'unsupported-target'` — that case always carries
-       * `requested`/`supported` and is narrowed by the first branch.
-       */
-      reason: 'deadline' | (string & {}) | undefined
+      reason?: 'deadline' | 'session-expired' | 'logout' | 'banned' | 'unauthorized' | 'custom' | (string & { readonly 'unsupported-target'?: never })
       requested?: never
       supported?: never
     }

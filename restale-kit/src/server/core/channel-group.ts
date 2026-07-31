@@ -13,8 +13,11 @@ import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } fr
 /**
  * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
  */
-export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'target'> & {
-  target?: SignalTarget | SignalTarget[]
+export type ChannelSetupOptions<TSignal extends InvalidateSignal = InvalidateSignal, TMeta = unknown> = Omit<
+  SSEChannelOptions<TSignal>,
+  'target'
+> & {
+  target?: TargetForSignal<TSignal>
   topics?: string[]
 } & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
 
@@ -165,12 +168,12 @@ export type SignalsForTargets<TTarget> =
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter<TSignal>
+  pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
@@ -189,7 +192,7 @@ export interface SSEChannelGroupOptions<
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > {
   private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
@@ -205,7 +208,7 @@ class SSEChannelGroupImplementation<
 
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.metaSchema = options.metaSchema
-    this.pubsub = hasPubSubMethods(options.pubsub) ? options.pubsub : undefined
+    this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)
@@ -222,7 +225,7 @@ class SSEChannelGroupImplementation<
 
     // Gap 10: Validate controlTopic - reject blank/whitespace strings
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
-    if (typeof rawControlTopic !== 'string' || rawControlTopic.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
+    if (typeof rawControlTopic !== 'string' || removeInvisibleWhitespace(rawControlTopic) === '') {
       throw new Error(
         `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
         `Got: ${JSON.stringify(rawControlTopic)}`
@@ -399,14 +402,12 @@ class SSEChannelGroupImplementation<
    */
   createFetchResponse(
     request: Request,
-    options: ChannelSetupOptions<TMeta>
+    options: ChannelSetupOptions<TSignal, TMeta>
   ): { response: Response; channel: SSEChannel<TSignal> } {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
-    const channelOpts = { ...options }
-    delete channelOpts.meta
-    delete channelOpts.topics
+    const { meta: _meta, topics: _topics, ...channelOpts } = options
     const result = internal_toSSEResponse<TSignal>(request, channelOpts, this)
     this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
@@ -426,14 +427,12 @@ class SSEChannelGroupImplementation<
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TMeta>
+    options: ChannelSetupOptions<TSignal, TMeta>
   ): { channel: SSEChannel<TSignal> } {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
-    const channelOpts = { ...options }
-    delete channelOpts.meta
-    delete channelOpts.topics
+    const { meta: _meta, topics: _topics, ...channelOpts } = options
     const channel = internal_attachSSE<TSignal>(req, res, channelOpts, this)
     this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
@@ -447,15 +446,8 @@ class SSEChannelGroupImplementation<
   }
 
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
-    const configuredTarget = this.channelDefaults?.target
-    // Gap 5: Allow subset target validation - channel target must be subset of group target
-    if (target === undefined || configuredTarget === undefined) return
-    if (!isTargetSubset(target, configuredTarget)) {
-      throw new Error(
-        '[SSEChannelGroup] Channel target must be a valid subset of the group target configuration. ' +
-        `Channel: ${JSON.stringify(target)}, Group: ${JSON.stringify(configuredTarget)}`
-      )
-    }
+    if (target === undefined) return
+    validateTargetConfiguration(target)
   }
 
   private doRegisterPrevalidated(
@@ -806,31 +798,33 @@ class SSEChannelGroupImplementation<
 export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
 
 interface SSEChannelGroupConstructor {
   new <TTarget extends SignalTarget>(
-    options: SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
+    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
   ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
-  new <TTarget extends SignalTarget[] | readonly SignalTarget[]>(
-    options: SSEChannelGroupOptions<SignalInputForTarget<TTarget>, unknown, TTarget> & { target: TTarget }
-  ): SSEChannelGroup<SignalInputForTarget<TTarget>, unknown, TTarget>
+  new <TTarget extends readonly SignalTarget[]>(
+    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>, 'target'>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
     TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
   >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget> & { target?: TTarget }
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
   ): SSEChannelGroup<TSignal, TMeta, TTarget>
 }
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
 
 function hasPubSubMethods<TSignal extends InvalidateSignal>(
-  pubsub: PubSubAdapter<TSignal> | undefined
+  pubsub: unknown
 ): pubsub is PubSubAdapter<TSignal> {
-  return pubsub !== undefined && typeof pubsub.publish === 'function' && typeof pubsub.subscribe === 'function'
+  if (pubsub === null || typeof pubsub !== 'object') return false
+  const obj: Record<string, unknown> = Object(pubsub)
+  return typeof obj['publish'] === 'function' && typeof obj['subscribe'] === 'function'
 }
 
 function validateTopics(topics: string[] | undefined): void {
@@ -840,27 +834,37 @@ function validateTopics(topics: string[] | undefined): void {
 
 function validateTopic(topic: string, label: string): void {
   // Gap 10: Reject zero-width unicode whitespace and blank strings
-  if (typeof topic !== 'string' || topic.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
+  if (typeof topic !== 'string' || removeInvisibleWhitespace(topic) === '') {
     throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
   }
+}
+
+function removeInvisibleWhitespace(value: string): string {
+  return value
+    .replaceAll('\u200B', '')
+    .replaceAll('\u200C', '')
+    .replaceAll('\u200D', '')
+    .replaceAll('\uFEFF', '')
+    .trim()
 }
 
 function isTargetSubset(
   subTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[],
   groupTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[]
 ): boolean {
-  const subList = Array.isArray(subTarget) ? subTarget : [subTarget]
-  const groupList = Array.isArray(groupTarget) ? groupTarget : [groupTarget]
-  return subList.every((target) => groupList.includes(target as SignalTarget))
+  const subList = toTargetList(subTarget)
+  const groupList = toTargetList(groupTarget)
+  return subList.every((target) => groupList.includes(target))
 }
 
-function targetsMatch(first: SignalTarget | SignalTarget[], second: SignalTarget | SignalTarget[]): boolean {
-  const firstTargets = Array.isArray(first) ? first : [first]
-  const secondTargets = Array.isArray(second) ? second : [second]
-  return firstTargets.length === secondTargets.length && firstTargets.every((target) => secondTargets.includes(target))
+function toTargetList(target: SignalTarget | SignalTarget[] | readonly SignalTarget[]): readonly SignalTarget[] {
+  if (typeof target === 'string') {
+    return [target]
+  }
+  return target
 }
 
-function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONValue): boolean {
+function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unknown, criteria: JSONValue): boolean {
   if (!isJSONValue(meta)) return false
 
   // 1. Direct match on metadata

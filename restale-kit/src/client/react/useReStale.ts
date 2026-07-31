@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -35,9 +35,9 @@ import type {
  * ```
  */
 export interface UseReStaleOptions<
-  TTarget extends SignalTarget,
-  TSignal extends InvalidateSignal = InvalidateSignal,
-> extends Omit<ClientOptions, 'target'> {
+  TTarget extends SignalTarget = SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+> extends Omit<ClientOptions<TSignal>, 'target'> {
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
   /**
@@ -48,6 +48,8 @@ export interface UseReStaleOptions<
   /**
    * Explicit target override. Must match the adapter's target — a mismatch is a type error.
    * You usually don't need to pass this; it is inferred from `onInvalidate`.
+   * 
+   * Gap 1.5 fix: Type constrained via function overloads.
    */
   target?: NoInfer<TTarget>
   /**
@@ -96,10 +98,19 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  * Opens on mount unless `disabled`. Closes with reason `'unmount'` on unmount.
  * The SSE `target` is inferred automatically from the branded adapter callback
  * passed as `onInvalidate`.
+ * 
+ * Gap 1.5 fix: Overloads enforce that explicit target must match callback brand.
  */
 export function useReStale<
   TTarget extends SignalTarget,
-  TSignal extends InvalidateSignal = InvalidateSignal,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+>(
+  url: string,
+  opts: UseReStaleOptions<TTarget, TSignal>
+): UseReStaleResult
+export function useReStale<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
 >(
   url: string,
   opts: UseReStaleOptions<TTarget, TSignal>

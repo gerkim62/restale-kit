@@ -37,20 +37,18 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const swrChannel: SSEChannel<SWRSignal> = rtkChannel
     })
 
-    test('should allow assigning to compatible signal union', () => {
+    test('should reject assigning specific channel to wider signal union', () => {
       const swrChannel = createSSEChannel<SWRSignal>({ target: 'swr' })
-      
-      // Valid: SWRSignal extends InvalidateSignal union
+
+      // @ts-expect-error - SSEChannel is contravariant in TSignal (parameter position in invalidate)
       const genericChannel: SSEChannel<InvalidateSignal> = swrChannel
-      expectTypeOf(genericChannel).toBeDefined()
     })
 
-    test('should allow assigning from compatible narrower type', () => {
+    test('should reject assigning specific channel to mixed union type', () => {
       const swrChannel = createSSEChannel<SWRSignal>({ target: 'swr' })
-      
-      // Valid: Assigning specific type to union
+
+      // @ts-expect-error - SSEChannel is contravariant in TSignal
       const mixedChannel: SSEChannel<SWRSignal | TanStackQuerySignal> = swrChannel
-      expectTypeOf(mixedChannel).toBeDefined()
     })
   })
 

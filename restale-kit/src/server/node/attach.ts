@@ -26,7 +26,7 @@ export interface FastifyRequestLike {
 export function internal_attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions,
+  options: SSEChannelOptions<TSignal>,
   group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
@@ -45,19 +45,19 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
-  const baseOptions: SSEChannelOptions = {
+  const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
   }
 
-  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
-  if (channelOptions.target === undefined) {
+  const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)
+  const target = channelOptions.target
+  if (target === undefined) {
     throw new Error('[attachNodeResponse] target option is required.')
   }
-  const directOptions = { ...channelOptions, target: channelOptions.target }
-  const channel = createSSEChannel<TSignal, SignalTarget | SignalTarget[]>(directOptions)
+  const channel = createSSEChannel({ ...channelOptions, target })
 
   const headers = buildSSETargetHeaders(channelOptions)
 

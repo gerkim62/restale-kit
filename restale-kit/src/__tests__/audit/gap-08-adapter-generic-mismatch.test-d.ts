@@ -314,32 +314,18 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
   })
 
   describe('Generic InvalidateSignal handling', () => {
-    test('TanStack adapter should accept InvalidateSignal but maintain type safety', () => {
+    test('TanStack adapter should reject InvalidateSignal because it includes incompatible targets', () => {
       const mockQueryClient = {} as any
-      
-      // When using InvalidateSignal, adapter should still be branded correctly
+
+      // @ts-expect-error - InvalidateSignal includes SWR and RTK which are incompatible
       const adapter = tanstackQueryAdapter<InvalidateSignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', InvalidateSignal>>()
     })
 
-    test('SWR adapter should accept InvalidateSignal but maintain type safety', () => {
+    test('SWR adapter should reject InvalidateSignal because it includes incompatible targets', () => {
       const mockMutate = {} as SWRMutator
-      
-      const adapter = swrAdapter<InvalidateSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', InvalidateSignal>>()
-    })
 
-    test('should allow narrowing from InvalidateSignal to specific type', () => {
-      const mockQueryClient = {} as any
-      
-      // Start with broad type
-      const broadAdapter = tanstackQueryAdapter<InvalidateSignal>(mockQueryClient)
-      
-      // Should be able to use with TanStack signals
-      broadAdapter({ target: 'tanstack-query', queryKey: ['test'] })
-      
-      // But type system won't prevent other signals (this is the current behavior)
-      broadAdapter({ target: 'swr', key: ['test'] } as any)
+      // @ts-expect-error - InvalidateSignal includes TanStack and RTK which are incompatible
+      const adapter = swrAdapter<InvalidateSignal>(mockMutate)
     })
   })
 

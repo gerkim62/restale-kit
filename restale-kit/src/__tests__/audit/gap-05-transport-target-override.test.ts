@@ -235,14 +235,14 @@ describe('Gap 5: Transport setup target override', () => {
       // All these options should work with correct target
       group.createFetchResponse(mockReq, {
         target: 'swr',
-        capacity: 100,
+        eventBufferCapacity: 100,
         keepaliveIntervalMs: 30000
       });
       
       // @ts-expect-error - Wrong target invalidates entire setup
       group.createFetchResponse(mockReq, {
         target: 'rtk-query',
-        capacity: 100
+        eventBufferCapacity: 100
       });
     });
   });

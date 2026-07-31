@@ -15,7 +15,7 @@ import { makeAdaptedCallback } from '../../client/core/client-contracts.js'
 
 export type SWRSignalInput = SWRSignal | GenericInvalidateSignal
 
-export interface SWRAdapterOptions<TSignal extends InvalidateSignal = SWRSignalInput> {
+export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInput> {
   /**
    * Converts a non-canonical SWR key into the hierarchical ReStale key it
    * represents. Omit this when SWR keys are themselves ReStale keys.

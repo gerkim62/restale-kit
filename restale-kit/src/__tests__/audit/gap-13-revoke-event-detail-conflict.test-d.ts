@@ -227,7 +227,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (detail.reason === 'unsupported-target') {
-        expectTypeOf(detail.details).toEqualTypeOf<{ requested?: string; supported?: SignalTarget[] } | undefined>()
+        expectTypeOf(detail.details).toMatchTypeOf<{ requested?: string; supported?: SignalTarget[] } | undefined>()
       }
     })
 

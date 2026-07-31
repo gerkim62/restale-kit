@@ -1,5 +1,5 @@
-import { validateTargetConfiguration, type SSEChannelOptions } from '@/server/core/channel.js'
-import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
+import { validateTargetConfiguration, type SSEChannelOptions, type DirectSSEChannelOptions } from '@/server/core/channel.js'
+import type { InvalidateSignal, LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -8,7 +8,7 @@ import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol
  * (userId, sessionId) and has no meaningful group-wide default (spec §1).
  */
 export interface ChannelDefaults {
-  target?: SignalTarget | SignalTarget[]
+  target?: SignalTarget | SignalTarget[] | readonly SignalTarget[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
 }
@@ -29,20 +29,19 @@ export interface ChannelDefaults {
  * If a channel sets only `{ ttlMs: 60_000 }`, it still inherits the group's `onDeadline`
  * default, because it never touched that field. A whole-object replace would silently drop it.
  */
-export function mergeChannelDefaults(
-  channelOptions: SSEChannelOptions,
+export function mergeChannelDefaults<TSignal extends InvalidateSignal = InvalidateSignal>(
+  channelOptions: SSEChannelOptions<TSignal>,
   defaults: ChannelDefaults | undefined
-): SSEChannelOptions {
+): SSEChannelOptions<TSignal> {
   if (channelOptions.target !== undefined) validateTargetConfiguration(channelOptions.target)
   if (defaults?.target !== undefined) validateTargetConfiguration(defaults.target)
   if (defaults === undefined) return channelOptions
-
   let merged = channelOptions
 
   // ── target ────────────────────────────────────────────────────────────────
   // Only apply default target when channel options does not provide target (or is undefined).
   if (
-    defaults.target !== undefined &&
+    defaults?.target !== undefined &&
     (!Object.hasOwn(channelOptions, 'target') || channelOptions.target === undefined)
   ) {
     merged = { ...merged, target: defaults.target }
@@ -52,7 +51,7 @@ export function mergeChannelDefaults(
   // Only apply the default when the channel options object does NOT contain the key.
   // This correctly handles `guardKeepalive: false` as an explicit channel override.
   if (
-    defaults.guardKeepalive !== undefined &&
+    defaults?.guardKeepalive !== undefined &&
     !Object.hasOwn(channelOptions, 'guardKeepalive')
   ) {
     merged = { ...merged, guardKeepalive: defaults.guardKeepalive }
@@ -60,7 +59,7 @@ export function mergeChannelDefaults(
 
   // ── lifetime ──────────────────────────────────────────────────────────────
   // The time value (ttlMs / deadline) and onDeadline are defaulted independently.
-  if (defaults.lifetime !== undefined) {
+  if (defaults?.lifetime !== undefined) {
     const channelLifetime = channelOptions.lifetime
     const defaultLifetime = defaults.lifetime
 
@@ -74,7 +73,11 @@ export function mergeChannelDefaults(
     }
   }
 
-  return merged
+  if (merged.target === undefined) {
+    throw new Error('[mergeChannelDefaults] target is required.')
+  }
+
+  return { ...merged, target: merged.target }
 }
 
 /**
@@ -83,7 +86,7 @@ export function mergeChannelDefaults(
  * - `onDeadline`: independent — defaults when the channel didn't set it or set it to undefined.
  */
 function mergeLifetimeParts(
-  channel: LifetimeOptions,
+  channel: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline },
   defaults: LifetimeOptions
 ): LifetimeOptions {
   // Determine which time value (if any) the channel explicitly set to a non-undefined value.
@@ -115,7 +118,7 @@ function mergeLifetimeParts(
 }
 
 function resolveTimeValue(
-  lifetime: LifetimeOptions
+  lifetime: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline }
 ): { ttlMs: number; deadline?: never } | { deadline: number; ttlMs?: never } {
   if ('ttlMs' in lifetime && lifetime.ttlMs !== undefined) {
     return { ttlMs: lifetime.ttlMs }

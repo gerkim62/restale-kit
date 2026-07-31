@@ -28,17 +28,17 @@ describe('Gap 9: Client target and payload type alignment', () => {
     it('should reject TanStackQuerySignal generic with swr target', () => {
       const url = 'http://localhost/sse';
       
-      // @ts-expect-error - Signal type must match target
       const client = new SSEInvalidatorClient<TanStackQuerySignal>(url, {
+        // @ts-expect-error - Signal type must match target
         target: 'swr'
       });
     });
 
     it('should reject RTKQuerySignal generic with swr target', () => {
       const url = 'http://localhost/sse';
-      
-      // @ts-expect-error - Signal type must match target
+
       const client = new SSEInvalidatorClient<RTKQuerySignal>(url, {
+        // @ts-expect-error - Signal type must match target
         target: 'swr'
       });
     });
@@ -97,12 +97,14 @@ describe('Gap 9: Client target and payload type alignment', () => {
       const client = new SSEInvalidatorClient<SWRSignal>(url, {
         target: 'swr',
         callback: (signal) => {
-          // Signal should be typed as SWRSignal
-          const key = signal.key;
-          expect(Array.isArray(key)).toBe(true);
-          
-          // @ts-expect-error - Should not have TanStack properties
-          const queryKey = signal.queryKey;
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) {
+            const key = item.key;
+            expect(Array.isArray(key)).toBe(true);
+
+            // @ts-expect-error - Should not have TanStack properties
+            const queryKey = item.queryKey;
+          }
         }
       });
     });
@@ -110,21 +112,23 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
   describe('makeAdaptedCallback brand/signal alignment', () => {
     it('should reject SWR callback branded as TanStack', () => {
-      // @ts-expect-error - Callback signal type must match target brand
       const callback = makeAdaptedCallback<SWRSignal>(
         (signal) => {
-          const key = signal.key;
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) { const key = item.key; }
         },
+        // @ts-expect-error - Callback signal type must match target brand
         'tanstack-query'
       );
     });
 
     it('should reject TanStack callback branded as SWR', () => {
-      // @ts-expect-error - Callback signal type must match target brand
       const callback = makeAdaptedCallback<TanStackQuerySignal>(
         (signal) => {
-          const queryKey = signal.queryKey;
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) { const queryKey = item.queryKey; }
         },
+        // @ts-expect-error - Callback signal type must match target brand
         'swr'
       );
     });
@@ -132,36 +136,36 @@ describe('Gap 9: Client target and payload type alignment', () => {
     it('should accept matching SWR callback and brand', () => {
       const callback = makeAdaptedCallback<SWRSignal>(
         (signal) => {
-          const key = signal.key;
-          expect(Array.isArray(key)).toBe(true);
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) { expect(Array.isArray(item.key)).toBe(true); }
         },
         'swr'
       );
-      
+
       expect(callback.target).toBe('swr');
     });
 
     it('should accept matching TanStack callback and brand', () => {
       const callback = makeAdaptedCallback<TanStackQuerySignal>(
         (signal) => {
-          const queryKey = signal.queryKey;
-          expect(Array.isArray(queryKey)).toBe(true);
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) { expect(Array.isArray(item.queryKey)).toBe(true); }
         },
         'tanstack-query'
       );
-      
+
       expect(callback.target).toBe('tanstack-query');
     });
 
     it('should accept matching RTK callback and brand', () => {
       const callback = makeAdaptedCallback<RTKQuerySignal>(
         (signal) => {
-          const tags = signal.tags;
-          expect(Array.isArray(tags)).toBe(true);
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) { expect(Array.isArray(item.tags)).toBe(true); }
         },
         'rtk-query'
       );
-      
+
       expect(callback.target).toBe('rtk-query');
     });
   });
@@ -169,15 +173,17 @@ describe('Gap 9: Client target and payload type alignment', () => {
   describe('Callback type safety in client options', () => {
     it('should enforce callback parameter type matches client generic', () => {
       const url = 'http://localhost/sse';
-      
+
       const client = new SSEInvalidatorClient<SWRSignal>(url, {
         target: 'swr',
         callback: (signal) => {
-          // Signal parameter should be SWRSignal
-          const key = signal.key;
-          
-          // @ts-expect-error - Not a TanStack signal
-          const queryKey = signal.queryKey;
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) {
+            const key = item.key;
+
+            // @ts-expect-error - Not a TanStack signal
+            const queryKey = item.queryKey;
+          }
         }
       });
     });
@@ -252,22 +258,25 @@ describe('Gap 9: Client target and payload type alignment', () => {
       const client = new SSEInvalidatorClient<CustomSWRSignal>(url, {
         target: 'swr',
         callback: (signal) => {
-          const key = signal.key;
-          const metadata = signal.metadata;
+          const item = Array.isArray(signal) ? signal[0] : signal;
+          if (item) {
+            const key = item.key;
+            const metadata = item.metadata;
+          }
         }
       });
-      
+
       expect(client).toBeDefined();
     });
 
     it('should reject custom signal not extending base type even with matching target name', () => {
       const url = 'http://localhost/sse';
-      
+
       interface UnrelatedSignal {
         target: 'swr'; // target field matches but structure doesn't
         data: unknown;
       }
-      
+
       // @ts-expect-error - Structure doesn't extend SWRSignal
       const client = new SSEInvalidatorClient<UnrelatedSignal>(url, {
         target: 'swr',
@@ -279,18 +288,21 @@ describe('Gap 9: Client target and payload type alignment', () => {
   describe('Union types for multi-target clients', () => {
     it('should support union generic for clients that handle multiple targets', () => {
       const url = 'http://localhost/sse';
-      
+
       type MultiSignal = SWRSignal | TanStackQuerySignal;
-      
+
       const client = new SSEInvalidatorClient<MultiSignal>(url, {
         // For union, target might be omitted or matched against union
         callback: (signal) => {
-          if ('key' in signal) {
-            // SWR signal
-            const key = signal.key;
-          } else if ('queryKey' in signal) {
-            // TanStack signal
-            const queryKey = signal.queryKey;
+          const items = Array.isArray(signal) ? signal : [signal];
+          for (const item of items) {
+            if ('key' in item) {
+              // SWR signal
+              const key = item.key;
+            } else if ('queryKey' in item) {
+              // TanStack signal
+              const queryKey = item.queryKey;
+            }
           }
         }
       });
@@ -298,18 +310,21 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
     it('should narrow union type in callback based on discriminator', () => {
       const url = 'http://localhost/sse';
-      
+
       type MultiSignal = SWRSignal | TanStackQuerySignal | RTKQuerySignal;
-      
+
       const client = new SSEInvalidatorClient<MultiSignal>(url, {
         callback: (signal) => {
-          // Type narrowing should work
-          if (signal.target === 'swr') {
-            const key = signal.key;
-          } else if (signal.target === 'tanstack-query') {
-            const queryKey = signal.queryKey;
-          } else if (signal.target === 'rtk-query') {
-            const tags = signal.tags;
+          const items = Array.isArray(signal) ? signal : [signal];
+          for (const item of items) {
+            // Type narrowing should work
+            if (item.target === 'swr') {
+              const key = item.key;
+            } else if (item.target === 'tanstack-query') {
+              const queryKey = item.queryKey;
+            } else if (item.target === 'rtk-query') {
+              const tags = item.tags;
+            }
           }
         }
       });
@@ -345,9 +360,9 @@ describe('Gap 9: Client target and payload type alignment', () => {
         'swr'
       );
       
-      // @ts-expect-error - Callback target doesn't match client target
       const client = new SSEInvalidatorClient<TanStackQuerySignal>(url, {
         target: 'tanstack-query',
+        // @ts-expect-error - Callback target doesn't match client target
         callback: swrCallback
       });
     });

@@ -183,9 +183,9 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
   })
 
   describe('ChannelSetupOptions type structure', () => {
-    test('ChannelSetupOptions should be parameterized by group signal type', () => {
-      type SwrSetupOptions = ChannelSetupOptions<{ userId: number }>
-      
+    test('ChannelSetupOptions should be parameterized by group signal type and metadata type', () => {
+      type SwrSetupOptions = ChannelSetupOptions<SWRSignal, { userId: number }>
+
       // Valid SWR target
       const validOptions: SwrSetupOptions = {
         target: 'swr',

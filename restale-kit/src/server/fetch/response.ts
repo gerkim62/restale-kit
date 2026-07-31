@@ -14,30 +14,32 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
  */
 export function internal_toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions,
+  options: SSEChannelOptions<TSignal>,
   group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
-  const extractedId = extractConnectionId(urlObj.searchParams)
-  const connectionId = options.connectionId !== undefined ? options.connectionId : extractedId
+  const connectionId =
+    options.connectionId !== undefined
+      ? options.connectionId
+      : extractConnectionId(urlObj.searchParams)
   const requestedTarget = extractRequestedTarget(urlObj.searchParams)
 
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
-  const baseOptions: SSEChannelOptions = {
+  const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
   }
 
-  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
-  if (channelOptions.target === undefined) {
+  const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)
+  const target = channelOptions.target
+  if (target === undefined) {
     throw new Error('[createSSEChannel] target is required.')
   }
-  const directOptions = { ...channelOptions, target: channelOptions.target }
-  const channel = createSSEChannel<TSignal, SignalTarget | SignalTarget[]>(directOptions)
+  const channel = createSSEChannel({ ...channelOptions, target })
 
   const headers = buildSSETargetHeaders(channelOptions)
 

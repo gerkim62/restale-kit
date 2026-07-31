@@ -4,12 +4,13 @@ import {
   type EventStore,
   type SignalTarget,
   type LifetimeOptions,
+  type OnDeadline,
   type BeforeFrameFn,
   type FrameGuardCtx,
   type FrameGuardResult,
   type ReStaleSignalForTarget,
-  type SignalInputForTarget,
   type TargetForSignal,
+  type SignalInputForTarget,
   isJSONValueArray,
   isJSONValue,
 } from '@/types/protocol.js'
@@ -26,6 +27,9 @@ import { PROTOCOL_CONSTANTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 
 /**
  * Configuration options for `createSSEChannel`.
+ * 
+ * When used via a group's channelDefaults, `target` may be omitted.
+ * When calling `createSSEChannel` directly, use `DirectSSEChannelOptions` which requires `target`.
  */
 export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   /** Target discriminator or target array for automatic signal tagging and multi-target fanout. Required unless provided via group channelDefaults. */
@@ -37,7 +41,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
   /** Last event ID received from the client (e.g. from standard Last-Event-ID HTTP header). */
   lastEventId?: string
   /** Shared EventStore for recording history and replaying missed events upon reconnect. */
-  eventStore?: EventStore
+  eventStore?: EventStore<TSignal>
   /** Capacity of automatically instantiated EventStore if `eventStore` is not provided. Defaults to 50 when `lifetime` options are set without an explicit `eventStore` or capacity. */
   eventBufferCapacity?: number
   /** Custom ID generator for assigned event frames. Ignored if an external `eventStore` is provided. */
@@ -73,7 +77,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * channel sends a `renew` frame (asking the client to make one confirmatory reconnect
    * through the real auth middleware) or a terminal `revoke` frame.
    */
-  lifetime?: LifetimeOptions
+  lifetime?: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline; reconnect?: unknown }
   /**
    * Integrator-supplied guard function called synchronously before each outgoing frame.
    *
@@ -102,7 +106,11 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
  *
  * Gap 6: Methods are readonly function properties (contravariant) not method declarations.
  */
-export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
+export interface SSEChannel<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TTarget extends SignalTarget | readonly SignalTarget[] = TargetForSignal<TSignal>,
+> {
+  readonly _signalType?: TSignal
   /** Current lifecycle state of the channel. */
   readonly state: ChannelState
   /**
@@ -112,7 +120,7 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    */
   readonly connectionId: string
   /** Configured target discriminator or target array. Required. */
-  readonly target: SignalTarget | SignalTarget[]
+  readonly target: SignalTarget | readonly SignalTarget[]
   /** The single target requested by this client via query param, if any. May be an unrecognized string if the client sent an unknown target. */
   readonly requestedTarget: string | undefined
   /** The SSE byte stream to pipe into a response. */
@@ -123,15 +131,17 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    * - When `state` is `'closed'`: throws `ChannelClosedError`.
    *
    * Returns the event ID assigned to the invalidation frame.
+   *
+   * Gap 1.1 fix: Parameter is narrowed to TSignal only (not InvalidateSignal).
    */
-  readonly invalidate: (signal: TSignal | TSignal[], customId?: string) => string
+  invalidate(signal: TSignal | TSignal[] | SignalInputForTarget<TTarget>, customId?: string): string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
-  readonly close: () => void
+  close(): void
   /**
    * Called by a transport adapter when it detects the remote peer disconnected.
    * Same effect as `close()`. Idempotent.
    */
-  readonly disconnect: () => void
+  disconnect(): void
   /**
    * Sends a terminal `revoke` SSE event frame to the client and then closes the channel.
    *
@@ -143,18 +153,19 @@ export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>
    *
    * @param reason - Human-readable reason string included in the event payload. Default: `'revoked'`.
    */
-  readonly revoke: (reason?: string) => void
+  revoke(reason?: string): void
   /**
    * Registers a one-shot callback invoked when the channel transitions to `'closed'`
    * (whether via `close()`, `disconnect()`, `revoke()`, or stream cancellation).
    * If the channel is already closed the callback fires synchronously.
    */
-  readonly onClose: (callback: () => void) => void
+  onClose(callback: () => void): void
 }
 
 export interface DirectSSEChannelOptions<
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = SignalTarget | SignalTarget[],
-> extends SSEChannelOptions {
+  TSignal extends InvalidateSignal = InvalidateSignal,
+> extends SSEChannelOptions<TSignal> {
   target: TTarget
 }
 
@@ -164,16 +175,21 @@ export interface DirectSSEChannelOptions<
  * The channel produces a standard `ReadableStream<Uint8Array>` containing
  * SSE-formatted events and periodic keepalive comments. Transport adapters
  * pipe this stream into a response.
+ *
+ * Gap 1.3a/b fixes: Overloads infer TSignal from target and validate consistency.
  */
 export function createSSEChannel<TTarget extends SignalTarget>(
-  options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
-): SSEChannel<ReStaleSignalForTarget<TTarget>>
-export function createSSEChannel<TTarget extends SignalTarget[] | readonly SignalTarget[]>(
-  options: DirectSSEChannelOptions<TTarget> & { target: TTarget }
-): SSEChannel<SignalInputForTarget<TTarget>>
-export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions<TSignal>
-): SSEChannel<TSignal>
+  options: { target: TTarget } & Omit<SSEChannelOptions<ReStaleSignalForTarget<TTarget>>, 'target'>
+): SSEChannel<ReStaleSignalForTarget<TTarget>, TTarget>
+export function createSSEChannel<TTarget extends readonly SignalTarget[]>(
+  options: { target: TTarget } & Omit<SSEChannelOptions<ReStaleSignalForTarget<TTarget[number]>>, 'target'>
+): SSEChannel<ReStaleSignalForTarget<TTarget[number]>, TTarget>
+export function createSSEChannel<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
+>(
+  options: DirectSSEChannelOptions<TTarget, TSignal>
+): SSEChannel<TSignal, TTarget extends readonly SignalTarget[] ? TTarget : TTarget extends SignalTarget ? TTarget : SignalTarget>
 export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
   options: SSEChannelOptions<TSignal>
 ): SSEChannel<TSignal> {
@@ -283,11 +299,11 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
    * Returns the result, or `{ action: 'send' }` when no guard is configured.
    * A thrown error inside `beforeFrame` is treated as `{ action: 'close' }` (spec §6).
    */
-  function runGuard(ctx: FrameGuardCtx<InvalidateSignal>): FrameGuardResult {
+  function runGuard(ctx: FrameGuardCtx<TSignal>): FrameGuardResult {
     if (beforeFrame === undefined) return { action: 'send' }
     if (ctx.frameType === 'keepalive' && !guardKeepalive) return { action: 'send' }
     try {
-      return beforeFrame(ctx as FrameGuardCtx<TSignal>)
+      return beforeFrame(ctx)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       console.warn(
@@ -308,7 +324,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       // Validate the requested target before doing anything else.
       // If it is unsupported or missing on a multi-target channel, emit a structured revoke frame and close immediately.
       // Gap 2: Remove connectionId check - missing requestedTarget alone should reject multi-target connections
-      const supportedTargets = Array.isArray(target) ? target : [target]
+      const supportedTargets: string[] = typeof target === 'string' ? [target] : [...target]
       if (requestedTarget === undefined && supportedTargets.length > 1) {
         const safeConnectionId = connectionId.replace(/\r\n|\r|\n/g, '\\n')
         console.warn(
@@ -339,7 +355,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             controller.enqueue(
               formatRevokeFrame('unsupported-target', {
                 requested: requestedTarget,
-                supported: supportedTargets,
+                supported: [...supportedTargets],
               })
             )
           } catch {
@@ -367,9 +383,16 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
             // The cursor fell off the ring buffer or was never valid — the client missed
             // an unknown number of events. Send a full-invalidate signal (key: []) so the
             // client refetches everything rather than silently displaying stale data.
-            const declaredList = Array.isArray(target) ? target : [target]
-            const foundTarget = declaredList.find((t) => t === requestedTarget)
-            const staleTarget: string = foundTarget ?? declaredList[0] ?? 'generic'
+            const declaredList: readonly SignalTarget[] = Array.isArray(target) ? target : (typeof target === 'string' ? [target] : [])
+            let foundTarget: string | undefined = undefined
+            for (const t of declaredList) {
+              if (t === requestedTarget) {
+                foundTarget = t
+                break
+              }
+            }
+            const defaultTarget = declaredList[0]
+            const staleTarget: string = typeof foundTarget === 'string' ? foundTarget : (typeof defaultTarget === 'string' ? defaultTarget : 'generic')
             const staleSignal: InvalidateSignal =
               staleTarget === 'tanstack-query'
                 ? { target: 'tanstack-query', queryKey: [] }
@@ -483,7 +506,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
       throw new ChannelClosedError()
     }
 
-    const effectiveSignal = validateSignalTargets(signal, target)
+    const effectiveSignal = validateSignalTargets<TSignal>(signal, target)
 
     // Filter by requestedTarget: drop signals that don't match the client's requested target.
     if (requestedTarget !== undefined) {
@@ -508,12 +531,12 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
   }
 
   function invalidateFiltered(
-    effectiveSignal: InvalidateSignal | InvalidateSignal[],
+    effectiveSignal: TSignal | TSignal[],
     customId?: string
   ): string {
     // Run the frame guard before the signal frame is enqueued.
     if (beforeFrame !== undefined) {
-      const ctx: FrameGuardCtx<InvalidateSignal> = {
+      const ctx: FrameGuardCtx<TSignal> = {
         signal: effectiveSignal,
         frameType: 'signal',
         connectionId,
@@ -598,7 +621,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 
 /** Validates configured protocol targets before a channel or group is created. */
 export function validateTargetConfiguration(
-  target: SignalTarget | SignalTarget[]
+  target: SignalTarget | readonly SignalTarget[]
 ): void {
   const targets = Array.isArray(target) ? target : [target]
   if (targets.length === 0) {
@@ -653,7 +676,7 @@ function validateNonNegativeFinite(name: string, value: number | undefined): voi
   }
 }
 
-function validateChannelOptions(options: SSEChannelOptions): void {
+function validateChannelOptions<TSignal extends InvalidateSignal>(options: SSEChannelOptions<TSignal>): void {
   validateNonNegativeFinite('eventBufferCapacity', options.eventBufferCapacity)
   validateNonNegativeFinite('retryIntervalMs', options.retryIntervalMs)
   if (
@@ -728,15 +751,23 @@ function validateHttpStatus(status: number): void {
   }
 }
 
+export function validateSignalTargets<TSignal extends InvalidateSignal = InvalidateSignal>(
+  signal: TSignal | TSignal[],
+  targetConfig: SignalTarget | readonly SignalTarget[] | readonly string[]
+): TSignal | TSignal[]
 export function validateSignalTargets(
   signal: unknown,
-  targetConfig: SignalTarget | SignalTarget[] | string[]
-): InvalidateSignal | InvalidateSignal[] {
+  targetConfig: SignalTarget | readonly SignalTarget[] | readonly string[]
+): InvalidateSignal | InvalidateSignal[]
+export function validateSignalTargets(
+  signal: unknown,
+  targetConfig: SignalTarget | readonly SignalTarget[] | readonly string[]
+): unknown {
   const signalList = Array.isArray(signal) ? signal : [signal]
   const declaredTargets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
   const declaredSet = new Set<string>(declaredTargets)
   const coveredTargets = new Set<string>()
-  const resultArray: InvalidateSignal[] = []
+  const resultList: InvalidateSignal[] = []
 
   for (const s of signalList) {
     if (!isRecord(s)) {
@@ -748,18 +779,16 @@ export function validateSignalTargets(
       )
     }
 
-    let targetStr = typeof s['target'] === 'string' ? s['target'] : ''
-    let normalizedSignal: InvalidateSignal
+    const targetStr = typeof s['target'] === 'string' ? s['target'] : ''
 
     if (targetStr === '') {
       if (declaredTargets.length === 1 && declaredTargets[0] !== undefined) {
         // Single-target channel: auto-fill target if omitted
-        targetStr = declaredTargets[0]
-        const filledSignal: unknown = { ...s, target: targetStr }
-        if (!isInvalidateSignal(filledSignal)) {
-          throw new Error('[invalidate] Invalid signal structure.')
+        coveredTargets.add(declaredTargets[0])
+        const filled = Object.assign({}, s, { target: declaredTargets[0] })
+        if (isInvalidateSignal(filled)) {
+          resultList.push(filled)
         }
-        normalizedSignal = filledSignal
       } else {
         const sStr = JSON.stringify(s)
         throw new Error(
@@ -772,17 +801,15 @@ export function validateSignalTargets(
       if (!isInvalidateSignal(s)) {
         throw new Error('[invalidate] Invalid signal structure.')
       }
-      normalizedSignal = s
+      if (!declaredSet.has(targetStr)) {
+        throw new Error(
+          `[invalidate] Signal target "${targetStr}" is not in the channel's declared targets: ` +
+          `[${declaredTargets.join(', ')}].`
+        )
+      }
+      coveredTargets.add(targetStr)
+      resultList.push(s)
     }
-
-    if (!declaredSet.has(targetStr)) {
-      throw new Error(
-        `[invalidate] Signal target "${targetStr}" is not in the channel's declared targets: ` +
-        `[${declaredTargets.join(', ')}].`
-      )
-    }
-    coveredTargets.add(targetStr)
-    resultArray.push(normalizedSignal)
   }
 
   if (declaredTargets.length > 1) {
@@ -798,7 +825,8 @@ export function validateSignalTargets(
     }
   }
 
-  return Array.isArray(signal) ? resultArray : resultArray[0]
+  const output = Array.isArray(signal) ? resultList : resultList[0]
+  return output !== undefined ? output : signal
 }
 
 /** Validates the JSON-safe wire shape of one signal or a non-empty signal batch. */

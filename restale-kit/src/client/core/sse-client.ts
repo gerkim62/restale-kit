@@ -100,10 +100,11 @@ export class SSEInvalidatorClient<
       this.currentConnectionId
     )
     if (opts?.target !== undefined) {
+      const targetParam: string = typeof opts.target === 'string' ? opts.target : String(opts.target)
       eventSourceUrl = appendQueryParam(
         eventSourceUrl,
         PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM,
-        opts.target
+        targetParam
       )
     }
     this.eventSourceUrl = eventSourceUrl
