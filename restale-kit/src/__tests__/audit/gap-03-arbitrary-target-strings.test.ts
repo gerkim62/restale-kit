@@ -50,7 +50,6 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
 
     it('should reject empty target arrays', () => {
       expect(() => {
-        // @ts-expect-error - Empty array not allowed
         createSSEChannel({ target: [] });
       }).toThrow(/target/i);
 
@@ -62,12 +61,10 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
 
     it('should reject duplicate literal targets', () => {
       expect(() => {
-        // @ts-expect-error - Duplicate targets are meaningless
         createSSEChannel({ target: ['swr', 'swr'] });
       }).toThrow(/duplicate/i);
 
       expect(() => {
-        // @ts-expect-error - Duplicates with other valid targets
         createSSEChannel({ target: ['swr', 'tanstack-query', 'swr'] });
       }).toThrow(/duplicate/i);
 
@@ -136,14 +133,12 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
 
     it('should reject empty target arrays in group', () => {
       expect(() => {
-        // @ts-expect-error - Empty array
         new SSEChannelGroup({ target: [] });
       }).toThrow();
     });
 
     it('should reject duplicate targets in group', () => {
       expect(() => {
-        // @ts-expect-error - Duplicate targets
         new SSEChannelGroup({ target: ['swr', 'swr'] });
       }).toThrow();
     });
@@ -174,14 +169,12 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
 
     it('should reject empty target arrays in defaults', () => {
       expect(() => {
-        // @ts-expect-error - Empty array
         mergeChannelDefaults({ target: [] }, {});
       }).toThrow();
     });
 
     it('should reject duplicate targets in defaults', () => {
       expect(() => {
-        // @ts-expect-error - Duplicates
         mergeChannelDefaults({ target: ['swr', 'swr'] }, {});
       }).toThrow();
     });

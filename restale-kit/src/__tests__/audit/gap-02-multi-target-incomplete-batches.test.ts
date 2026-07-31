@@ -250,6 +250,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
       >({
+        target: ['swr', 'tanstack-query'] as const,
         pubsub: { type: 'memory' }
       });
       
