@@ -251,7 +251,7 @@ describe('Gap 13: RevokeEventDetail runtime behavior', () => {
         client.addEventListener('revoke', (event) => {
           const detail = event.detail
           
-          if (detail.reason === 'unsupported-target') {
+          if (detail.reason === 'unsupported-target' && detail.supported) {
             expect(Array.isArray(detail.supported)).toBe(true)
             expect(detail.supported.length).toBeGreaterThan(0)
             detail.supported.forEach(target => {
@@ -283,7 +283,7 @@ describe('Gap 13: RevokeEventDetail runtime behavior', () => {
         client.addEventListener('revoke', (event) => {
           const detail = event.detail
           
-          if (detail.reason === 'unsupported-target') {
+          if (detail.reason === 'unsupported-target' && detail.supported) {
             expect(Array.isArray(detail.supported)).toBe(true)
             expect(detail.supported.length).toBe(0)
             

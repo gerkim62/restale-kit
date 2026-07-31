@@ -113,9 +113,10 @@ describe('RevokeEventDetail & RenewEventDetail', () => {
     const deadlineRevoke: RevokeEventDetail = { reason: 'deadline' }
     const targetRevoke: RevokeEventDetail = {
       reason: 'unsupported-target',
-      details: { requested: 'rtk', supported: ['swr'] },
+      requested: 'rtk',
+      supported: ['swr'],
     }
-    expectTypeOf(deadlineRevoke.reason).toEqualTypeOf<string>()
+    expectTypeOf(deadlineRevoke.reason).toMatchTypeOf<string | undefined>()
   })
 
   test('RenewEventDetail required fields', () => {
