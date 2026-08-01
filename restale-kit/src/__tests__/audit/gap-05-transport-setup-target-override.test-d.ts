@@ -189,7 +189,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
         target: 'swr',
         meta: { userId: 1 }
       }
-      expectTypeOf(validOptions).toMatchTypeOf<SwrSetupOptions>()
+      expectTypeOf(validOptions).toExtend<SwrSetupOptions>()
     })
 
     test('should include all SSEChannelOptions except target', () => {
@@ -202,7 +202,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
         beforeFrame: (ctx) => ({ action: 'send' })
       }
       
-      expectTypeOf(options).toMatchTypeOf<SetupOpts>()
+      expectTypeOf(options).toExtend<SetupOpts>()
     })
 
     test('should allow topics array', () => {
@@ -236,7 +236,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
         target: 'swr',
         meta: { userId: 1 }
       }
-      expectTypeOf(validMeta).toMatchTypeOf<SetupOptsWithMeta>()
+      expectTypeOf(validMeta).toExtend<SetupOptsWithMeta>()
     })
 
     test('should make meta optional when TMeta extends undefined', () => {
@@ -251,8 +251,8 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
         meta: { foo: 'bar' }
       }
       
-      expectTypeOf(noMeta).toMatchTypeOf<SetupOptsNoMeta>()
-      expectTypeOf(withMeta).toMatchTypeOf<SetupOptsNoMeta>()
+      expectTypeOf(noMeta).toExtend<SetupOptsNoMeta>()
+      expectTypeOf(withMeta).toExtend<SetupOptsNoMeta>()
     })
   })
 

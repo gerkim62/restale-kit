@@ -113,7 +113,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
   describe('makeAdaptedCallback brand/signal alignment', () => {
     it('should reject SWR callback branded as TanStack', () => {
       const callback = makeAdaptedCallback<SWRSignal>(
-        (signal) => {
+        (signal: SWRSignal) => {
           const item = Array.isArray(signal) ? signal[0] : signal;
           if (item) { const key = item.key; }
         },
@@ -124,7 +124,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
     it('should reject TanStack callback branded as SWR', () => {
       const callback = makeAdaptedCallback<TanStackQuerySignal>(
-        (signal) => {
+        (signal: TanStackQuerySignal) => {
           const item = Array.isArray(signal) ? signal[0] : signal;
           if (item) { const queryKey = item.queryKey; }
         },
@@ -135,7 +135,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
     it('should accept matching SWR callback and brand', () => {
       const callback = makeAdaptedCallback<SWRSignal>(
-        (signal) => {
+        (signal: SWRSignal) => {
           const item = Array.isArray(signal) ? signal[0] : signal;
           if (item) { expect(Array.isArray(item.key)).toBe(true); }
         },
@@ -147,7 +147,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
     it('should accept matching TanStack callback and brand', () => {
       const callback = makeAdaptedCallback<TanStackQuerySignal>(
-        (signal) => {
+        (signal: TanStackQuerySignal) => {
           const item = Array.isArray(signal) ? signal[0] : signal;
           if (item) { expect(Array.isArray(item.queryKey)).toBe(true); }
         },
@@ -159,7 +159,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
 
     it('should accept matching RTK callback and brand', () => {
       const callback = makeAdaptedCallback<RTKQuerySignal>(
-        (signal) => {
+        (signal: RTKQuerySignal) => {
           const item = Array.isArray(signal) ? signal[0] : signal;
           if (item) { expect(Array.isArray(item.tags)).toBe(true); }
         },
@@ -337,7 +337,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
       
       // Creating adapted callback
       const adaptedCallback = makeAdaptedCallback<SWRSignal>(
-        (signal) => {
+        (signal: SWRSignal) => {
           const key = signal.key;
         },
         'swr'
@@ -356,7 +356,7 @@ describe('Gap 9: Client target and payload type alignment', () => {
       const url = 'http://localhost/sse';
       
       const swrCallback = makeAdaptedCallback<SWRSignal>(
-        (signal) => {},
+        (signal: SWRSignal) => {},
         'swr'
       );
       

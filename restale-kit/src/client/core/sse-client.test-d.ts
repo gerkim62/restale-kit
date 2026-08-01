@@ -93,7 +93,7 @@ describe('SSEInvalidatorClient typed event listeners', () => {
 
     client.addEventListener('revoke', (event) => {
       // Verify the detail type matches the RevokeEventDetail union
-      expectTypeOf(event.detail).toMatchTypeOf<{ reason?: string }>()
+      expectTypeOf(event.detail).toExtend<{ reason?: string }>()
     })
   })
 
@@ -143,7 +143,7 @@ describe('SSEInvalidatorClient additional properties', () => {
 
   test('closeWithUnmount returns void', () => {
     const client = new SSEInvalidatorClient('https://example.com/sse')
-    expectTypeOf(client.closeWithUnmount()).toEqualTypeOf<void>()
+    expectTypeOf(client.closeWithUnmount).returns.toEqualTypeOf<void>()
   })
 })
 

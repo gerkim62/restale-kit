@@ -33,7 +33,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockQueryClient = {} as any
       
       const adapter = tanstackQueryAdapter<TanStackQuerySignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     })
 
     test('should reject GenericInvalidateSignal type parameter', () => {
@@ -84,7 +84,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockQueryClient = {} as any
       
       const adapter = useTanstackQueryAdapter<TanStackQuerySignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
     })
 
     test('should reject GenericInvalidateSignal type parameter', () => {
@@ -121,7 +121,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockMutate = {} as SWRMutator
       
       const adapter = swrAdapter<SWRSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     })
 
     test('should reject GenericInvalidateSignal type parameter', () => {
@@ -172,7 +172,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockMutate = {} as SWRMutator
       
       const adapter = useSwrAdapter<SWRSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
     })
 
     test('should reject GenericInvalidateSignal type parameter', () => {
@@ -195,7 +195,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const adapter = useSwrAdapter<SWRSignal>(mockMutate, {
         toInvalidateKey: (key, signal) => {
           expectTypeOf(signal).toEqualTypeOf<SWRSignal>()
-          return [String(key)]
+          return [JSON.stringify(key) ?? '']
         }
       })
       
@@ -208,7 +208,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const adapter = useSwrAdapter<SWRSignal>(mockMutate, {
         // @ts-expect-error - TanStack signal in options incompatible with SWR adapter
         toInvalidateKey: (key, signal: TanStackQuerySignal) => {
-          return [String(key)]
+          return [JSON.stringify(key) ?? '']
         }
       })
     })
@@ -223,7 +223,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockQueryClient = {} as any
       
       const adapter = tanstackQueryAdapter<CustomTanStackSignal>(mockQueryClient)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', CustomTanStackSignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', CustomTanStackSignal>>()
     })
 
     test('should accept custom type extending SWRSignal', () => {
@@ -234,7 +234,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const mockMutate = {} as SWRMutator
       
       const adapter = swrAdapter<CustomSWRSignal>(mockMutate)
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', CustomSWRSignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', CustomSWRSignal>>()
     })
 
     test('should reject custom type not extending target signal', () => {
@@ -268,11 +268,11 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const adapter = tanstackQueryAdapter<TanStackQuerySignal>(mockQueryClient)
       
       // Brand should be 'tanstack-query'
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
       
       // Should not match other targets
-      expectTypeOf(adapter).not.toMatchTypeOf<AdaptedInvalidateCallback<'swr', any>>()
-      expectTypeOf(adapter).not.toMatchTypeOf<AdaptedInvalidateCallback<'rtk-query', any>>()
+      expectTypeOf(adapter).not.toExtend<AdaptedInvalidateCallback<'swr', InvalidateSignal>>()
+      expectTypeOf(adapter).not.toExtend<AdaptedInvalidateCallback<'rtk-query', InvalidateSignal>>()
     })
 
     test('SWR adapter should return branded callback with correct target', () => {
@@ -281,11 +281,11 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const adapter = swrAdapter<SWRSignal>(mockMutate)
       
       // Brand should be 'swr'
-      expectTypeOf(adapter).toMatchTypeOf<AdaptedInvalidateCallback<'swr', SWRSignal>>()
+      expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'swr', SWRSignal>>()
       
       // Should not match other targets
-      expectTypeOf(adapter).not.toMatchTypeOf<AdaptedInvalidateCallback<'tanstack-query', any>>()
-      expectTypeOf(adapter).not.toMatchTypeOf<AdaptedInvalidateCallback<'rtk-query', any>>()
+      expectTypeOf(adapter).not.toExtend<AdaptedInvalidateCallback<'tanstack-query', InvalidateSignal>>()
+      expectTypeOf(adapter).not.toExtend<AdaptedInvalidateCallback<'rtk-query', InvalidateSignal>>()
     })
 
     test('should maintain signal type in callback signature', () => {
@@ -409,7 +409,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
           // @ts-expect-error - Should not have TanStack properties
           const qk = signal.queryKey
           
-          return [String(key)]
+          return [JSON.stringify(key) ?? '']
         }
       })
       
@@ -421,7 +421,7 @@ describe('Gap 8: Adapter generic parameters must match adapter target', () => {
       const adapter = swrAdapter<SWRSignal>(mockMutate, {
         // @ts-expect-error - toInvalidateKey receives SWRSignal, not TanStack
         toInvalidateKey: (key, signal: TanStackQuerySignal) => {
-          return [String(key)]
+          return [JSON.stringify(key) ?? '']
         }
       })
       expectTypeOf(adapter).not.toEqualTypeOf<never>()

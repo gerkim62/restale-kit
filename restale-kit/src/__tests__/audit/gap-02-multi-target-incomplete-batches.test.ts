@@ -11,6 +11,8 @@ import { createSSEChannel } from '../../server/core/channel.js';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
 
+type SWRAndTanStackTargets = readonly ['swr', 'tanstack-query'];
+
 describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannel with literal multi-target configuration', () => {
     it('should reject single signal on multi-target channel at compile time', () => {
@@ -161,7 +163,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannelGroup.broadcast with multi-target', () => {
     it('should reject single signal on multi-target group', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >();
       
       group.register(createSSEChannel({ 
@@ -174,7 +178,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should reject incomplete batch in broadcast', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const
       });
@@ -191,7 +197,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should accept complete batch in broadcast', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const
       });
@@ -212,7 +220,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannelGroup.broadcastToAll with multi-target', () => {
     it('should reject incomplete batch in broadcastToAll', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const
       });
@@ -232,7 +242,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
 
     it('should accept complete batch in broadcastToAll', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const
       });
@@ -256,7 +268,9 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   describe('SSEChannelGroup.publish with multi-target', () => {
     it('should reject incomplete batch in publish', () => {
       const group = new SSEChannelGroup<
-        SWRSignal | TanStackQuerySignal
+        SWRSignal | TanStackQuerySignal,
+        unknown,
+        SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const,
         pubsub: { type: 'memory' }
@@ -269,7 +283,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       });
       
       // @ts-expect-error - Incomplete batch
-      group.publish('updates', [
+      void group.publish('updates', [
         { target: 'tanstack-query', queryKey: ['posts'] }
       ]);
     });
@@ -288,7 +302,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       });
       
       expect(() => {
-        group.publish('updates', [
+        void group.publish('updates', [
           { target: 'swr', key: ['posts'] },
           { target: 'tanstack-query', queryKey: ['posts'] }
         ]);

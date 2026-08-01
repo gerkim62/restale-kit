@@ -174,6 +174,15 @@ export type SignalsForTargets<TTarget> =
       ? SignalInputForTarget<TTarget>
       : InvalidateSignal
 
+type GroupSignalInput<
+  TSignal extends InvalidateSignal,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[],
+> = [TTarget] extends [readonly SignalTarget[]]
+  ? SignalInputForTarget<TTarget> & (TSignal | TSignal[])
+  : [TTarget] extends [SignalTarget]
+    ? SignalInputForTarget<TTarget> & (TSignal | TSignal[])
+    : TSignal | TSignal[]
+
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
@@ -709,7 +718,14 @@ class SSEChannelGroupImplementation<
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
-  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  broadcast(
+    signal: GroupSignalInput<TSignal, TTarget>,
+    predicate: (meta: TMeta | undefined) => boolean
+  ): void {
+    this.broadcastRaw(signal, predicate)
+  }
+
+  private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
@@ -758,8 +774,8 @@ class SSEChannelGroupImplementation<
    * - If a channel throws ChannelClosedError, it is automatically deregistered.
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
-  broadcastToAll(signal: TSignal | TSignal[]): void {
-    this.broadcast(signal, () => true)
+  broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
+    this.broadcastRaw(signal, () => true)
   }
 
   /**
@@ -780,7 +796,7 @@ class SSEChannelGroupImplementation<
    * group.broadcastByKey({ key: ['todos', { userId }] })
    */
   broadcastByKey(signal: TSignal): void {
-    this.broadcast(signal, (meta) => {
+    this.broadcastRaw(signal, (meta) => {
       if (!isJSONValue(meta)) return false
       // Wrap scalar/array meta in an array to match against the signal key
       const metaKey = Array.isArray(meta) ? meta : [meta]
@@ -794,7 +810,11 @@ class SSEChannelGroupImplementation<
    * Deliver to matching local channels first (synchronously), then publishes to the PubSub broker.
    * Errors from the broker publish propagate to the caller.
    */
-  async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+  async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
+    await this.publishRaw(topic, signal)
+  }
+
+  private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
     let eventId: string | undefined = undefined

@@ -25,16 +25,8 @@ export type AdaptedInvalidateCallback<
  * `Object.assign` merges the `__restaleTarget` property into the function object,
  * which TypeScript verifies structurally — no cast required.
  */
-export function makeAdaptedCallback<
-  TSignal extends InvalidateSignal = InvalidateSignal,
->(
-  fn: (signal: TSignal) => void,
-  target?: TargetForSignal<TSignal>
-): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
-export function makeAdaptedCallback<
-  TSignal extends InvalidateSignal = InvalidateSignal,
->(
-  fn: (signals: TSignal[]) => void,
+export function makeAdaptedCallback<TSignal extends InvalidateSignal = InvalidateSignal>(
+  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void),
   target?: TargetForSignal<TSignal>
 ): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
 export function makeAdaptedCallback<
@@ -42,14 +34,7 @@ export function makeAdaptedCallback<
   TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
 >(
   target: TTarget,
-  fn: (signal: TSignal) => void
-): AdaptedInvalidateCallback<TTarget, TSignal>
-export function makeAdaptedCallback<
-  TTarget extends SignalTarget = SignalTarget,
-  TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
->(
-  target: TTarget,
-  fn: (signals: TSignal[]) => void
+  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void)
 ): AdaptedInvalidateCallback<TTarget, TSignal>
 export function makeAdaptedCallback(
   arg1: unknown,

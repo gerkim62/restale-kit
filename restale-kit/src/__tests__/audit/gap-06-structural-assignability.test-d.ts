@@ -147,7 +147,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject assigning TanStack adapter to SWR adapter variable', () => {
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // @ts-expect-error - Cannot assign TanStack adapter to SWR adapter type
@@ -157,7 +157,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject assigning SWR adapter to TanStack adapter variable', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // @ts-expect-error - Cannot assign SWR adapter to TanStack adapter type
@@ -167,7 +167,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject assigning RTK adapter to SWR adapter variable', () => {
       const rtkAdapter: PubSubAdapter<RTKQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // @ts-expect-error - Cannot assign RTK adapter to SWR adapter type
@@ -177,7 +177,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should allow assigning to compatible signal union', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // Adapters consume published signal envelopes, so widening is unsafe.
@@ -190,11 +190,11 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject incompatible signal in publish method', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // @ts-expect-error - TanStack signal incompatible with SWR adapter
-      swrAdapter.publish('topic', { 
+      void swrAdapter.publish('topic', {
         kind: 'signal' as const,
         data: { target: 'tanstack-query' as const, queryKey: ['test'] }
       })
@@ -203,17 +203,17 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should accept compatible signal in publish method', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
-      swrAdapter.publish('topic', {
+      void swrAdapter.publish('topic', {
         kind: 'signal' as const,
         data: { target: 'swr' as const, key: ['test'] }
       })
       expectTypeOf(swrAdapter).not.toEqualTypeOf<never>()
     test('should reject passing incompatible adapter to function', () => {
       function processSWRAdapter(adapter: PubSubAdapter<SWRSignal>) {
-        adapter.publish('topic', {
+        void adapter.publish('topic', {
           kind: 'signal' as const,
           data: { target: 'swr' as const, key: ['test'] }
         })
@@ -221,7 +221,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       // @ts-expect-error - TanStack adapter incompatible with SWR function parameter
@@ -306,7 +306,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject TanStack adapter in SWR group options', () => {
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       new SSEChannelGroup<SWRSignal>({
@@ -318,7 +318,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject SWR adapter in TanStack group options', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       new SSEChannelGroup<TanStackQuerySignal>({
@@ -330,7 +330,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject RTK adapter in SWR group options', () => {
       const rtkAdapter: PubSubAdapter<RTKQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       new SSEChannelGroup<SWRSignal>({
@@ -342,7 +342,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should accept matching adapter in group options', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({
@@ -359,7 +359,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const tanstackStore = createEventStore<TanStackQuerySignal>({ capacity: 10 })
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({
@@ -378,7 +378,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const swrStore = createEventStore<SWRSignal>({ capacity: 10 })
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       }
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({

@@ -28,7 +28,7 @@ describe('validateStandardSchema', () => {
 
   it('formats issues without path segments', () => {
     const schema = createInvalidSchema('Payload invalid')
-    expect(() => validateStandardSchema(null, schema)).toThrowError(
+    expect(() => validateStandardSchema(null, schema)).toThrow(
       'Schema validation failed: Payload invalid'
     )
   })

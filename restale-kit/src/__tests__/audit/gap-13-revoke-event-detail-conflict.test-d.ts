@@ -21,7 +21,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         supported: ['swr']
       }
       
-      expectTypeOf(protocolRevoke).toMatchTypeOf<ProtocolRevokeEventDetail>()
+      expectTypeOf(protocolRevoke).toExtend<ProtocolRevokeEventDetail>()
     })
 
     test('client version uses top-level requested and supported', () => {
@@ -31,7 +31,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         supported: ['swr']
       }
       
-      expectTypeOf(clientRevoke).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(clientRevoke).toExtend<ClientRevokeEventDetail>()
     })
 
     test('protocol shape and client shape are bidirectionally assignable', () => {
@@ -44,8 +44,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       const asClient: ClientRevokeEventDetail = revoke
       const asProtocol: ProtocolRevokeEventDetail = asClient
 
-      expectTypeOf(asClient).toMatchTypeOf<ProtocolRevokeEventDetail>()
-      expectTypeOf(asProtocol).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(asClient).toExtend<ProtocolRevokeEventDetail>()
+      expectTypeOf(asProtocol).toExtend<ClientRevokeEventDetail>()
     })
 
     test('legacy nested details property is rejected on both protocol and client shapes', () => {
@@ -71,7 +71,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         supported: ['swr', 'tanstack-query']
       }
       
-      expectTypeOf(valid).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(valid).toExtend<ClientRevokeEventDetail>()
       
       // @ts-expect-error - requested is required for unsupported-target
       const missingRequested: ClientRevokeEventDetail = {
@@ -91,7 +91,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         reason: 'deadline'
       }
       
-      expectTypeOf(deadlineRevoke).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(deadlineRevoke).toExtend<ClientRevokeEventDetail>()
       
       // @ts-expect-error - requested not allowed for deadline
       const withRequested: ClientRevokeEventDetail = {
@@ -113,9 +113,9 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       const custom: ClientRevokeEventDetail = { reason: 'session-expired' }
       const withUndefinedReason: ClientRevokeEventDetail = { reason: undefined }
       
-      expectTypeOf(deadline).toMatchTypeOf<ClientRevokeEventDetail>()
-      expectTypeOf(custom).toMatchTypeOf<ClientRevokeEventDetail>()
-      expectTypeOf(withUndefinedReason).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(deadline).toExtend<ClientRevokeEventDetail>()
+      expectTypeOf(custom).toExtend<ClientRevokeEventDetail>()
+      expectTypeOf(withUndefinedReason).toExtend<ClientRevokeEventDetail>()
     })
   })
 
@@ -127,8 +127,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         if (detail.reason === 'unsupported-target') {
           const requested = detail.requested
           const supported = detail.supported
-          expectTypeOf(requested).toMatchTypeOf<string | undefined>()
-          expectTypeOf(supported).toMatchTypeOf<string[] | undefined>()
+          expectTypeOf(requested).toExtend<string | undefined>()
+          expectTypeOf(supported).toExtend<string[] | undefined>()
         }
       }
       
@@ -148,8 +148,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         if (detail.reason === 'unsupported-target') {
           const requested = detail.requested
           const supported = detail.supported
-          expectTypeOf(requested).toMatchTypeOf<string | undefined>()
-          expectTypeOf(supported).toMatchTypeOf<string[] | undefined>()
+          expectTypeOf(requested).toExtend<string | undefined>()
+          expectTypeOf(supported).toExtend<string[] | undefined>()
         }
       }
       
@@ -245,8 +245,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
 
   describe('Type equality and assignability', () => {
     test('two exported types are identical', () => {
-      expectTypeOf<ProtocolRevokeEventDetail>().toMatchTypeOf<ClientRevokeEventDetail>()
-      expectTypeOf<ClientRevokeEventDetail>().toMatchTypeOf<ProtocolRevokeEventDetail>()
+      expectTypeOf<ProtocolRevokeEventDetail>().toExtend<ClientRevokeEventDetail>()
+      expectTypeOf<ClientRevokeEventDetail>().toExtend<ProtocolRevokeEventDetail>()
     })
 
     test('protocol type is assignable to client type', () => {
@@ -274,8 +274,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         supported: ['swr', 'tanstack-query']
       }
 
-      expectTypeOf(runtimeShape).toMatchTypeOf<ProtocolRevokeEventDetail>()
-      expectTypeOf(protocolShape).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(runtimeShape).toExtend<ProtocolRevokeEventDetail>()
+      expectTypeOf(protocolShape).toExtend<ClientRevokeEventDetail>()
     })
   })
 
@@ -285,7 +285,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         reason: undefined
       }
       
-      expectTypeOf(undefinedReason).toMatchTypeOf<ClientRevokeEventDetail>()
+      expectTypeOf(undefinedReason).toExtend<ClientRevokeEventDetail>()
     })
 
     test('allows string union reasons', () => {
@@ -293,7 +293,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
         reason: 'any-string'
       }
       
-      expectTypeOf(stringReason).toMatchTypeOf<ProtocolRevokeEventDetail>()
+      expectTypeOf(stringReason).toExtend<ProtocolRevokeEventDetail>()
     })
   })
 

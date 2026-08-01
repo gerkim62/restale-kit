@@ -153,7 +153,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should reject assigning TanStack adapter to SWR variable', () => {
       const tanstackAdapter: PubSubAdapter<TanStackQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       };
       
       // @ts-expect-error - Incompatible signal types
@@ -163,7 +163,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should reject passing incompatible adapter to group', () => {
       const rtkAdapter: PubSubAdapter<RTKQuerySignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       };
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({
@@ -176,7 +176,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should accept compatible adapter', () => {
       const swrAdapter: PubSubAdapter<SWRSignal> = {
         publish: async () => {},
-        subscribe: async () => async () => {}
+        subscribe: () => Promise.resolve(() => {})
       };
       
       const swrGroup = new SSEChannelGroup<SWRSignal>({

@@ -304,7 +304,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             // Should be union of all three
-            expectTypeOf(ctx.signal).toMatchTypeOf<
+            expectTypeOf(ctx.signal).toExtend<
               SWRSignal | TanStackQuerySignal | RTKQuerySignal | (SWRSignal | TanStackQuerySignal | RTKQuerySignal)[]
             >()
           }
@@ -377,7 +377,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         return { action: 'send' }
       }
       
-      expectTypeOf(swrGuard).toMatchTypeOf<SWRBeforeFrame>()
+      expectTypeOf(swrGuard).toExtend<SWRBeforeFrame>()
     })
 
     test('should reject incompatible signal assumptions in guard', () => {
@@ -509,13 +509,14 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         target: 'swr',
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
-            if (Math.random() > 0.5) {
+            const choice = Math.random()
+            if (choice > 0.66) {
               return { action: 'send' }
-            } else if (Math.random() > 0.5) {
-              return { action: 'skip' }
-            } else {
-              return { action: 'close' }
             }
+            if (choice > 0.33) {
+              return { action: 'skip' }
+            }
+            return { action: 'close' }
           }
           return { action: 'send' }
         }

@@ -65,8 +65,10 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
   test('multi-target group broadcast requires explicit target on every signal', () => {
     const multiGroup = new SSEChannelGroup({ target: ['swr', 'tanstack-query'] as const })
 
+    // @ts-expect-error multi-target groups require one explicitly targeted signal per configured target
     multiGroup.broadcastToAll({ key: ['users'] })
 
+    // @ts-expect-error multi-target groups require one explicitly targeted signal per configured target
     void multiGroup.publish('topic-name', { key: ['users'] })
   })
 })
@@ -129,13 +131,13 @@ describe('SSEChannelGroup deregister and dispose types', () => {
     const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
 
     expectTypeOf(group.deregister).toBeCallableWith(channel)
-    expectTypeOf(group.deregister(channel)).toEqualTypeOf<void>()
+    expectTypeOf(group.deregister).returns.toEqualTypeOf<void>()
   })
 
   test('dispose returns Promise<void>', () => {
     const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
 
-    expectTypeOf(group.dispose()).toEqualTypeOf<Promise<void>>()
+    expectTypeOf(group.dispose).returns.toEqualTypeOf<Promise<void>>()
   })
 })
 
@@ -171,9 +173,7 @@ describe('SSEChannelGroup broadcastByKey type safety', () => {
   test('broadcastByKey returns void', () => {
     const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' })
 
-    expectTypeOf(
-      group.broadcastByKey({ target: 'swr', key: ['test'] })
-    ).toEqualTypeOf<void>()
+    expectTypeOf(group.broadcastByKey).returns.toEqualTypeOf<void>()
   })
 
   test('broadcastByKey rejects mismatched signal type', () => {

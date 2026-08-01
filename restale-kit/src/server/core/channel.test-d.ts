@@ -152,7 +152,7 @@ describe('SSEChannel.revoke() parameter types', () => {
 
   test('revoke returns void', () => {
     const channel = createSSEChannel({ target: 'swr' })
-    expectTypeOf(channel.revoke()).toEqualTypeOf<void>()
+    expectTypeOf(channel.revoke).returns.toEqualTypeOf<void>()
   })
 })
 
@@ -164,6 +164,6 @@ describe('SSEChannel.onClose() callback type', () => {
 
   test('onClose returns void', () => {
     const channel = createSSEChannel({ target: 'swr' })
-    expectTypeOf(channel.onClose(() => {})).toEqualTypeOf<void>()
+    expectTypeOf(channel.onClose).returns.toEqualTypeOf<void>()
   })
 })

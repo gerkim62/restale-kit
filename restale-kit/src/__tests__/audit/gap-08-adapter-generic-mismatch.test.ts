@@ -362,14 +362,14 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
       const queryClient = {} as any;
       
       // This should fail at type level
-      // @ts-expect-error
+      // @ts-expect-error - SWR signals cannot satisfy the TanStack adapter contract
       const badAdapter = tanstackQueryAdapter<SWRSignal>(queryClient);
     });
 
     it('should not allow using SWR adapter with TanStack signal type', () => {
       const mutate = (() => Promise.resolve([])) as any;
 
-      // @ts-expect-error
+      // @ts-expect-error - TanStack signals cannot satisfy the SWR adapter contract
       const badAdapter = swrAdapter<TanStackQuerySignal>(mutate);
     });
 

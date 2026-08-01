@@ -116,7 +116,7 @@ describe('RevokeEventDetail & RenewEventDetail', () => {
       requested: 'rtk',
       supported: ['swr'],
     }
-    expectTypeOf(deadlineRevoke.reason).toMatchTypeOf<string | undefined>()
+    expectTypeOf(deadlineRevoke.reason).toExtend<string | undefined>()
   })
 
   test('RenewEventDetail required fields', () => {
