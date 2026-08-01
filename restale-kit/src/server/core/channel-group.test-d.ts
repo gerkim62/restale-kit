@@ -70,6 +70,19 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
 
     // @ts-expect-error multi-target groups require one explicitly targeted signal per configured target
     void multiGroup.publish('topic-name', { key: ['users'] })
+
+    // @ts-expect-error an empty batch cannot cover either configured target
+    multiGroup.broadcastToAll([])
+
+    // @ts-expect-error an empty batch cannot cover either configured target
+    void multiGroup.publish('topic-name', [])
+  })
+
+  test('single-target group injects an omitted target', () => {
+    const swrGroup = new SSEChannelGroup({ target: 'swr' })
+
+    swrGroup.broadcastToAll({ key: ['users'] })
+    void swrGroup.publish('topic-name', { key: ['users'] })
   })
 })
 

@@ -28,6 +28,9 @@ describe('1.2 — Target-aware signal input (SignalInputForTarget)', () => {
 
     // Full SWRSignal compiles
     expectTypeOf(singleChannel.invalidate).toBeCallableWith({ target: 'swr', key: ['users'] })
+
+    // A single configured target is injected when the call-site omits it.
+    singleChannel.invalidate({ key: ['users'] })
   })
 
   test('multi-target channel signal input requirements', () => {
@@ -44,6 +47,9 @@ describe('1.2 — Target-aware signal input (SignalInputForTarget)', () => {
 
     // @ts-expect-error undeclared target signal on multi-target channel should be a type error
     multiChannel.invalidate({ target: 'rtk-query', tags: ['users'] })
+
+    // @ts-expect-error an empty batch cannot cover either configured target
+    multiChannel.invalidate([])
   })
 })
 
