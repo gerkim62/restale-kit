@@ -125,6 +125,7 @@ describe('SSEChannelGroup attachNodeResponse and createFetchResponse 1-step meth
     const fastifyAttachResult = group.attachNodeResponse(mockFastifyReq, mockFastifyRes, {})
     expectTypeOf(fastifyAttachResult).toEqualTypeOf<{ channel: import('@/server/core/index.js').SSEChannel<SWRSignal> }>()
   })
+  
 
   test('createFetchResponse returns Fetch Response and channel', () => {
     const group = new SSEChannelGroup<SWRSignal>({ channelDefaults: { target: 'swr' } })
