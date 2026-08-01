@@ -1377,4 +1377,58 @@ describe('SSEChannelGroup — channelDefaults', () => {
       ch.close()
     })
   })
+
+  describe('DX and type safety optimizations', () => {
+    function createMockNodeRes(): any {
+      return Object.assign(new EventEmitter(), {
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      })
+    }
+
+    it('prunes undefined properties in scope when calling revokeByConnectionId', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-100', target: 'swr' })
+      group.register(ch, { userId: 100 })
+
+      // Passing scope with undefined role property
+      const res = await group.revokeByConnectionId(ch.connectionId, { userId: 100, role: undefined })
+      expect(res.closed).toBe(true)
+      expect(group.size).toBe(0)
+    })
+
+    it('auto-infers TMeta from metaSchema in constructor', () => {
+      const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
+      const group = new SSEChannelGroup({ metaSchema })
+      const ch = createSSEChannel({ target: 'swr' })
+      group.register(ch, { userId: 42 })
+
+      let receivedMeta: unknown = null
+      group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+        receivedMeta = meta
+        return true
+      })
+      expect(receivedMeta).toEqual({ userId: 42 })
+    })
+
+
+    it('automatically injects single target into publish and broadcast signals when omitted', async () => {
+      const group = new SSEChannelGroup({ target: 'tanstack-query' })
+      const ch = createSSEChannel({ target: 'tanstack-query' })
+      group.register(ch)
+
+      const invalidateSpy = vi.spyOn(ch, 'invalidate')
+
+      // Calling broadcastToAll with signal without explicit target
+      group.broadcastToAll({ queryKey: ['todos'] } as any)
+      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+
+      // Calling publish with signal without explicit target
+      await group.publish('todos-topic', { queryKey: ['todos'] } as any)
+      expect(invalidateSpy).toHaveBeenLastCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+    })
+  })
 })
+
+

@@ -219,4 +219,35 @@ describe('SSEChannelGroup revokeByConnectionId return type', () => {
       group.revokeWhere({ userId: 'u1' })
     ).toEqualTypeOf<Promise<{ localClosed: number }>>()
   })
+
+  test('revokeByConnectionId type checks scope against Partial<TMeta>', () => {
+    interface UserMeta {
+      userId: number
+      role?: string
+    }
+    const group = new SSEChannelGroup<TanStackQuerySignal, UserMeta>()
+
+    // Valid scope with matching keys and optional undefined
+    void group.revokeByConnectionId('conn-1', { userId: 123 })
+    void group.revokeByConnectionId('conn-1', { userId: 123, role: undefined })
+
+    // @ts-expect-error key typo 'user_id' is rejected by compiler
+    void group.revokeByConnectionId('conn-1', { user_id: 123 })
+  })
 })
+
+describe('SSEChannelGroup constructor metaSchema auto-inference', () => {
+  test('infers TMeta automatically from metaSchema option', () => {
+    type UserMeta = { userId: number }
+    const metaSchema = {} as import('@/types/index.js').StandardSchemaV1<unknown, UserMeta>
+    const group = new SSEChannelGroup({ metaSchema })
+
+    expectTypeOf(group).toEqualTypeOf<SSEChannelGroup<InvalidateSignal, UserMeta>>()
+    group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+      expectTypeOf(meta).toEqualTypeOf<UserMeta | undefined>()
+      return true
+    })
+  })
+})
+
+
