@@ -57,8 +57,9 @@ interface TanStackQuerySignal {
 interface SWRSignal {
   target: 'swr'
   key: string | JSONValue[]
-  action?: 'revalidate' | 'purge' | 'remove'
+  action?: 'revalidate' | 'purge' | 'remove' | 'mutate'
   revalidate?: boolean
+  optimisticData?: JSONValue
   match?: 'exact' | 'prefix'
 }
 
@@ -206,6 +207,7 @@ class SSEChannelGroup<
 
   broadcastToAll(signal: TSignal | TSignal[]): void
 
+  /** Available on single-target channel groups only. On multi-target groups, signal parameter is typed as `never`. */
   broadcastByKey(signal: TSignal): void
 
   publish(topic: string, signal: TSignal | TSignal[]): Promise<void>

@@ -22,9 +22,10 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
 
    **`SWRSignal`** (`target: 'swr'`):
    - `key` must be present and be a `string` or `Array`.
-   - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove'`.
+   - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove' | 'mutate'`.
    - `match` (if present) must be `'exact' | 'prefix'`.
    - `revalidate` (if present) must be `boolean`.
+   - `optimisticData` (if present) must be a valid JSON-serializable value (`string`, `number`, `boolean`, `null`, `Array`, or `Object`). Pushes instant optimistic data updates directly to SWR cache.
 
    **`RTKQuerySignal`** (`target: 'rtk-query'`):
    - `tags` must be present and be an `Array`.
