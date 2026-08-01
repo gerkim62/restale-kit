@@ -199,13 +199,35 @@ The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i
 
 ### `broadcastByKey(signal)` — automatic key-based matching
 
-Broadcasts to channels whose registered metadata matches the signal's key using hierarchical prefix/exact matching semantics.
+`broadcastByKey` automatically matches a signal's cache key against each channel's registered metadata (`meta`), eliminating the need to write manual predicate functions.
 
 ```ts
+// Instead of writing a manual predicate:
+// group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
+
+// Simply use broadcastByKey:
 group.broadcastByKey({ key: ['todos', { userId }] })
 ```
 
-The signal's `key` is matched against each channel's registered metadata (which can be a JSON array key or an object/scalar value automatically matched against the signal key). A channel receives the signal when its registered metadata matches or extends the signal key (when `exact: true`, keys must match exactly).
+#### How Key Matching Works
+The signal's `key` is compared against each channel's registered metadata (`meta`). A channel receives the signal when its registered metadata matches or extends the signal key. For example, if a client registered with `meta: { userId: '42' }`, a signal with `key: ['todos', { userId: '42' }]` will deliver to that client automatically.
+
+#### Target Restrictions: Single-Target Groups Only
+> [!NOTE]
+> `broadcastByKey` is available on **single-target channel groups** (e.g. `new SSEChannelGroup({ channelDefaults: { target: 'swr' } })`).
+> 
+> On **multi-target channel groups** (e.g. `target: ['swr', 'tanstack-query']`), `broadcastByKey` is restricted at the type level (`never`). This is because multi-target broadcasts require passing a batch array containing distinct signals for each target framework (`[SWRSignal, TanStackQuerySignal]`), which cannot be unambiguously matched with a single key. On multi-target groups, use `group.broadcast(batch, predicate)` instead:
+> 
+> ```ts
+> // Multi-target group broadcast:
+> group.broadcast(
+>   [
+>     { target: 'swr', key: ['todos', { userId: '42' }] },
+>     { target: 'tanstack-query', queryKey: ['todos', { userId: '42' }] },
+>   ],
+>   (meta) => meta.userId === '42'
+> )
+> ```
 
 ### Broadcasting without metadata
 
