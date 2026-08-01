@@ -738,10 +738,10 @@ class SSEChannelGroupImplementation<
     signal: GroupSignalInput<TSignal, TTarget>,
     predicate: (meta: TMeta | undefined) => boolean
   ): void {
-    this.broadcastRaw(signal as TSignal | TSignal[], predicate)
+    this.broadcastRaw(signal as InvalidateSignal | InvalidateSignal[], predicate)
   }
 
-  private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  private broadcastRaw(signal: InvalidateSignal | InvalidateSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
@@ -791,7 +791,7 @@ class SSEChannelGroupImplementation<
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
   broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
-    this.broadcastRaw(signal as TSignal | TSignal[], () => true)
+    this.broadcastRaw(signal as InvalidateSignal | InvalidateSignal[], () => true)
   }
 
   /**
@@ -828,10 +828,10 @@ class SSEChannelGroupImplementation<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
-    await this.publishRaw(topic, signal as TSignal | TSignal[])
+    await this.publishRaw(topic, signal as InvalidateSignal | InvalidateSignal[])
   }
 
-  private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+  private async publishRaw(topic: string, signal: InvalidateSignal | InvalidateSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
     const groupTargets = this.target ?? this.channelDefaults?.target
