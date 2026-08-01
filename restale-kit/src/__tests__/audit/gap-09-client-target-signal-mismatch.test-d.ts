@@ -201,9 +201,8 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       
       const callback = (signal: TanStackQuerySignal | TanStackQuerySignal[]) => {}
       
-      const adapted: InvalidCallback = 
-        // @ts-expect-error - Cannot create this with makeAdaptedCallback
-        makeAdaptedCallback('swr', callback)
+      // @ts-expect-error - A TanStack callback cannot carry the SWR brand
+      const adapted: InvalidCallback = makeAdaptedCallback('swr', callback)
     })
 
     test('should maintain type consistency through assignment', () => {
@@ -270,8 +269,8 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       const adapted = makeAdaptedCallback<'tanstack-query', CustomTanStackSignal>('tanstack-query', callback)
       expectTypeOf(adapted).not.toEqualTypeOf<never>()
       
+      // @ts-expect-error - A custom TanStack signal cannot carry the SWR brand
       const wrongAdapted = makeAdaptedCallback<'swr', CustomTanStackSignal>(
-        // @ts-expect-error - Should reject mismatched brand
         'swr',
         callback
       )
@@ -393,8 +392,8 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       expectTypeOf(rtkClient).not.toEqualTypeOf<never>()
       
       // Each should have distinct types
-      expectTypeOf(swrClient).not.toEqualTypeOf(tanstackClient)
-      expectTypeOf(tanstackClient).not.toEqualTypeOf(rtkClient)
+      expectTypeOf(swrClient).not.toEqualTypeOf<typeof tanstackClient>()
+      expectTypeOf(tanstackClient).not.toEqualTypeOf<typeof rtkClient>()
     })
 
     test('should not allow assigning clients with different signal types', () => {

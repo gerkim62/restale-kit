@@ -364,17 +364,17 @@ describe('channel', () => {
 
 describe('target configuration validation', () => {
   it('accepts each supported target and unique target arrays', () => {
-    expect(() => validateTargetConfiguration('swr')).not.toThrow()
-    expect(() => validateTargetConfiguration('tanstack-query')).not.toThrow()
-    expect(() => validateTargetConfiguration('rtk-query')).not.toThrow()
-    expect(() => validateTargetConfiguration('generic')).not.toThrow()
-    expect(() => validateTargetConfiguration(['swr', 'tanstack-query'])).not.toThrow()
+    expect(() => { validateTargetConfiguration('swr'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('tanstack-query'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('rtk-query'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('generic'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration(['swr', 'tanstack-query']); }).not.toThrow()
   })
 
   it('rejects empty, duplicate, and unsupported configurations before a stream is created', () => {
-    expect(() => validateTargetConfiguration([])).toThrow(/at least one target/i)
-    expect(() => validateTargetConfiguration(['swr', 'swr'])).toThrow(/duplicate target/i)
-    expect(() => validateTargetConfiguration('invalid-target' as never)).toThrow(/unsupported target/i)
+    expect(() => { validateTargetConfiguration([]); }).toThrow(/at least one target/i)
+    expect(() => { validateTargetConfiguration(['swr', 'swr']); }).toThrow(/duplicate target/i)
+    expect(() => { validateTargetConfiguration('invalid-target' as never); }).toThrow(/unsupported target/i)
     expect(() => createSSEChannel({ target: ['swr', 'invalid-target'] as never })).toThrow(/unsupported target/i)
   })
 })
@@ -382,7 +382,7 @@ describe('target configuration validation', () => {
 describe('validateSignalTargets', () => {
   it('auto-fills target property on returned signal when single-target channel without mutating input, but throws when multi-target', () => {
     const s = { key: ['todos'] } as any
-    const res = validateSignalTargets(s, 'swr') as any
+    const res = validateSignalTargets(s, 'swr')
     expect(s.target).toBeUndefined()
     expect(res.target).toBe('swr')
 

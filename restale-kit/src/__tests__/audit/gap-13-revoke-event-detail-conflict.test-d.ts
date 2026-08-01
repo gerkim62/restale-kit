@@ -172,8 +172,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (detail.reason === 'unsupported-target') {
-        expectTypeOf(detail.requested).toEqualTypeOf<string | undefined>()
-        expectTypeOf(detail.supported).toEqualTypeOf<string[] | undefined>()
+        expectTypeOf(detail.requested).toEqualTypeOf<string>()
+        expectTypeOf(detail.supported).toEqualTypeOf<string[]>()
         // @ts-expect-error - details property does not exist on narrowed shape
         const details = detail.details
       }
@@ -185,10 +185,8 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
       }
       
       if (detail.reason === 'deadline') {
-        // @ts-expect-error - requested is not present on deadline reason
-        const requested = detail.requested
-        // @ts-expect-error - supported is not present on deadline reason
-        const supported = detail.supported
+        expectTypeOf(detail.requested).toEqualTypeOf<undefined>()
+        expectTypeOf(detail.supported).toEqualTypeOf<undefined>()
       }
     })
   })
@@ -233,21 +231,17 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
 
   describe('Documentation and usage patterns', () => {
     test('discriminated union narrows correctly for unsupported-target vs other reasons', () => {
-      const detail: ClientRevokeEventDetail = {
-        reason: 'unsupported-target',
-        requested: 'rtk-query',
-        supported: ['swr']
+      const assertNarrowing = (detail: ClientRevokeEventDetail) => {
+        if (detail.reason === 'unsupported-target') {
+          expectTypeOf(detail).toEqualTypeOf<
+            Extract<ClientRevokeEventDetail, { reason: 'unsupported-target' }>
+          >()
+        } else {
+          expectTypeOf(detail.reason).not.toEqualTypeOf<never>()
+        }
       }
-      
-      if (detail.reason === 'unsupported-target') {
-        expectTypeOf(detail).toMatchTypeOf<{
-          reason: 'unsupported-target'
-          requested?: string
-          supported?: string[]
-        }>()
-      } else {
-        expectTypeOf(detail.reason).toBeString()
-      }
+
+      assertNarrowing({ reason: 'unsupported-target', requested: 'rtk-query', supported: ['swr'] })
     })
   })
 

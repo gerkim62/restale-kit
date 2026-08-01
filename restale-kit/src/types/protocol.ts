@@ -402,5 +402,3 @@ export interface RenewEventDetail {
   /** Milliseconds to wait between retry attempts. Must be a finite non-negative number. */
   retryDelayMs: number
 }
-
-

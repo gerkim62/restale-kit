@@ -458,7 +458,7 @@ class SSEChannelGroupImplementation<
       const groupTargets = new Set(Array.isArray(this.target) ? this.target : [this.target])
       const setupTargets = Array.isArray(target) ? target : [target]
       for (const t of setupTargets) {
-        if (!groupTargets.has(t as SignalTarget)) {
+        if (!groupTargets.has(t)) {
           throw new Error(`[target] Target "${t}" is not compatible with channel group targets.`)
         }
       }

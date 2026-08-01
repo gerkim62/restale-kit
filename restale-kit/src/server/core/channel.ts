@@ -10,7 +10,6 @@ import {
   type FrameGuardResult,
   type ReStaleSignalForTarget,
   type TargetForSignal,
-  type SignalInputForTarget,
   isJSONValueArray,
   isJSONValue,
 } from '@/types/protocol.js'

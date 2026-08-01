@@ -135,7 +135,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
       };
       
       // @ts-expect-error - SWR signals not compatible with RTK adapter
-      const adapter = rtkQueryAdapter<SWRSignal>(mockApi as any);
+      const adapter = rtkQueryAdapter<SWRSignal>(mockApi);
     });
 
     it('should reject TanStackQuerySignal type argument', () => {
@@ -146,7 +146,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
       };
       
       // @ts-expect-error - TanStack signals not compatible with RTK adapter
-      const adapter = rtkQueryAdapter<TanStackQuerySignal>(mockApi as any);
+      const adapter = rtkQueryAdapter<TanStackQuerySignal>(mockApi);
     });
 
     it('should accept RTKQuerySignal type argument', () => {
@@ -157,7 +157,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
       };
       
       // Should compile
-      const adapter = rtkQueryAdapter<RTKQuerySignal>(mockApi as any);
+      const adapter = rtkQueryAdapter<RTKQuerySignal>(mockApi);
       
       expect(adapter).toBeDefined();
       expect(adapter.target).toBe('rtk-query');
@@ -175,7 +175,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
       }
       
       // Should compile - custom type extends RTK
-      const adapter = rtkQueryAdapter<CustomRTKSignal>(mockApi as any);
+      const adapter = rtkQueryAdapter<CustomRTKSignal>(mockApi);
       
       expect(adapter).toBeDefined();
     });
@@ -246,7 +246,7 @@ describe('Gap 8: Adapter generic parameters tied to target', () => {
 
       type BadType = { baz: boolean };
       // @ts-expect-error - Plain object doesn't extend RTKQuerySignal
-      const adapter = rtkQueryAdapter<BadType>(mockApi as any);
+      const adapter = rtkQueryAdapter<BadType>(mockApi);
     });
   });
 

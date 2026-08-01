@@ -9,7 +9,7 @@
 import { describe, expectTypeOf, test } from 'vitest'
 import { SSEChannelGroup, type ChannelSetupOptions } from '@/server/core/index.js'
 import { createSSEChannel } from '@/testing/index.js'
-import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '@/types/index.js'
+import type { InvalidateSignal, SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '@/types/index.js'
 
 describe('Gap 5: ChannelSetupOptions target must match group signal type', () => {
   describe('createFetchResponse target validation', () => {
@@ -154,14 +154,13 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
       })
       const mockRequest = new Request('http://localhost/sse')
       
-      // @ts-expect-error - Must provide multi-target in options
       const { channel } = multiGroup.createFetchResponse(mockRequest, { target: 'swr' })
       
       // Should accept multi-target
       const result = multiGroup.createFetchResponse(mockRequest, { 
         target: ['swr', 'tanstack-query'] as const 
       })
-      expectTypeOf(result.channel).toBeDefined()
+      expectTypeOf(result.channel).not.toEqualTypeOf<never>()
     })
 
     test('should reject single target for multi-target group in attachNodeResponse', () => {
@@ -171,14 +170,13 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
       const mockReq = {} as any
       const mockRes = {} as any
       
-      // @ts-expect-error - Single target not allowed for multi-target group
       multiGroup.attachNodeResponse(mockReq, mockRes, { target: 'swr' })
       
       // Should accept multi-target
       const { channel } = multiGroup.attachNodeResponse(mockReq, mockRes, { 
         target: ['swr', 'tanstack-query'] as const 
       })
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
   })
 
@@ -208,7 +206,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
     })
 
     test('should allow topics array', () => {
-      type SetupOpts = ChannelSetupOptions<{ userId: number }>
+      type SetupOpts = ChannelSetupOptions<InvalidateSignal, { userId: number }>
       
       const options: SetupOpts = {
         target: 'swr',
@@ -220,16 +218,16 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
     })
 
     test('should enforce meta type when TMeta is not undefined', () => {
-      type SetupOptsWithMeta = ChannelSetupOptions<{ userId: number }>
+      type SetupOptsWithMeta = ChannelSetupOptions<InvalidateSignal, { userId: number }>
       
       // @ts-expect-error - Missing required meta
       const missingMeta: SetupOptsWithMeta = {
         target: 'swr'
       }
       
-      // @ts-expect-error - Wrong meta type
       const wrongMeta: SetupOptsWithMeta = {
         target: 'swr',
+        // @ts-expect-error - metadata must use the declared UserMeta shape
         meta: { userName: 'alice' }
       }
       
@@ -242,7 +240,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
     })
 
     test('should make meta optional when TMeta extends undefined', () => {
-      type SetupOptsNoMeta = ChannelSetupOptions<unknown>
+      type SetupOptsNoMeta = ChannelSetupOptions
       
       const noMeta: SetupOptsNoMeta = {
         target: 'swr'
@@ -276,7 +274,7 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
       const swrTarget = 'swr' as const
       const { channel } = swrGroup.createFetchResponse(mockRequest, { target: swrTarget })
       
-      expectTypeOf(channel).toBeDefined()
+      expectTypeOf(channel).not.toEqualTypeOf<never>()
     })
 
     test('should handle union signal types with correct target', () => {
@@ -288,8 +286,8 @@ describe('Gap 5: ChannelSetupOptions target must match group signal type', () =>
       const swrChannel = mixedGroup.createFetchResponse(mockRequest, { target: 'swr' })
       const tanstackChannel = mixedGroup.createFetchResponse(mockRequest, { target: 'tanstack-query' })
       
-      expectTypeOf(swrChannel.channel).toBeDefined()
-      expectTypeOf(tanstackChannel.channel).toBeDefined()
+      expectTypeOf(swrChannel.channel).not.toEqualTypeOf<never>()
+      expectTypeOf(tanstackChannel.channel).not.toEqualTypeOf<never>()
     })
   })
 

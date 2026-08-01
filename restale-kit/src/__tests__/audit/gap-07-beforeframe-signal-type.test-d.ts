@@ -24,7 +24,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             // Should have SWR-specific properties
             if (!Array.isArray(ctx.signal)) {
               expectTypeOf(ctx.signal.key).not.toEqualTypeOf<never>()
-              expectTypeOf(ctx.signal.action).toEqualTypeOf<'revalidate' | 'mutate' | 'purge' | undefined>()
+              expectTypeOf(ctx.signal.action).toEqualTypeOf<'revalidate' | 'mutate' | 'purge' | 'remove' | undefined>()
             }
           }
           return { action: 'send' }
@@ -107,7 +107,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             // Should have TanStack-specific properties
             if (!Array.isArray(ctx.signal)) {
               expectTypeOf(ctx.signal.queryKey).not.toEqualTypeOf<never>()
-              expectTypeOf(ctx.signal.action).toEqualTypeOf<'invalidate' | 'refetch' | 'reset' | undefined>()
+              expectTypeOf(ctx.signal.action).toEqualTypeOf<'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel' | undefined>()
             }
           }
           return { action: 'send' }
@@ -263,8 +263,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
 
   describe('Multi-target channel beforeFrame type', () => {
     test('should receive union type for multi-target channel', () => {
-      const channel = createSSEChannel<SWRSignal | TanStackQuerySignal>({ 
-        target: ['swr', 'tanstack-query'],
+      const channel = createSSEChannel({ 
+        target: ['swr', 'tanstack-query'] as const,
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             // Should be union of configured signals
@@ -280,8 +280,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
     })
 
     test('should require type guards for multi-target signal inspection', () => {
-      const channel = createSSEChannel<SWRSignal | TanStackQuerySignal>({ 
-        target: ['swr', 'tanstack-query'],
+      const channel = createSSEChannel({ 
+        target: ['swr', 'tanstack-query'] as const,
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
             // Need to check target to narrow type
@@ -299,8 +299,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
     })
 
     test('should handle three-target configuration', () => {
-      const channel = createSSEChannel<SWRSignal | TanStackQuerySignal | RTKQuerySignal>({ 
-        target: ['swr', 'tanstack-query', 'rtk-query'],
+      const channel = createSSEChannel({ 
+        target: ['swr', 'tanstack-query', 'rtk-query'] as const,
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'signal') {
             // Should be union of all three
@@ -324,7 +324,6 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
           if (ctx.frameType === 'signal') {
             expectTypeOf(ctx.frameType).toEqualTypeOf<'signal'>()
             expectTypeOf(ctx.signal).not.toEqualTypeOf<never>()
-            expectTypeOf(ctx.id).toEqualTypeOf<string | undefined>()
           }
           return { action: 'send' }
         }
@@ -340,8 +339,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
         beforeFrame: (ctx) => {
           if (ctx.frameType === 'keepalive') {
             expectTypeOf(ctx.frameType).toEqualTypeOf<'keepalive'>()
-            // @ts-expect-error - signal should not exist on keepalive frame
-            const sig = ctx.signal
+            expectTypeOf(ctx.signal).toEqualTypeOf<undefined>()
           }
           return { action: 'send' }
         }

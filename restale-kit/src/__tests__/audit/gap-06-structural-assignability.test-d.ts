@@ -107,9 +107,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should allow assigning to compatible signal union', () => {
       const swrStore = createEventStore<SWRSignal>({ capacity: 10 })
       
-      // Valid: SWRSignal extends InvalidateSignal union
+      // Stores consume signals, so widening their accepted signal type is unsafe.
+      // @ts-expect-error - A store for only SWR signals cannot accept every protocol signal
       const genericStore: EventStore<InvalidateSignal> = swrStore
-      expectTypeOf(genericStore).not.toEqualTypeOf<never>()
     })
   })
 
@@ -180,9 +180,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         subscribe: async () => async () => {}
       }
       
-      // Valid: SWRSignal extends InvalidateSignal union
+      // Adapters consume published signal envelopes, so widening is unsafe.
+      // @ts-expect-error - An SWR adapter cannot publish every protocol signal
       const genericAdapter: PubSubAdapter<InvalidateSignal> = swrAdapter
-      expectTypeOf(genericAdapter).not.toEqualTypeOf<never>()
     })
   })
 
@@ -267,8 +267,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject TanStack store in SWR group options', () => {
       const tanstackStore = createEventStore<TanStackQuerySignal>({ capacity: 10 })
       
-      // @ts-expect-error - TanStack store incompatible with SWR group
       new SSEChannelGroup<SWRSignal>({
+        // @ts-expect-error - TanStack store is incompatible with an SWR group
         eventStore: tanstackStore
       })
     })
@@ -276,8 +276,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject SWR store in TanStack group options', () => {
       const swrStore = createEventStore<SWRSignal>({ capacity: 10 })
       
-      // @ts-expect-error - SWR store incompatible with TanStack group
       new SSEChannelGroup<TanStackQuerySignal>({
+        // @ts-expect-error - SWR store is incompatible with a TanStack group
         eventStore: swrStore
       })
     })
@@ -285,8 +285,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     test('should reject RTK store in SWR group options', () => {
       const rtkStore = createEventStore<RTKQuerySignal>({ capacity: 10 })
       
-      // @ts-expect-error - RTK store incompatible with SWR group
       new SSEChannelGroup<SWRSignal>({
+        // @ts-expect-error - RTK store is incompatible with an SWR group
         eventStore: rtkStore
       })
     })
@@ -309,8 +309,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         subscribe: async () => async () => {}
       }
       
-      // @ts-expect-error - TanStack adapter incompatible with SWR group
       new SSEChannelGroup<SWRSignal>({
+        // @ts-expect-error - TanStack adapter is incompatible with an SWR group
         pubsub: tanstackAdapter
       })
     })
@@ -321,8 +321,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         subscribe: async () => async () => {}
       }
       
-      // @ts-expect-error - SWR adapter incompatible with TanStack group
       new SSEChannelGroup<TanStackQuerySignal>({
+        // @ts-expect-error - SWR adapter is incompatible with a TanStack group
         pubsub: swrAdapter
       })
     })
@@ -333,8 +333,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         subscribe: async () => async () => {}
       }
       
-      // @ts-expect-error - RTK adapter incompatible with SWR group
       new SSEChannelGroup<SWRSignal>({
+        // @ts-expect-error - RTK adapter is incompatible with an SWR group
         pubsub: rtkAdapter
       })
     })

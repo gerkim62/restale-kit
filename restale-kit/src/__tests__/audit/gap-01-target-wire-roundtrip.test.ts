@@ -136,7 +136,11 @@ describe('Gap 1: target-specific wire frames client round-trip', () => {
   })
 
   describe('Multi-target scenarios', () => {
-    const signals: TargetedSignal[] = [
+    const signals: [
+      ExplicitSignalForTarget<'tanstack-query'>,
+      ExplicitSignalForTarget<'swr'>,
+      ExplicitSignalForTarget<'rtk-query'>,
+    ] = [
       { target: 'tanstack-query', queryKey: ['todos'] },
       { target: 'swr', key: ['/api/todos'] },
       { target: 'rtk-query', tags: [{ type: 'Todo' }] },

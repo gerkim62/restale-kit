@@ -858,7 +858,7 @@ describe('Gap 11: Numeric input validation for bounded values', () => {
 
     it('should reject undefined for required numeric values', () => {
       expect(() => {
-        createEventStore<SWRSignal>({ capacity: undefined as any })
+        createEventStore<SWRSignal>({ capacity: undefined })
       }).toThrow()
     })
 

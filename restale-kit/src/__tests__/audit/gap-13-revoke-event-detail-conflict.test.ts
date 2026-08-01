@@ -233,7 +233,7 @@ describe('Gap 13: RevokeEventDetail runtime behavior', () => {
         
         for (const reason of reasons) {
           const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
-            detail: { reason: reason as any }
+            detail: { reason: reason }
           })
           client.dispatchEvent(revokeEvent)
         }
