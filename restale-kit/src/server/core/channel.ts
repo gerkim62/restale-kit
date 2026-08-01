@@ -4,7 +4,6 @@ import {
   type EventStore,
   type SignalTarget,
   type LifetimeOptions,
-  type OnDeadline,
   type BeforeFrameFn,
   type FrameGuardCtx,
   type FrameGuardResult,

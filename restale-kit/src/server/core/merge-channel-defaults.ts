@@ -126,10 +126,12 @@ function mergeLifetimeParts(
     ? channel.reconnect
     : defaults.reconnect
 
-  const res: Record<string, unknown> = { ...timeValue }
-  if (onDeadline !== undefined) res.onDeadline = onDeadline
-  if (reconnect !== undefined) res.reconnect = reconnect
-  return res as LifetimeOptions
+  const res: LifetimeOptions = {
+    ...timeValue,
+    ...(onDeadline !== undefined ? { onDeadline } : {}),
+    ...(reconnect !== undefined ? { reconnect } : {}),
+  }
+  return res
 }
 
 function resolveTimeValue(

@@ -3,7 +3,6 @@ import type { Arguments } from 'swr'
 import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
-  type InvalidateSignal,
   type SWRSignal,
   type JSONValue,
 } from '../../types/protocol.js'
