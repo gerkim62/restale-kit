@@ -526,7 +526,7 @@ export class SSEInvalidatorClient<
         parsedRequested !== undefined &&
         parsedSupported !== undefined
           ? { reason: 'unsupported-target', requested: parsedRequested, supported: parsedSupported }
-          : { reason: parsedReason === 'unsupported-target' ? undefined : parsedReason }
+          : { reason: parsedReason }
 
       this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail }))
     })

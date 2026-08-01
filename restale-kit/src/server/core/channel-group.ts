@@ -242,6 +242,17 @@ class SSEChannelGroupImplementation<
     }
     if (options.channelDefaults?.target !== undefined) {
       validateTargetConfiguration(options.channelDefaults.target)
+      if (options.target !== undefined) {
+        const groupTargets = new Set(toTargetList(options.target))
+        const defaultTargets = toTargetList(options.channelDefaults.target)
+        for (const t of defaultTargets) {
+          if (!groupTargets.has(t)) {
+            throw new Error(
+              `[target] Target "${t}" in channelDefaults.target is not compatible with channel group targets.`
+            )
+          }
+        }
+      }
     }
 
     const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
@@ -488,9 +499,8 @@ class SSEChannelGroupImplementation<
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     if (target === undefined) return
     validateTargetConfiguration(target)
-    const configuredTarget = this.target ?? this.channelDefaults?.target
-    if (configuredTarget !== undefined) {
-      const groupTargets = new Set(toTargetList(configuredTarget))
+    if (this.target !== undefined) {
+      const groupTargets = new Set(toTargetList(this.target))
       const setupTargets = toTargetList(target)
       for (const t of setupTargets) {
         if (!groupTargets.has(t)) {
@@ -743,8 +753,19 @@ class SSEChannelGroupImplementation<
     this.broadcastRaw(signal, predicate)
   }
 
+  private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
+    const groupTargets = this.target ?? this.channelDefaults?.target
+    if (groupTargets !== undefined) {
+      const targetList = toTargetList(groupTargets)
+      if (targetList.length > 1) {
+        validateSignalTargets(signal, targetList)
+      }
+    }
+  }
+
   private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
+    this.validateGroupSignalTargets(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -836,13 +857,7 @@ class SSEChannelGroupImplementation<
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
-    const groupTargets = this.target ?? this.channelDefaults?.target
-    if (groupTargets !== undefined) {
-      const targetList = toTargetList(groupTargets)
-      if (targetList.length > 1) {
-        validateSignalTargets(signal, targetList)
-      }
-    }
+    this.validateGroupSignalTargets(signal)
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.

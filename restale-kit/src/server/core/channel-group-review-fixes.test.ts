@@ -386,4 +386,24 @@ describe('review-findings: attach/create regression (transport headers via build
       'X-ReStale-Supported': 'tanstack-query',
     }))
   })
+
+  it('rejects channelDefaults.target when incompatible with group target in constructor', () => {
+    expect(() => {
+      new SSEChannelGroup({
+        target: 'swr',
+        channelDefaults: { target: 'tanstack-query' }
+      })
+    }).toThrow(/not compatible with channel group targets/i)
+  })
+
+  it('validates multi-target signals during broadcast and rejects incomplete batches', () => {
+    const group = new SSEChannelGroup({
+      target: ['swr', 'tanstack-query'] as const
+    })
+
+    expect(() => {
+      // @ts-expect-error - incomplete multi-target batch (missing tanstack-query)
+      group.broadcast([{ target: 'swr', key: ['users'] }], () => true)
+    }).toThrow()
+  })
 })
