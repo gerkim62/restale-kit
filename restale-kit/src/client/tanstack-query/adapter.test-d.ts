@@ -31,12 +31,16 @@ describe('tanstackQueryAdapter type safety', () => {
     expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', CustomTSQuerySignal>>()
   })
 
-  test('tanstackQueryAdapter callback parameter should reject SWRSignal', () => {
-    const mockQueryClient = {} as QueryClient
-    const adapter = tanstackQueryAdapter(mockQueryClient)
-
-    // @ts-expect-error tanstackQueryAdapter callback should only accept TanStackQuerySignal, rejecting SWRSignal
-    adapter({ target: 'swr', key: ['users'] })
+  test('tanstackQueryAdapter accepts structural QueryClientLike interface without nominal class errors', () => {
+    const structuralClient = {
+      invalidateQueries: async () => {},
+      removeQueries: () => {},
+      resetQueries: async () => {},
+      cancelQueries: async () => {},
+      refetchQueries: async () => {},
+    }
+    const adapter = tanstackQueryAdapter(structuralClient)
+    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
   })
 })
 

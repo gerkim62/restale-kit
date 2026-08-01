@@ -70,7 +70,7 @@ export class SSEInvalidatorClient<
   private opened = false
   private eventSource: SSE | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
-  private attempt = 0
+  private currentAttempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private revoked = false
   private renewing = false
@@ -149,6 +149,11 @@ export class SSEInvalidatorClient<
     return this.currentStatus
   }
 
+  /** Current reconnect attempt count (0 on initial connect or after success). */
+  get attempt(): number {
+    return this.currentAttempt
+  }
+
   /** The last event ID string received from the SSE stream, if any. */
   get lastEventId(): string | null {
     return this.currentLastEventId
@@ -203,7 +208,7 @@ export class SSEInvalidatorClient<
     }
 
     // Reset backoff counter and revoked flag for a fresh connect attempt
-    this.attempt = 0
+    this.currentAttempt = 0
     this.revoked = false
     this.renewing = false
 
@@ -324,9 +329,9 @@ export class SSEInvalidatorClient<
     this.setStatus({ status: 'connecting' })
 
     if (this.debug) {
-      const reason = this.attempt === 0
+      const reason = this.currentAttempt === 0
         ? 'First connection attempt for this client instance'
-        : `Automatic reconnection attempt ${String(this.attempt)} after connection drop/error`
+        : `Automatic reconnection attempt ${String(this.currentAttempt)} after connection drop/error`
       console.log(
         `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
       )
@@ -344,7 +349,7 @@ export class SSEInvalidatorClient<
 
     es.onopen = () => {
       this.opened = true
-      this.attempt = 0 // Reset on successful open
+      this.currentAttempt = 0 // Reset on successful open
       this.setStatus({ status: 'open' })
       if (this.debug) {
         console.log(
@@ -391,15 +396,15 @@ export class SSEInvalidatorClient<
       : undefined
     this.teardown()
 
-    if (!this.revoked && !this.renewing && canRetry && this.attempt < this.maxRetries) {
-      const delay = retryAfterDelay ?? calculateBackoff(this.attempt, this.reconnectOptions)
+    if (!this.revoked && !this.renewing && canRetry && this.currentAttempt < this.maxRetries) {
+      const delay = retryAfterDelay ?? calculateBackoff(this.currentAttempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
-          `Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
+          `Retrying in ${String(delay)}ms (attempt ${String(this.currentAttempt + 1)} of ${String(this.maxRetries)}).`
         )
       }
-      this.attempt++
+      this.currentAttempt++
       this.setStatus({ status: 'connecting' })
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null
@@ -668,7 +673,7 @@ export class SSEInvalidatorClient<
    */
   private wireRenewSuccess(es: SSE, onOpenCallback: () => void): void {
     this.opened = true
-    this.attempt = 0
+    this.currentAttempt = 0
     this.setStatus({ status: 'open' })
     onOpenCallback()
 

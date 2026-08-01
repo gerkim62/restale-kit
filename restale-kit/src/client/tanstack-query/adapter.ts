@@ -10,6 +10,19 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
 }
 
+/**
+ * Structural interface matching TanStack Query's QueryClient API surface.
+ * Using a structural interface prevents nominal class typing mismatches when consumer
+ * projects use different patch/minor versions of `@tanstack/react-query`.
+ */
+export interface QueryClientLike {
+  invalidateQueries(filters?: any, options?: any): Promise<void>
+  removeQueries(filters?: any, options?: any): void
+  resetQueries(filters?: any, options?: any): Promise<void>
+  cancelQueries(filters?: any, options?: any): Promise<void>
+  refetchQueries(filters?: any, options?: any): Promise<void>
+}
+
 export type TanStackQuerySignalInput = TanStackQuerySignal
 
 /**
@@ -17,7 +30,7 @@ export type TanStackQuerySignalInput = TanStackQuerySignal
  * Gap 8: Constrained specifically to TanStackQuerySignal.
  */
 export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
-  queryClient: QueryClient
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK,
@@ -85,7 +98,7 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
 export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
-  queryClient: QueryClient
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK,

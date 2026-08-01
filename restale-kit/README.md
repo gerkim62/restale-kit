@@ -299,6 +299,39 @@ group.broadcastByKey({ key: ['todos', { userId: 42 }] })
 
 ---
 
+## 🔒 Authentication & Security Best Practices
+
+> [!IMPORTANT]
+> **Use HTTP-only Cookie Authentication (`withCredentials: true`) for Production**
+
+Passing authentication tokens in SSE URL query parameters (e.g., `/sse?token=xyz`) is **strongly discouraged** for production applications. URL query parameters leak into:
+- Web server access logs & reverse proxy logs (e.g., NGINX, Cloudflare)
+- HTTP `Referer` headers on outbound links
+- Browser history and client-side logging
+
+### Recommended Pattern: HTTP-only Session Cookies
+
+Set a secure, HTTP-only, `SameSite=Lax` (or `SameSite=Strict`) session cookie when your user logs in. Then configure `useReStale` or `SSEInvalidatorClient` with `withCredentials: true`:
+
+```tsx
+// React
+const { isConnected, isReconnecting, attempt } = useReStale('/api/sse', {
+  withCredentials: true, // Sends HTTP-only session cookies automatically
+  onInvalidate,
+})
+```
+
+```ts
+// Vanilla JS / Node
+const client = new SSEInvalidatorClient('/api/sse', {
+  withCredentials: true,
+})
+```
+
+On your backend, validate the user's session cookie in standard authentication middleware before attaching the response to `SSEChannelGroup`.
+
+---
+
 ## 🔌 Vanilla JS / Non-React Client
 
 ```ts

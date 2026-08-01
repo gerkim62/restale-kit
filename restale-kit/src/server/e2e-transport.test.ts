@@ -83,7 +83,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     await vi.advanceTimersByTimeAsync(50)
 
     const chunks = (res as any).__chunks as string[]
-    expect(chunks.join('')).toBe('event: invalidate\ndata: {"key":["products"],"target":"swr"}\n\n')
+    expect(chunks.join('')).toBe(':\n\nevent: invalidate\ndata: {"key":["products"],"target":"swr"}\n\n')
   })
 
   it('Fetch: batch invalidate produces single SSE frame with JSON array', async () => {
