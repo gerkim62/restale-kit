@@ -18,7 +18,10 @@ export function internal_toSSEResponse<TSignal extends InvalidateSignal = Invali
   group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
-  const connectionId = extractConnectionId(urlObj.searchParams)
+  const connectionId =
+    options.connectionId !== undefined
+      ? options.connectionId
+      : extractConnectionId(urlObj.searchParams)
   const requestedTarget = extractRequestedTarget(urlObj.searchParams)
 
   const lastEventId =

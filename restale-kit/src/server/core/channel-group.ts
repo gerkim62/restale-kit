@@ -488,8 +488,9 @@ class SSEChannelGroupImplementation<
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     if (target === undefined) return
     validateTargetConfiguration(target)
-    if (this.target !== undefined) {
-      const groupTargets = new Set(toTargetList(this.target))
+    const configuredTarget = this.target ?? this.channelDefaults?.target
+    if (configuredTarget !== undefined) {
+      const groupTargets = new Set(toTargetList(configuredTarget))
       const setupTargets = toTargetList(target)
       for (const t of setupTargets) {
         if (!groupTargets.has(t)) {

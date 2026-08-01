@@ -463,5 +463,25 @@ describe('Gap 5: Transport setup target override', () => {
         group.createFetchResponse(mockReq, { target: 'tanstack-query' });
       }).toThrow();
     });
+
+    it('should validate setup target when group target is set via channelDefaults only', () => {
+      const group = new SSEChannelGroup<SWRSignal>({
+        channelDefaults: {
+          target: 'swr'
+        }
+      });
+
+      const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');
+
+      expect(() => {
+        // @ts-expect-error - Incompatible target with channelDefaults.target
+        group.createFetchResponse(mockReq, { target: 'tanstack-query' });
+      }).toThrow(/not compatible with channel group targets/i);
+
+      expect(() => {
+        const result = group.createFetchResponse(mockReq, { target: 'swr' });
+        expect(result.channel).toBeDefined();
+      }).not.toThrow();
+    });
   });
 });
