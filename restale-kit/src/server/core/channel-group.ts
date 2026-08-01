@@ -183,11 +183,12 @@ export type SignalsForTargets<TTarget> =
 type GroupSignalInput<
   TSignal extends InvalidateSignal,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[],
-> = [TTarget] extends [readonly SignalTarget[]]
-  ? SignalInputForTarget<TTarget>
-  : [TTarget] extends [SignalTarget]
+> = (TSignal | TSignal[]) &
+  ([TTarget] extends [readonly SignalTarget[]]
     ? SignalInputForTarget<TTarget>
-    : TSignal | TSignal[]
+    : [TTarget] extends [SignalTarget]
+      ? SignalInputForTarget<TTarget>
+      : unknown)
 
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
@@ -738,10 +739,10 @@ class SSEChannelGroupImplementation<
     signal: GroupSignalInput<TSignal, TTarget>,
     predicate: (meta: TMeta | undefined) => boolean
   ): void {
-    this.broadcastRaw(signal as InvalidateSignal | InvalidateSignal[], predicate)
+    this.broadcastRaw(signal, predicate)
   }
 
-  private broadcastRaw(signal: InvalidateSignal | InvalidateSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
@@ -791,7 +792,7 @@ class SSEChannelGroupImplementation<
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
   broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
-    this.broadcastRaw(signal as InvalidateSignal | InvalidateSignal[], () => true)
+    this.broadcastRaw(signal, () => true)
   }
 
   /**
@@ -828,10 +829,10 @@ class SSEChannelGroupImplementation<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
-    await this.publishRaw(topic, signal as InvalidateSignal | InvalidateSignal[])
+    await this.publishRaw(topic, signal)
   }
 
-  private async publishRaw(topic: string, signal: InvalidateSignal | InvalidateSignal[]): Promise<void> {
+  private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
     const groupTargets = this.target ?? this.channelDefaults?.target
