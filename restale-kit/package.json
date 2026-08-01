@@ -63,6 +63,10 @@
       "types": "./dist/client/tanstack-query/index.d.ts",
       "import": "./dist/client/tanstack-query/index.js"
     },
+    "./rtk-query": {
+      "types": "./dist/client/rtk-query/index.d.ts",
+      "import": "./dist/client/rtk-query/index.js"
+    },
     "./pubsub": {
       "types": "./dist/pubsub/core/index.d.ts",
       "import": "./dist/pubsub/core/index.js"
@@ -86,6 +90,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:types": "vitest run --typecheck",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepack": "pnpm run build",
     "release:check": "pnpm run typecheck && pnpm run test:coverage && pnpm run build && npm pack --dry-run"

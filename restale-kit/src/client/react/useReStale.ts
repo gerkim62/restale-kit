@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -35,9 +35,9 @@ import type {
  * ```
  */
 export interface UseReStaleOptions<
-  TTarget extends SignalTarget,
-  TSignal extends InvalidateSignal = InvalidateSignal,
-> extends Omit<ClientOptions, 'target'> {
+  TTarget extends SignalTarget = SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+> extends Omit<ClientOptions<TSignal>, 'target'> {
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
   /**
@@ -48,8 +48,10 @@ export interface UseReStaleOptions<
   /**
    * Explicit target override. Must match the adapter's target — a mismatch is a type error.
    * You usually don't need to pass this; it is inferred from `onInvalidate`.
+   * 
+   * Gap 1.5 fix: Type constrained via function overloads.
    */
-  target?: TTarget
+  target?: NoInfer<TTarget>
   /**
    * Called when the server sends a terminal revocation frame.
    *
@@ -96,10 +98,12 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  * Opens on mount unless `disabled`. Closes with reason `'unmount'` on unmount.
  * The SSE `target` is inferred automatically from the branded adapter callback
  * passed as `onInvalidate`.
+ * 
+ * Target/callback compatibility is enforced by NoInfer<TTarget> and AdaptedInvalidateCallback<TTarget, TSignal>.
  */
 export function useReStale<
-  TTarget extends SignalTarget,
-  TSignal extends InvalidateSignal = InvalidateSignal,
+  TTarget extends TargetForSignal<TSignal>,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
 >(
   url: string,
   opts: UseReStaleOptions<TTarget, TSignal>

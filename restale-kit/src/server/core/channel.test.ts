@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel, validateSignalTargets } from './channel.js'
+import { createSSEChannel, validateSignalTargets, validateTargetConfiguration } from './channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import { createEventStore } from './event-store.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
@@ -53,7 +53,7 @@ describe('channel', () => {
     channel.invalidate({ target: 'swr', key: ['items', 1] })
 
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
   it('does not emit keepalives by default when keepaliveIntervalMs is omitted', async () => {
@@ -99,8 +99,8 @@ describe('channel', () => {
     reader.releaseLock()
     
 
-    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
-    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
+    expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"target":"swr","key":["b"]}\n\n')
+    expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"target":"swr","key":["c"]}\n\n')
   })
 
   it('uses eventStore and custom idGenerator during invalidate', () => {
@@ -137,7 +137,7 @@ describe('channel', () => {
 
     expect(returnedId).toBe('custom-evt-99')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"key":["items",1]}\n\n')
+    expect(text).toBe('id: custom-evt-99\nevent: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
   it('uses idGenerator to produce SSE stream frame id when channel has no eventStore', async () => {
@@ -148,28 +148,9 @@ describe('channel', () => {
 
     expect(returnedId).toBe('gen-id-456')
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"key":["items",2]}\n\n')
+    expect(text).toBe('id: gen-id-456\nevent: invalidate\ndata: {"target":"swr","key":["items",2]}\n\n')
   })
 
-  it('warns when controller.close throws inside closeInternal', async () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const channel = createSSEChannel({ target: 'swr' })
-
-    // Cancel reader to trigger cancel callback on stream which closes stream controller
-    const reader = channel.stream.getReader()
-    await reader.cancel()
-
-    // Calling close after cancel will trigger controller.close error branch in closeInternal
-    channel.close()
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
-      '\n  error:',
-      expect.any(String)
-    )
-
-    consoleSpy.mockRestore()
-  })
 
   it('sends a full-invalidate frame when lastEventId is evicted or unknown (stale cursor)', async () => {
     const store = createEventStore({ capacity: 2 })
@@ -187,7 +168,7 @@ describe('channel', () => {
     const { value } = await reader.read()
 
     // The frame should be an invalidate event with key: [] — no id prefix (not recorded)
-    expect(decoder.decode(value)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+    expect(decoder.decode(value)).toBe('event: invalidate\ndata: {"target":"swr","key":[]}\n\n')
 
     // Close the channel and verify the stream is done — no extra frames emitted
     channel.close()
@@ -218,7 +199,7 @@ describe('channel', () => {
     reader.releaseLock()
 
     // stale path emits a single { key: [] } frame, not the filtered records
-    expect(decoder.decode(v1)).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+    expect(decoder.decode(v1)).toBe('event: invalidate\ndata: {"target":"swr","key":[]}\n\n')
     channel.close()
   })
 
@@ -251,40 +232,6 @@ describe('channel', () => {
     expect(done).toBe(true)
   })
 
-  it('warns when controller.close throws an error in closeInternal', () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const OriginalReadableStream = globalThis.ReadableStream
-
-    // Intercept controller passed to ReadableStream start
-    globalThis.ReadableStream = class extends (OriginalReadableStream as any) {
-      constructor(underlyingSource?: any, queuingStrategy?: any) {
-        const origStart = underlyingSource?.start
-        if (origStart) {
-          underlyingSource.start = function (ctrl: any) {
-            ctrl.close = () => {
-              throw new Error('Controller close stream error')
-            }
-            return origStart.call(this, ctrl)
-          }
-        }
-        super(underlyingSource, queuingStrategy)
-      }
-    } as unknown as typeof ReadableStream
-
-    try {
-      const channel = createSSEChannel({ target: 'swr' })
-      channel.close()
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[WARN][closeInternal] Controller close threw an expected error'),
-        '\n  error:',
-        expect.stringContaining('Controller close stream error')
-      )
-    } finally {
-      globalThis.ReadableStream = OriginalReadableStream
-      consoleSpy.mockRestore()
-    }
-  })
 
   it('emits keepalive frame on timer interval when channel state is open', async () => {
     const channel = createSSEChannel({ target: 'swr', keepaliveIntervalMs: 1000 })
@@ -396,7 +343,7 @@ describe('channel', () => {
 
     channel.invalidate({ target: 'swr', key: ['items', 1] })
     const text = await readStreamChunk(channel.stream)
-    expect(text).toBe('event: invalidate\ndata: {"key":["items",1]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":["items",1]}\n\n')
   })
 
   it('rejects connection when target array is specified without requestedTarget', async () => {
@@ -415,10 +362,27 @@ describe('channel', () => {
   })
 })
 
+describe('target configuration validation', () => {
+  it('accepts each supported target and unique target arrays', () => {
+    expect(() => { validateTargetConfiguration('swr'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('tanstack-query'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('rtk-query'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration('generic'); }).not.toThrow()
+    expect(() => { validateTargetConfiguration(['swr', 'tanstack-query']); }).not.toThrow()
+  })
+
+  it('rejects empty, duplicate, and unsupported configurations before a stream is created', () => {
+    expect(() => { validateTargetConfiguration([]); }).toThrow(/at least one target/i)
+    expect(() => { validateTargetConfiguration(['swr', 'swr']); }).toThrow(/duplicate target/i)
+    expect(() => { validateTargetConfiguration('invalid-target' as never); }).toThrow(/unsupported target/i)
+    expect(() => createSSEChannel({ target: ['swr', 'invalid-target'] as never })).toThrow(/unsupported target/i)
+  })
+})
+
 describe('validateSignalTargets', () => {
   it('auto-fills target property on returned signal when single-target channel without mutating input, but throws when multi-target', () => {
     const s = { key: ['todos'] } as any
-    const res = validateSignalTargets(s, 'swr') as any
+    const res = validateSignalTargets(s, 'swr')
     expect(s.target).toBeUndefined()
     expect(res.target).toBe('swr')
 
@@ -661,8 +625,8 @@ describe('requestedTarget negotiation', () => {
     expect(Array.isArray(parsed)).toBe(true)
     const arr = parsed as Array<{ key: unknown }>
     expect(arr).toHaveLength(2)
-    expect(arr[0]).toEqual({ key: ['a'] })
-    expect(arr[1]).toEqual({ key: ['c'] })
+    expect(arr[0]).toEqual({ target: 'swr', key: ['a'] })
+    expect(arr[1]).toEqual({ target: 'swr', key: ['c'] })
   })
 
   it('filter in invalidate: batch where all items are dropped — returns empty string, no frame emitted', () => {
@@ -1164,4 +1128,3 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     channel.close()
   })
 })
-

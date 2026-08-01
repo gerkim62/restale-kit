@@ -32,8 +32,8 @@ describe('Entrypoint Re-exports', () => {
   it('correctly exports server modules and testing utilities', () => {
     expect(SSEChannelGroup).toBeDefined()
     expect(createEventStore).toBeDefined()
-    expect(SSEChannelGroup.prototype.createChannel).toBeDefined()
-    expect(SSEChannelGroup.prototype.attachChannel).toBeDefined()
+    expect(SSEChannelGroup.prototype.createFetchResponse).toBeDefined()
+    expect(SSEChannelGroup.prototype.attachNodeResponse).toBeDefined()
 
     expect(createSSEChannel).toBeDefined()
   })

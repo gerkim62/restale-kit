@@ -21,7 +21,7 @@ app.use(express.json())
 
 app.get('/sse', (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)
-  group.attachChannel(req, res, {
+  group.attachNodeResponse(req, res, {
     meta: { userId },
   })
 })

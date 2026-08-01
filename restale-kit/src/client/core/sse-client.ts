@@ -56,12 +56,13 @@ function isStatusMatcherList(
 export class SSEInvalidatorClient<
   TSignal extends InvalidateSignal = InvalidateSignal,
 > extends EventTarget {
+  declare readonly _signalType?: (signal: TSignal) => void
   private readonly url: string
   private readonly eventSourceUrl: string
   private readonly nativeAutoReconnect: boolean
   private readonly jsBackoffAutoReconnect: boolean
   private readonly maxRetries: number
-  private readonly reconnectOptions: ClientOptions['reconnect']
+  private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly withCredentials: boolean
   private readonly debug: boolean
   private readonly currentConnectionId: string
@@ -81,8 +82,21 @@ export class SSEInvalidatorClient<
   } | null = null
   private currentLastEventId: string | null = null
 
-  constructor(url: string, opts?: ClientOptions) {
+  constructor(url: string, opts?: ClientOptions<TSignal>) {
     super()
+    
+    // Gap 10: Validate URL - reject blank/whitespace strings
+    if (typeof url !== 'string' || url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
+      throw new Error(
+        '[SSEInvalidatorClient] url must be a non-empty, non-whitespace string. ' +
+        `Got: ${JSON.stringify(url)}`
+      )
+    }
+
+    if (opts?.reconnect) {
+      calculateBackoff(0, opts.reconnect)
+    }
+    
     this.currentConnectionId = generateUUID()
     this.url = url
     let eventSourceUrl = appendQueryParam(
@@ -91,10 +105,11 @@ export class SSEInvalidatorClient<
       this.currentConnectionId
     )
     if (opts?.target !== undefined) {
+      const targetParam: string = typeof opts.target === 'string' ? opts.target : String(opts.target)
       eventSourceUrl = appendQueryParam(
         eventSourceUrl,
         PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM,
-        opts.target
+        targetParam
       )
     }
     this.eventSourceUrl = eventSourceUrl

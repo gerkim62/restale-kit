@@ -113,17 +113,15 @@ describe('tanstackQueryAdapter', () => {
     expect(queryClient.removeQueries).not.toHaveBeenCalled()
   })
 
-  it('supports legacy/generic signals with key property', () => {
+  it('ignores signals missing queryKey property', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
     } as unknown as QueryClient
 
     const adapter = tanstackQueryAdapter(queryClient)
-    adapter({ key: ['legacy'] })
+    adapter({ key: ['legacy'] } as any)
 
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['legacy'],
-    })
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
   })
 
   it('exposes __restaleTarget brand set to "tanstack-query"', () => {

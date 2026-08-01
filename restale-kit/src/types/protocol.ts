@@ -18,9 +18,14 @@ export type JSONValue =
 export const TANSTACK_QUERY_ACTIONS = ['invalidate', 'refetch', 'reset', 'remove', 'cancel'] as const
 export type TanStackQueryAction = (typeof TANSTACK_QUERY_ACTIONS)[number]
 
+/** Base interface for all invalidation signals */
+export interface BaseInvalidateSignal {
+  target?: SignalTarget
+}
+
 /** Native TanStack Query invalidation signal payload */
-export interface TanStackQuerySignal {
-  target: typeof SIGNAL_TARGETS.TANSTACK
+export interface TanStackQuerySignal extends BaseInvalidateSignal {
+  target?: typeof SIGNAL_TARGETS.TANSTACK
   queryKey: JSONValue[]
   exact?: QueryFilters['exact']
   type?: QueryFilters['type']
@@ -28,21 +33,22 @@ export interface TanStackQuerySignal {
   stale?: boolean
 }
 
-export const SWR_ACTIONS = ['revalidate', 'purge', 'remove'] as const
+export const SWR_ACTIONS = ['revalidate', 'purge', 'remove', 'mutate'] as const
 export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */
-export interface SWRSignal {
-  target: typeof SIGNAL_TARGETS.SWR
+export interface SWRSignal extends BaseInvalidateSignal {
+  target?: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
   action?: SWRAction
   revalidate?: boolean
+  optimisticData?: JSONValue
   match?: 'exact' | 'prefix'
 }
 
 /** Native RTK Query invalidation signal payload */
-export interface RTKQuerySignal {
-  target: typeof SIGNAL_TARGETS.RTK
+export interface RTKQuerySignal extends BaseInvalidateSignal {
+  target?: typeof SIGNAL_TARGETS.RTK
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -50,7 +56,7 @@ export const GENERIC_ACTIONS = ['invalidate', 'refetch', 'remove'] as const
 export type GenericAction = (typeof GENERIC_ACTIONS)[number]
 
 /** Generic fallback signal for raw SSE listeners */
-export interface GenericInvalidateSignal {
+export interface GenericInvalidateSignal extends BaseInvalidateSignal {
   target?: typeof SIGNAL_TARGETS.GENERIC
   key: JSONValue[]
   exact?: boolean
@@ -59,12 +65,16 @@ export interface GenericInvalidateSignal {
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
 
+
 /** Discriminated union of all supported wire signals */
 export type ReStaleSignal =
   | TanStackQuerySignal
   | SWRSignal
   | RTKQuerySignal
   | GenericInvalidateSignal
+
+/** Alias for default generic parameter bounds across channels & pubsub */
+export type InvalidateSignal = ReStaleSignal
 
 /** Map a single SignalTarget discriminator to its specific signal type. */
 export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
@@ -76,24 +86,74 @@ export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
         ? RTKQuerySignal
         : GenericInvalidateSignal
 
+export type TargetForSignal<TSignal extends InvalidateSignal> =
+  TSignal extends InvalidateSignal
+    ? TSignal extends { target?: infer TTarget }
+      ? TTarget extends SignalTarget
+        ? TTarget
+        : SignalTarget
+      : SignalTarget
+    : never
+
+export type ExplicitSignalForTarget<TTarget extends SignalTarget> =
+  ReStaleSignalForTarget<TTarget> & { target: TTarget }
+
+export type Permutations2<A extends SignalTarget, B extends SignalTarget> =
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>]
+
+export type Permutations3<A extends SignalTarget, B extends SignalTarget, C extends SignalTarget> =
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>, ExplicitSignalForTarget<C>]
+  | [ExplicitSignalForTarget<A>, ExplicitSignalForTarget<C>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>, ExplicitSignalForTarget<C>]
+  | [ExplicitSignalForTarget<B>, ExplicitSignalForTarget<C>, ExplicitSignalForTarget<A>]
+  | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>]
+  | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>]
+
+type SignalPermutations<TTarget extends SignalTarget> =
+  [TTarget] extends [never]
+    ? []
+    : {
+        [TCurrent in TTarget]: [
+          ExplicitSignalForTarget<TCurrent>,
+          ...SignalPermutations<Exclude<TTarget, TCurrent>>,
+        ]
+      }[TTarget]
+
+export type CompleteBatchForTargets<TTarget extends readonly SignalTarget[]> =
+  TTarget extends readonly [infer A extends SignalTarget]
+    ? OptionalTargetSignal<ReStaleSignalForTarget<A>> | [OptionalTargetSignal<ReStaleSignalForTarget<A>>]
+    : number extends TTarget['length']
+      ? Array<ExplicitSignalForTarget<TTarget[number]>>
+      : SignalPermutations<TTarget[number]>
+
+export type OptionalTargetSignal<TSignal extends InvalidateSignal> =
+  TSignal extends { target?: SignalTarget }
+    ? Omit<TSignal, 'target'> & { target?: TSignal['target'] }
+    : TSignal
+
 /**
  * Computes allowable input signal types for invalidating/publishing.
  * - Single target: `target` is optional and defaulted automatically to the single target.
- * - Multi-target array: explicit `target` is strictly required on every signal.
+ * - Multi-target array: explicit `target` is strictly required and a complete batch for ALL configured targets is required.
  */
-export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
-  [TTarget] extends [SignalTarget]
-    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
-      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
-    : ReStaleSignal | Array<ReStaleSignal & { target: SignalTarget }>
-
-/** Alias for default generic parameter bounds across channels & pubsub */
-export type InvalidateSignal = ReStaleSignal
+export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
+  TTarget extends SignalTarget
+    ? OptionalTargetSignal<ReStaleSignalForTarget<TTarget>> | Array<OptionalTargetSignal<ReStaleSignalForTarget<TTarget>>>
+    : TTarget extends readonly SignalTarget[]
+      ? CompleteBatchForTargets<TTarget>
+      : TTarget extends SignalTarget[]
+        ? CompleteBatchForTargets<TTarget>
+        : ReStaleSignal | ReStaleSignal[]
 
 /** Returns whether a value can be used as a serializable ReStale key component. */
 export function isJSONValue(value: unknown): value is JSONValue {
-  if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean') {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return true
+  }
+  // Gap 12: Reject NaN, Infinity, -Infinity which cannot survive JSON round-trip
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
   }
   if (Array.isArray(value)) return value.every(isJSONValue)
   if (typeof value !== 'object') return false
@@ -149,7 +209,8 @@ export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSig
   }
 
   if ('key' in signal && Array.isArray(signal.key)) {
-    return matchKeyArray(cacheKey, signal.key, signal.exact === true)
+    const isExact = 'exact' in signal && signal.exact === true
+    return matchKeyArray(cacheKey, signal.key, isExact)
   }
 
   return false
@@ -208,9 +269,10 @@ export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateS
  * An event history store interface for storing past events and replaying missed signals.
  */
 export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
-  add(signal: TSignal | TSignal[], customId?: string): EventRecord<TSignal>
-  getEventsAfter(lastEventId: string): EventStoreResult<TSignal>
-  clear(): void
+  readonly _signalType?: (signal: TSignal) => void
+  readonly add: (signal: TSignal | TSignal[], customId?: string) => EventRecord<TSignal>
+  readonly getEventsAfter: (lastEventId: string) => EventStoreResult<TSignal>
+  readonly clear: () => void
 }
 
 /**
@@ -251,8 +313,9 @@ export type OnDeadline =
  * { deadline: tokenPayload.exp * 1000, onDeadline: 'revoke' }
  */
 export type LifetimeOptions =
-  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
-  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline; reconnect?: unknown }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline; reconnect?: unknown }
+  | { ttlMs?: undefined; deadline?: undefined; onDeadline?: OnDeadline; reconnect?: unknown }
 
 /**
  * The three outcomes `beforeFrame` may return.
@@ -313,35 +376,34 @@ export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> =
   (ctx: FrameGuardCtx<TSignal>) => FrameGuardResult
 
 /**
- * The payload of a revoke SSE event frame.
+ * The payload of a revoke SSE event frame (protocol export).
  *
  * The `reason` field conveys why the server is revoking the connection:
  * - `'deadline'` — Frame Guard deadline reached and all confirmatory reconnect attempts exhausted
  * - `'unsupported-target'` — client requested a target not in the channel's supported set
  * - Other strings — integrator-specific reasons passed to `channel.revoke(reason)`, or undefined
- *
- * The optional `details` field carries extra context specific to each reason.
- *
- * Note: This type describes the `detail` of the `revoke` CustomEvent dispatched by the client,
- * not `ConnectionStatus.reason`. When a revoke event fires, the connection status becomes
- * `{ status: 'closed', reason: 'revoked' }`, but the event detail's `reason` field contains
- * the specific cause (e.g., 'deadline', server-supplied string).
  */
 export type RevokeEventDetail =
-  | { reason: 'deadline' }
-  | { reason: 'unsupported-target'; details?: { requested?: string; supported?: (SignalTarget)[] } }
-  | { reason: string; details?: unknown }
+  | {
+      reason: 'unsupported-target'
+      requested: string
+      supported: string[]
+    }
+  | {
+      reason?:
+        | 'deadline'
+        | 'session-expired'
+        | 'logout'
+        | 'banned'
+        | 'unauthorized'
+        | 'custom'
+        | (string & { [K in 'unsupported-target']?: never } & { readonly __reasonBrand?: 'custom' })
+      requested?: never
+      supported?: never
+    }
 
 /**
  * Payload carried by the `renew` CustomEvent.
- *
- * When a Frame Guard deadline approaches, the server sends a `renew` frame asking the client
- * to reconnect through real auth middleware to refresh credentials. This event detail specifies
- * the reconnection budget.
- *
- * Contract: `maxAttempts` must be a finite non-negative integer, and `retryDelayMs` must be a
- * finite non-negative number. Malformed values (negative, fractional for maxAttempts, NaN, or
- * infinite) are rejected before the renew frame is sent.
  */
 export interface RenewEventDetail {
   /** Always `'deadline'` — the only reason a server currently sends `renew`. */
@@ -351,4 +413,3 @@ export interface RenewEventDetail {
   /** Milliseconds to wait between retry attempts. Must be a finite non-negative number. */
   retryDelayMs: number
 }
-

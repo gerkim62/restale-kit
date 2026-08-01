@@ -260,7 +260,7 @@ describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted 
     const { value } = await reader.read()
 
     const text = new TextDecoder().decode(value)
-    expect(text).toBe('event: invalidate\ndata: {"key":[]}\n\n')
+    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":[]}\n\n')
 
     // Close the channel and verify the stream ends with no additional frames
     ch.close()

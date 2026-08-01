@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { attachSSE } from './attach.js'
+import { internal_attachSSE } from './attach.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
 
 function createMockResponse(): ServerResponse {
@@ -15,7 +15,7 @@ function createMockResponse(): ServerResponse {
   return res
 }
 
-describe('node attachSSE', () => {
+describe('node internal_attachSSE', () => {
   it('attaches SSE channel to Node req/res, sets headers, and exposes connectionId on channel', () => {
     const req = Object.assign(new EventEmitter(), {
       url: '/sse?__restale_cid__=req-999',
@@ -24,7 +24,7 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: 'swr' })
+    const channel = internal_attachSSE(req, res, { target: 'swr' })
 
     expect(channel.connectionId).toBe('req-999')
     expect(channel.state).toBe('open')
@@ -43,7 +43,7 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: 'swr' })
+    const channel = internal_attachSSE(req, res, { target: 'swr' })
 
     req.emit('close')
     expect(channel.state).toBe('closed')
@@ -57,7 +57,7 @@ describe('node attachSSE', () => {
 
     const res = createMockResponse()
 
-    expect(() => attachSSE(reqWithoutUrl, res, { target: 'swr' })).toThrow(
+    expect(() => internal_attachSSE(reqWithoutUrl, res, { target: 'swr' })).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })
@@ -69,7 +69,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: 'swr' })
+    const channel = internal_attachSSE(req, res, { target: 'swr' })
 
     expect(channel.target).toBe('swr')
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
@@ -85,7 +85,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+    const channel = internal_attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.target).toEqual(['swr', 'tanstack-query'])
     expect(res.writeHead).toHaveBeenCalledWith(200, {
@@ -106,7 +106,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+    const channel = internal_attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.requestedTarget).toBe('tanstack-query')
     expect(res.writeHead).toHaveBeenCalledWith(200, {
@@ -123,7 +123,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    attachSSE(req, res, { target: 'swr' })
+    internal_attachSSE(req, res, { target: 'swr' })
 
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       'X-ReStale-Supported': 'swr',
@@ -137,7 +137,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    attachSSE(req, res, { target: ['tanstack-query', 'swr', 'rtk-query'] })
+    internal_attachSSE(req, res, { target: ['tanstack-query', 'swr', 'rtk-query'] })
 
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
       'X-ReStale-Supported': 'tanstack-query, swr, rtk-query',
@@ -151,7 +151,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
+    const channel = internal_attachSSE(req, res, { target: ['swr', 'tanstack-query'] })
 
     expect(channel.requestedTarget).toBe('swr')
   })
@@ -163,7 +163,7 @@ describe('node attachSSE', () => {
     }) as unknown as IncomingMessage
     const res = createMockResponse()
 
-    const channel = attachSSE(req, res, { target: 'swr' })
+    const channel = internal_attachSSE(req, res, { target: 'swr' })
 
     expect(channel.requestedTarget).toBeUndefined()
   })

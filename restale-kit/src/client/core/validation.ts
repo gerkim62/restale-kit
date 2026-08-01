@@ -78,7 +78,7 @@ function isRTKTag(val: unknown): val is string | { type: string; id?: string | n
   if (typeof val === 'string') return true
   if (isObject(val) && typeof val.type === 'string') {
     const id = val.id
-    return id === undefined || typeof id === 'string' || typeof id === 'number'
+    return id === undefined || typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id))
   }
   return false
 }
@@ -188,4 +188,3 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
   }
   return signal
 }
-

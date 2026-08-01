@@ -9,12 +9,12 @@ const MAX_LAST_EVENT_ID_LENGTH = 512
 
 /**
  * Extracts and validates the internal `__restale_cid__` query parameter.
- * Throws an Error synchronously if missing or invalid; transport functions (`attachSSE`, `toSSEResponse`)
+ * Throws an Error synchronously if missing or invalid; transport methods (`group.attachNodeResponse`, `group.createFetchResponse`)
  * enforce this try/catch contract at the route boundary before attaching streams.
  */
 export function extractConnectionId(searchParams: URLSearchParams): string {
   const connectionId = searchParams.get(PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM)
-  if (!connectionId) {
+  if (connectionId === null || connectionId.replace(/[\s\u200B\u200C\u200D]/gu, '') === '') {
     throw new Error(
       `Missing or invalid ${PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM} query parameter in request URL`
     )
@@ -81,7 +81,7 @@ export function extractRequestedTarget(searchParams: URLSearchParams): string | 
  * Builds the SSE target and supported headers for Node and Fetch transport adapters.
  */
 export function buildSSETargetHeaders(channelOptions: {
-  target?: string | string[]
+  target?: string | string[] | readonly string[]
   requestedTarget?: string
 }): Record<string, string> {
   const effectiveTarget = channelOptions.target
@@ -89,9 +89,10 @@ export function buildSSETargetHeaders(channelOptions: {
     ? effectiveTarget
     : (effectiveTarget ? [effectiveTarget] : [])
   const supportedHeader = supportedTargets.join(', ')
-  const activeTarget =
+  const firstTarget = supportedTargets[0]
+  const activeTarget: string =
     channelOptions.requestedTarget ??
-    (supportedTargets.length === 1 ? supportedTargets[0] : '')
+    (supportedTargets.length === 1 && typeof firstTarget === 'string' ? firstTarget : '')
 
   return {
     ...SSE_HEADERS,

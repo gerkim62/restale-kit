@@ -17,24 +17,17 @@ export interface FastifyRequestLike {
 }
 
 /**
- * Attaches an SSE channel to a Node.js HTTP response.
+ * @internal
+ * **WARNING: INTERNAL ONLY.** Do not invoke directly in application code.
+ * Use `SSEChannelGroup.attachNodeResponse(req, res, options)` instead.
  *
- * Sets the required SSE headers, pipes the channel's `ReadableStream` into
- * the response via `Readable.fromWeb()`, and wires up disconnect detection.
- *
- * Throws an Error synchronously if the required `__restale_cid__` query
- * parameter is missing or invalid.
- *
- * Works with Express (`req, res`) and Fastify (`request, reply`).
- *
- * @param group - Optional `SSEChannelGroup` whose `channelDefaults` are merged into
- *   `options` before creating the channel. Per-channel values always win over defaults.
+ * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply).
  */
-export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function internal_attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions,
-  group?: SSEChannelGroup<TSignal>
+  options: SSEChannelOptions<TSignal>,
+  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
@@ -46,21 +39,27 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   const rawUrl = actualReq.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  const connectionId = extractConnectionId(searchParams)
+  const connectionId =
+    options.connectionId !== undefined
+      ? options.connectionId
+      : extractConnectionId(searchParams)
   const requestedTarget = extractRequestedTarget(searchParams)
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
-  const baseOptions: SSEChannelOptions = {
+  const baseOptions: SSEChannelOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
   }
 
-  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
-
-  const channel = createSSEChannel<TSignal>(channelOptions)
+  const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)
+  const target = channelOptions.target
+  if (target === undefined) {
+    throw new Error('[attachNodeResponse] target option is required.')
+  }
+  const channel = createSSEChannel({ ...channelOptions, target })
 
   const headers = buildSSETargetHeaders(channelOptions)
 
@@ -78,4 +77,3 @@ export function attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
 
   return channel
 }
-

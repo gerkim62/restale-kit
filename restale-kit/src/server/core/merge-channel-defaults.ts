@@ -1,5 +1,5 @@
-import type { SSEChannelOptions } from '@/server/core/channel.js'
-import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
+import { validateTargetConfiguration, type SSEChannelOptions } from '@/server/core/channel.js'
+import type { InvalidateSignal, LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**
  * The subset of `SSEChannelOptions` that `SSEChannelGroup.channelDefaults` may supply.
@@ -8,9 +8,10 @@ import type { LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol
  * (userId, sessionId) and has no meaningful group-wide default (spec §1).
  */
 export interface ChannelDefaults {
-  target?: SignalTarget | SignalTarget[]
+  target?: SignalTarget | SignalTarget[] | readonly SignalTarget[]
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
+  eventBufferCapacity?: number
 }
 
 /**
@@ -29,51 +30,67 @@ export interface ChannelDefaults {
  * If a channel sets only `{ ttlMs: 60_000 }`, it still inherits the group's `onDeadline`
  * default, because it never touched that field. A whole-object replace would silently drop it.
  */
-export function mergeChannelDefaults(
-  channelOptions: SSEChannelOptions,
+export function mergeChannelDefaults<TSignal extends InvalidateSignal = InvalidateSignal>(
+  channelOptions: SSEChannelOptions<TSignal>,
   defaults: ChannelDefaults | undefined
-): SSEChannelOptions {
-  if (defaults === undefined) return channelOptions
+): SSEChannelOptions<TSignal> {
+  if (channelOptions.target !== undefined) validateTargetConfiguration(channelOptions.target)
+  if (defaults?.target !== undefined) validateTargetConfiguration(defaults.target)
 
   let merged = channelOptions
 
-  // ── target ────────────────────────────────────────────────────────────────
-  // Only apply default target when channel options does not provide target (or is undefined).
-  if (
-    defaults.target !== undefined &&
-    (!Object.hasOwn(channelOptions, 'target') || channelOptions.target === undefined)
-  ) {
-    merged = { ...merged, target: defaults.target }
-  }
-
-  // ── guardKeepalive ────────────────────────────────────────────────────────
-  // Only apply the default when the channel options object does NOT contain the key.
-  // This correctly handles `guardKeepalive: false` as an explicit channel override.
-  if (
-    defaults.guardKeepalive !== undefined &&
-    !Object.hasOwn(channelOptions, 'guardKeepalive')
-  ) {
-    merged = { ...merged, guardKeepalive: defaults.guardKeepalive }
-  }
-
-  // ── lifetime ──────────────────────────────────────────────────────────────
-  // The time value (ttlMs / deadline) and onDeadline are defaulted independently.
-  if (defaults.lifetime !== undefined) {
-    const channelLifetime = channelOptions.lifetime
-    const defaultLifetime = defaults.lifetime
-
-    if (channelLifetime === undefined) {
-      // Channel set nothing — take the whole default as-is.
-      merged = { ...merged, lifetime: defaultLifetime }
-    } else {
-      // Channel set something — merge the two independent parts.
-      const mergedLifetime = mergeLifetimeParts(channelLifetime, defaultLifetime)
-      merged = { ...merged, lifetime: mergedLifetime }
+  if (defaults !== undefined) {
+    // ── target ────────────────────────────────────────────────────────────────
+    // Only apply default target when channel options does not provide target (or is undefined).
+    if (
+      defaults.target !== undefined &&
+      (!Object.hasOwn(channelOptions, 'target') || channelOptions.target === undefined)
+    ) {
+      merged = { ...merged, target: defaults.target }
     }
+
+    // ── guardKeepalive ────────────────────────────────────────────────────────
+    if (
+      defaults.guardKeepalive !== undefined &&
+      !Object.hasOwn(channelOptions, 'guardKeepalive')
+    ) {
+      merged = { ...merged, guardKeepalive: defaults.guardKeepalive }
+    }
+
+    if (
+      defaults.eventBufferCapacity !== undefined &&
+      !Object.hasOwn(channelOptions, 'eventBufferCapacity')
+    ) {
+      merged = { ...merged, eventBufferCapacity: defaults.eventBufferCapacity }
+    }
+
+    // ── lifetime ──────────────────────────────────────────────────────────────
+    if (defaults.lifetime !== undefined) {
+      const channelLifetime = channelOptions.lifetime
+      const defaultLifetime = defaults.lifetime
+
+      if (channelLifetime === undefined) {
+        // Channel set nothing — take the whole default as-is.
+        merged = { ...merged, lifetime: defaultLifetime }
+      } else {
+        // Channel set something — merge the two independent parts.
+        const mergedLifetime = mergeLifetimeParts(channelLifetime, defaultLifetime)
+        merged = { ...merged, lifetime: mergedLifetime }
+      }
+    }
+  }
+
+  if (merged.target === undefined) {
+    throw new Error('[mergeChannelDefaults] target is required.')
   }
 
   return merged
 }
+
+type TimeValueShape =
+  | { ttlMs: number; deadline?: never }
+  | { deadline: number; ttlMs?: never }
+  | { ttlMs?: undefined; deadline?: undefined }
 
 /**
  * Merges lifetime option parts independently:
@@ -81,7 +98,7 @@ export function mergeChannelDefaults(
  * - `onDeadline`: independent — defaults when the channel didn't set it or set it to undefined.
  */
 function mergeLifetimeParts(
-  channel: LifetimeOptions,
+  channel: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline; reconnect?: unknown },
   defaults: LifetimeOptions
 ): LifetimeOptions {
   // Determine which time value (if any) the channel explicitly set to a non-undefined value.
@@ -91,33 +108,40 @@ function mergeLifetimeParts(
 
   // Determine whether the channel explicitly set onDeadline to a non-undefined value.
   const channelHasOnDeadline = Object.hasOwn(channel, 'onDeadline') && channel.onDeadline !== undefined
+  const channelHasReconnect = Object.hasOwn(channel, 'reconnect') && channel.reconnect !== undefined
 
   // Resolve the time value to use.
-  const timeValue: { ttlMs: number; deadline?: never } | { deadline: number; ttlMs?: never } =
-    channelHasTimeValue
-      ? resolveTimeValue(channel)
-      : resolveTimeValue(defaults)
+  const timeValue: TimeValueShape = channelHasTimeValue
+    ? resolveTimeValue(channel)
+    : (defaults.ttlMs !== undefined || defaults.deadline !== undefined)
+      ? resolveTimeValue(defaults)
+      : {}
 
   // Resolve onDeadline: channel wins if present and not undefined, otherwise fall back to default.
   const onDeadline: OnDeadline | undefined = channelHasOnDeadline
     ? channel.onDeadline
     : defaults.onDeadline
 
-  // Construct the result as a valid LifetimeOptions discriminant.
-  // onDeadline is only included in the object if it is actually defined,
-  // preserving the "presence means set" invariant downstream.
-  if (onDeadline !== undefined) {
-    return { ...timeValue, onDeadline }
+  const reconnect: unknown = channelHasReconnect
+    ? channel.reconnect
+    : defaults.reconnect
+
+  const res: LifetimeOptions = {
+    ...timeValue,
+    ...(onDeadline !== undefined ? { onDeadline } : {}),
+    ...(reconnect !== undefined ? { reconnect } : {}),
   }
-  return { ...timeValue }
+  return res
 }
 
 function resolveTimeValue(
-  lifetime: LifetimeOptions
-): { ttlMs: number; deadline?: never } | { deadline: number; ttlMs?: never } {
+  lifetime: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline }
+): TimeValueShape {
   if ('ttlMs' in lifetime && lifetime.ttlMs !== undefined) {
     return { ttlMs: lifetime.ttlMs }
   }
-  // LifetimeOptions discriminant guarantees deadline is present when ttlMs is not.
-  return { deadline: (lifetime as { deadline: number }).deadline }
+  if ('deadline' in lifetime && lifetime.deadline !== undefined) {
+    return { deadline: lifetime.deadline }
+  }
+  return {}
 }

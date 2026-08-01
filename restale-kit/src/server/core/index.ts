@@ -1,9 +1,12 @@
 // Server public API
-export type { SSEChannel, SSEChannelOptions } from './channel.js'
+export { createSSEChannel } from './channel.js'
+export type { SSEChannel, SSEChannelOptions, DirectSSEChannelOptions } from './channel.js'
 export { SSEChannelGroup } from './channel-group.js'
 export type { SSEChannelGroupOptions, ChannelSetupOptions } from './channel-group.js'
+export type { FastifyRequestLike, FastifyReplyLike } from '../node/attach.js'
 export { createEventStore } from './event-store.js'
 export type { EventStoreOptions } from './event-store.js'
 export type { EventStore, EventRecord, EventStoreResult } from '../../types/protocol.js'
 export { mergeChannelDefaults } from './merge-channel-defaults.js'
 export type { ChannelDefaults } from './merge-channel-defaults.js'
+

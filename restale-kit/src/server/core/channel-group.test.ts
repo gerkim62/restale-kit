@@ -78,7 +78,7 @@ describe('channel-group', () => {
     const { value } = await reader.read()
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"key":["todos"]}\n\n')
+    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n')
   })
 
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
@@ -257,13 +257,14 @@ describe('channel-group', () => {
     expect(checkOptional).toBe(true)
   })
 
-  it('broadcast predicate receives TMeta (not TMeta | undefined) so no optional chaining is needed', () => {
+  it('broadcast predicate represents omitted metadata explicitly', () => {
     const group = new SSEChannelGroup<any, TestMeta>()
     const channel = createSSEChannel({ target: 'swr' })
     group.register(channel, { userId: 1 })
 
-    // Static check: meta.userId compiles without optional chaining
+    // Static check: callers handle omitted metadata before reading fields.
     group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+      if (meta === undefined) return false
       const _userId: number = meta.userId
       return _userId > 0
     })
@@ -292,7 +293,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta.role === 'admin')
+    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
@@ -1083,7 +1084,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"key":["items"]}]\n\n'
+      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
     )
   })
 
@@ -1100,7 +1101,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"key":["todos"]}\n\n'
+      'event: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n'
     )
   })
 
@@ -1128,7 +1129,7 @@ describe('channel-group', () => {
 
     const decoder = new TextDecoder()
     expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"queryKey":["posts"]}\n\n'
+      'event: invalidate\ndata: {"target":"tanstack-query","queryKey":["posts"]}\n\n'
     )
   })
 })
@@ -1204,11 +1205,11 @@ describe('SSEChannelGroup — channelDefaults', () => {
     vi.useRealTimers()
   })
 
-  describe('createChannel (Fetch API)', () => {
+  describe('createFetchResponse (Fetch API)', () => {
     it('creates a channel, registers it with the group, and returns response and channel reference', () => {
       const group = new SSEChannelGroup<any, { userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-1')
-      const { response, channel } = group.createChannel(req, {
+      const { response, channel } = group.createFetchResponse(req, {
         target: 'tanstack-query',
         meta: { userId: 42 },
         topics: ['user-42'],
@@ -1226,7 +1227,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
     it('automatically deregisters channel from group when channel closes', () => {
       const group = new SSEChannelGroup<any, { userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-2')
-      const { channel } = group.createChannel(req, {
+      const { channel } = group.createFetchResponse(req, {
         target: 'swr',
         meta: { userId: 10 },
       })
@@ -1241,7 +1242,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         channelDefaults: { target: 'tanstack-query' },
       })
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-3')
-      const { response, channel } = group.createChannel(req, {
+      const { response, channel } = group.createFetchResponse(req, {
         meta: { userId: 99 },
       })
 
@@ -1253,7 +1254,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const group = new SSEChannelGroup({})
       const req = new Request('http://localhost/sse')
       expect(() => {
-        group.createChannel(req, { target: 'swr' })
+        group.createFetchResponse(req, { target: 'swr' })
       }).toThrow('__restale_cid__')
     })
 
@@ -1261,12 +1262,12 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const group = new SSEChannelGroup({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-4')
       expect(() => {
-        group.createChannel(req, {})
+        group.createFetchResponse(req, {})
       }).toThrow('target is required')
     })
   })
 
-  describe('attachChannel (Node.js / Express / Fastify)', () => {
+  describe('attachNodeResponse (Node.js / Express / Fastify)', () => {
     function createMockNodeRes(): any {
       return Object.assign(new EventEmitter(), {
         writeHead: vi.fn(),
@@ -1282,7 +1283,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         target: 'swr',
         meta: { userId: 100 },
         topics: ['topic-a'],
@@ -1303,7 +1304,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const hijackSpy = vi.fn()
       const reply = { raw: rawRes, hijack: hijackSpy } as any
 
-      const { channel } = group.attachChannel(req, reply, {
+      const { channel } = group.attachNodeResponse(req, reply, {
         target: 'tanstack-query',
         meta: { userId: 200 },
       })
@@ -1320,7 +1321,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         target: 'swr',
         meta: { userId: 55 },
       })
@@ -1339,7 +1340,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         meta: { userId: 77 },
       })
 
@@ -1358,7 +1359,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       req.headers = {}
       const res = createMockNodeRes()
 
-      const { channel } = group.attachChannel(req, res, {
+      const { channel } = group.attachNodeResponse(req, res, {
         meta: { userId: 99 },
       })
 

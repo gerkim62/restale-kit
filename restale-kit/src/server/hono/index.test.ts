@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { SSEChannelGroup } from '../core/index.js'
 
-describe('server/hono integration via createChannel', () => {
+describe('server/hono integration via createFetchResponse', () => {
   it('creates an SSE Response and exposes connectionId on the channel', () => {
     const group = new SSEChannelGroup({})
     const req = new Request('https://example.com/sse?__restale_cid__=hono-789')
-    const { response, channel } = group.createChannel(req, { target: 'swr' })
+    const { response, channel } = group.createFetchResponse(req, { target: 'swr' })
 
     expect(channel.connectionId).toBe('hono-789')
     expect(response.headers.get('content-type')).toBe('text/event-stream')
@@ -18,7 +18,7 @@ describe('server/hono integration via createChannel', () => {
   it('throws Error synchronously when __restale_cid__ query parameter is missing', () => {
     const group = new SSEChannelGroup({})
     const req = new Request('https://example.com/sse')
-    expect(() => group.createChannel(req, { target: 'swr' })).toThrow(
+    expect(() => group.createFetchResponse(req, { target: 'swr' })).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })

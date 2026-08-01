@@ -84,7 +84,7 @@ const group = new SSEChannelGroup({
 })
 
 app.get('/sse', (req, res) => {
-  group.attachChannel(req, res, { meta: { userId: req.user.id } })
+  group.attachNodeResponse(req, res, { meta: { userId: req.user.id } })
 })
 
 app.post('/api/todos', async (req, res) => {

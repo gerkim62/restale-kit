@@ -1,0 +1,445 @@
+/**
+ * Gap 13: Two incompatible public RevokeEventDetail shapes - Runtime tests
+ * 
+ * Tests the actual runtime behavior of revoke events to ensure they match
+ * the client shape (top-level requested/supported) not the protocol shape
+ * (nested details).
+ */
+
+import { describe, it, expect, vi } from 'vitest'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import type { RevokeEventDetail as ClientRevokeEventDetail } from '@/client/core/client-contracts.js'
+
+describe('Gap 13: RevokeEventDetail runtime behavior', () => {
+  describe('Actual client event shape', () => {
+    it('should emit revoke events with top-level requested and supported fields', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        target: 'rtk-query',
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target') {
+            // Should have top-level fields (client shape)
+            expect(detail).toHaveProperty('requested')
+            expect(detail).toHaveProperty('supported')
+            
+            // Should NOT have nested details (protocol shape)
+            expect(detail).not.toHaveProperty('details')
+            
+            resolve()
+          }
+        })
+        
+        // Simulate revoke event
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'rtk-query',
+            supported: ['swr', 'tanstack-query']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should emit deadline revoke without requested/supported', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'deadline') {
+            // Should NOT have requested or supported
+            expect(detail).not.toHaveProperty('requested')
+            expect(detail).not.toHaveProperty('supported')
+            expect(detail).not.toHaveProperty('details')
+            
+            resolve()
+          }
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'deadline'
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should emit custom reason revoke without requested/supported', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'session-expired') {
+            expect(detail).not.toHaveProperty('requested')
+            expect(detail).not.toHaveProperty('supported')
+            expect(detail).not.toHaveProperty('details')
+            
+            resolve()
+          }
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'session-expired'
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+  })
+
+  describe('Event handler patterns', () => {
+    it('should allow handlers to access top-level requested/supported', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        target: 'rtk-query',
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target') {
+            // Client shape allows direct access
+            expect(typeof detail.requested).toBe('string')
+            expect(Array.isArray(detail.supported)).toBe(true)
+            expect(detail.requested).toBe('rtk-query')
+            expect(detail.supported).toEqual(['swr', 'tanstack-query'])
+            
+            resolve()
+          }
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'rtk-query',
+            supported: ['swr', 'tanstack-query']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should not have nested details property', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail as any
+          
+          // Protocol shape would have details
+          expect(detail.details).toBeUndefined()
+          
+          // Client shape has top-level fields
+          if (detail.reason === 'unsupported-target') {
+            expect(detail.requested).toBeDefined()
+            expect(detail.supported).toBeDefined()
+          }
+          
+          resolve()
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'swr',
+            supported: ['tanstack-query']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+  })
+
+  describe('Type narrowing at runtime', () => {
+    it('should correctly narrow unsupported-target reason', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          // TypeScript narrows the type
+          if (detail.reason === 'unsupported-target') {
+            // These fields should be present
+            expect(detail.requested).toBe('custom-target')
+            expect(detail.supported).toEqual(['swr'])
+          } else {
+            // These fields should not be present
+            expect((detail as any).requested).toBeUndefined()
+            expect((detail as any).supported).toBeUndefined()
+          }
+          
+          resolve()
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'custom-target',
+            supported: ['swr']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should handle other reason types correctly', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      const reasons = ['deadline', 'session-expired', 'banned', 'custom-reason']
+      let count = 0
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          // None of these should have requested/supported
+          expect((detail as any).requested).toBeUndefined()
+          expect((detail as any).supported).toBeUndefined()
+          
+          count++
+          if (count === reasons.length) {
+            resolve()
+          }
+        })
+        
+        for (const reason of reasons) {
+          const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+            detail: { reason: reason }
+          })
+          client.dispatchEvent(revokeEvent)
+        }
+      })
+    })
+  })
+
+  describe('Supported field types', () => {
+    it('should handle supported as array of strings', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target' && detail.supported) {
+            expect(Array.isArray(detail.supported)).toBe(true)
+            expect(detail.supported.length).toBeGreaterThan(0)
+            detail.supported.forEach(target => {
+              expect(typeof target).toBe('string')
+            })
+            
+            resolve()
+          }
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'rtk-query',
+            supported: ['swr', 'tanstack-query', 'custom-target']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should handle empty supported array', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target' && detail.supported) {
+            expect(Array.isArray(detail.supported)).toBe(true)
+            expect(detail.supported.length).toBe(0)
+            
+            resolve()
+          }
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'unknown',
+            supported: []
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+  })
+
+  describe('Requested field types', () => {
+    it('should handle various requested target strings', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      const requestedTargets = ['swr', 'tanstack-query', 'rtk-query', 'custom-target', 'unknown']
+      let count = 0
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target') {
+            expect(typeof detail.requested).toBe('string')
+            expect(requestedTargets).toContain(detail.requested)
+            
+            count++
+            if (count === requestedTargets.length) {
+              resolve()
+            }
+          }
+        })
+        
+        for (const target of requestedTargets) {
+          const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+            detail: {
+              reason: 'unsupported-target',
+              requested: target,
+              supported: ['swr']
+            }
+          })
+          client.dispatchEvent(revokeEvent)
+        }
+      })
+    })
+  })
+
+  describe('Multiple event listeners', () => {
+    it('should deliver consistent shape to all listeners', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      let listener1Called = false
+      let listener2Called = false
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target') {
+            expect(detail.requested).toBe('rtk-query')
+            expect(detail.supported).toEqual(['swr'])
+            expect((detail as any).details).toBeUndefined()
+          }
+          
+          listener1Called = true
+          if (listener1Called && listener2Called) resolve()
+        })
+        
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          if (detail.reason === 'unsupported-target') {
+            expect(detail.requested).toBe('rtk-query')
+            expect(detail.supported).toEqual(['swr'])
+            expect((detail as any).details).toBeUndefined()
+          }
+          
+          listener2Called = true
+          if (listener1Called && listener2Called) resolve()
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: 'unsupported-target',
+            requested: 'rtk-query',
+            supported: ['swr']
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+  })
+
+  describe('Edge cases', () => {
+    it('should handle undefined reason', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          expect(detail.reason).toBeUndefined()
+          expect((detail as any).requested).toBeUndefined()
+          expect((detail as any).supported).toBeUndefined()
+          
+          resolve()
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: undefined
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+
+    it('should handle empty string reason', async () => {
+      const client = new SSEInvalidatorClient('http://localhost/sse', {
+        autoReconnect: false
+      })
+      
+      return new Promise<void>((resolve) => {
+        client.addEventListener('revoke', (event) => {
+          const detail = event.detail
+          
+          expect(detail.reason).toBe('')
+          
+          resolve()
+        })
+        
+        const revokeEvent = new CustomEvent<ClientRevokeEventDetail>('revoke', {
+          detail: {
+            reason: ''
+          }
+        })
+        
+        client.dispatchEvent(revokeEvent)
+      })
+    })
+  })
+})

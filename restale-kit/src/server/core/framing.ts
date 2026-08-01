@@ -13,22 +13,6 @@ export interface RenewFramePayload {
 
 const encoder = new TextEncoder()
 
-function stripTargetFromSignal(item: unknown): unknown {
-  if (item && typeof item === 'object' && 'target' in item) {
-    const copy = { ...(item as Record<string, unknown>) }
-    delete copy['target']
-    return copy
-  }
-  return item
-}
-
-function prepareWireSignal(signal: SSEInvalidateEvent): unknown {
-  if (Array.isArray(signal)) {
-    return signal.map(stripTargetFromSignal)
-  }
-  return stripTargetFromSignal(signal)
-}
-
 /**
  * Formats an invalidation signal (or batch) as an SSE event frame.
  *
@@ -46,8 +30,9 @@ function prepareWireSignal(signal: SSEInvalidateEvent): unknown {
  * the frame is never broken by embedded newline characters.
  */
 export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
-  const wirePayload = prepareWireSignal(signal)
-  const json = JSON.stringify(wirePayload)
+  // `target` is the discriminator that lets the client validate and route
+  // target-specific payloads.  It is protocol data, not server-only metadata.
+  const json = JSON.stringify(signal)
   const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
   const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
   // Split on any newline variant and prefix each line with "data: " per the SSE spec.
@@ -74,7 +59,7 @@ export function formatKeepalive(): Uint8Array {
 }
 
 /**
- * Formats a terminal revocation event frame.
+ * Formats a terminal revocation event frame (Gap 13: aligned with unified RevokeEventDetail).
  *
  * Produces exactly:
  * ```
@@ -83,8 +68,7 @@ export function formatKeepalive(): Uint8Array {
  * \n
  * ```
  *
- * When `details` is provided (e.g. for `reason: 'unsupported-target'`), the frame includes
- * structured fields so the client can report exactly why the connection was rejected:
+ * When `reason` is `'unsupported-target'`, the detail parameter provides structured fields:
  * ```
  * event: revoke\n
  * data: {"reason":"unsupported-target","requested":"rtk-query","supported":["swr","tanstack-query"]}\n
@@ -97,11 +81,18 @@ export function formatKeepalive(): Uint8Array {
  * suppressing automatic reconnection.
  */
 export function formatRevokeFrame(
-  reason: string,
-  details?: { requested: string; supported: string[] }
+  reason: 'unsupported-target',
+  detail: { requested: string; supported: string[] }
+): Uint8Array
+export function formatRevokeFrame(
+  reason: string | undefined
+): Uint8Array
+export function formatRevokeFrame(
+  reason: string | undefined,
+  detail?: { requested: string; supported: string[] }
 ): Uint8Array {
-  const payload = details !== undefined
-    ? JSON.stringify({ reason, requested: details.requested, supported: details.supported })
+  const payload = detail !== undefined
+    ? JSON.stringify({ reason, requested: detail.requested, supported: detail.supported })
     : JSON.stringify({ reason })
   return encoder.encode(`event: ${SSE_EVENTS.REVOKE}\ndata: ${payload}\n\n`)
 }

@@ -1,20 +1,38 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
+import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import type { SSEChannel, SSEChannelOptions } from '@/server/core/channel.js'
+import { validateSignalPayload, validateTargetConfiguration, validateSignalTargets, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
-import { toSSEResponse } from '@/server/fetch/response.js'
-import { attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
+import { internal_toSSEResponse } from '@/server/fetch/response.js'
+import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
 
 /**
- * Options passed to `SSEChannelGroup.createChannel` and `SSEChannelGroup.attachChannel`.
+ * Internal channel wrapper that redeclares `invalidate` as a method signature rather than a function property.
+ * Function properties are checked contravariantly, which would reject storing multi-target channels in the group.
+ * Redeclaring as a method enables bivariant parameter checking so multi-target channels can be registered
+ * while allowing the group to deliver `TSignal | TSignal[]` broadcasts.
  */
-export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'target'> & {
-  target?: SignalTarget | SignalTarget[]
+type RegisteredChannel<TSignal extends InvalidateSignal> =
+  Omit<SSEChannel<TSignal>, 'invalidate'> & {
+    invalidate(signal: TSignal | TSignal[], customId?: string): string
+  }
+
+/**
+ * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
+ */
+export type ChannelSetupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+> = Omit<
+  SSEChannelOptions<TSignal>,
+  'target'
+> & {
+  target?: TTarget
   topics?: string[]
 } & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
 
@@ -27,24 +45,24 @@ export type ChannelSetupOptions<TMeta = unknown> = Omit<SSEChannelOptions, 'targ
  * inside `publish(topic, ...)` without iterating over all channels in the group.
  */
 class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
-  readonly channels = new Set<SSEChannel<TSignal>>()
+  readonly channels = new Set<RegisteredChannel<TSignal>>()
   private unsubscribeFn?: () => void | Promise<void>
   private isSubscribed = false
   private pendingOp = Promise.resolve()
 
   constructor(
     private readonly topic: string,
-    private readonly pubsub: PubSubAdapter | undefined,
-    private readonly onMessage: (message: PubSubMessage) => void,
+    private readonly pubsub: PubSubAdapter<TSignal> | undefined,
+    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
     private readonly onTeardown?: (topic: string) => void
   ) {}
 
-  add(channel: SSEChannel<TSignal>): void {
+  add(channel: RegisteredChannel<TSignal>): void {
     this.channels.add(channel)
     this.sync()
   }
 
-  remove(channel: SSEChannel<TSignal>): void {
+  remove(channel: RegisteredChannel<TSignal>): void {
     this.channels.delete(channel)
     this.sync()
   }
@@ -155,53 +173,87 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
 }
 
 
-export interface SSEChannelGroupOptions<TMeta = unknown> {
+export type SignalsForTargets<TTarget> =
+  TTarget extends SignalTarget
+    ? ReStaleSignalForTarget<TTarget>
+    : TTarget extends SignalTarget[] | readonly SignalTarget[]
+      ? SignalInputForTarget<TTarget>
+      : InvalidateSignal
+
+type GroupSignalInput<
+  TSignal extends InvalidateSignal,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[],
+> = (TSignal | TSignal[]) &
+  ([TTarget] extends [readonly SignalTarget[]]
+    ? SignalInputForTarget<TTarget>
+    : [TTarget] extends [SignalTarget]
+      ? SignalInputForTarget<TTarget>
+      : unknown)
+
+export interface SSEChannelGroupOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+> {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
-  target?: SignalTarget | SignalTarget[]
+  target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter
-  eventStore?: EventStore
+  pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
+  eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
-  /**
-   * Fallback defaults for Frame Guard options that are typically uniform across an
-   * entire app (`target`, `lifetime`, `guardKeepalive`), so they don't
-   * need to be repeated at every `attachSSE()` / `toSSEResponse()` call site.
-   *
-   * A channel-level value always wins over a group default — the default only fills
-   * a gap left by the channel. `beforeFrame` is per-connection by nature and is
-   * deliberately NOT supported here (spec §1).
-   *
-   * Merge semantics are presence-based, not truthiness-based — see `mergeChannelDefaults`.
-   */
   channelDefaults?: ChannelDefaults
 }
+
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
  *
+ * Gap 6: Methods are readonly function properties (contravariant) not method declarations.
+ *
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
  */
-export class SSEChannelGroup<
+class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta; topics: Set<string>; connectionId: string }>()
-  private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
+  private readonly channels = new Map<RegisteredChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly pubsub?: PubSubAdapter
-  readonly eventStore?: EventStore
+  private readonly pubsub?: PubSubAdapter<TSignal>
+  readonly target?: TTarget
+  readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
   readonly channelDefaults?: ChannelDefaults
 
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TMeta> = {}) {
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
+    this.target = options.target
     this.metaSchema = options.metaSchema
-    this.pubsub = options.pubsub
+    this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
+
+    if (options.target !== undefined) {
+      validateTargetConfiguration(options.target)
+    }
+    if (options.channelDefaults?.target !== undefined) {
+      validateTargetConfiguration(options.channelDefaults.target)
+      if (options.target !== undefined) {
+        const groupTargets = new Set(toTargetList(options.target))
+        const defaultTargets = toTargetList(options.channelDefaults.target)
+        for (const t of defaultTargets) {
+          if (!groupTargets.has(t)) {
+            throw new Error(
+              `[target] Target "${t}" in channelDefaults.target is not compatible with channel group targets.`
+            )
+          }
+        }
+      }
+    }
 
     const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
     if (options.target !== undefined && mergedDefaults.target === undefined) {
@@ -209,14 +261,19 @@ export class SSEChannelGroup<
     }
     this.channelDefaults = Object.keys(mergedDefaults).length > 0 ? mergedDefaults : undefined
 
+    // Gap 10: Validate controlTopic - reject blank/whitespace strings
     const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
-    if (typeof rawControlTopic !== 'string' || rawControlTopic.trim() === '') {
+    if (typeof rawControlTopic !== 'string' || removeInvisibleWhitespace(rawControlTopic) === '') {
       throw new Error(
         `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
         `Got: ${JSON.stringify(rawControlTopic)}`
       )
     }
     this.controlTopic = rawControlTopic
+
+    if (options.eventBufferCapacity !== undefined && (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)) {
+      throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
+    }
 
     if (options.eventStore) {
       this.eventStore = options.eventStore
@@ -343,8 +400,8 @@ export class SSEChannelGroup<
    * Helper to deliver a signal to a single channel and handle closed connection cleanup/errors.
    */
   private deliverToChannel(
-    channel: SSEChannel<TSignal>,
-    signal: InvalidateSignal | InvalidateSignal[],
+    channel: RegisteredChannel<TSignal>,
+    signal: TSignal | TSignal[],
     context: 'broadcast' | 'publish' | 'pubsub',
     topic?: string,
     eventId?: string
@@ -372,64 +429,94 @@ export class SSEChannelGroup<
   }
 
   /**
-   * Creates an SSE channel from a Fetch API `Request`, registers it with the group,
-   * and returns both the `Response` to hand to the framework and the `SSEChannel`.
+   * Creates a Web Standard Fetch API `Response` object containing the SSE stream,
+   * registers the channel with this group, and returns `{ response, channel }`.
    *
-   * The channel is automatically deregistered when it closes.
+   * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
    *
-   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
-   * or if `target` is missing in options and group `channelDefaults`.
+   * @example
+   * const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
+   * return response
    */
-  createChannel(
+  createFetchResponse(
     request: Request,
-    options: ChannelSetupOptions<TMeta>
-  ): { response: Response; channel: SSEChannel<TSignal> } {
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
+  ): { response: Response; channel: SSEChannel<TSignal, TTarget> }
+  createFetchResponse(
+    request: Request,
+    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
+  ): unknown {
+    validateTopics(options.topics)
+    this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }
     delete channelOpts.meta
     delete channelOpts.topics
-    const result = toSSEResponse<TSignal>(request, channelOpts, this)
+    const result = internal_toSSEResponse<TSignal>(request, channelOpts, this)
     this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
   }
 
   /**
-   * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply),
-   * registers it with the group, and returns `{ channel }`.
+   * Attaches an SSE channel to a Node.js HTTP response (`res`) or Fastify `reply`,
+   * registers it with this group, and returns `{ channel }`.
    *
    * The channel is automatically deregistered when it closes.
    *
-   * Throws synchronously if `__restale_cid__` is missing or invalid in the request URL,
-   * or if `target` is missing in options and group `channelDefaults`.
+   * @framework Node.js, Express, Fastify
+   *
+   * @example
+   * group.attachNodeResponse(req, res, { target: 'swr' })
    */
-  attachChannel(
+  attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TMeta>
-  ): { channel: SSEChannel<TSignal> } {
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
+  ): { channel: SSEChannel<TSignal, TTarget> }
+  attachNodeResponse(
+    req: IncomingMessage | FastifyRequestLike,
+    res: ServerResponse | FastifyReplyLike,
+    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
+  ): unknown {
+    validateTopics(options.topics)
+    this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
     const channelOpts = { ...options }
     delete channelOpts.meta
     delete channelOpts.topics
-    const channel = attachSSE<TSignal>(req, res, channelOpts, this)
+    const channel = internal_attachSSE<TSignal>(req, res, channelOpts, this)
     this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
   }
 
-  private validateMeta(meta: TMeta | undefined): TMeta {
+  private validateMeta(meta: TMeta | undefined): TMeta | undefined {
     if (this.metaSchema) {
       return validateStandardSchema(meta, this.metaSchema)
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe: undefined only reachable when undefined extends TMeta
-    return meta as TMeta
+    return meta
+  }
+
+  private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
+    if (target === undefined) return
+    validateTargetConfiguration(target)
+    if (this.target !== undefined) {
+      const groupTargets = new Set(toTargetList(this.target))
+      const setupTargets = toTargetList(target)
+      for (const t of setupTargets) {
+        if (!groupTargets.has(t)) {
+          throw new Error(`[target] Target "${t}" is not compatible with channel group targets.`)
+        }
+      }
+    }
   }
 
   private doRegisterPrevalidated(
-    channel: SSEChannel<TSignal>,
-    validatedMeta: TMeta,
+    channel: RegisteredChannel<TSignal>,
+    validatedMeta: TMeta | undefined,
     topics?: string[]
   ): void {
-    const topicsList = topics || []
+    validateTopics(topics)
+    const topicsList = topics ?? []
     const topicsSet = new Set(topicsList)
 
     const existingEntry = this.channels.get(channel)
@@ -506,19 +593,20 @@ export class SSEChannelGroup<
    * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
    */
   register(
-    channel: SSEChannel<TSignal>,
+    channel: RegisteredChannel<TSignal>,
     ...args: undefined extends TMeta
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
   ): void {
     const meta = args[0]
     const options = args[1]
+    this.validateSetupTarget(channel.target)
     const validatedMeta = this.validateMeta(meta)
     this.doRegisterPrevalidated(channel, validatedMeta, options?.topics)
   }
 
   /** Deregisters a channel from the group. */
-  deregister(channel: SSEChannel<TSignal>): void {
+  deregister(channel: RegisteredChannel<TSignal>): void {
     const entry = this.channels.get(channel)
     if (!entry) return
 
@@ -658,7 +746,26 @@ export class SSEChannelGroup<
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
    */
-  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean): void {
+  broadcast(
+    signal: GroupSignalInput<TSignal, TTarget>,
+    predicate: (meta: TMeta | undefined) => boolean
+  ): void {
+    this.broadcastRaw(signal, predicate)
+  }
+
+  private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
+    const groupTargets = this.target ?? this.channelDefaults?.target
+    if (groupTargets !== undefined) {
+      const targetList = toTargetList(groupTargets)
+      if (targetList.length > 1) {
+        validateSignalTargets(signal, targetList)
+      }
+    }
+  }
+
+  private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+    validateSignalPayload(signal)
+    this.validateGroupSignalTargets(signal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
@@ -706,8 +813,8 @@ export class SSEChannelGroup<
    * - If a channel throws ChannelClosedError, it is automatically deregistered.
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
-  broadcastToAll(signal: TSignal | TSignal[]): void {
-    this.broadcast(signal, () => true)
+  broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
+    this.broadcastRaw(signal, () => true)
   }
 
   /**
@@ -727,8 +834,9 @@ export class SSEChannelGroup<
    * // You can write:
    * group.broadcastByKey({ key: ['todos', { userId }] })
    */
+  broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
   broadcastByKey(signal: TSignal): void {
-    this.broadcast(signal, (meta) => {
+    this.broadcastRaw(signal, (meta) => {
       if (!isJSONValue(meta)) return false
       // Wrap scalar/array meta in an array to match against the signal key
       const metaKey = Array.isArray(meta) ? meta : [meta]
@@ -742,7 +850,14 @@ export class SSEChannelGroup<
    * Deliver to matching local channels first (synchronously), then publishes to the PubSub broker.
    * Errors from the broker publish propagate to the caller.
    */
-  async publish(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+  async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
+    await this.publishRaw(topic, signal)
+  }
+
+  private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
+    validateTopic(topic, 'topic')
+    validateSignalPayload(signal)
+    this.validateGroupSignalTargets(signal)
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.
@@ -765,7 +880,67 @@ export class SSEChannelGroup<
   }
 }
 
-function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONValue): boolean {
+export type SSEChannelGroup<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
+
+interface SSEChannelGroupConstructor {
+  new <TTarget extends SignalTarget>(
+    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
+  new <TTarget extends readonly SignalTarget[]>(
+    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>, 'target'>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>
+  new <
+    TSignal extends InvalidateSignal = InvalidateSignal,
+    TMeta = unknown,
+    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+  >(
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
+  ): SSEChannelGroup<TSignal, TMeta, TTarget>
+}
+
+export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
+
+function hasPubSubMethods<TSignal extends InvalidateSignal>(
+  pubsub: unknown
+): pubsub is PubSubAdapter<TSignal> {
+  if (pubsub === null || typeof pubsub !== 'object') return false
+  const obj: { publish?: unknown; subscribe?: unknown } = pubsub
+  return typeof obj.publish === 'function' && typeof obj.subscribe === 'function'
+}
+
+function validateTopics(topics: string[] | undefined): void {
+  if (topics === undefined) return
+  for (const topic of topics) validateTopic(topic, 'topics entry')
+}
+
+function validateTopic(topic: string, label: string): void {
+  // Gap 10: Reject zero-width unicode whitespace and blank strings
+  if (typeof topic !== 'string' || removeInvisibleWhitespace(topic) === '') {
+    throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
+  }
+}
+
+function removeInvisibleWhitespace(value: string): string {
+  return value
+    .replaceAll('\u200B', '')
+    .replaceAll('\u200C', '')
+    .replaceAll('\u200D', '')
+    .replaceAll('\uFEFF', '')
+    .trim()
+}
+
+function toTargetList(target: SignalTarget | SignalTarget[] | readonly SignalTarget[]): readonly SignalTarget[] {
+  if (typeof target === 'string') {
+    return [target]
+  }
+  return target
+}
+
+function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unknown, criteria: JSONValue): boolean {
   if (!isJSONValue(meta)) return false
 
   // 1. Direct match on metadata
@@ -782,8 +957,8 @@ function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONVal
   }
 
   // 3. Match on connectionId alone if criteria is an object containing connectionId
-  if (criteria && typeof criteria === 'object' && !Array.isArray(criteria)) {
-    const criteriaObj = criteria as Record<string, JSONValue>
+  if (isJSONRecord(criteria)) {
+    const criteriaObj = criteria
     if ('connectionId' in criteriaObj) {
       if (ch.connectionId !== criteriaObj.connectionId) {
         return false
@@ -806,3 +981,6 @@ function channelMatchesCriteria(ch: SSEChannel, meta: unknown, criteria: JSONVal
   return false
 }
 
+function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}

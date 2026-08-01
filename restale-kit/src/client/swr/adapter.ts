@@ -3,7 +3,7 @@ import type { Arguments } from 'swr'
 import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
-  type InvalidateSignal,
+  type SWRSignal,
   type JSONValue,
 } from '../../types/protocol.js'
 import { isObject } from '../../pubsub/core/pubsub-utils.js'
@@ -11,7 +11,9 @@ import { SIGNAL_TARGETS } from '../../utils/constants.js'
 import type { AdaptedInvalidateCallback } from '../../client/core/client-contracts.js'
 import { makeAdaptedCallback } from '../../client/core/client-contracts.js'
 
-export interface SWRAdapterOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+export type SWRSignalInput = SWRSignal
+
+export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInput> {
   /**
    * Converts a non-canonical SWR key into the hierarchical ReStale key it
    * represents. Omit this when SWR keys are themselves ReStale keys.
@@ -30,21 +32,23 @@ export interface SWRMutator {
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *
- * Supports `SWRSignal` (with primitive string or tuple keys) and `GenericInvalidateSignal`.
+ * Gap 8: Constrained specifically to SWRSignal.
+ *
+ * Supports `SWRSignal` (with primitive string or tuple keys).
  */
-export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.SWR,
-    (signal) => {
+    (signal: TSignal | TSignal[]) => {
       const list = Array.isArray(signal) ? signal : [signal]
 
       for (const item of list) {
         if (!isObject(item)) continue
         const target = item.target
-        if (target !== undefined && target !== SIGNAL_TARGETS.SWR && target !== SIGNAL_TARGETS.GENERIC) {
+        if (target !== undefined && target !== SIGNAL_TARGETS.SWR) {
           continue
         }
 
@@ -89,6 +93,8 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 /**
  * React hook that returns a stable `onInvalidate` callback for SWR.
  *
+ * Gap 8: Constrained specifically to SWRSignalInput.
+ *
  * The returned callback is branded as `AdaptedInvalidateCallback<'swr'>`.
  * Pass it directly to `useReStale` as `onInvalidate` — `target` will be inferred
  * automatically and a mismatch with an explicit `target` prop is a compile error.
@@ -97,7 +103,7 @@ export function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
  * const onInvalidate = useSwrAdapter(mutate)
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'swr'
  */
-export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
 ): AdaptedInvalidateCallback<'swr', TSignal> {
@@ -118,4 +124,3 @@ export function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSigna
 function toCanonicalKey(key: Arguments): JSONValue[] | undefined {
   return isJSONValueArray(key) ? key : undefined
 }
-
