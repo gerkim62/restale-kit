@@ -72,8 +72,10 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
 
-      // @ts-expect-error - Incompatible channel type
-      group.register(tanstackChannel);
+      expect(() => {
+        // @ts-expect-error - Incompatible channel type
+        group.register(tanstackChannel);
+      }).toThrow();
     });
 
     it('should reject registering SWR channel in TanStack group', () => {
@@ -82,16 +84,20 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       });
       const swrChannel = createSSEChannel({ target: 'swr' });
 
-      // @ts-expect-error - Incompatible channel type
-      group.register(swrChannel);
+      expect(() => {
+        // @ts-expect-error - Incompatible channel type
+        group.register(swrChannel);
+      }).toThrow();
     });
 
     it('should reject registering RTK channel in SWR group', () => {
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       const rtkChannel = createSSEChannel({ target: 'rtk-query' });
 
-      // @ts-expect-error - Incompatible channel type
-      group.register(rtkChannel);
+      expect(() => {
+        // @ts-expect-error - Incompatible channel type
+        group.register(rtkChannel);
+      }).toThrow();
     });
 
     it('should accept registering compatible channel', () => {
@@ -316,8 +322,10 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       const group = new SSEChannelGroup<SWRSignal>({ target: 'swr' });
       const tanstackChannel = createSSEChannel({ target: 'tanstack-query' });
 
-      // @ts-expect-error - Type mismatch
-      group.register(tanstackChannel);
+      expect(() => {
+        // @ts-expect-error - Type mismatch
+        group.register(tanstackChannel);
+      }).toThrow();
     });
 
     it('should prevent incompatible channel type at assignment', () => {

@@ -39,8 +39,10 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   const rawUrl = actualReq.url || '/'
   const searchIndex = rawUrl.indexOf('?')
   const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  const extractedId = extractConnectionId(searchParams)
-  const connectionId = options.connectionId !== undefined ? options.connectionId : extractedId
+  const connectionId =
+    options.connectionId !== undefined
+      ? options.connectionId
+      : extractConnectionId(searchParams)
   const requestedTarget = extractRequestedTarget(searchParams)
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])

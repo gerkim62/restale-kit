@@ -31,8 +31,8 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
           continue
         }
 
-        const queryKey = 'queryKey' in s && Array.isArray(s.queryKey) ? s.queryKey : undefined
-        if (!Array.isArray(queryKey)) continue
+        if (!('queryKey' in s) || !Array.isArray(s.queryKey)) continue
+        const queryKey = s.queryKey
 
         const exact = typeof s.exact === 'boolean' ? s.exact : undefined
         const type = isQueryTypeFilter(s.type) ? s.type : undefined

@@ -92,6 +92,10 @@ export class SSEInvalidatorClient<
         `Got: ${JSON.stringify(url)}`
       )
     }
+
+    if (opts?.reconnect) {
+      calculateBackoff(0, opts.reconnect)
+    }
     
     this.currentConnectionId = generateUUID()
     this.url = url

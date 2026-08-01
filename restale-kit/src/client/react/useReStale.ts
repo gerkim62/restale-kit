@@ -99,15 +99,8 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
  * The SSE `target` is inferred automatically from the branded adapter callback
  * passed as `onInvalidate`.
  * 
- * Gap 1.5 fix: Overloads enforce that explicit target must match callback brand.
+ * Target/callback compatibility is enforced by NoInfer<TTarget> and AdaptedInvalidateCallback<TTarget, TSignal>.
  */
-export function useReStale<
-  TTarget extends TargetForSignal<TSignal>,
-  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
->(
-  url: string,
-  opts: UseReStaleOptions<TTarget, TSignal>
-): UseReStaleResult
 export function useReStale<
   TTarget extends TargetForSignal<TSignal>,
   TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,

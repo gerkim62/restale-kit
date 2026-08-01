@@ -14,7 +14,8 @@ describe('pubsub-utils', () => {
     expect(isSignalPayload({ key: ['todos'] })).toBe(true)
     expect(isSignalPayload([{ key: ['todos'] }, { key: ['users'] }])).toBe(true)
 
-    expect(isSignalPayload({ key: 'not-an-array' })).toBe(false)
+    expect(isSignalPayload({ key: 'swr-key' })).toBe(true)
+    expect(isSignalPayload({ key: 123 })).toBe(false)
     expect(isSignalPayload([{ key: ['valid'] }, { invalid: true }])).toBe(false)
   })
 

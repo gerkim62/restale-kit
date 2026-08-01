@@ -30,12 +30,6 @@ export interface SWRMutator {
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
 }
 
-export type SWRCallbackSignal<TSignal extends InvalidateSignal> =
-  | TSignal
-  | TSignal[]
-  | (Omit<SWRSignal, 'target'> & { target?: typeof SIGNAL_TARGETS.SWR })
-  | (Omit<SWRSignal, 'target'> & { target?: typeof SIGNAL_TARGETS.SWR })[]
-
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
  *

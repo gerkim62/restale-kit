@@ -5,8 +5,8 @@ import type { SWRSignal, PubSubMessage } from '@/types/index.js'
 
 describe('PubSubEncryptionOptions mutual exclusivity', () => {
   test('valid encryption options compile', () => {
-    const disabled: PubSubEncryptionOptions = { encrypt: false }
-    const enabled: PubSubEncryptionOptions = { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' }
+    const disabled = { encrypt: false } as const
+    const enabled = { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' } as const
 
     expectTypeOf(disabled).toExtend<PubSubEncryptionOptions>()
     expectTypeOf(enabled).toExtend<PubSubEncryptionOptions>()

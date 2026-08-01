@@ -332,12 +332,12 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
 
   describe('Integration with channel group registration', () => {
     it('should validate target when registering channel to group', () => {
-      const group = new SSEChannelGroup<any>();
+      const group = new SSEChannelGroup({ target: 'tanstack-query' });
+      const channel = createSSEChannel({ target: 'swr' });
       
       expect(() => {
-        // @ts-expect-error - Invalid target
-        const badChannel = createSSEChannel({ target: 'invalid' });
-        group.register(badChannel);
+        // @ts-expect-error - SWR channel incompatible with TanStack group
+        group.register(channel);
       }).toThrow();
     });
 

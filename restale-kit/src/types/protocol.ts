@@ -33,14 +33,14 @@ export interface TanStackQuerySignal extends BaseInvalidateSignal {
   stale?: boolean
 }
 
-export const SWR_ACTIONS = ['revalidate', 'purge', 'remove'] as const
+export const SWR_ACTIONS = ['revalidate', 'purge', 'remove', 'mutate'] as const
 export type SWRAction = (typeof SWR_ACTIONS)[number]
 
 /** Native SWR invalidation signal payload */
 export interface SWRSignal extends BaseInvalidateSignal {
   target?: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
-  action?: SWRAction | 'mutate'
+  action?: SWRAction
   revalidate?: boolean
   optimisticData?: JSONValue
   match?: 'exact' | 'prefix'
@@ -139,12 +139,12 @@ export type OptionalTargetSignal<TSignal extends InvalidateSignal> =
  */
 export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
   TTarget extends SignalTarget
-    ? OptionalTargetSignal<ReStaleSignalForTarget<TTarget>>
+    ? OptionalTargetSignal<ReStaleSignalForTarget<TTarget>> | Array<OptionalTargetSignal<ReStaleSignalForTarget<TTarget>>>
     : TTarget extends readonly SignalTarget[]
       ? CompleteBatchForTargets<TTarget>
       : TTarget extends SignalTarget[]
         ? CompleteBatchForTargets<TTarget>
-        : ReStaleSignal
+        : ReStaleSignal | ReStaleSignal[]
 
 /** Returns whether a value can be used as a serializable ReStale key component. */
 export function isJSONValue(value: unknown): value is JSONValue {
@@ -390,7 +390,14 @@ export type RevokeEventDetail =
       supported: string[]
     }
   | {
-      reason?: 'deadline' | 'session-expired' | 'logout' | 'banned' | 'unauthorized' | 'custom' | (string & { readonly 'unsupported-target'?: never })
+      reason?:
+        | 'deadline'
+        | 'session-expired'
+        | 'logout'
+        | 'banned'
+        | 'unauthorized'
+        | 'custom'
+        | (string & { [K in 'unsupported-target']?: never } & { readonly __reasonBrand?: 'custom' })
       requested?: never
       supported?: never
     }

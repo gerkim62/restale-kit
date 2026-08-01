@@ -26,6 +26,11 @@ describe('pusherPubSubAdapter type safety', () => {
   test('pusherPubSubAdapter encryption options validation', () => {
     const mockClient = {} as PusherClient
 
+    const disabled = pusherPubSubAdapter(mockClient, { encrypt: false })
+    const enabled = pusherPubSubAdapter(mockClient, { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' })
+    expectTypeOf(disabled).toExtend<PubSubAdapter>()
+    expectTypeOf(enabled).toExtend<PubSubAdapter>()
+
     // @ts-expect-error encrypt: false combined with encryptionKey is an error
     void pusherPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
   })

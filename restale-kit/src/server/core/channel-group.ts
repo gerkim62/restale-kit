@@ -10,6 +10,12 @@ import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
 
+/**
+ * Internal channel wrapper that redeclares `invalidate` as a method signature rather than a function property.
+ * Function properties are checked contravariantly, which would reject storing multi-target channels in the group.
+ * Redeclaring as a method enables bivariant parameter checking so multi-target channels can be registered
+ * while allowing the group to deliver `TSignal | TSignal[]` broadcasts.
+ */
 type RegisteredChannel<TSignal extends InvalidateSignal> =
   Omit<SSEChannel<TSignal>, 'invalidate'> & {
     invalidate(signal: TSignal | TSignal[], customId?: string): string
@@ -21,7 +27,7 @@ type RegisteredChannel<TSignal extends InvalidateSignal> =
 export type ChannelSetupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > = Omit<
   SSEChannelOptions<TSignal>,
   'target'
@@ -178,9 +184,9 @@ type GroupSignalInput<
   TSignal extends InvalidateSignal,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[],
 > = [TTarget] extends [readonly SignalTarget[]]
-  ? SignalInputForTarget<TTarget> & (TSignal | TSignal[])
+  ? SignalInputForTarget<TTarget>
   : [TTarget] extends [SignalTarget]
-    ? SignalInputForTarget<TTarget> & (TSignal | TSignal[])
+    ? SignalInputForTarget<TTarget>
     : TSignal | TSignal[]
 
 export interface SSEChannelGroupOptions<
@@ -210,7 +216,7 @@ export interface SSEChannelGroupOptions<
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > {
   private readonly channels = new Map<RegisteredChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
   private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
@@ -582,6 +588,7 @@ class SSEChannelGroupImplementation<
   ): void {
     const meta = args[0]
     const options = args[1]
+    this.validateSetupTarget(channel.target)
     const validatedMeta = this.validateMeta(meta)
     this.doRegisterPrevalidated(channel, validatedMeta, options?.topics)
   }
@@ -731,7 +738,7 @@ class SSEChannelGroupImplementation<
     signal: GroupSignalInput<TSignal, TTarget>,
     predicate: (meta: TMeta | undefined) => boolean
   ): void {
-    this.broadcastRaw(signal, predicate)
+    this.broadcastRaw(signal as TSignal | TSignal[], predicate)
   }
 
   private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
@@ -784,7 +791,7 @@ class SSEChannelGroupImplementation<
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
   broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
-    this.broadcastRaw(signal, () => true)
+    this.broadcastRaw(signal as TSignal | TSignal[], () => true)
   }
 
   /**
@@ -821,7 +828,7 @@ class SSEChannelGroupImplementation<
    * Errors from the broker publish propagate to the caller.
    */
   async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
-    await this.publishRaw(topic, signal)
+    await this.publishRaw(topic, signal as TSignal | TSignal[])
   }
 
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
@@ -852,7 +859,7 @@ class SSEChannelGroupImplementation<
 export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
 
 interface SSEChannelGroupConstructor {
@@ -865,7 +872,7 @@ interface SSEChannelGroupConstructor {
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
-    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
   >(
     options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
   ): SSEChannelGroup<TSignal, TMeta, TTarget>

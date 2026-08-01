@@ -27,8 +27,11 @@ export type AdaptedInvalidateCallback<
  */
 export function makeAdaptedCallback<TSignal extends InvalidateSignal = InvalidateSignal>(
   fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void),
-  target?: TargetForSignal<TSignal>
+  target: TargetForSignal<TSignal>
 ): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
+export function makeAdaptedCallback<TSignal extends InvalidateSignal = InvalidateSignal>(
+  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void)
+): AdaptedInvalidateCallback<'generic', TSignal>
 export function makeAdaptedCallback<
   TTarget extends SignalTarget = SignalTarget,
   TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
@@ -48,7 +51,9 @@ export function makeAdaptedCallback(
     const target = typeof arg1 === 'string' ? arg1 : 'generic'
     return Object.assign(arg2, { target, __restaleTarget: target })
   }
-  return arg1
+  throw new TypeError(
+    '[makeAdaptedCallback] expected a callback function as the first or second argument.'
+  )
 }
 
 /**

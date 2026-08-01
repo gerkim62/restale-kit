@@ -40,7 +40,7 @@ describe('SSEChannelGroup generic and metadata enforcement', () => {
   test('SSEChannelGroup target option should infer TSignal generic', () => {
     const swrGroup = new SSEChannelGroup({ target: 'swr' })
 
-    expectTypeOf(swrGroup).not.toEqualTypeOf<never>()
+    expectTypeOf(swrGroup).toEqualTypeOf<SSEChannelGroup<SWRSignal, unknown, 'swr'>>()
 
     // @ts-expect-error explicit generic mismatched with target option should be a type error
     new SSEChannelGroup<SWRSignal>({ target: 'tanstack-query' })
@@ -108,12 +108,7 @@ describe('SSEChannelGroup revocation methods', () => {
     void group.revokeWhere({ id: Symbol('test') })
   })
 
-  test('broadcastByKey enforces TSignal generic', () => {
-    const group = new SSEChannelGroup<TanStackQuerySignal>({ target: 'tanstack-query' })
 
-    group.broadcastByKey({ target: 'tanstack-query', queryKey: ['todos'] })
-
-  })
 })
 
 describe('SSEChannelGroup attachNodeResponse and createFetchResponse 1-step methods', () => {

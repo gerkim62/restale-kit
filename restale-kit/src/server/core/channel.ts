@@ -77,7 +77,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
    * channel sends a `renew` frame (asking the client to make one confirmatory reconnect
    * through the real auth middleware) or a terminal `revoke` frame.
    */
-  lifetime?: LifetimeOptions | { ttlMs?: number; deadline?: number; onDeadline?: OnDeadline; reconnect?: unknown }
+  lifetime?: LifetimeOptions
   /**
    * Integrator-supplied guard function called synchronously before each outgoing frame.
    *
@@ -492,7 +492,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
         controller.close()
       }
     } catch (err) {
-      console.warn('[WARN][closeInternal] Controller close threw an expected error\n  error:', String(err))
+      console.debug('[closeInternal] Controller close error:', String(err))
     }
     // Fire one-shot close callbacks
     for (const cb of closeCallbacks) {
@@ -699,7 +699,7 @@ function validateChannelOptions<TSignal extends InvalidateSignal>(options: SSECh
     validateNonNegativeFinite('lifetime.onDeadline.maxAttempts', onDeadline.maxAttempts)
     validateNonNegativeFinite('lifetime.onDeadline.retryDelayMs', onDeadline.retryDelayMs)
   }
-  if (isRecord(options.lifetime) && 'reconnect' in options.lifetime) {
+  if (isRecord(options.lifetime) && options.lifetime.reconnect !== undefined) {
     validateReconnectOptions(options.lifetime.reconnect)
   }
 }
@@ -788,9 +788,10 @@ export function validateSignalTargets(
         // Single-target channel: auto-fill target if omitted
         coveredTargets.add(declaredTargets[0])
         const filled = Object.assign({}, s, { target: declaredTargets[0] })
-        if (isInvalidateSignal(filled)) {
-          resultList.push(filled)
+        if (!isInvalidateSignal(filled)) {
+          throw new Error('[invalidate] Invalid signal structure.')
         }
+        resultList.push(filled)
       } else {
         const sStr = JSON.stringify(s)
         throw new Error(
@@ -800,14 +801,14 @@ export function validateSignalTargets(
         )
       }
     } else {
-      if (!isInvalidateSignal(s)) {
-        throw new Error('[invalidate] Invalid signal structure.')
-      }
       if (!declaredSet.has(targetStr)) {
         throw new Error(
           `[invalidate] Signal target "${targetStr}" is not in the channel's declared targets: ` +
           `[${declaredTargets.join(', ')}].`
         )
+      }
+      if (!isInvalidateSignal(s)) {
+        throw new Error('[invalidate] Invalid signal structure.')
       }
       coveredTargets.add(targetStr)
       resultList.push(s)
@@ -827,8 +828,12 @@ export function validateSignalTargets(
     }
   }
 
-  const output = Array.isArray(signal) ? resultList : resultList[0]
-  return output !== undefined ? output : signal
+  if (Array.isArray(signal)) return resultList
+  const first = resultList[0]
+  if (first === undefined) {
+    throw new Error('[invalidate] Signal validation produced no usable signal.')
+  }
+  return first
 }
 
 /** Validates the JSON-safe wire shape of one signal or a non-empty signal batch. */

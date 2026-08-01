@@ -7,10 +7,22 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { describe, it, expect } from 'vitest';
+import { Writable } from 'node:stream';
+import type { ServerResponse } from 'node:http';
+import { describe, it, expect, vi } from 'vitest';
 import { createSSEChannel } from '../../server/core/channel.js';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
+
+function createMockResponse(): ServerResponse {
+  const res = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  }) as unknown as ServerResponse;
+  res.writeHead = vi.fn() as any;
+  return res;
+}
 
 describe('Gap 4: Single-target API types vs runtime behavior', () => {
   describe('SWR single-target channel', () => {
@@ -122,15 +134,11 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       }).not.toThrow();
     });
 
-    it('should handle exact and predicate options without explicit target', () => {
+    it('should handle exact options without explicit target', () => {
       const channel = createSSEChannel({ target: 'tanstack-query' });
       
       expect(() => {
         channel.invalidate({ queryKey: ['todos'], exact: true });
-      }).not.toThrow();
-      
-      expect(() => {
-        channel.invalidate({ queryKey: ['users'], predicate: true });
       }).not.toThrow();
     });
   });
@@ -254,10 +262,7 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       req.url = '/sse?__restale_cid__=conn-1';
       req.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
 
       expect(() => {
         group.attachNodeResponse(req, mockRes, {});

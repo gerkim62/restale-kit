@@ -211,6 +211,8 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         data: { target: 'swr' as const, key: ['test'] }
       })
       expectTypeOf(swrAdapter).not.toEqualTypeOf<never>()
+    })
+
     test('should reject passing incompatible adapter to function', () => {
       function processSWRAdapter(adapter: PubSubAdapter<SWRSignal>) {
         void adapter.publish('topic', {
@@ -450,5 +452,4 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
       addToStore(swrStore, { target: 'tanstack-query', queryKey: ['test'] })
     })
   })
-})
 })

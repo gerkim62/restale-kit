@@ -144,9 +144,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             if (ctx.signal.exact) {
               return { action: 'send' }
             }
-            if (ctx.signal.predicate) {
-              return { action: 'skip' }
-            }
+            // @ts-expect-error - predicate should not exist on TanStackQuerySignal
+            const p = ctx.signal.predicate
           }
           return { action: 'send' }
         }

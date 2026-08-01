@@ -169,11 +169,14 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       >();
       
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       }), undefined);
       
-      // @ts-expect-error - Single signal not allowed
-      group.broadcast({ target: 'swr', key: ['todos'] });
+      expect(() => {
+        // @ts-expect-error - Single signal not allowed
+        group.broadcast({ target: 'swr', key: ['todos'] });
+      }).toThrow();
     });
 
     it('should reject incomplete batch in broadcast', () => {
@@ -186,13 +189,16 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       });
       
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       }), undefined);
       
-      // @ts-expect-error - Incomplete batch
-      group.broadcast([
-        { target: 'swr', key: ['todos'] }
-      ], () => true);
+      expect(() => {
+        // @ts-expect-error - Incomplete batch
+        group.broadcast([
+          { target: 'swr', key: ['todos'] }
+        ], () => true);
+      }).toThrow();
     });
 
     it('should accept complete batch in broadcast', () => {
@@ -228,16 +234,20 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       });
       
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       }), undefined);
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       }), undefined);
       
-      // @ts-expect-error - Incomplete batch
-      group.broadcastToAll([
-        { target: 'swr', key: ['users'] }
-      ]);
+      expect(() => {
+        // @ts-expect-error - Incomplete batch
+        group.broadcastToAll([
+          { target: 'swr', key: ['users'] }
+        ]);
+      }).toThrow();
     });
 
     it('should accept complete batch in broadcastToAll', () => {
@@ -266,7 +276,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
   });
 
   describe('SSEChannelGroup.publish with multi-target', () => {
-    it('should reject incomplete batch in publish', () => {
+    it('should reject incomplete batch in publish', async () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal,
         unknown,
@@ -277,23 +287,24 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
       });
       
       group.register(createSSEChannel({ 
-        target: ['swr', 'tanstack-query'] as const 
+        target: ['swr', 'tanstack-query'] as const,
+        requestedTarget: 'swr'
       }), undefined, {
         topics: ['updates']
       });
       
-      // @ts-expect-error - Incomplete batch
-      void group.publish('updates', [
-        { target: 'tanstack-query', queryKey: ['posts'] }
-      ]);
+      await expect(
+        // @ts-expect-error - Incomplete batch
+        group.publish('updates', [
+          { target: 'tanstack-query', queryKey: ['posts'] }
+        ])
+      ).rejects.toThrow();
     });
 
-    it('should accept complete batch in publish', () => {
+    it('should accept complete batch in publish', async () => {
       const group = new SSEChannelGroup<
         SWRSignal | TanStackQuerySignal
-      >({
-        pubsub: { type: 'memory' }
-      });
+      >();
       
       group.register(createSSEChannel({ 
         target: ['swr', 'tanstack-query'] as const 
@@ -301,12 +312,12 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         topics: ['updates']
       });
       
-      expect(() => {
-        void group.publish('updates', [
+      await expect(
+        group.publish('updates', [
           { target: 'swr', key: ['posts'] },
           { target: 'tanstack-query', queryKey: ['posts'] }
-        ]);
-      }).not.toThrow();
+        ])
+      ).resolves.not.toThrow();
     });
   });
 

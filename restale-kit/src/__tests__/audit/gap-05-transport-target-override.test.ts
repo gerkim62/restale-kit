@@ -7,9 +7,21 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { describe, it, expect } from 'vitest';
+import { Writable } from 'node:stream';
+import type { ServerResponse } from 'node:http';
+import { describe, it, expect, vi } from 'vitest';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
+
+function createMockResponse(): ServerResponse {
+  const res = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  }) as unknown as ServerResponse;
+  res.writeHead = vi.fn() as any;
+  return res;
+}
 
 describe('Gap 5: Transport setup target override', () => {
   describe('SSEChannelGroup.createFetchResponse', () => {
@@ -93,10 +105,7 @@ describe('Gap 5: Transport setup target override', () => {
       mockReq.url = '/sse?__restale_cid__=conn-1';
       mockReq.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
       
       expect(() => {
         // @ts-expect-error - SWR target conflicts with TanStack group
@@ -118,10 +127,7 @@ describe('Gap 5: Transport setup target override', () => {
       mockReq.url = '/sse?__restale_cid__=conn-1';
       mockReq.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
       
       // Should compile
       expect(() => {
@@ -140,10 +146,7 @@ describe('Gap 5: Transport setup target override', () => {
       mockReq.url = '/sse?__restale_cid__=conn-1';
       mockReq.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
       
       expect(() => {
         const result = group.attachNodeResponse(mockReq, mockRes, {});
@@ -218,10 +221,7 @@ describe('Gap 5: Transport setup target override', () => {
       mockReq.url = '/sse?__restale_cid__=conn-1';
       mockReq.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
       
       const { channel } = group.attachNodeResponse(mockReq, mockRes, { target: 'tanstack-query' });
       
@@ -354,10 +354,7 @@ describe('Gap 5: Transport setup target override', () => {
       mockReq.url = '/sse?__restale_cid__=conn-1';
       mockReq.headers = {};
       
-      const mockRes = new EventEmitter() as any;
-      mockRes.writeHead = () => {};
-      mockRes.write = () => {};
-      mockRes.end = () => {};
+      const mockRes = createMockResponse();
       
       expect(() => {
         group.attachNodeResponse(mockReq, mockRes, { target: 'swr' } as any);

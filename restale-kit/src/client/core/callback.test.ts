@@ -30,13 +30,11 @@ describe('makeAdaptedCallback', () => {
     expect(adapted.__restaleTarget).toBe('generic')
   })
 
-  it('handles edge case non-function arguments gracefully', () => {
+  it('throws TypeError for non-function arguments', () => {
     // @ts-expect-error - testing invalid arguments at runtime
-    const res1 = makeAdaptedCallback('invalid-arg', 'another-invalid')
-    expect(res1).toBe('invalid-arg')
+    expect(() => makeAdaptedCallback('invalid-arg', 'another-invalid')).toThrow(TypeError)
 
     // @ts-expect-error - testing invalid arguments at runtime
-    const res2 = makeAdaptedCallback(null, null)
-    expect(res2).toBeNull()
+    expect(() => makeAdaptedCallback(null, null)).toThrow(TypeError)
   })
 })

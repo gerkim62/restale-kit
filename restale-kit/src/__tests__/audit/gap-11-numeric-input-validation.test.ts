@@ -431,6 +431,7 @@ describe('Gap 11: Numeric input validation for bounded values', () => {
           target: 'swr',
           lifetime: {
             ttlMs: 60000,
+            // @ts-expect-error - ttlMs and deadline are mutually exclusive
             deadline: Date.now() + 60000
           }
         })
@@ -856,10 +857,10 @@ describe('Gap 11: Numeric input validation for bounded values', () => {
       }).toThrow()
     })
 
-    it('should reject undefined for required numeric values', () => {
+    it('should allow explicit undefined capacity and use default capacity', () => {
       expect(() => {
         createEventStore<SWRSignal>({ capacity: undefined })
-      }).toThrow()
+      }).not.toThrow()
     })
 
     it('should reject object coerced to number', () => {

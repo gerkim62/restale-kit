@@ -376,6 +376,7 @@ const group = new SSEChannelGroup({
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
+    target: 'generic',
     meta: {
       userId: req.user.id,
       sessionId: req.session.id,
