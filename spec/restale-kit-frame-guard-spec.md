@@ -10,7 +10,7 @@ An SSE connection, once established, is a long-lived stream. `restale-kit` today
 
 This is a general-purpose hook, not an "auth" feature specifically. Authorization is the primary expected use, but the same mechanism is equally usable for rate limiting, feature-flag gating, tenant suspension, or any other "should this frame go out right now" decision.
 
-### 1.1 Where Frame Guard options
+### 1.1 Where Frame Guard options live
 
 `lifetime`, `beforeFrame`, and `guardKeepalive` are fields on `SSEChannelOptions` and `ChannelSetupOptions` — the options passed to `group.createFetchResponse()` / `group.attachNodeResponse()` (or low-level transport helpers) at channel-creation time. They are evaluated per-channel. This is a deliberate placement: `beforeFrame` closes over whatever local variables the caller already has in scope at that point (a `userId`, a `sessionId` read from the request) — it never needed anything `SSEChannelGroup` uniquely provides. One direct consequence: **Frame Guard is fully functional on a channel that is never registered with any group at all** — a standalone channel with signals pushed via `channel.invalidate(...)` directly gets complete Frame Guard coverage with no group involved.
 
