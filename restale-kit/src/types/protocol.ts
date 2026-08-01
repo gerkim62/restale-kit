@@ -120,7 +120,7 @@ export type CompleteBatchForTargets<TTarget extends readonly SignalTarget[]> =
     : TTarget extends readonly [infer A extends SignalTarget, infer B extends SignalTarget]
       ? Permutations2<A, B>
       : TTarget extends readonly [infer A extends SignalTarget]
-        ? [ExplicitSignalForTarget<A>]
+        ? OptionalTargetSignal<ReStaleSignalForTarget<A>> | [OptionalTargetSignal<ReStaleSignalForTarget<A>>]
         : Array<ExplicitSignalForTarget<TTarget[number]>>
 
 export type OptionalTargetSignal<TSignal extends InvalidateSignal> =

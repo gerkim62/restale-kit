@@ -5,7 +5,6 @@ import {
   matchesInvalidateSignalKey,
   type InvalidateSignal,
   type SWRSignal,
-  type GenericInvalidateSignal,
   type JSONValue,
 } from '../../types/protocol.js'
 import { isObject } from '../../pubsub/core/pubsub-utils.js'
@@ -132,4 +131,3 @@ export function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
 function toCanonicalKey(key: Arguments): JSONValue[] | undefined {
   return isJSONValueArray(key) ? key : undefined
 }
-

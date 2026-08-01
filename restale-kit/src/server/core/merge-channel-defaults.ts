@@ -1,4 +1,4 @@
-import { validateTargetConfiguration, type SSEChannelOptions, type DirectSSEChannelOptions } from '@/server/core/channel.js'
+import { validateTargetConfiguration, type SSEChannelOptions } from '@/server/core/channel.js'
 import type { InvalidateSignal, LifetimeOptions, OnDeadline, SignalTarget } from '@/types/protocol.js'
 
 /**

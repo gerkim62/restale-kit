@@ -10,6 +10,11 @@ import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
 
+type RegisteredChannel<TSignal extends InvalidateSignal> =
+  Omit<SSEChannel<TSignal>, 'invalidate'> & {
+    invalidate(signal: TSignal | TSignal[], customId?: string): string
+  }
+
 /**
  * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
  */
@@ -34,7 +39,7 @@ export type ChannelSetupOptions<
  * inside `publish(topic, ...)` without iterating over all channels in the group.
  */
 class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
-  readonly channels = new Set<SSEChannel<TSignal>>()
+  readonly channels = new Set<RegisteredChannel<TSignal>>()
   private unsubscribeFn?: () => void | Promise<void>
   private isSubscribed = false
   private pendingOp = Promise.resolve()
@@ -46,12 +51,12 @@ class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
     private readonly onTeardown?: (topic: string) => void
   ) {}
 
-  add(channel: SSEChannel<TSignal>): void {
+  add(channel: RegisteredChannel<TSignal>): void {
     this.channels.add(channel)
     this.sync()
   }
 
-  remove(channel: SSEChannel<TSignal>): void {
+  remove(channel: RegisteredChannel<TSignal>): void {
     this.channels.delete(channel)
     this.sync()
   }
@@ -198,8 +203,8 @@ class SSEChannelGroupImplementation<
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal>,
 > {
-  private readonly channels = new Map<SSEChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
-  private readonly connectionIndex = new Map<string, Set<SSEChannel<TSignal>>>()
+  private readonly channels = new Map<RegisteredChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
@@ -368,7 +373,7 @@ class SSEChannelGroupImplementation<
    * Helper to deliver a signal to a single channel and handle closed connection cleanup/errors.
    */
   private deliverToChannel(
-    channel: SSEChannel<TSignal>,
+    channel: RegisteredChannel<TSignal>,
     signal: TSignal | TSignal[],
     context: 'broadcast' | 'publish' | 'pubsub',
     topic?: string,
@@ -413,7 +418,9 @@ class SSEChannelGroupImplementation<
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
-    const { meta: _meta, topics: _topics, ...channelOpts } = options
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const result = internal_toSSEResponse<TSignal>(request, channelOpts, this)
     this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
     return result
@@ -438,7 +445,9 @@ class SSEChannelGroupImplementation<
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
-    const { meta: _meta, topics: _topics, ...channelOpts } = options
+    const channelOpts = { ...options }
+    delete channelOpts.meta
+    delete channelOpts.topics
     const channel = internal_attachSSE<TSignal>(req, res, channelOpts, this)
     this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
     return { channel }
@@ -455,8 +464,8 @@ class SSEChannelGroupImplementation<
     if (target === undefined) return
     validateTargetConfiguration(target)
     if (this.target !== undefined) {
-      const groupTargets = new Set(Array.isArray(this.target) ? this.target : [this.target])
-      const setupTargets = Array.isArray(target) ? target : [target]
+      const groupTargets = new Set(toTargetList(this.target))
+      const setupTargets = toTargetList(target)
       for (const t of setupTargets) {
         if (!groupTargets.has(t)) {
           throw new Error(`[target] Target "${t}" is not compatible with channel group targets.`)
@@ -466,7 +475,7 @@ class SSEChannelGroupImplementation<
   }
 
   private doRegisterPrevalidated(
-    channel: SSEChannel<TSignal>,
+    channel: RegisteredChannel<TSignal>,
     validatedMeta: TMeta | undefined,
     topics?: string[]
   ): void {
@@ -548,7 +557,7 @@ class SSEChannelGroupImplementation<
    * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
    */
   register(
-    channel: SSEChannel<TSignal>,
+    channel: RegisteredChannel<TSignal>,
     ...args: undefined extends TMeta
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
@@ -560,7 +569,7 @@ class SSEChannelGroupImplementation<
   }
 
   /** Deregisters a channel from the group. */
-  deregister(channel: SSEChannel<TSignal>): void {
+  deregister(channel: RegisteredChannel<TSignal>): void {
     const entry = this.channels.get(channel)
     if (!entry) return
 
@@ -838,8 +847,8 @@ function hasPubSubMethods<TSignal extends InvalidateSignal>(
   pubsub: unknown
 ): pubsub is PubSubAdapter<TSignal> {
   if (pubsub === null || typeof pubsub !== 'object') return false
-  const obj: Record<string, unknown> = Object(pubsub)
-  return typeof obj['publish'] === 'function' && typeof obj['subscribe'] === 'function'
+  const obj: { publish?: unknown; subscribe?: unknown } = pubsub
+  return typeof obj.publish === 'function' && typeof obj.subscribe === 'function'
 }
 
 function validateTopics(topics: string[] | undefined): void {
@@ -861,15 +870,6 @@ function removeInvisibleWhitespace(value: string): string {
     .replaceAll('\u200D', '')
     .replaceAll('\uFEFF', '')
     .trim()
-}
-
-function isTargetSubset(
-  subTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[],
-  groupTarget: SignalTarget | SignalTarget[] | readonly SignalTarget[]
-): boolean {
-  const subList = toTargetList(subTarget)
-  const groupList = toTargetList(groupTarget)
-  return subList.every((target) => groupList.includes(target))
 }
 
 function toTargetList(target: SignalTarget | SignalTarget[] | readonly SignalTarget[]): readonly SignalTarget[] {

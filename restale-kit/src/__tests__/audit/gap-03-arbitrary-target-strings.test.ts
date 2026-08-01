@@ -246,7 +246,7 @@ describe('Gap 3: Target configuration admits arbitrary strings', () => {
       const channel = createSSEChannel({ target: ['swr'] as const });
       
       // Should behave like single-target channel
-      channel.invalidate({ target: 'swr', key: ['test'] });
+      channel.invalidate([{ target: 'swr', key: ['test'] }]);
     });
 
     it('should maintain tuple types for multi-element arrays', () => {

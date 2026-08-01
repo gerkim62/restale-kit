@@ -1,4 +1,4 @@
-import type { InvalidateSignal, SignalTarget } from '@/types/protocol.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'

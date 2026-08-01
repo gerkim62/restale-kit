@@ -10,6 +10,7 @@ import {
   type FrameGuardResult,
   type ReStaleSignalForTarget,
   type TargetForSignal,
+  type SignalInputForTarget,
   isJSONValueArray,
   isJSONValue,
 } from '@/types/protocol.js'
@@ -107,7 +108,7 @@ export interface SSEChannelOptions<TSignal extends InvalidateSignal = Invalidate
  */
 export interface SSEChannel<
   TSignal extends InvalidateSignal = InvalidateSignal,
-  TTarget extends SignalTarget | readonly SignalTarget[] = TargetForSignal<TSignal>,
+  TTarget extends SignalTarget | readonly SignalTarget[] = SignalTarget | readonly SignalTarget[],
 > {
   readonly _signalType?: TSignal
   /** Current lifecycle state of the channel. */
@@ -133,7 +134,12 @@ export interface SSEChannel<
    *
    * Gap 1.1 fix: Parameter is narrowed to TSignal only (not InvalidateSignal).
    */
-  invalidate(signal: TSignal | TSignal[], customId?: string): string
+  readonly invalidate: (
+    signal: [TTarget] extends [readonly SignalTarget[]]
+      ? SignalInputForTarget<TTarget>
+      : TSignal | TSignal[],
+    customId?: string
+  ) => string
   /** Server-initiated close. Stops keepalive timer, closes the stream, transitions to `'closed'`. Idempotent. */
   close(): void
   /**
@@ -619,7 +625,7 @@ export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSi
 export function validateTargetConfiguration(
   target: SignalTarget | readonly SignalTarget[]
 ): void {
-  const targets = Array.isArray(target) ? target : [target]
+  const targets: readonly SignalTarget[] = typeof target === 'string' ? [target] : target
   if (targets.length === 0) {
     throw new Error('[target] At least one target is required.')
   }
@@ -760,7 +766,7 @@ export function validateSignalTargets(
   targetConfig: SignalTarget | readonly SignalTarget[] | readonly string[]
 ): unknown {
   const signalList = Array.isArray(signal) ? signal : [signal]
-  const declaredTargets = Array.isArray(targetConfig) ? targetConfig : [targetConfig]
+  const declaredTargets: readonly string[] = typeof targetConfig === 'string' ? [targetConfig] : targetConfig
   const declaredSet = new Set<string>(declaredTargets)
   const coveredTargets = new Set<string>()
   const resultList: InvalidateSignal[] = []

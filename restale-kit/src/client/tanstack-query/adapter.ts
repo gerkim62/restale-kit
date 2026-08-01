@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { InvalidateSignal, TanStackQuerySignal, GenericInvalidateSignal } from '@/types/protocol.js'
+import type { TanStackQuerySignal } from '@/types/protocol.js'
 import type { QueryClient, QueryFilters, InvalidateQueryFilters } from '@tanstack/react-query'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
 import { SIGNAL_TARGETS } from '@/utils/constants.js'

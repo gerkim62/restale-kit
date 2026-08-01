@@ -385,9 +385,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       ]);
       
       expect(() => {
-        // @ts-expect-error - Cannot omit target for multi-target
         channel.invalidate([
+          // @ts-expect-error - multi-target batches require explicit targets
           { key: ['test'] },
+          // @ts-expect-error - multi-target batches require explicit targets
           { queryKey: ['test'] }
         ]);
       }).toThrow();
@@ -405,9 +406,10 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       });
       
       expect(() => {
-        // @ts-expect-error - Must include target for each signal
         multiTarget.invalidate([
+          // @ts-expect-error - multi-target batches require explicit targets
           { key: ['test'] },
+          // @ts-expect-error - multi-target batches require explicit targets
           { queryKey: ['test'] }
         ]);
       }).toThrow();

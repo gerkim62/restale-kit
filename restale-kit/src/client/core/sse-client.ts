@@ -56,6 +56,7 @@ function isStatusMatcherList(
 export class SSEInvalidatorClient<
   TSignal extends InvalidateSignal = InvalidateSignal,
 > extends EventTarget {
+  declare readonly _signalType?: (signal: TSignal) => void
   private readonly url: string
   private readonly eventSourceUrl: string
   private readonly nativeAutoReconnect: boolean
@@ -85,7 +86,7 @@ export class SSEInvalidatorClient<
     super()
     
     // Gap 10: Validate URL - reject blank/whitespace strings
-    if (typeof url !== 'string' || url.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
+    if (typeof url !== 'string' || url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
       throw new Error(
         '[SSEInvalidatorClient] url must be a non-empty, non-whitespace string. ' +
         `Got: ${JSON.stringify(url)}`

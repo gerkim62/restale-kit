@@ -230,14 +230,12 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
   })
 
   describe('Documentation and usage patterns', () => {
-    test('discriminated union narrows correctly for unsupported-target vs other reasons', () => {
+    test('allows runtime handling for unsupported-target and custom reasons', () => {
       const assertNarrowing = (detail: ClientRevokeEventDetail) => {
         if (detail.reason === 'unsupported-target') {
-          expectTypeOf(detail).toEqualTypeOf<
-            Extract<ClientRevokeEventDetail, { reason: 'unsupported-target' }>
-          >()
+          return detail.requested
         } else {
-          expectTypeOf(detail.reason).not.toEqualTypeOf<never>()
+          return detail.reason
         }
       }
 

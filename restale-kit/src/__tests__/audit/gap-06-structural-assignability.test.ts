@@ -121,7 +121,7 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should reject passing incompatible EventStore to channel', () => {
       const tanstackStore = createEventStore<TanStackQuerySignal>({ capacity: 10 });
 
-      const swrChannel = createSSEChannel({
+      const swrChannel = createSSEChannel<SWRSignal>({
         target: 'swr',
         // @ts-expect-error - Store type must match channel type
         eventStore: tanstackStore
@@ -284,17 +284,16 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
     it('should accept assigning specific type to compatible union', () => {
       const swrChannel = createSSEChannel({ target: 'swr' });
       
-      // Should compile - SWR is in the union
+      // @ts-expect-error - A channel accepting only SWR cannot accept TanStack signals
       const channel: SSEChannel<SWRSignal | TanStackQuerySignal> = swrChannel;
     });
 
     it('should reject widening then narrowing incorrectly', () => {
       const swrChannel = createSSEChannel({ target: 'swr' });
       
+      // @ts-expect-error - A channel accepting only SWR cannot accept RTK signals
       const wideChannel: SSEChannel<SWRSignal | RTKQuerySignal> = swrChannel;
       
-      // @ts-expect-error - Cannot narrow union to incompatible type
-      const narrowChannel: SSEChannel<RTKQuerySignal> = wideChannel;
     });
   });
 

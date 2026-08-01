@@ -339,7 +339,7 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       
       // In actual usage, the mismatch would be caught at the hook level
       // This documents the expected type relationship
-      expectTypeOf(tanstackClient).not.toEqualTypeOf<SSEInvalidatorClient<SWRSignal>>()
+      expectTypeOf<typeof tanstackClient>().not.toEqualTypeOf<SSEInvalidatorClient<SWRSignal>>()
     })
   })
 
@@ -392,8 +392,8 @@ describe('Gap 9: Client target and signal type must be consistent', () => {
       expectTypeOf(rtkClient).not.toEqualTypeOf<never>()
       
       // Each should have distinct types
-      expectTypeOf(swrClient).not.toEqualTypeOf<typeof tanstackClient>()
-      expectTypeOf(tanstackClient).not.toEqualTypeOf<typeof rtkClient>()
+      expectTypeOf<typeof swrClient>().not.toEqualTypeOf<typeof tanstackClient>()
+      expectTypeOf<typeof tanstackClient>().not.toEqualTypeOf<typeof rtkClient>()
     })
 
     test('should not allow assigning clients with different signal types', () => {
