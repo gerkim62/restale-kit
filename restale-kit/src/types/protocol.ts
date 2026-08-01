@@ -65,9 +65,6 @@ export interface GenericInvalidateSignal extends BaseInvalidateSignal {
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
 
-declare global {
-  type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
-}
 
 /** Discriminated union of all supported wire signals */
 export type ReStaleSignal =
