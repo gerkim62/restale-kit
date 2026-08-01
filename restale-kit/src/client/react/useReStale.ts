@@ -58,11 +58,15 @@ export interface UseReStaleOptions<
    * At this point the connection is already closed and auto-reconnect is suppressed.
    *
    * The `detail` is a `RevokeEventDetail` discriminated union. Branch on `detail.reason`
+   * (`'token-expired'`, `'token-missing'`, `'logout'`, `'unauthorized'`, `'unsupported-target'`, etc.)
    * to handle specific revocation causes:
    *
+   * @example
    * ```ts
    * onRevoke: (detail) => {
-   *   if (detail.reason === 'unsupported-target') {
+   *   if (detail.reason === 'token-expired' || detail.reason === 'token-missing') {
+   *     auth.refreshToken().then(() => reconnect())
+   *   } else if (detail.reason === 'unsupported-target') {
    *     console.warn('Unsupported target. Server supports:', detail.supported)
    *   } else {
    *     logout()

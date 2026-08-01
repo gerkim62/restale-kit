@@ -435,8 +435,16 @@ class SSEChannelGroupImplementation<
    * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
    *
    * @example
-   * const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
-   * return response
+   * ```ts
+   * // Hono / Web Standards
+   * app.get('/api/sse', (c) => {
+   *   const { response } = sseGroup.createFetchResponse(c.req.raw, {
+   *     meta: { userId: c.var.userId },
+   *     topics: [`user:${c.var.userId}`],
+   *   })
+   *   return response
+   * })
+   * ```
    */
   createFetchResponse(
     request: Request,
@@ -466,7 +474,23 @@ class SSEChannelGroupImplementation<
    * @framework Node.js, Express, Fastify
    *
    * @example
-   * group.attachNodeResponse(req, res, { target: 'swr' })
+   * ```ts
+   * // Express / Node HTTP
+   * app.get('/api/sse', (req, res) => {
+   *   sseGroup.attachNodeResponse(req, res, {
+   *     meta: { userId: req.user.id },
+   *     topics: [`user:${req.user.id}`],
+   *   })
+   * })
+   *
+   * // Fastify
+   * fastify.get('/api/sse', (req, reply) => {
+   *   sseGroup.attachNodeResponse(req, reply, {
+   *     meta: { userId: req.user.id },
+   *     topics: [`user:${req.user.id}`],
+   *   })
+   * })
+   * ```
    */
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
@@ -687,6 +711,12 @@ class SSEChannelGroupImplementation<
    * @param scope - Optional metadata object that must match the channel's registered `TMeta`.
    *                Enforces security scope-pinning so clients cannot revoke connectionIds belonging
    *                to other users or tenants.
+   *
+   * @example
+   * ```ts
+   * // Revoke connection with scope-pinning
+   * await group.revokeByConnectionId(connectionId, { userId: req.user?.id })
+   * ```
    */
   async revokeByConnectionId(
     connectionId: string,
@@ -760,6 +790,11 @@ class SSEChannelGroupImplementation<
    * - Any other errors (e.g. `SchemaValidationError`) are collected across all
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
+   *
+   * @example
+   * ```ts
+   * group.broadcast({ key: ['todos'] }, (meta) => meta?.role === 'admin')
+   * ```
    */
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
@@ -887,6 +922,11 @@ class SSEChannelGroupImplementation<
    *
    * Deliver to matching local channels first (synchronously), then publishes to the PubSub broker.
    * Errors from the broker publish propagate to the caller.
+   *
+   * @example
+   * ```ts
+   * await group.publish(`user:${userId}`, { key: ['todos', { userId }] })
+   * ```
    */
   async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
     await this.publishRaw(topic, signal)
