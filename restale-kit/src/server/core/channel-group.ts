@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
 import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import { validateSignalPayload, validateTargetConfiguration, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
+import { validateSignalPayload, validateTargetConfiguration, validateSignalTargets, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -834,6 +834,13 @@ class SSEChannelGroupImplementation<
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
+    const groupTargets = this.target ?? this.channelDefaults?.target
+    if (groupTargets !== undefined) {
+      const targetList = toTargetList(groupTargets)
+      if (targetList.length > 1) {
+        validateSignalTargets(signal, targetList)
+      }
+    }
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.
