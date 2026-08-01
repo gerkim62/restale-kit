@@ -31,7 +31,6 @@ export interface TanStackQuerySignal extends BaseInvalidateSignal {
   type?: QueryFilters['type']
   action?: TanStackQueryAction
   stale?: boolean
-  predicate?: boolean
 }
 
 export const SWR_ACTIONS = ['revalidate', 'purge', 'remove'] as const
