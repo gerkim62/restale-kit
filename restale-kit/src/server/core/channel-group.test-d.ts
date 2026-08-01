@@ -76,6 +76,9 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
 
     // @ts-expect-error an empty batch cannot cover either configured target
     void multiGroup.publish('topic-name', [])
+
+    // @ts-expect-error key-based broadcasts cannot construct a complete multi-target batch
+    multiGroup.broadcastByKey({ target: 'swr', key: ['users'] })
   })
 
   test('single-target group injects an omitted target', () => {

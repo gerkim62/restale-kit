@@ -13,6 +13,15 @@ import type { InvalidateSignal, SWRSignal, TanStackQuerySignal, RTKQuerySignal }
 
 describe('Gap 5: ChannelSetupOptions target must match group signal type', () => {
   describe('createFetchResponse target validation', () => {
+    test('returned multi-target channels retain complete-batch input requirements', () => {
+      const group = new SSEChannelGroup({ target: ['swr', 'tanstack-query'] as const })
+      const request = new Request('http://localhost/sse')
+      const { channel } = group.createFetchResponse(request, { target: ['swr', 'tanstack-query'] as const })
+
+      // @ts-expect-error returned channels cannot accept an incomplete multi-target batch
+      channel.invalidate([{ target: 'swr', key: ['users'] }])
+    })
+
     test('should reject mismatched target in SWR group', () => {
       const swrGroup = new SSEChannelGroup<SWRSignal>()
       const mockRequest = new Request('http://localhost/sse')

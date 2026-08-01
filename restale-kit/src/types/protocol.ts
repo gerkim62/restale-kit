@@ -114,14 +114,22 @@ export type Permutations3<A extends SignalTarget, B extends SignalTarget, C exte
   | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<A>, ExplicitSignalForTarget<B>]
   | [ExplicitSignalForTarget<C>, ExplicitSignalForTarget<B>, ExplicitSignalForTarget<A>]
 
+type SignalPermutations<TTarget extends SignalTarget> =
+  [TTarget] extends [never]
+    ? []
+    : {
+        [TCurrent in TTarget]: [
+          ExplicitSignalForTarget<TCurrent>,
+          ...SignalPermutations<Exclude<TTarget, TCurrent>>,
+        ]
+      }[TTarget]
+
 export type CompleteBatchForTargets<TTarget extends readonly SignalTarget[]> =
-  TTarget extends readonly [infer A extends SignalTarget, infer B extends SignalTarget, infer C extends SignalTarget]
-    ? Permutations3<A, B, C>
-    : TTarget extends readonly [infer A extends SignalTarget, infer B extends SignalTarget]
-      ? Permutations2<A, B>
-      : TTarget extends readonly [infer A extends SignalTarget]
-        ? OptionalTargetSignal<ReStaleSignalForTarget<A>> | [OptionalTargetSignal<ReStaleSignalForTarget<A>>]
-        : Array<ExplicitSignalForTarget<TTarget[number]>>
+  TTarget extends readonly [infer A extends SignalTarget]
+    ? OptionalTargetSignal<ReStaleSignalForTarget<A>> | [OptionalTargetSignal<ReStaleSignalForTarget<A>>]
+    : number extends TTarget['length']
+      ? Array<ExplicitSignalForTarget<TTarget[number]>>
+      : SignalPermutations<TTarget[number]>
 
 export type OptionalTargetSignal<TSignal extends InvalidateSignal> =
   TSignal extends { target?: SignalTarget }

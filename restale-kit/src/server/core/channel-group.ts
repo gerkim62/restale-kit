@@ -423,7 +423,11 @@ class SSEChannelGroupImplementation<
   createFetchResponse(
     request: Request,
     options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { response: Response; channel: SSEChannel<TSignal> } {
+  ): { response: Response; channel: SSEChannel<TSignal, TTarget> }
+  createFetchResponse(
+    request: Request,
+    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
+  ): unknown {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
@@ -450,7 +454,12 @@ class SSEChannelGroupImplementation<
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { channel: SSEChannel<TSignal> } {
+  ): { channel: SSEChannel<TSignal, TTarget> }
+  attachNodeResponse(
+    req: IncomingMessage | FastifyRequestLike,
+    res: ServerResponse | FastifyReplyLike,
+    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
+  ): unknown {
     validateTopics(options.topics)
     this.validateSetupTarget(options.target)
     const validatedMeta = this.validateMeta(options.meta)
@@ -795,6 +804,7 @@ class SSEChannelGroupImplementation<
    * // You can write:
    * group.broadcastByKey({ key: ['todos', { userId }] })
    */
+  broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
   broadcastByKey(signal: TSignal): void {
     this.broadcastRaw(signal, (meta) => {
       if (!isJSONValue(meta)) return false

@@ -51,6 +51,17 @@ describe('1.2 — Target-aware signal input (SignalInputForTarget)', () => {
     // @ts-expect-error an empty batch cannot cover either configured target
     multiChannel.invalidate([])
   })
+
+  test('four-target channel batches cover every configured target', () => {
+    const channel = createSSEChannel({ target: ['swr', 'tanstack-query', 'rtk-query', 'generic'] as const })
+
+    // @ts-expect-error a four-target channel cannot omit the generic payload
+    channel.invalidate([
+      { target: 'swr', key: ['users'] },
+      { target: 'tanstack-query', queryKey: ['users'] },
+      { target: 'rtk-query', tags: ['users'] },
+    ])
+  })
 })
 
 describe('1.3 — Target to signal-type inference on createSSEChannel', () => {
