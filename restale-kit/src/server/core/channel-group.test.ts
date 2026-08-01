@@ -1421,11 +1421,11 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const invalidateSpy = vi.spyOn(ch, 'invalidate')
 
       // Calling broadcastToAll with signal without explicit target
-      group.broadcastToAll({ queryKey: ['todos'] } as any)
+      group.broadcastToAll({ queryKey: ['todos'] })
       expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
 
       // Calling publish with signal without explicit target
-      await group.publish('todos-topic', { queryKey: ['todos'] } as any)
+      await group.publish('todos-topic', { queryKey: ['todos'] })
       expect(invalidateSpy).toHaveBeenLastCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
     })
   })

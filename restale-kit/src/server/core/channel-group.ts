@@ -700,12 +700,12 @@ class SSEChannelGroupImplementation<
 
     let prunedScope: Record<string, JSONValue> | undefined = undefined
     if (scope !== undefined) {
-      const scopeVal: unknown = scope
-      if (!scopeVal || typeof scopeVal !== 'object' || Array.isArray(scopeVal)) {
+      if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
         throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
       }
+      const scopeRecord: Record<string, JSONValue | undefined> = scope
       prunedScope = {}
-      for (const [k, v] of Object.entries(scopeVal as Record<string, unknown>)) {
+      for (const [k, v] of Object.entries(scopeRecord)) {
         if (v !== undefined) {
           if (!isJSONValue(v)) {
             throw new Error('[SSEChannelGroup.revokeByConnectionId] scope values must be valid JSONValues.')
@@ -787,12 +787,12 @@ class SSEChannelGroupImplementation<
       if (Array.isArray(signal)) {
         return signal.map((item) =>
           item && typeof item === 'object' && !('target' in item)
-            ? ({ ...item, target: defaultTarget } as unknown as TSignal)
+            ? Object.assign({}, item, { target: defaultTarget })
             : item
         )
       }
       if (signal && typeof signal === 'object' && !('target' in signal)) {
-        return { ...signal, target: defaultTarget } as unknown as TSignal
+        return Object.assign({}, signal, { target: defaultTarget })
       }
     }
     return signal
@@ -873,11 +873,12 @@ class SSEChannelGroupImplementation<
   broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
   broadcastByKey(signal: TSignal): void {
     const normalizedSignal = this.normalizeSignalForGroup(signal)
+    if (Array.isArray(normalizedSignal)) return
     this.broadcastRaw(normalizedSignal, (meta) => {
       if (!isJSONValue(meta)) return false
       // Wrap scalar/array meta in an array to match against the signal key
       const metaKey = Array.isArray(meta) ? meta : [meta]
-      return matchesInvalidateSignalKey(metaKey, normalizedSignal as TSignal)
+      return matchesInvalidateSignalKey(metaKey, normalizedSignal)
     })
   }
 
