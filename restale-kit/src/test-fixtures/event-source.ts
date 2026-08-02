@@ -6,9 +6,9 @@ export class MockEventSource extends EventTarget {
   static CLOSED = 2
 
   readyState: number = MockEventSource.CONNECTING
-  onopen: ((this: EventSource, event: Event) => unknown) | null = null
-  onerror: ((this: EventSource, event: Event) => unknown) | null = null
-  onmessage: ((this: EventSource, event: MessageEvent) => unknown) | null = null
+  onopen: ((event: Event) => unknown) | null = null
+  onerror: ((event: Event) => unknown) | null = null
+  onmessage: ((event: MessageEvent) => unknown) | null = null
 
   constructor(
     readonly url: string,
@@ -18,16 +18,16 @@ export class MockEventSource extends EventTarget {
     MockEventSource.instances.push(this)
   }
 
-  emitOpen(): void {
+  emitOpen(openEvent?: Event): void {
     this.readyState = MockEventSource.OPEN
-    const event = new Event('open')
-    if (this.onopen) this.onopen.call(this as unknown as EventSource, event)
+    const event = openEvent || new Event('open')
+    if (this.onopen) this.onopen(event)
     this.dispatchEvent(event)
   }
 
   emitMessage(data: string, lastEventId = ''): void {
     const event = new MessageEvent('message', { data, lastEventId })
-    if (this.onmessage) this.onmessage.call(this as unknown as EventSource, event)
+    if (this.onmessage) this.onmessage(event)
     this.dispatchEvent(event)
   }
 
@@ -38,7 +38,7 @@ export class MockEventSource extends EventTarget {
 
   emitError(errorEvent?: Event): void {
     const event = errorEvent || new Event('error')
-    if (this.onerror) this.onerror.call(this as unknown as EventSource, event)
+    if (this.onerror) this.onerror(event)
     this.dispatchEvent(event)
   }
 

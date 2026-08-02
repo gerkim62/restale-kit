@@ -348,7 +348,12 @@ export class SSEInvalidatorClient<
     })
     this.eventSource = es
 
-    es.onopen = () => {
+    es.onopen = (event: SSEvent) => {
+      if (!this.isValidHandshake(es, event)) {
+        this.handleReconnectError(es, event)
+        return
+      }
+
       this.opened = true
       this.setStatus({ status: 'open' })
       if (this.debug) {
@@ -673,7 +678,13 @@ export class SSEInvalidatorClient<
         })
         this.eventSource = renewEs
 
-        renewEs.onopen = () => {
+        renewEs.onopen = (event: SSEvent) => {
+          if (!this.isValidHandshake(renewEs, event)) {
+            renewEs.onopen = () => {}
+            renewEs.onerror = () => {}
+            onRenewError()
+            return
+          }
           // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
@@ -723,9 +734,42 @@ export class SSEInvalidatorClient<
   }
 
   private getRejectedResponse(es: SSE, event: SSEvent): RejectedConnectionResponse | null {
-    const status = event.responseCode
+    const status = event.responseCode ?? es.xhr?.status
     if (typeof status !== 'number' || !this.matchesNonRetryableStatus(status)) return null
     return { status, headers: event.headers ?? this.readResponseHeaders(es) }
+  }
+
+  /**
+   * Validates that an incoming SSE connection handshake has a valid stream content-type.
+   * A valid stream requires the Content-Type header to start with `text/event-stream`
+   * (case-insensitive) when present.
+   */
+  private isValidHandshake(es: SSE, event?: SSEvent): boolean {
+    const headers = event?.headers ?? this.readResponseHeaders(es)
+    const contentType = this.getHeaderValue(headers, 'content-type')
+    if (contentType !== undefined) {
+      const normalized = contentType.trim().toLowerCase()
+      if (!normalized.startsWith('text/event-stream')) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private getHeaderValue(
+    headers: Record<string, string | string[] | undefined>,
+    headerName: string
+  ): string | undefined {
+    const targetKey = headerName.toLowerCase()
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === targetKey) {
+        const val = headers[key]
+        if (Array.isArray(val)) return val[0]
+        if (typeof val === 'string') return val
+      }
+    }
+    return undefined
   }
 
   private readResponseHeaders(es: SSE): Record<string, string[]> {

@@ -34,6 +34,38 @@ describe('SSEInvalidatorClient', () => {
     })
   })
 
+  describe('handshake validation', () => {
+    it('rejects onopen if Content-Type is application/json', async () => {
+      const client = new SSEInvalidatorClient('/sse', {
+        reconnect: { maxRetries: 0 },
+      })
+      const pending = client.connect()
+      pending.catch(() => {})
+
+      const openEvent = Object.assign(new Event('open'), {
+        responseCode: 401,
+        headers: { 'content-type': ['application/json'] },
+      })
+      MockEventSource.instances[0]?.emitOpen(openEvent)
+
+      expect(client.status.status).not.toBe('open')
+    })
+
+    it('accepts onopen if Content-Type is text/event-stream even on a non-OK HTTP status', async () => {
+      const client = new SSEInvalidatorClient('/sse')
+      const pending = client.connect()
+
+      const openEvent = Object.assign(new Event('open'), {
+        responseCode: 207,
+        headers: { 'content-type': ['text/event-stream; charset=utf-8'] },
+      })
+      MockEventSource.instances[0]?.emitOpen(openEvent)
+
+      expect(client.status).toEqual({ status: 'open' })
+      await expect(pending).resolves.toBeUndefined()
+    })
+  })
+
   it('does not retry a configured HTTP status and exposes the rejection', async () => {
     const client = new SSEInvalidatorClient('/sse', {
       reconnect: { nonRetryableStatuses: 401 },
