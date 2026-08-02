@@ -77,6 +77,12 @@ export interface UseReStaleOptions<
   onRevoke?: (detail: RevokeEventDetail) => void
   /** Called when the HTTP handshake returns a configured non-retryable status. */
   onRejected?: (response: RejectedConnectionResponse) => void
+  /**
+   * Called when automatic reconnection fails permanently after exhausting `maxRetries`.
+   *
+   * Accompanies the final status transition to `{ status: 'error' }`.
+   */
+  onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 }
 
 /**
@@ -131,6 +137,8 @@ export function useReStale<
   onRevokeRef.current = opts.onRevoke
   const onRejectedRef = useRef(opts.onRejected)
   onRejectedRef.current = opts.onRejected
+  const onRetriesExhaustedRef = useRef(opts.onRetriesExhausted)
+  onRetriesExhaustedRef.current = opts.onRetriesExhausted
 
   // Stable client reference — only recreated when url changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
@@ -246,6 +254,19 @@ export function useReStale<
     client.addEventListener('revoke', handler)
     return () => {
       client.removeEventListener('revoke', handler)
+    }
+  }, [client])
+
+  // Wire up onRetriesExhausted
+  useEffect(() => {
+    if (!client) return
+    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['retriesexhausted']) => {
+      onRetriesExhaustedRef.current?.(event.detail)
+    }
+
+    client.addEventListener('retriesexhausted', handler)
+    return () => {
+      client.removeEventListener('retriesexhausted', handler)
     }
   }, [client])
 

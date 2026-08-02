@@ -204,6 +204,12 @@ export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> 
    * `{ reason: 'deadline' }`.
    */
   renew: CustomEvent<RenewEventDetail>
+  /**
+   * Emitted when automatic reconnection fails permanently after exhausting `maxRetries`.
+   *
+   * Accompanies the final `statuschange` event transitioning to `{ status: 'error' }`.
+   */
+  retriesexhausted: CustomEvent<{ attempts: number; maxRetries: number }>
 }
 
 /**

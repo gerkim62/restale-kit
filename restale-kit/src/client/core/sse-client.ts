@@ -411,6 +411,7 @@ export class SSEInvalidatorClient<
         this.establishConnection()
       }, delay)
     } else {
+      const exhaustedRetries = !this.revoked && !this.renewing && canRetry && this.currentAttempt >= this.maxRetries
       if (this.debug) {
         const reason = this.revoked
           ? 'Server sent terminal revoke frame'
@@ -423,6 +424,15 @@ export class SSEInvalidatorClient<
           `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
         )
       }
+
+      if (exhaustedRetries) {
+        this.dispatchEvent(
+          new CustomEvent(SSE_EVENTS.RETRIES_EXHAUSTED, {
+            detail: { attempts: this.currentAttempt, maxRetries: this.maxRetries },
+          })
+        )
+      }
+
       this.setStatus({ status: 'error', error: event })
       if (this.connectPromise) {
         this.connectPromise.reject(event)
