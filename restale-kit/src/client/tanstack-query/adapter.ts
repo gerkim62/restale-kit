@@ -33,14 +33,14 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
   queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
-    SIGNAL_TARGETS.TANSTACK,
+    SIGNAL_TARGETS.TANSTACK_QUERY,
     (signal: TSignal | TSignal[]) => {
       const list = Array.isArray(signal) ? signal : [signal]
 
       for (const s of list) {
         if (!isObject(s)) continue
         const target = s.target
-        if (target !== undefined && target !== SIGNAL_TARGETS.TANSTACK) {
+        if (target !== undefined && target !== SIGNAL_TARGETS.TANSTACK_QUERY) {
           continue
         }
 
@@ -101,7 +101,7 @@ export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput
   queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
-    SIGNAL_TARGETS.TANSTACK,
+    SIGNAL_TARGETS.TANSTACK_QUERY,
     useCallback(tanstackQueryAdapter<TSignal>(queryClient), [queryClient])
   )
 }

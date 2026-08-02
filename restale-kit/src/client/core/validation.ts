@@ -94,7 +94,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
 
   const target = value.target
 
-  if (target === SIGNAL_TARGETS.TANSTACK) {
+  if (target === SIGNAL_TARGETS.TANSTACK_QUERY) {
     if (!('queryKey' in value) || !isJSONValueArray(value.queryKey)) {
       throw new Error('TanStack Query signal must have a "queryKey" property that is an array of JSON-serialisable values')
     }
@@ -111,7 +111,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
     }
     const signal: TanStackQuerySignal = {
-      target: SIGNAL_TARGETS.TANSTACK,
+      target: SIGNAL_TARGETS.TANSTACK_QUERY,
       queryKey: value.queryKey,
     }
     if (typeof value.exact === 'boolean') signal.exact = value.exact

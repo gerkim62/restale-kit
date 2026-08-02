@@ -4,6 +4,12 @@
 
 ---
 
+## Prerequisites
+
+- **Node.js**: `>=18.0.0` (uses native Web Streams `ReadableStream`, Web Fetch API, `EventTarget`, and ES2024 features).
+
+---
+
 ## Installation
 
 ```sh
@@ -35,13 +41,13 @@ All peers are optional — only install what you use.
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = express()
 app.use(express.json())
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'tanstack-query' },
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
 // SSE endpoint — clients connect here
@@ -52,7 +58,7 @@ app.get('/sse', (req, res) => {
 // After any mutation, broadcast the invalidation
 app.post('/api/todos', async (req, res) => {
   // ... write to DB ...
-  group.broadcastToAll({ key: ['todos'] })
+  group.broadcastToAll({ queryKey: ['todos'] })
   res.status(201).json({ success: true })
 })
 

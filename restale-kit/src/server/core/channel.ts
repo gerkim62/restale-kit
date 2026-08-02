@@ -638,7 +638,11 @@ export function validateTargetConfiguration(
   const seen = new Set<SignalTarget>()
   for (const configuredTarget of targets) {
     if (!supportedTargets.has(configuredTarget)) {
-      throw new Error(`[target] Unsupported target: ${JSON.stringify(configuredTarget)}.`)
+      const validList = Array.from(supportedTargets).map(t => `'${t}'`).join(', ')
+      throw new Error(
+        `[target] Unsupported target: ${JSON.stringify(configuredTarget)}. ` +
+        `Valid targets are: ${validList} (or use SIGNAL_TARGETS.TANSTACK_QUERY, SIGNAL_TARGETS.SWR, SIGNAL_TARGETS.RTK, SIGNAL_TARGETS.GENERIC).`
+      )
     }
     if (seen.has(configuredTarget)) {
       throw new Error(`[target] Duplicate target: ${JSON.stringify(configuredTarget)}.`)

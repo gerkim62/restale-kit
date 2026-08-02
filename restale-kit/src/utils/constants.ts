@@ -90,7 +90,7 @@ export const FRAME_GUARD_DEFAULTS = {
  * Standard signal target discriminators.
  */
 export const SIGNAL_TARGETS = {
-  TANSTACK: 'tanstack-query',
+  TANSTACK_QUERY: 'tanstack-query',
   SWR: 'swr',
   RTK: 'rtk-query',
   GENERIC: 'generic',
