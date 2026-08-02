@@ -10,9 +10,11 @@
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = resolve(import.meta.dirname, '..')
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const root = resolve(scriptDir, '..')
 const packageDirectory = join(root, 'restale-kit')
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'restale-kit-package-'))
 const npmCache = join(temporaryDirectory, 'npm-cache')
