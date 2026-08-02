@@ -45,14 +45,14 @@ To enable AES-256-GCM encryption, provide a valid, non-empty `encryptionKey`. Yo
 ## Setup pattern
 
 ```ts
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 import Redis from 'ioredis'
 
 const redis = new Redis(process.env.REDIS_URL)
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
+  channelDefaults: { target: SIGNAL_TARGETS.SWR },
   pubsub: redisPubSubAdapter(redis),
 })
 

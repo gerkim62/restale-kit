@@ -234,13 +234,13 @@ export function App() {
 
 ```ts
 import { Hono } from 'hono'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = new Hono()
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 app.get('/sse', (c) => {
-  const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
+  const { response } = group.createFetchResponse(c.req.raw, { target: SIGNAL_TARGETS.SWR })
   return response
 })
 ```
@@ -249,14 +249,14 @@ app.get('/sse', (c) => {
 
 ```ts
 import Fastify from 'fastify'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = Fastify()
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
-  group.attachNodeResponse(request, reply, { target: 'swr' })
+  group.attachNodeResponse(request, reply, { target: SIGNAL_TARGETS.SWR })
 })
 ```
 
@@ -264,14 +264,14 @@ app.get('/sse', (request, reply) => {
 
 ```ts
 import http from 'node:http'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    group.attachNodeResponse(req, res, { target: 'swr' })
+    group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.SWR })
   }
 })
 ```
@@ -451,6 +451,8 @@ Define custom signal types to enforce type safety at compile time, complemented 
 
 **Server:**
 ```ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
 type AppSignal =
   | { key: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
   | { key: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
@@ -458,7 +460,7 @@ type AppSignal =
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, { target: 'tanstack-query' })
+  group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.TANSTACK_QUERY })
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
@@ -481,6 +483,7 @@ When scaling across multiple instances or serverless functions, use a pub/sub ad
 
 ```ts
 import Redis from 'ioredis'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const group = new SSEChannelGroup({
@@ -492,7 +495,7 @@ const group = new SSEChannelGroup({
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
-    target: 'generic',
+    target: SIGNAL_TARGETS.GENERIC,
     meta: {
       userId: req.user.id,
       sessionId: req.session.id,
