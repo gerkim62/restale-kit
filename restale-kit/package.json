@@ -22,6 +22,7 @@
     "react"
   ],
   "type": "module",
+  "sideEffects": false,
   "engines": {
     "node": ">=18.0.0"
   },
