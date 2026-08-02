@@ -46,6 +46,8 @@ export const SSE_EVENTS = {
   KEEPALIVE: 'keepalive',
   /** Sent by the server before closing to request a single confirmatory reconnect (§4.1.2). */
   RENEW: 'renew',
+  /** Emitted on client when max retries are exhausted (§4.1.3). */
+  RETRIES_EXHAUSTED: 'retriesexhausted',
 } as const
 
 /**
@@ -88,7 +90,7 @@ export const FRAME_GUARD_DEFAULTS = {
  * Standard signal target discriminators.
  */
 export const SIGNAL_TARGETS = {
-  TANSTACK: 'tanstack-query',
+  TANSTACK_QUERY: 'tanstack-query',
   SWR: 'swr',
   RTK: 'rtk-query',
   GENERIC: 'generic',

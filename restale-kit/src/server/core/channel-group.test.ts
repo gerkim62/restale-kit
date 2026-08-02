@@ -1377,4 +1377,125 @@ describe('SSEChannelGroup — channelDefaults', () => {
       ch.close()
     })
   })
+
+  describe('DX and type safety optimizations', () => {
+    function createMockNodeRes(): any {
+      return Object.assign(new EventEmitter(), {
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      })
+    }
+
+    it('prunes undefined properties in scope when calling revokeByConnectionId', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-100', target: 'swr' })
+      group.register(ch, { userId: 100 })
+
+      // Passing scope with undefined role property
+      const res = await group.revokeByConnectionId(ch.connectionId, { userId: 100, role: undefined })
+      expect(res.closed).toBe(true)
+      expect(group.size).toBe(0)
+    })
+
+    it('preserves __proto__ scope keys as own properties during revokeByConnectionId scope pruning', async () => {
+      const group = new SSEChannelGroup<any, Record<string, any>>()
+      const ch = createSSEChannel({ connectionId: 'conn-proto', target: 'swr' })
+      group.register(ch, { ['__proto__']: 'tenant-1' })
+
+      // Scope with __proto__ key matching tenant-1 should match
+      const resMatch = await group.revokeByConnectionId(ch.connectionId, { ['__proto__']: 'tenant-1' })
+      expect(resMatch.closed).toBe(true)
+      expect(group.size).toBe(0)
+
+      // Re-register channel to test mismatch
+      const ch2 = createSSEChannel({ connectionId: 'conn-proto-2', target: 'swr' })
+      group.register(ch2, { ['__proto__']: 'tenant-1' })
+
+      // Scope with __proto__ key mismatch should NOT match
+      const resMismatch = await group.revokeByConnectionId(ch2.connectionId, { ['__proto__']: 'tenant-2' })
+      expect(resMismatch.closed).toBe(false)
+      expect(group.size).toBe(1)
+    })
+
+    it('throws rather than revoking everyone when scope prunes down to an empty object', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-empty-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // Caller passed a scope object, but every key resolved to `undefined`
+      // (e.g. `req.user?.role` on a user with no role field). After pruning,
+      // the effective scope is `{}` — it must NOT silently match every channel.
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, { role: undefined })
+      ).rejects.toThrow(/scope/i)
+
+      // The channel must still be registered — the revoke must not have gone through.
+      expect(group.size).toBe(1)
+    })
+
+    it('throws when scope is a non-plain object with no enumerable own properties', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-date-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // `new Date()` passes the `typeof scope === 'object'` / `!Array.isArray` guard,
+      // but has zero own enumerable entries — pruning also yields `{}`.
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, new Date() as any)
+      ).rejects.toThrow(/scope/i)
+
+      expect(group.size).toBe(1)
+    })
+
+    it('throws when an explicitly empty object is passed as scope', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-literal-empty-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // Passing `{}` directly should be treated the same as a scope that pruned to
+      // empty — reject it rather than silently behaving like an unscoped revoke.
+      // (To revoke without any scope filter, callers should omit the `scope` argument
+      // entirely, not pass `{}`.)
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, {})
+      ).rejects.toThrow(/scope/i)
+
+      expect(group.size).toBe(1)
+    })
+
+    it('auto-infers TMeta from metaSchema in constructor', () => {
+      const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
+      const group = new SSEChannelGroup({ metaSchema })
+      const ch = createSSEChannel({ target: 'swr' })
+      group.register(ch, { userId: 42 })
+
+      let receivedMeta: unknown = null
+      group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+        receivedMeta = meta
+        return true
+      })
+      expect(receivedMeta).toEqual({ userId: 42 })
+    })
+
+    it('automatically injects single target into publish and broadcast signals when omitted', async () => {
+      const group = new SSEChannelGroup({ target: 'tanstack-query' })
+      const ch = createSSEChannel({ target: 'tanstack-query' })
+      group.register(ch, undefined, { topics: ['todos-topic'] })
+
+      const invalidateSpy = vi.spyOn(ch, 'invalidate')
+
+      // Calling broadcastToAll with signal without explicit target
+      group.broadcastToAll({ queryKey: ['todos'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+
+      invalidateSpy.mockClear()
+
+      // Calling publish with signal without explicit target
+      await group.publish('todos-topic', { queryKey: ['todos'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+    })
+  })
 })
+
+

@@ -64,6 +64,10 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
   const headers = buildSSETargetHeaders(channelOptions)
 
   actualRes.writeHead(200, headers)
+  actualRes.write(':\n\n')
+  if (typeof actualRes.flushHeaders === 'function') {
+    actualRes.flushHeaders()
+  }
 
   // Pipe the ReadableStream into the Node response
   // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility

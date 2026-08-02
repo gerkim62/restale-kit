@@ -25,7 +25,7 @@ export interface BaseInvalidateSignal {
 
 /** Native TanStack Query invalidation signal payload */
 export interface TanStackQuerySignal extends BaseInvalidateSignal {
-  target?: typeof SIGNAL_TARGETS.TANSTACK
+  target?: typeof SIGNAL_TARGETS.TANSTACK_QUERY
   queryKey: JSONValue[]
   exact?: QueryFilters['exact']
   type?: QueryFilters['type']
@@ -78,7 +78,7 @@ export type InvalidateSignal = ReStaleSignal
 
 /** Map a single SignalTarget discriminator to its specific signal type. */
 export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
-  TTarget extends typeof SIGNAL_TARGETS.TANSTACK
+  TTarget extends typeof SIGNAL_TARGETS.TANSTACK_QUERY
     ? TanStackQuerySignal
     : TTarget extends typeof SIGNAL_TARGETS.SWR
       ? SWRSignal
@@ -184,7 +184,7 @@ export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSig
       }
       return matchKeyArray([cacheKey], signal.key, signal.match === 'exact')
     }
-    if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
+    if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK_QUERY) {
       return matchKeyArray([cacheKey], signal.queryKey, signal.exact === true)
     }
     return false
@@ -192,7 +192,7 @@ export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSig
 
   if (!isJSONValueArray(cacheKey)) return false
 
-  if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK) {
+  if ('target' in signal && signal.target === SIGNAL_TARGETS.TANSTACK_QUERY) {
     return matchKeyArray(cacheKey, signal.queryKey, signal.exact === true)
   }
 

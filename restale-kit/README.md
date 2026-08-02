@@ -41,6 +41,12 @@ flowchart LR
 
 ---
 
+## 📋 Prerequisites
+
+- **Node.js**: `>=18.0.0` (uses native Web Streams `ReadableStream`, Web Fetch API, `EventTarget`, and ES2024 features).
+
+---
+
 ## 📦 Installation
 
 ```sh
@@ -59,21 +65,23 @@ npm install pusher                        # Pusher pub/sub
 
 ---
 
-## 🗺️ Import Map
+## 🗺️ Import Map & Main Exports
 
-| Subpath | Contents |
-|---|---|
-| `restale-kit` | `JSONValue`, `InvalidateSignal`, `ChannelClosedError`, `SchemaValidationError` |
-| `restale-kit/server` | `SSEChannelGroup`, `ChannelSetupOptions`, `ChannelDefaults`, `createEventStore`, `EventStore`, `EventStoreOptions`, `EventRecord`, `EventStoreResult` |
-| `restale-kit/testing` | `createSSEChannel` (Test utility only) |
-| `restale-kit/client` | `SSEInvalidatorClient`, `makeAdaptedCallback` |
-| `restale-kit/react` | `useReStale` |
-| `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
-| `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` |
-| `restale-kit/pubsub` | `PubSubAdapter` interface |
-| `restale-kit/redis` | `redisPubSubAdapter` |
-| `restale-kit/ably` | `ablyPubSubAdapter` |
-| `restale-kit/pusher` | `pusherPubSubAdapter` |
+| Subpath | Key Exports | Description |
+|---|---|---|
+| `restale-kit` | `JSONValue`, `InvalidateSignal`, `SIGNAL_TARGETS`, `ChannelClosedError` | Core types and protocol constants |
+| `restale-kit/server` | `SSEChannelGroup`, `createSSEChannel`, `SIGNAL_TARGETS` | Server-side channels and channel group manager |
+| `restale-kit/testing` | `createSSEChannel` | Standalone SSE channel creation helper |
+| `restale-kit/client` | `SSEInvalidatorClient`, `makeAdaptedCallback` | Vanilla JS client |
+| `restale-kit/react` | `useReStale` | React hook for SSE stream management |
+| `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` | TanStack Query invalidation adapter |
+| `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` | SWR invalidation adapter |
+| `restale-kit/pubsub` | `PubSubAdapter` interface | Base PubSub interface |
+| `restale-kit/redis` | `redisPubSubAdapter` | Redis PubSub adapter |
+| `restale-kit/ably` | `ablyPubSubAdapter` | Ably PubSub adapter |
+| `restale-kit/pusher` | `pusherPubSubAdapter` | Pusher PubSub adapter |
+
+> **Note on Naming**: `createSSEChannel` creates individual SSE streams, while `SSEChannelGroup` manages multi-client broadcasting and pub/sub routing. Use `SIGNAL_TARGETS.TANSTACK_QUERY`, `SIGNAL_TARGETS.SWR`, `SIGNAL_TARGETS.RTK`, or `SIGNAL_TARGETS.GENERIC` for target configuration.
 
 ---
 
@@ -83,14 +91,14 @@ npm install pusher                        # Pusher pub/sub
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = express()
 app.use(express.json())
-app.use(authenticateUserAndSession) // Require authentication & session middleware (populates req.user & req.session)
+app.use(authenticateUserAndSession) // Populate req.user & req.session
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: ['swr', 'tanstack-query'] },
+  channelDefaults: { target: [SIGNAL_TARGETS.SWR, SIGNAL_TARGETS.TANSTACK_QUERY] },
 })
 
 app.get('/sse', (req, res) => {
@@ -103,13 +111,12 @@ app.get('/sse', (req, res) => {
 })
 
 app.post('/api/todos', async (req, res) => {
-  // ... write to DB ...
-  group.broadcastToAll({ key: ['todos'] })
+  // ... write todo to DB ...
+  group.broadcastToAll({ target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] })
   res.status(201).json({ success: true })
 })
 
-// Revoke one connection. Scope the client-supplied request ID with trusted
-// identity/session values from authentication middleware.
+// Revoke one connection with scope-pinning
 app.post('/api/logout', async (req, res) => {
   await group.revokeByConnectionId(req.body.connectionId, {
     userId: req.user.id,
@@ -128,7 +135,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
 import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
-function App() {
+function TodoList() {
   const queryClient = useQueryClient()
   const onInvalidate = useTanstackQueryAdapter(queryClient)
 
@@ -145,19 +152,95 @@ function App() {
 
 ---
 
+## 📝 Complete Todo App Example
+
+Below is a complete end-to-end example demonstrating server invalidation and automatic client query refetching:
+
+### Server (`server.ts`)
+
+```ts
+import express from 'express'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+const app = express()
+app.use(express.json())
+
+const sseGroup = new SSEChannelGroup({
+  target: SIGNAL_TARGETS.TANSTACK_QUERY,
+})
+
+app.get('/api/sse', (req, res) => {
+  sseGroup.attachNodeResponse(req, res, {})
+})
+
+app.post('/api/todos', (req, res) => {
+  const newTodo = { id: Date.now(), title: req.body.title }
+  // Broadcast invalidation signal to all connected clients
+  sseGroup.broadcastToAll({ queryKey: ['todos'] })
+  res.status(201).json(newTodo)
+})
+
+app.listen(3000, () => console.log('Server running on http://localhost:3000'))
+```
+
+### Client (`App.tsx`)
+
+```tsx
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useReStale } from 'restale-kit/react'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+
+export function App() {
+  const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
+  const [title, setTitle] = useState('')
+
+  // Automatically invalidates and refetches 'todos' when SSE invalidation frame arrives
+  const { isConnected } = useReStale('/api/sse', { onInvalidate })
+
+  const { data: todos = [] } = useQuery({
+    queryKey: ['todos'],
+    queryFn: () => fetch('/api/todos').then(r => r.json()),
+  })
+
+  const addTodo = useMutation({
+    mutationFn: (newTitle: string) =>
+      fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      }).then(r => r.json()),
+  })
+
+  return (
+    <div>
+      Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+      <form onSubmit={e => { e.preventDefault(); addTodo.mutate(title); setTitle(''); }}>
+        <input value={title} onChange={e => setTitle(e.target.value)} />
+        <button type="submit">Add Todo</button>
+      </form>
+      <ul>{todos.map((t: any) => <li key={t.id}>{t.title}</li>)}</ul>
+    </div>
+  )
+}
+```
+
+---
+
 ## 🛠️ Other Server Frameworks
 
 ### Hono / Bun / Deno / Edge
 
 ```ts
 import { Hono } from 'hono'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = new Hono()
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 app.get('/sse', (c) => {
-  const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
+  const { response } = group.createFetchResponse(c.req.raw, { target: SIGNAL_TARGETS.SWR })
   return response
 })
 ```
@@ -166,14 +249,14 @@ app.get('/sse', (c) => {
 
 ```ts
 import Fastify from 'fastify'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = Fastify()
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 app.get('/sse', (request, reply) => {
   // Pass request/reply directly — reply.hijack() is called automatically
-  group.attachNodeResponse(request, reply, { target: 'swr' })
+  group.attachNodeResponse(request, reply, { target: SIGNAL_TARGETS.SWR })
 })
 ```
 
@@ -181,14 +264,14 @@ app.get('/sse', (request, reply) => {
 
 ```ts
 import http from 'node:http'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
-const group = new SSEChannelGroup({ channelDefaults: { target: 'swr' } })
+const group = new SSEChannelGroup({ channelDefaults: { target: SIGNAL_TARGETS.SWR } })
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
   if (req.method === 'GET' && url.pathname === '/sse') {
-    group.attachNodeResponse(req, res, { target: 'swr' })
+    group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.SWR })
   }
 })
 ```
@@ -299,6 +382,39 @@ group.broadcastByKey({ key: ['todos', { userId: 42 }] })
 
 ---
 
+## 🔒 Authentication & Security Best Practices
+
+> [!IMPORTANT]
+> **Use HTTP-only Cookie Authentication (`withCredentials: true`) for Production**
+
+Passing authentication tokens in SSE URL query parameters (e.g., `/sse?token=xyz`) is **strongly discouraged** for production applications. URL query parameters leak into:
+- Web server access logs & reverse proxy logs (e.g., NGINX, Cloudflare)
+- HTTP `Referer` headers on outbound links
+- Browser history and client-side logging
+
+### Recommended Pattern: HTTP-only Session Cookies
+
+Set a secure, HTTP-only, `SameSite=Lax` (or `SameSite=Strict`) session cookie when your user logs in. Then configure `useReStale` or `SSEInvalidatorClient` with `withCredentials: true`:
+
+```tsx
+// React
+const { isConnected, isReconnecting, attempt } = useReStale('/api/sse', {
+  withCredentials: true, // Sends HTTP-only session cookies automatically
+  onInvalidate,
+})
+```
+
+```ts
+// Vanilla JS / Node
+const client = new SSEInvalidatorClient('/api/sse', {
+  withCredentials: true,
+})
+```
+
+On your backend, validate the user's session cookie in standard authentication middleware before attaching the response to `SSEChannelGroup`.
+
+---
+
 ## 🔌 Vanilla JS / Non-React Client
 
 ```ts
@@ -335,6 +451,8 @@ Define custom signal types to enforce type safety at compile time, complemented 
 
 **Server:**
 ```ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
 type AppSignal =
   | { key: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
   | { key: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
@@ -342,7 +460,7 @@ type AppSignal =
 const group = new SSEChannelGroup<AppSignal>()
 
 app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, { target: 'tanstack-query' })
+  group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.TANSTACK_QUERY })
 })
 
 group.broadcastToAll({ key: ['todos'] })           // ✅ valid
@@ -365,6 +483,7 @@ When scaling across multiple instances or serverless functions, use a pub/sub ad
 
 ```ts
 import Redis from 'ioredis'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
 const group = new SSEChannelGroup({
@@ -376,7 +495,7 @@ const group = new SSEChannelGroup({
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
-    target: 'generic',
+    target: SIGNAL_TARGETS.GENERIC,
     meta: {
       userId: req.user.id,
       sessionId: req.session.id,

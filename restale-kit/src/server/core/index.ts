@@ -9,4 +9,5 @@ export type { EventStoreOptions } from './event-store.js'
 export type { EventStore, EventRecord, EventStoreResult } from '../../types/protocol.js'
 export { mergeChannelDefaults } from './merge-channel-defaults.js'
 export type { ChannelDefaults } from './merge-channel-defaults.js'
+export { SIGNAL_TARGETS } from '../../types/protocol.js'
 

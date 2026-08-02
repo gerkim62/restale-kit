@@ -1,6 +1,6 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
 import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -58,11 +58,15 @@ export interface UseReStaleOptions<
    * At this point the connection is already closed and auto-reconnect is suppressed.
    *
    * The `detail` is a `RevokeEventDetail` discriminated union. Branch on `detail.reason`
+   * (`'token-expired'`, `'token-missing'`, `'logout'`, `'unauthorized'`, `'unsupported-target'`, etc.)
    * to handle specific revocation causes:
    *
+   * @example
    * ```ts
    * onRevoke: (detail) => {
-   *   if (detail.reason === 'unsupported-target') {
+   *   if (detail.reason === 'token-expired' || detail.reason === 'token-missing') {
+   *     auth.refreshToken().then(() => reconnect())
+   *   } else if (detail.reason === 'unsupported-target') {
    *     console.warn('Unsupported target. Server supports:', detail.supported)
    *   } else {
    *     logout()
@@ -73,6 +77,12 @@ export interface UseReStaleOptions<
   onRevoke?: (detail: RevokeEventDetail) => void
   /** Called when the HTTP handshake returns a configured non-retryable status. */
   onRejected?: (response: RejectedConnectionResponse) => void
+  /**
+   * Called when automatic reconnection fails permanently after exhausting `maxRetries`.
+   *
+   * Accompanies the final status transition to `{ status: 'error' }`.
+   */
+  onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 }
 
 /**
@@ -83,6 +93,18 @@ export interface UseReStaleResult {
   connectionId: string
   /** Current connection status. */
   connection: ConnectionStatus
+  /** Current reconnect attempt count (0 during initial connection or after success). */
+  attempt: number
+  /** Helper boolean: true if status is 'connecting' and attempt === 0 */
+  isConnecting: boolean
+  /** Helper boolean: true if status is 'open' */
+  isConnected: boolean
+  /** Helper boolean: true if status is 'connecting' and attempt > 0 */
+  isReconnecting: boolean
+  /** Helper boolean: true if status is 'closed' */
+  isClosed: boolean
+  /** Helper boolean: true if status is 'error' */
+  isError: boolean
   /** Manually trigger a reconnection. Resets backoff. */
   reconnect(): Promise<void>
   /** Manually close the connection. */
@@ -115,6 +137,8 @@ export function useReStale<
   onRevokeRef.current = opts.onRevoke
   const onRejectedRef = useRef(opts.onRejected)
   onRejectedRef.current = opts.onRejected
+  const onRetriesExhaustedRef = useRef(opts.onRetriesExhausted)
+  onRetriesExhaustedRef.current = opts.onRetriesExhausted
 
   // Stable client reference — only recreated when url changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
@@ -125,47 +149,41 @@ export function useReStale<
   const pendingClientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
 
   // On the first render, or when the url changes, build a new client and stage it in
-  // pendingClientRef. The committed clientRef is left intact until the effect runs.
+  // pendingClientRef. If disabled=true and url is empty/falsy, bypass client creation.
   if (urlRef.current !== url) {
-    if (opts.debug) {
-      const reason = urlRef.current === null
-        ? `Hook mounted with URL: "${url}"`
-        : `URL prop changed from "${urlRef.current}" to "${url}"`
-      console.log(
-        `[restale-kit][useReStale] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
-      )
+    if (!disabled || !isBlankUrl(url)) {
+      if (opts.debug) {
+        const reason = urlRef.current === null
+          ? `Hook mounted with URL: "${url}"`
+          : `URL prop changed from "${urlRef.current}" to "${url}"`
+        console.log(
+          `[restale-kit][useReStale] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
+        )
+      }
+      pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
+        autoReconnect: opts.autoReconnect,
+        reconnect: opts.reconnect,
+        withCredentials: opts.withCredentials,
+        debug: opts.debug,
+        // Auto-infer target from the adapter's brand when not set explicitly.
+        target: opts.target ?? opts.onInvalidate.__restaleTarget,
+      })
+      urlRef.current = url
     }
-    pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
-      autoReconnect: opts.autoReconnect,
-      reconnect: opts.reconnect,
-      withCredentials: opts.withCredentials,
-      debug: opts.debug,
-      // Auto-infer target from the adapter's brand when not set explicitly.
-      // opts.onInvalidate.__restaleTarget is stamped at runtime by makeAdaptedCallback
-      // (e.g. useSwrAdapter → 'swr', useTanstackQueryAdapter → 'tanstack-query').
-      // This ensures __restale_target__ is appended to the SSE URL and server-side
-      // filtering activates automatically without requiring an explicit `target` prop.
-      target: opts.target ?? opts.onInvalidate.__restaleTarget,
-    })
-    urlRef.current = url
   }
 
-  // For the very first render clientRef is still null — initialise it immediately so
-  // useSyncExternalStore has a valid client on the first pass.
-  if (clientRef.current === null) {
+  // For the very first render clientRef is still null — initialise it if pendingClientRef is ready.
+  if (clientRef.current === null && pendingClientRef.current !== null) {
     clientRef.current = pendingClientRef.current
     pendingClientRef.current = null
   }
 
   const client = clientRef.current
 
-  if(!client) {
-    throw new Error('SSEInvalidatorClient is not initialized')
-  }
-
   // useSyncExternalStore subscription
   const subscribe = useCallback(
     (callback: () => void) => {
+      if (!client) return () => {}
       const handler = () => { callback() }
       client.addEventListener('statuschange', handler)
       return () => {
@@ -175,13 +193,12 @@ export function useReStale<
     [client]
   )
 
-  const getSnapshot = useCallback(() => client.status, [client])
+  const getSnapshot = useCallback(() => (client ? client.status : CLOSED_UNMOUNT), [client])
   const getServerSnapshot = useCallback(() => CLOSED_UNMOUNT, [])
 
   const connection = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
-  // Commit the pending client swap after render. This runs after the browser has painted,
-  // so an aborted concurrent render never closes the committed connection.
+  // Commit the pending client swap after render.
   useEffect(() => {
     const pending = pendingClientRef.current
     if (pending === null) return // no swap needed this cycle
@@ -199,13 +216,11 @@ export function useReStale<
       }
       previous.close()
     }
-    // Note: connect() for the new client is handled by the open/unmount effect below,
-    // which also depends on `client`. Because clientRef is a plain ref (not state),
-    // we trigger a re-render manually via the statuschange listener wired in subscribe().
   }, [url])
 
   // Wire up onInvalidate
   useEffect(() => {
+    if (!client) return
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['invalidate']) => {
       onInvalidateRef.current(event.detail)
     }
@@ -218,6 +233,7 @@ export function useReStale<
 
   // Wire up handshake rejection handling.
   useEffect(() => {
+    if (!client) return
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['rejected']) => {
       onRejectedRef.current?.(event.detail)
     }
@@ -230,6 +246,7 @@ export function useReStale<
 
   // Wire up onRevoke
   useEffect(() => {
+    if (!client) return
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['revoke']) => {
       onRevokeRef.current?.(event.detail)
     }
@@ -240,10 +257,23 @@ export function useReStale<
     }
   }, [client])
 
+  // Wire up onRetriesExhausted
+  useEffect(() => {
+    if (!client) return
+    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['retriesexhausted']) => {
+      onRetriesExhaustedRef.current?.(event.detail)
+    }
+
+    client.addEventListener('retriesexhausted', handler)
+    return () => {
+      client.removeEventListener('retriesexhausted', handler)
+    }
+  }, [client])
+
   // Open on mount / close on unmount
   useEffect(() => {
-    if (disabled) {
-      if (opts.debug) {
+    if (!client || disabled) {
+      if (opts.debug && client) {
         console.log(
           `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId} because disabled=true.`
         )
@@ -258,6 +288,17 @@ export function useReStale<
     }
 
     void client.connect().catch((e: unknown) => {
+      if (
+        (typeof Event !== 'undefined' && e instanceof Event && (e.type === 'close' || e.type === 'error')) ||
+        client.status.status === 'closed'
+      ) {
+        if (opts.debug) {
+          console.log(
+            `[restale-kit][useReStale] connect() promise rejected for connectionId=${client.connectionId} due to component unmount/close.`
+          )
+        }
+        return
+      }
       console.error('Failed to connect to SSE server:', e)
     })
 
@@ -271,8 +312,26 @@ export function useReStale<
     }
   }, [client, disabled])
 
-  const reconnect = useCallback(() => client.connect(), [client])
-  const close = useCallback(() => { client.close() }, [client])
+  const reconnect = useCallback(() => (client ? client.connect() : Promise.resolve()), [client])
+  const close = useCallback(() => { client?.close() }, [client])
 
-  return { connectionId: client.connectionId, connection, reconnect, close }
+  const attempt = client ? client.attempt : 0
+  const isConnecting = connection.status === 'connecting' && attempt === 0
+  const isConnected = connection.status === 'open'
+  const isReconnecting = connection.status === 'connecting' && attempt > 0
+  const isClosed = connection.status === 'closed'
+  const isError = connection.status === 'error'
+
+  return {
+    connectionId: client ? client.connectionId : '',
+    connection,
+    attempt,
+    isConnecting,
+    isConnected,
+    isReconnecting,
+    isClosed,
+    isError,
+    reconnect,
+    close,
+  }
 }

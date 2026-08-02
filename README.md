@@ -73,14 +73,14 @@ npm install restale-kit
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = express()
 app.use(express.json())
 app.use(authenticateUser) // Require authentication middleware that populates trusted req.user
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: ['swr', 'tanstack-query'] },
+  channelDefaults: { target: [SIGNAL_TARGETS.SWR, SIGNAL_TARGETS.TANSTACK_QUERY] },
 })
 
 app.get('/sse', (req, res) => {

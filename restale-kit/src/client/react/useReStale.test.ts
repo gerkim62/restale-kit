@@ -59,6 +59,17 @@ describe('useReStale', () => {
     expect(MockEventSource.instances).toHaveLength(0)
   })
 
+  it('does not instantiate client or throw when disabled is true with zero-width whitespace URL', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    expect(() => {
+      renderHook(() =>
+        useReStale('\u200B', { disabled: true, onInvalidate })
+      )
+    }).not.toThrow()
+
+    expect(MockEventSource.instances).toHaveLength(0)
+  })
+
   it('forwards invalidate events to the latest onInvalidate callback', () => {
     const callbackRef = asAdapter<'tanstack-query'>(vi.fn())
     const { rerender } = renderHook(
@@ -140,5 +151,112 @@ describe('useReStale', () => {
     const url = MockEventSource.instances[0]?.url ?? ''
     expect(url).toContain('__restale_target__=tanstack-query')
     expect(url).not.toContain('__restale_target__=swr')
+  })
+
+  it('calls onRetriesExhausted callback when retries are exhausted', () => {
+    vi.useFakeTimers()
+
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const onRetriesExhausted = vi.fn()
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        reconnect: { maxRetries: 2, baseDelayMs: 50, jitter: false },
+        onRetriesExhausted,
+      })
+    )
+
+    // Initial connection fails
+    act(() => {
+      MockEventSource.instances[0]?.emitError()
+    })
+
+    // Retry 1 fails
+    act(() => {
+      vi.advanceTimersByTime(60)
+      MockEventSource.instances[1]?.emitError()
+    })
+
+    // Retry 2 fails
+    act(() => {
+      vi.advanceTimersByTime(110)
+      MockEventSource.instances[2]?.emitError()
+    })
+
+    expect(onRetriesExhausted).toHaveBeenCalledTimes(1)
+    expect(onRetriesExhausted).toHaveBeenCalledWith({ attempts: 2, maxRetries: 2 })
+
+    vi.useRealTimers()
+  })
+
+  it('does not call onRetriesExhausted when connection succeeds', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const onRetriesExhausted = vi.fn()
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        reconnect: { maxRetries: 2 },
+        onRetriesExhausted,
+      })
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitOpen()
+    })
+
+    expect(onRetriesExhausted).not.toHaveBeenCalled()
+  })
+
+  it('does not call onRetriesExhausted when connection is rejected', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const onRetriesExhausted = vi.fn()
+    const onRejected = vi.fn()
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        reconnect: { maxRetries: 2, nonRetryableStatuses: 401 },
+        onRetriesExhausted,
+        onRejected,
+      })
+    )
+
+    const error = Object.assign(new Event('error'), {
+      responseCode: 401,
+      headers: {},
+    })
+
+    act(() => {
+      MockEventSource.instances[0]?.emitError(error)
+    })
+
+    expect(onRetriesExhausted).not.toHaveBeenCalled()
+    expect(onRejected).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call onRetriesExhausted when connection is revoked', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const onRetriesExhausted = vi.fn()
+    const onRevoke = vi.fn()
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        reconnect: { maxRetries: 2 },
+        onRetriesExhausted,
+        onRevoke,
+      })
+    )
+
+    act(() => {
+      const instance = MockEventSource.instances[0]
+      instance?.emitOpen()
+      instance?.emitCustomEvent('revoke', JSON.stringify({ reason: 'logout' }))
+    })
+
+    expect(onRetriesExhausted).not.toHaveBeenCalled()
+    expect(onRevoke).toHaveBeenCalledTimes(1)
   })
 })

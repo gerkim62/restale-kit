@@ -435,8 +435,16 @@ class SSEChannelGroupImplementation<
    * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
    *
    * @example
-   * const { response } = group.createFetchResponse(c.req.raw, { target: 'swr' })
-   * return response
+   * ```ts
+   * // Hono / Web Standards
+   * app.get('/api/sse', (c) => {
+   *   const { response } = sseGroup.createFetchResponse(c.req.raw, {
+   *     meta: { userId: c.var.userId },
+   *     topics: [`user:${c.var.userId}`],
+   *   })
+   *   return response
+   * })
+   * ```
    */
   createFetchResponse(
     request: Request,
@@ -466,7 +474,23 @@ class SSEChannelGroupImplementation<
    * @framework Node.js, Express, Fastify
    *
    * @example
-   * group.attachNodeResponse(req, res, { target: 'swr' })
+   * ```ts
+   * // Express / Node HTTP
+   * app.get('/api/sse', (req, res) => {
+   *   sseGroup.attachNodeResponse(req, res, {
+   *     meta: { userId: req.user.id },
+   *     topics: [`user:${req.user.id}`],
+   *   })
+   * })
+   *
+   * // Fastify
+   * fastify.get('/api/sse', (req, reply) => {
+   *   sseGroup.attachNodeResponse(req, reply, {
+   *     meta: { userId: req.user.id },
+   *     topics: [`user:${req.user.id}`],
+   *   })
+   * })
+   * ```
    */
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
@@ -687,20 +711,46 @@ class SSEChannelGroupImplementation<
    * @param scope - Optional metadata object that must match the channel's registered `TMeta`.
    *                Enforces security scope-pinning so clients cannot revoke connectionIds belonging
    *                to other users or tenants.
+   *
+   * @example
+   * ```ts
+   * // Revoke connection with scope-pinning
+   * await group.revokeByConnectionId(connectionId, { userId: req.user?.id })
+   * ```
    */
-  async revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }> {
+  async revokeByConnectionId(
+    connectionId: string,
+    scope?: TMeta extends object
+      ? Partial<Record<keyof TMeta, JSONValue | undefined>>
+      : Record<string, JSONValue | undefined>
+  ): Promise<{ closed: boolean }> {
     if (typeof connectionId !== 'string' || connectionId.trim() === '') {
       throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
     }
 
+    let prunedScope: Record<string, JSONValue> | undefined = undefined
     if (scope !== undefined) {
-      const scopeVal: unknown = scope
-      if (!scopeVal || typeof scopeVal !== 'object' || Array.isArray(scopeVal) || !isJSONValue(scopeVal)) {
+      if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
         throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
       }
+      const scopeRecord: Record<string, JSONValue | undefined> = scope
+      const targetScope: Record<string, JSONValue> = {}
+      Object.setPrototypeOf(targetScope, null)
+      for (const [k, v] of Object.entries(scopeRecord)) {
+        if (v !== undefined) {
+          if (!isJSONValue(v)) {
+            throw new Error('[SSEChannelGroup.revokeByConnectionId] scope values must be valid JSONValues.')
+          }
+          targetScope[k] = v
+        }
+      }
+      if (Object.keys(targetScope).length === 0) {
+        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must contain at least one non-undefined property.')
+      }
+      prunedScope = targetScope
     }
 
-    const localClosed = this.closeLocalConnection(connectionId, scope)
+    const localClosed = this.closeLocalConnection(connectionId, prunedScope)
 
     if (this.pubsub) {
       await this.pubsub.publish(this.controlTopic, {
@@ -709,7 +759,7 @@ class SSEChannelGroupImplementation<
           type: 'revokeByConnectionId',
           revokeByConnectionId: {
             connectionId,
-            ...(scope !== undefined ? { scope } : {}),
+            ...(prunedScope !== undefined ? { scope: prunedScope } : {}),
           },
         },
       })
@@ -745,6 +795,11 @@ class SSEChannelGroupImplementation<
    * - Any other errors (e.g. `SchemaValidationError`) are collected across all
    *   channels and thrown as an `AggregateError` at the end — iteration always
    *   completes. The errored channel is NOT deregistered (it may succeed next time).
+   *
+   * @example
+   * ```ts
+   * group.broadcast({ key: ['todos'] }, (meta) => meta?.role === 'admin')
+   * ```
    */
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
@@ -763,14 +818,35 @@ class SSEChannelGroupImplementation<
     }
   }
 
+  private normalizeSignalForGroup(signal: TSignal | TSignal[]): TSignal | TSignal[] {
+    const groupTargets = this.target ?? this.channelDefaults?.target
+    if (groupTargets === undefined) return signal
+    const targetList = toTargetList(groupTargets)
+    if (targetList.length === 1) {
+      const defaultTarget = targetList[0]
+      if (Array.isArray(signal)) {
+        return signal.map((item) =>
+          item && typeof item === 'object' && !('target' in item)
+            ? Object.assign({}, item, { target: defaultTarget })
+            : item
+        )
+      }
+      if (signal && typeof signal === 'object' && !('target' in signal)) {
+        return Object.assign({}, signal, { target: defaultTarget })
+      }
+    }
+    return signal
+  }
+
   private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
-    validateSignalPayload(signal)
-    this.validateGroupSignalTargets(signal)
+    const normalizedSignal = this.normalizeSignalForGroup(signal)
+    validateSignalPayload(normalizedSignal)
+    this.validateGroupSignalTargets(normalizedSignal)
     const errors: unknown[] = []
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.
-      const record = this.eventStore.add(signal)
+      const record = this.eventStore.add(normalizedSignal)
       eventId = record.id
     }
 
@@ -783,7 +859,7 @@ class SSEChannelGroupImplementation<
       if (!shouldInclude) continue
 
       try {
-        this.deliverToChannel(channel, signal, 'broadcast', undefined, eventId)
+        this.deliverToChannel(channel, normalizedSignal, 'broadcast', undefined, eventId)
       } catch (error) {
         if (error instanceof ChannelClosedError) {
           this.deregister(channel)
@@ -792,7 +868,7 @@ class SSEChannelGroupImplementation<
           console.error(
             "[ERROR][SSEChannelGroup.broadcast] Failed to invalidate channel",
             "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
-            "\n  signal:", JSON.stringify(signal, null, 2).slice(0, 500),
+            "\n  signal:", JSON.stringify(normalizedSignal, null, 2).slice(0, 500),
             "\n  error:", err.stack || err.message
           )
           errors.push(error)
@@ -836,11 +912,13 @@ class SSEChannelGroupImplementation<
    */
   broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
   broadcastByKey(signal: TSignal): void {
-    this.broadcastRaw(signal, (meta) => {
+    const normalizedSignal = this.normalizeSignalForGroup(signal)
+    if (Array.isArray(normalizedSignal)) return
+    this.broadcastRaw(normalizedSignal, (meta) => {
       if (!isJSONValue(meta)) return false
       // Wrap scalar/array meta in an array to match against the signal key
       const metaKey = Array.isArray(meta) ? meta : [meta]
-      return matchesInvalidateSignalKey(metaKey, signal)
+      return matchesInvalidateSignalKey(metaKey, normalizedSignal)
     })
   }
 
@@ -849,6 +927,11 @@ class SSEChannelGroupImplementation<
    *
    * Deliver to matching local channels first (synchronously), then publishes to the PubSub broker.
    * Errors from the broker publish propagate to the caller.
+   *
+   * @example
+   * ```ts
+   * await group.publish(`user:${userId}`, { key: ['todos', { userId }] })
+   * ```
    */
   async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
     await this.publishRaw(topic, signal)
@@ -856,12 +939,13 @@ class SSEChannelGroupImplementation<
 
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
-    validateSignalPayload(signal)
-    this.validateGroupSignalTargets(signal)
+    const normalizedSignal = this.normalizeSignalForGroup(signal)
+    validateSignalPayload(normalizedSignal)
+    this.validateGroupSignalTargets(normalizedSignal)
     let eventId: string | undefined = undefined
     if (this.eventStore !== undefined) {
       // Store the raw signal — deliverToChannel applies per-channel target transforms.
-      const record = this.eventStore.add(signal)
+      const record = this.eventStore.add(normalizedSignal)
       eventId = record.id
     }
 
@@ -869,13 +953,13 @@ class SSEChannelGroupImplementation<
     const topicManager = this.topics.get(topic)
     if (topicManager) {
       for (const channel of topicManager.channels) {
-        this.deliverToChannel(channel, signal, 'publish', topic, eventId)
+        this.deliverToChannel(channel, normalizedSignal, 'publish', topic, eventId)
       }
     }
 
     // 2. Publish to the broker (publish the raw signal — remote instances apply their own target transform)
     if (this.pubsub) {
-      await this.pubsub.publish(topic, { kind: 'signal', data: signal, id: eventId })
+      await this.pubsub.publish(topic, { kind: 'signal', data: normalizedSignal, id: eventId })
     }
   }
 }
@@ -887,6 +971,33 @@ export type SSEChannelGroup<
 > = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
 
 interface SSEChannelGroupConstructor {
+  new <
+    TTarget extends SignalTarget,
+    TMeta,
+    TSchema extends StandardSchemaV1<unknown, TMeta>,
+  >(
+    options: { target: TTarget; metaSchema: TSchema } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>,
+      'target' | 'metaSchema'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>
+  new <
+    TTarget extends readonly SignalTarget[],
+    TMeta,
+    TSchema extends StandardSchemaV1<unknown, TMeta>,
+  >(
+    options: { target: TTarget; metaSchema: TSchema } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>,
+      'target' | 'metaSchema'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>
+  new <
+    TMeta,
+    TSchema extends StandardSchemaV1<unknown, TMeta>,
+    TSignal extends InvalidateSignal = InvalidateSignal,
+  >(
+    options: { metaSchema: TSchema } & SSEChannelGroupOptions<TSignal, TMeta>
+  ): SSEChannelGroup<TSignal, TMeta>
   new <TTarget extends SignalTarget>(
     options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
   ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>

@@ -3,7 +3,7 @@ import { SSEInvalidatorClient as ClientCoreExport } from './client/core/index.js
 import { useReStale } from './client/react/index.js'
 import { swrAdapter } from './client/swr/index.js'
 import { tanstackQueryAdapter } from './client/tanstack-query/index.js'
-import { createEventStore, SSEChannelGroup } from './server/core/index.js'
+import { createEventStore, SSEChannelGroup, SIGNAL_TARGETS as ServerSignalTargets } from './server/core/index.js'
 import { createSSEChannel } from './testing/index.js'
 import { PubSubDecryptionError } from './pubsub/core/index.js'
 import { ablyPubSubAdapter } from './pubsub/ably/index.js'
@@ -36,6 +36,8 @@ describe('Entrypoint Re-exports', () => {
     expect(SSEChannelGroup.prototype.attachNodeResponse).toBeDefined()
 
     expect(createSSEChannel).toBeDefined()
+    expect(ServerSignalTargets).toBeDefined()
+    expect(ServerSignalTargets.TANSTACK_QUERY).toBe('tanstack-query')
   })
 
   it('correctly exports pubsub modules', () => {
@@ -53,6 +55,7 @@ describe('Entrypoint Re-exports', () => {
     expect(isJSONValueArray).toBeDefined()
     expect(matchesInvalidateSignalKey).toBeDefined()
     expect(SIGNAL_TARGETS).toBeDefined()
+    expect(SIGNAL_TARGETS.TANSTACK_QUERY).toBe('tanstack-query')
 
     const revokeDetail: RevokeEventDetail = { reason: 'manual' }
     const renewDetail: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }

@@ -15,6 +15,12 @@ import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 import { SSE, type SSEvent } from 'sse.js'
 
+/** Returns true if url is not a string or contains only whitespace / zero-width / BOM characters. */
+export function isBlankUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return true
+  return url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === ''
+}
+
 /** Reads a string property from an unknown object without any cast. */
 function getStringProp(obj: object, key: string): string | undefined {
   if (!Object.hasOwn(obj, key)) return undefined
@@ -70,7 +76,7 @@ export class SSEInvalidatorClient<
   private opened = false
   private eventSource: SSE | null = null
   private currentStatus: ConnectionStatus = { status: 'closed', reason: 'manual' }
-  private attempt = 0
+  private currentAttempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private revoked = false
   private renewing = false
@@ -86,7 +92,7 @@ export class SSEInvalidatorClient<
     super()
     
     // Gap 10: Validate URL - reject blank/whitespace strings
-    if (typeof url !== 'string' || url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
+    if (isBlankUrl(url)) {
       throw new Error(
         '[SSEInvalidatorClient] url must be a non-empty, non-whitespace string. ' +
         `Got: ${JSON.stringify(url)}`
@@ -149,6 +155,11 @@ export class SSEInvalidatorClient<
     return this.currentStatus
   }
 
+  /** Current reconnect attempt count (0 on initial connect or after success). */
+  get attempt(): number {
+    return this.currentAttempt
+  }
+
   /** The last event ID string received from the SSE stream, if any. */
   get lastEventId(): string | null {
     return this.currentLastEventId
@@ -203,7 +214,7 @@ export class SSEInvalidatorClient<
     }
 
     // Reset backoff counter and revoked flag for a fresh connect attempt
-    this.attempt = 0
+    this.currentAttempt = 0
     this.revoked = false
     this.renewing = false
 
@@ -324,9 +335,9 @@ export class SSEInvalidatorClient<
     this.setStatus({ status: 'connecting' })
 
     if (this.debug) {
-      const reason = this.attempt === 0
+      const reason = this.currentAttempt === 0
         ? 'First connection attempt for this client instance'
-        : `Automatic reconnection attempt ${String(this.attempt)} after connection drop/error`
+        : `Automatic reconnection attempt ${String(this.currentAttempt)} after connection drop/error`
       console.log(
         `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
       )
@@ -342,9 +353,14 @@ export class SSEInvalidatorClient<
     })
     this.eventSource = es
 
-    es.onopen = () => {
+    es.onopen = (event: SSEvent) => {
+      if (!this.isValidHandshake(es, event)) {
+        this.handleReconnectError(es, event)
+        return
+      }
+
       this.opened = true
-      this.attempt = 0 // Reset on successful open
+      this.currentAttempt = 0
       this.setStatus({ status: 'open' })
       if (this.debug) {
         console.log(
@@ -391,21 +407,22 @@ export class SSEInvalidatorClient<
       : undefined
     this.teardown()
 
-    if (!this.revoked && !this.renewing && canRetry && this.attempt < this.maxRetries) {
-      const delay = retryAfterDelay ?? calculateBackoff(this.attempt, this.reconnectOptions)
+    if (!this.revoked && !this.renewing && canRetry && this.currentAttempt < this.maxRetries) {
+      const delay = retryAfterDelay ?? calculateBackoff(this.currentAttempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
-          `Retrying in ${String(delay)}ms (attempt ${String(this.attempt + 1)} of ${String(this.maxRetries)}).`
+          `Retrying in ${String(delay)}ms (attempt ${String(this.currentAttempt + 1)} of ${String(this.maxRetries)}).`
         )
       }
-      this.attempt++
+      this.currentAttempt++
       this.setStatus({ status: 'connecting' })
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null
         this.establishConnection()
       }, delay)
     } else {
+      const exhaustedRetries = !this.revoked && !this.renewing && canRetry && this.currentAttempt >= this.maxRetries
       if (this.debug) {
         const reason = this.revoked
           ? 'Server sent terminal revoke frame'
@@ -418,6 +435,15 @@ export class SSEInvalidatorClient<
           `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
         )
       }
+
+      if (exhaustedRetries) {
+        this.dispatchEvent(
+          new CustomEvent(SSE_EVENTS.RETRIES_EXHAUSTED, {
+            detail: { attempts: this.currentAttempt, maxRetries: this.maxRetries },
+          })
+        )
+      }
+
       this.setStatus({ status: 'error', error: event })
       if (this.connectPromise) {
         this.connectPromise.reject(event)
@@ -642,7 +668,13 @@ export class SSEInvalidatorClient<
         })
         this.eventSource = renewEs
 
-        renewEs.onopen = () => {
+        renewEs.onopen = (event: SSEvent) => {
+          if (!this.isValidHandshake(renewEs, event)) {
+            renewEs.onopen = () => {}
+            renewEs.onerror = () => {}
+            onRenewError()
+            return
+          }
           // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
@@ -668,7 +700,7 @@ export class SSEInvalidatorClient<
    */
   private wireRenewSuccess(es: SSE, onOpenCallback: () => void): void {
     this.opened = true
-    this.attempt = 0
+    this.currentAttempt = 0
     this.setStatus({ status: 'open' })
     onOpenCallback()
 
@@ -692,9 +724,42 @@ export class SSEInvalidatorClient<
   }
 
   private getRejectedResponse(es: SSE, event: SSEvent): RejectedConnectionResponse | null {
-    const status = event.responseCode
+    const status = event.responseCode ?? es.xhr?.status
     if (typeof status !== 'number' || !this.matchesNonRetryableStatus(status)) return null
     return { status, headers: event.headers ?? this.readResponseHeaders(es) }
+  }
+
+  /**
+   * Validates that an incoming SSE connection handshake has a valid stream content-type.
+   * A valid stream requires the Content-Type header to start with `text/event-stream`
+   * (case-insensitive) when present.
+   */
+  private isValidHandshake(es: SSE, event?: SSEvent): boolean {
+    const headers = event?.headers ?? this.readResponseHeaders(es)
+    const contentType = this.getHeaderValue(headers, 'content-type')
+    if (contentType !== undefined) {
+      const normalized = contentType.trim().toLowerCase()
+      if (!normalized.startsWith('text/event-stream')) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private getHeaderValue(
+    headers: Record<string, string | string[] | undefined>,
+    headerName: string
+  ): string | undefined {
+    const targetKey = headerName.toLowerCase()
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === targetKey) {
+        const val = headers[key]
+        if (Array.isArray(val)) return val[0]
+        if (typeof val === 'string') return val
+      }
+    }
+    return undefined
   }
 
   private readResponseHeaders(es: SSE): Record<string, string[]> {

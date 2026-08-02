@@ -18,11 +18,11 @@ All channel methods set the required SSE response headers (`Content-Type: text/e
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = express()
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
+  channelDefaults: { target: SIGNAL_TARGETS.SWR },
 })
 
 app.get('/sse', (req, res) => {
@@ -36,10 +36,10 @@ app.get('/sse', (req, res) => {
 
 ```ts
 import http from 'node:http'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
+  channelDefaults: { target: SIGNAL_TARGETS.SWR },
 })
 
 const server = http.createServer((req, res) => {
@@ -58,10 +58,10 @@ const server = http.createServer((req, res) => {
 
 ```ts
 import Fastify from 'fastify'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
+  channelDefaults: { target: SIGNAL_TARGETS.SWR },
 })
 const app = Fastify()
 
@@ -78,11 +78,11 @@ Fetch-API runtimes return both the `Response` object and the `SSEChannel` refere
 
 ```ts
 import { Hono } from 'hono'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = new Hono()
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
+  channelDefaults: { target: SIGNAL_TARGETS.SWR },
 })
 
 app.use('*', authMiddleware) // Auth middleware sets userId on context

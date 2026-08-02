@@ -82,7 +82,7 @@ type ReStaleSignal =
   | GenericInvalidateSignal
 
 type ReStaleSignalForTarget<TTarget extends SignalTarget> =
-  TTarget extends typeof SIGNAL_TARGETS.TANSTACK
+  TTarget extends typeof SIGNAL_TARGETS.TANSTACK_QUERY
     ? TanStackQuerySignal
     : TTarget extends typeof SIGNAL_TARGETS.SWR
       ? SWRSignal
