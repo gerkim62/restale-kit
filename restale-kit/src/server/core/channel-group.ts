@@ -744,6 +744,9 @@ class SSEChannelGroupImplementation<
           targetScope[k] = v
         }
       }
+      if (Object.keys(targetScope).length === 0) {
+        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must contain at least one non-undefined property.')
+      }
       prunedScope = targetScope
     }
 

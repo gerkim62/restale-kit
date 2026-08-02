@@ -27,7 +27,7 @@ function run(command, arguments_, options = {}) {
 }
 
 try {
-  run('npm', ['pack', '--pack-destination', temporaryDirectory], { cwd: packageDirectory })
+  run('npm', ['pack', '--ignore-scripts', '--pack-destination', temporaryDirectory], { cwd: packageDirectory })
   const tarball = readdirSync(temporaryDirectory).find((file) => file.endsWith('.tgz'))
   if (!tarball) throw new Error('npm pack did not create a tarball')
 

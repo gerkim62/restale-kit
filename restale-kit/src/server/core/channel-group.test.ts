@@ -1418,6 +1418,52 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
     })
 
+    it('throws rather than revoking everyone when scope prunes down to an empty object', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-empty-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // Caller passed a scope object, but every key resolved to `undefined`
+      // (e.g. `req.user?.role` on a user with no role field). After pruning,
+      // the effective scope is `{}` — it must NOT silently match every channel.
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, { role: undefined })
+      ).rejects.toThrow(/scope/i)
+
+      // The channel must still be registered — the revoke must not have gone through.
+      expect(group.size).toBe(1)
+    })
+
+    it('throws when scope is a non-plain object with no enumerable own properties', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-date-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // `new Date()` passes the `typeof scope === 'object'` / `!Array.isArray` guard,
+      // but has zero own enumerable entries — pruning also yields `{}`.
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, new Date() as any)
+      ).rejects.toThrow(/scope/i)
+
+      expect(group.size).toBe(1)
+    })
+
+    it('throws when an explicitly empty object is passed as scope', async () => {
+      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-literal-empty-scope', target: 'swr' })
+      group.register(ch, { userId: 100, role: 'member' })
+
+      // Passing `{}` directly should be treated the same as a scope that pruned to
+      // empty — reject it rather than silently behaving like an unscoped revoke.
+      // (To revoke without any scope filter, callers should omit the `scope` argument
+      // entirely, not pass `{}`.)
+      await expect(
+        group.revokeByConnectionId(ch.connectionId, {})
+      ).rejects.toThrow(/scope/i)
+
+      expect(group.size).toBe(1)
+    })
+
     it('auto-infers TMeta from metaSchema in constructor', () => {
       const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
       const group = new SSEChannelGroup({ metaSchema })

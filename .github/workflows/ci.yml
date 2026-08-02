@@ -7,11 +7,9 @@ on:
       - main
 
 jobs:
-  verify:
+  build-and-test:
+    name: Build & Test (Node 22)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,11 +17,32 @@ jobs:
           version: 11.11.0
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run validate
       - run: pnpm --filter restale-kit run test:coverage
       - run: pnpm run build
-      - run: node scripts/verify-package.mjs
       - run: cd restale-kit && npm pack --dry-run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: restale-kit-dist
+          path: restale-kit/dist/
+
+  consumer-smoke-test:
+    name: Consumer Smoke Test (Node ${{ matrix.node-version }})
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: restale-kit-dist
+          path: restale-kit/dist/
+      - run: node scripts/verify-package.mjs
