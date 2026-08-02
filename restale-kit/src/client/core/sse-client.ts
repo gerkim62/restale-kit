@@ -75,7 +75,6 @@ export class SSEInvalidatorClient<
   private revoked = false
   private renewing = false
   private renewRetryTimer: ReturnType<typeof setTimeout> | null = null
-  private stabilityTimer: ReturnType<typeof setTimeout> | null = null
   private connectPromise: {
     promise: Promise<void>
     resolve: () => void
@@ -355,6 +354,7 @@ export class SSEInvalidatorClient<
       }
 
       this.opened = true
+      this.currentAttempt = 0
       this.setStatus({ status: 'open' })
       if (this.debug) {
         console.log(
@@ -365,17 +365,6 @@ export class SSEInvalidatorClient<
         this.connectPromise.resolve()
         this.connectPromise = null
       }
-
-      // Delay resetting attempt counter to prevent spurious opens from incorrectly resetting retry state
-      if (this.stabilityTimer !== null) {
-        clearTimeout(this.stabilityTimer)
-      }
-      this.stabilityTimer = setTimeout(() => {
-        if (this.eventSource === es && this.currentStatus.status === 'open') {
-          this.currentAttempt = 0
-        }
-        this.stabilityTimer = null
-      }, 100)
     }
 
     es.onerror = (event: SSEvent) => {
@@ -391,11 +380,6 @@ export class SSEInvalidatorClient<
    */
   private handleReconnectError(es: SSE, event: SSEvent): void {
     if (this.eventSource !== es) return
-
-    if (this.stabilityTimer !== null) {
-      clearTimeout(this.stabilityTimer)
-      this.stabilityTimer = null
-    }
 
     const rejectedResponse = this.getRejectedResponse(es, event)
     if (rejectedResponse !== null) {
@@ -830,11 +814,6 @@ export class SSEInvalidatorClient<
       this.eventSource.onerror = () => {}
       this.eventSource.close()
       this.eventSource = null
-    }
-
-    if (this.stabilityTimer !== null) {
-      clearTimeout(this.stabilityTimer)
-      this.stabilityTimer = null
     }
 
     if (this.retryTimer !== null) {
