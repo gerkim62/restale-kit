@@ -141,4 +141,36 @@ describe('useReStale', () => {
     expect(url).toContain('__restale_target__=tanstack-query')
     expect(url).not.toContain('__restale_target__=swr')
   })
+
+  it('forwards retriesexhausted event to onRetriesExhausted callback', () => {
+    vi.useFakeTimers()
+    const onRetriesExhausted = vi.fn()
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        onRetriesExhausted,
+        reconnect: { maxRetries: 1, baseDelayMs: 10, jitter: false },
+      })
+    )
+
+    const es1 = MockEventSource.instances[0]
+    act(() => {
+      es1.emitError()
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(50)
+    })
+
+    const es2 = MockEventSource.instances[1]
+    act(() => {
+      es2.emitError()
+    })
+
+    expect(onRetriesExhausted).toHaveBeenCalledTimes(1)
+    expect(onRetriesExhausted).toHaveBeenCalledWith({ attempts: 1, maxRetries: 1 })
+    vi.useRealTimers()
+  })
 })
