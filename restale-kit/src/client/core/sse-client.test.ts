@@ -35,7 +35,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   describe('handshake validation', () => {
-    it('rejects onopen if Content-Type is application/json', async () => {
+    it('rejects onopen if Content-Type is application/json', () => {
       const client = new SSEInvalidatorClient('/sse', {
         reconnect: { maxRetries: 0 },
       })
