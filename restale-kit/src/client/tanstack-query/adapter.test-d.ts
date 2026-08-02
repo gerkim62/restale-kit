@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, test } from 'vitest'
-import { tanstackQueryAdapter, useTanstackQueryAdapter } from '@/client/tanstack-query/index.js'
+import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from '@/client/tanstack-query/index.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/index.js'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TanStackQuerySignal, InvalidateSignal } from '@/types/index.js'
@@ -41,6 +41,18 @@ describe('tanstackQueryAdapter type safety', () => {
     }
     const adapter = tanstackQueryAdapter(structuralClient)
     expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
+    expectTypeOf(structuralClient).toExtend<QueryClientLike>()
+  })
+
+  test('rejects incompatible filter parameters on QueryClientLike', () => {
+    const incompatibleClient = {
+      invalidateQueries: async (_filters?: string) => {},
+      removeQueries: () => {},
+      resetQueries: async () => {},
+      cancelQueries: async () => {},
+      refetchQueries: async () => {},
+    }
+    expectTypeOf<typeof incompatibleClient>().not.toExtend<QueryClientLike>()
   })
 })
 

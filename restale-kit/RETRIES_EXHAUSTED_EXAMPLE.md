@@ -31,8 +31,14 @@ client.addEventListener('retriesexhausted', (event) => {
 
 ```tsx
 import { useReStale } from 'restale-kit/react'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+import { queryClient } from './queryClient'
 
 function App() {
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
+  // App-specific notification callback
+  const showToast = (msg: string) => console.warn(msg)
+
   const { isConnected, isError, attempt } = useReStale('/api/sse', {
     reconnect: { maxRetries: 5 },
     onRetriesExhausted: ({ attempts, maxRetries }) => {

@@ -16,11 +16,11 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
  * projects use different patch/minor versions of `@tanstack/react-query`.
  */
 export interface QueryClientLike {
-  invalidateQueries(filters?: unknown, options?: unknown): Promise<void>
-  removeQueries(filters?: unknown, options?: unknown): void
-  resetQueries(filters?: unknown, options?: unknown): Promise<void>
-  cancelQueries(filters?: unknown, options?: unknown): Promise<void>
-  refetchQueries(filters?: unknown, options?: unknown): Promise<void>
+  invalidateQueries(filters?: InvalidateQueryFilters, options?: unknown): Promise<void>
+  removeQueries(filters?: QueryFilters, options?: unknown): void
+  resetQueries(filters?: QueryFilters, options?: unknown): Promise<void>
+  cancelQueries(filters?: QueryFilters, options?: unknown): Promise<void>
+  refetchQueries(filters?: QueryFilters, options?: unknown): Promise<void>
 }
 
 export type TanStackQuerySignalInput = TanStackQuerySignal

@@ -59,6 +59,17 @@ describe('useReStale', () => {
     expect(MockEventSource.instances).toHaveLength(0)
   })
 
+  it('does not instantiate client or throw when disabled is true with zero-width whitespace URL', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    expect(() => {
+      renderHook(() =>
+        useReStale('\u200B', { disabled: true, onInvalidate })
+      )
+    }).not.toThrow()
+
+    expect(MockEventSource.instances).toHaveLength(0)
+  })
+
   it('forwards invalidate events to the latest onInvalidate callback', () => {
     const callbackRef = asAdapter<'tanstack-query'>(vi.fn())
     const { rerender } = renderHook(

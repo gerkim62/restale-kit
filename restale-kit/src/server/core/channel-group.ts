@@ -734,15 +734,16 @@ class SSEChannelGroupImplementation<
         throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
       }
       const scopeRecord: Record<string, JSONValue | undefined> = scope
-      prunedScope = {}
+      const targetScope: Record<string, JSONValue> = Object.setPrototypeOf({}, null)
       for (const [k, v] of Object.entries(scopeRecord)) {
         if (v !== undefined) {
           if (!isJSONValue(v)) {
             throw new Error('[SSEChannelGroup.revokeByConnectionId] scope values must be valid JSONValues.')
           }
-          prunedScope[k] = v
+          targetScope[k] = v
         }
       }
+      prunedScope = targetScope
     }
 
     const localClosed = this.closeLocalConnection(connectionId, prunedScope)
@@ -1002,7 +1003,7 @@ interface SSEChannelGroupConstructor {
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
-    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly SignalTarget[],
+    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
   >(
     options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
   ): SSEChannelGroup<TSignal, TMeta, TTarget>

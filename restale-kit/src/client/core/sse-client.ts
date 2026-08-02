@@ -15,6 +15,12 @@ import { appendQueryParam } from '@/utils/url.js'
 import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
 import { SSE, type SSEvent } from 'sse.js'
 
+/** Returns true if url is not a string or contains only whitespace / zero-width / BOM characters. */
+export function isBlankUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return true
+  return url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === ''
+}
+
 /** Reads a string property from an unknown object without any cast. */
 function getStringProp(obj: object, key: string): string | undefined {
   if (!Object.hasOwn(obj, key)) return undefined
@@ -86,7 +92,7 @@ export class SSEInvalidatorClient<
     super()
     
     // Gap 10: Validate URL - reject blank/whitespace strings
-    if (typeof url !== 'string' || url.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
+    if (isBlankUrl(url)) {
       throw new Error(
         '[SSEInvalidatorClient] url must be a non-empty, non-whitespace string. ' +
         `Got: ${JSON.stringify(url)}`

@@ -1398,6 +1398,26 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(0)
     })
 
+    it('preserves __proto__ scope keys as own properties during revokeByConnectionId scope pruning', async () => {
+      const group = new SSEChannelGroup<any, Record<string, any>>()
+      const ch = createSSEChannel({ connectionId: 'conn-proto', target: 'swr' })
+      group.register(ch, { ['__proto__']: 'tenant-1' })
+
+      // Scope with __proto__ key matching tenant-1 should match
+      const resMatch = await group.revokeByConnectionId(ch.connectionId, { ['__proto__']: 'tenant-1' })
+      expect(resMatch.closed).toBe(true)
+      expect(group.size).toBe(0)
+
+      // Re-register channel to test mismatch
+      const ch2 = createSSEChannel({ connectionId: 'conn-proto-2', target: 'swr' })
+      group.register(ch2, { ['__proto__']: 'tenant-1' })
+
+      // Scope with __proto__ key mismatch should NOT match
+      const resMismatch = await group.revokeByConnectionId(ch2.connectionId, { ['__proto__']: 'tenant-2' })
+      expect(resMismatch.closed).toBe(false)
+      expect(group.size).toBe(1)
+    })
+
     it('auto-infers TMeta from metaSchema in constructor', () => {
       const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
       const group = new SSEChannelGroup({ metaSchema })
@@ -1412,11 +1432,10 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(receivedMeta).toEqual({ userId: 42 })
     })
 
-
     it('automatically injects single target into publish and broadcast signals when omitted', async () => {
       const group = new SSEChannelGroup({ target: 'tanstack-query' })
       const ch = createSSEChannel({ target: 'tanstack-query' })
-      group.register(ch)
+      group.register(ch, undefined, { topics: ['todos-topic'] })
 
       const invalidateSpy = vi.spyOn(ch, 'invalidate')
 
@@ -1424,9 +1443,11 @@ describe('SSEChannelGroup — channelDefaults', () => {
       group.broadcastToAll({ queryKey: ['todos'] })
       expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
 
+      invalidateSpy.mockClear()
+
       // Calling publish with signal without explicit target
       await group.publish('todos-topic', { queryKey: ['todos'] })
-      expect(invalidateSpy).toHaveBeenLastCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
     })
   })
 })

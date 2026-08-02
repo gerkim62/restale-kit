@@ -1,6 +1,6 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
 import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -151,7 +151,7 @@ export function useReStale<
   // On the first render, or when the url changes, build a new client and stage it in
   // pendingClientRef. If disabled=true and url is empty/falsy, bypass client creation.
   if (urlRef.current !== url) {
-    if (!disabled || (typeof url === 'string' && url.trim() !== '')) {
+    if (!disabled || !isBlankUrl(url)) {
       if (opts.debug) {
         const reason = urlRef.current === null
           ? `Hook mounted with URL: "${url}"`
