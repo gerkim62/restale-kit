@@ -734,7 +734,8 @@ class SSEChannelGroupImplementation<
         throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
       }
       const scopeRecord: Record<string, JSONValue | undefined> = scope
-      const targetScope: Record<string, JSONValue> = Object.setPrototypeOf({}, null)
+      const targetScope: Record<string, JSONValue> = {}
+      Object.setPrototypeOf(targetScope, null)
       for (const [k, v] of Object.entries(scopeRecord)) {
         if (v !== undefined) {
           if (!isJSONValue(v)) {
