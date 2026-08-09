@@ -65,12 +65,12 @@ export class SSEInvalidatorClient<
   declare readonly _signalType?: (signal: TSignal) => void
   private readonly url: string
   private readonly eventSourceUrl: string
-  private readonly nativeAutoReconnect: boolean
-  private readonly jsBackoffAutoReconnect: boolean
-  private readonly maxRetries: number
-  private readonly reconnectOptions: ClientOptions<TSignal>['reconnect']
+  private nativeAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+  private jsBackoffAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
+  private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
+  private reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly withCredentials: boolean
-  private readonly debug: boolean
+  private debug = false
   private readonly currentConnectionId: string
 
   private opened = false
@@ -119,6 +119,17 @@ export class SSEInvalidatorClient<
       )
     }
     this.eventSourceUrl = eventSourceUrl
+    this.updateRuntimeOptions(opts)
+    this.withCredentials = opts?.withCredentials ?? false
+
+    if (this.debug) {
+      console.log(
+        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${this.currentConnectionId})`
+      )
+    }
+  }
+
+  updateRuntimeOptions(opts?: Pick<ClientOptions<TSignal>, 'autoReconnect' | 'reconnect' | 'debug'>): void {
     const autoReconnectOpt = opts?.autoReconnect
     if (typeof autoReconnectOpt === 'object') {
       this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
@@ -130,14 +141,7 @@ export class SSEInvalidatorClient<
     }
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
-    this.withCredentials = opts?.withCredentials ?? false
     this.debug = opts?.debug ?? false
-
-    if (this.debug) {
-      console.log(
-        `[restale-kit][SSEInvalidatorClient] Instantiated new client (connectionId: ${this.currentConnectionId})`
-      )
-    }
   }
 
   /** The unique ID generated for this SSE connection instance. */

@@ -113,6 +113,10 @@ export interface UseReStaleResult {
 
 const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
 
+function getClientIdentityKey(url: string, target: SignalTarget | undefined, withCredentials: boolean | undefined): string {
+  return `${url}\u0000${(target ?? '')}\u0000${String(withCredentials ?? false)}`
+}
+
 /**
  * React hook that wraps `SSEInvalidatorClient` in a `useSyncExternalStore`
  * subscription.
@@ -140,22 +144,25 @@ export function useReStale<
   const onRetriesExhaustedRef = useRef(opts.onRetriesExhausted)
   onRetriesExhaustedRef.current = opts.onRetriesExhausted
 
-  // Stable client reference — only recreated when url changes.
+  const target = opts.target ?? opts.onInvalidate.__restaleTarget
+  const identityKey = getClientIdentityKey(url, target, opts.withCredentials)
+
+  // Stable client reference — only recreated when connection identity changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
   // client. The swap is deferred to useEffect so an aborted/suspended render in
   // Concurrent Mode cannot tear down the live SSE connection.
-  const urlRef = useRef<string | null>(null)
+  const identityRef = useRef<string | null>(null)
   const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
   const pendingClientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
 
-  // On the first render, or when the url changes, build a new client and stage it in
+  // On the first render, or when connection identity changes, build a new client and stage it in
   // pendingClientRef. If disabled=true and url is empty/falsy, bypass client creation.
-  if (urlRef.current !== url) {
+  if (identityRef.current !== identityKey) {
     if (!disabled || !isBlankUrl(url)) {
       if (opts.debug) {
-        const reason = urlRef.current === null
+        const reason = identityRef.current === null
           ? `Hook mounted with URL: "${url}"`
-          : `URL prop changed from "${urlRef.current}" to "${url}"`
+          : `Connection identity changed for URL: "${url}"`
         console.log(
           `[restale-kit][useReStale] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
         )
@@ -166,9 +173,9 @@ export function useReStale<
         withCredentials: opts.withCredentials,
         debug: opts.debug,
         // Auto-infer target from the adapter's brand when not set explicitly.
-        target: opts.target ?? opts.onInvalidate.__restaleTarget,
+        target,
       })
-      urlRef.current = url
+      identityRef.current = identityKey
     }
   }
 
@@ -179,6 +186,11 @@ export function useReStale<
   }
 
   const client = clientRef.current
+  client?.updateRuntimeOptions({
+    autoReconnect: opts.autoReconnect,
+    reconnect: opts.reconnect,
+    debug: opts.debug,
+  })
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(
@@ -211,12 +223,12 @@ export function useReStale<
     if (previous !== null && previous !== pending) {
       if (opts.debug) {
         console.log(
-          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId} because URL changed to "${url}". Closing previous client connectionId=${previous.connectionId}.`
+          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId} because connection identity changed for "${url}". Closing previous client connectionId=${previous.connectionId}.`
         )
       }
       previous.close()
     }
-  }, [url])
+  }, [identityKey, url, opts.debug])
 
   // Wire up onInvalidate
   useEffect(() => {
