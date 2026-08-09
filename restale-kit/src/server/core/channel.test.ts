@@ -1127,4 +1127,25 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
 
     channel.close()
   })
+
+  it('throws RangeError for invalid status class in nonRetryableStatuses', () => {
+    expect(() => {
+      createSSEChannel({
+        target: 'swr',
+        lifetime: {
+          ttlMs: 1000,
+          reconnect: {
+            nonRetryableStatuses: ['6xx' as any],
+          },
+        },
+      })
+    }).toThrow(RangeError)
+  })
+
+  it('handles write error during stream write gracefully', async () => {
+    const channel = createSSEChannel({ target: 'swr' })
+    const reader = channel.stream.getReader()
+    await reader.cancel(new Error('EPIPE'))
+    expect(() => channel.invalidate({ target: 'swr', key: ['test'] })).toThrow()
+  })
 })

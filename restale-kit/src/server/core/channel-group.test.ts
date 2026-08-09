@@ -1496,5 +1496,31 @@ describe('SSEChannelGroup — channelDefaults', () => {
       await group.publish('todos-topic', { queryKey: ['todos'] })
       expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
     })
+
+    it('handles scalar non-object metadata during revokeWhere and connectionId matching', async () => {
+      const group = new SSEChannelGroup<any, string>()
+      const ch1 = createSSEChannel({ connectionId: 'scalar-conn-1', target: 'swr' })
+      const ch2 = createSSEChannel({ connectionId: 'scalar-conn-2', target: 'swr' })
+
+      group.register(ch1, 'admin-user')
+      group.register(ch2, 'normal-user')
+
+      // Revoke by connectionId on scalar metadata channel
+      const res = await group.revokeByConnectionId('scalar-conn-1', { userId: 'admin-user' })
+      expect(res.closed).toBe(false) // scalar string meta does not match scope object
+      expect(group.size).toBe(2)
+
+      const res2 = await group.revokeByConnectionId('scalar-conn-1')
+      expect(res2.closed).toBe(true)
+      expect(group.size).toBe(1)
+    })
+
+    it('rejects non-object scope in revokeByConnectionId', async () => {
+      const group = new SSEChannelGroup()
+      const ch = createSSEChannel({ connectionId: 'conn-scope-invalid', target: 'swr' })
+      group.register(ch)
+
+      await expect(group.revokeByConnectionId('conn-scope-invalid', 123 as any)).rejects.toThrow(/scope/i)
+    })
   })
 })

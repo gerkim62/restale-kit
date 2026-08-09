@@ -23,13 +23,17 @@ function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback<'swr'
 }
 
 describe('Issue 9 — useReStale does not orphan clients on repeated renders', () => {
+  let originalEventSource: typeof globalThis.EventSource
+
   beforeEach(() => {
+    originalEventSource = globalThis.EventSource
     MockEventSource.clear()
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource
     vi.useFakeTimers()
   })
 
   afterEach(() => {
+    globalThis.EventSource = originalEventSource
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
@@ -38,7 +42,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
     const onInvalidate = asAdapter(vi.fn())
     const connectionIds = new Set<string>()
 
-    const { result, rerender } = renderHook(() => {
+    const { result, rerender, unmount } = renderHook(() => {
       const r = useReStale('/api/sse', { onInvalidate })
       connectionIds.add(r.connectionId)
       return r
@@ -52,13 +56,14 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
     expect(connectionIds.size).toBe(1)
 
     act(() => { result.current.close() })
+    unmount()
   })
 
   it('creates a new client (new connectionId) only when the URL changes', () => {
     const onInvalidate = asAdapter(vi.fn())
     let url = '/api/sse-v1'
 
-    const { result, rerender } = renderHook(() =>
+    const { result, rerender, unmount } = renderHook(() =>
       useReStale(url, { onInvalidate })
     )
 
@@ -72,12 +77,13 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
     expect(idAfter).not.toBe(idBefore)
 
     act(() => { result.current.close() })
+    unmount()
   })
 
   it('does not create a new EventSource on every re-render (same URL)', () => {
     const onInvalidate = asAdapter(vi.fn())
 
-    const { rerender } = renderHook(() =>
+    const { rerender, unmount } = renderHook(() =>
       useReStale('/api/sse', { onInvalidate })
     )
 
@@ -89,6 +95,7 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
 
     // No additional EventSource instances created by re-renders
     expect(MockEventSource.instances.length).toBe(instancesAfterMount)
+    unmount()
   })
 
   it('closes the old client after commit when the URL changes (deferred to effect)', () => {

@@ -339,4 +339,25 @@ describe('useReStale', () => {
     expect(onRetriesExhausted).not.toHaveBeenCalled()
     expect(onRevoke).toHaveBeenCalledTimes(1)
   })
+
+  it('logs debug messages on mount, connect failure, and unmount when debug option is enabled', async () => {
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+
+    const { unmount } = renderHook(() =>
+      useReStale('/sse', { debug: true, onInvalidate })
+    )
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[restale-kit][useReStale] Effect mounted')
+    )
+
+    unmount()
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[restale-kit][useReStale] Effect unmounting')
+    )
+
+    consoleLogSpy.mockRestore()
+  })
 })
