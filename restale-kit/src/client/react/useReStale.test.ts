@@ -340,7 +340,7 @@ describe('useReStale', () => {
     expect(onRevoke).toHaveBeenCalledTimes(1)
   })
 
-  it('logs debug messages on mount, connect failure, and unmount when debug option is enabled', async () => {
+  it('logs debug messages on mount, connect failure, and unmount when debug option is enabled', () => {
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const onInvalidate = asAdapter<'swr'>(vi.fn())
 
