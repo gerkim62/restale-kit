@@ -142,6 +142,17 @@ export class SSEInvalidatorClient<
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.debug = opts?.debug ?? false
+
+    if (this.retryTimer !== null) {
+      const canRetry = this.jsBackoffAutoReconnect || (this.opened && this.nativeAutoReconnect)
+      if (!canRetry) {
+        clearTimeout(this.retryTimer)
+        this.retryTimer = null
+        if (this.currentStatus.status === 'connecting') {
+          this.setStatus({ status: 'closed', reason: 'manual' })
+        }
+      }
+    }
   }
 
   /** The unique ID generated for this SSE connection instance. */

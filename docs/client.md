@@ -49,6 +49,7 @@ useReStale(url: string, options: {
   autoReconnect?: boolean       // default true
   withCredentials?: boolean     // default false — send cookies cross-origin
   disabled?: boolean            // default false — skip connection while true
+  debug?: boolean               // default false — enable console logging
 
   // Backoff
   reconnect?: {
@@ -337,8 +338,6 @@ useReStale('/sse', { onInvalidate })
 | `stale` | `boolean` | Maps `refetchType` to `'none'` (when `stale: true`) or `'active'` |
 
 Batch signals (arrays) are processed one-by-one in order.
-
-When a signal includes `optimisticData`, the adapter writes it with `queryClient.setQueryData(queryKey, optimisticData)`. It then invalidates the query by default; pass `{ revalidateOptimisticData: false }` to `tanstackQueryAdapter` or `useTanstackQueryAdapter` to keep the pushed value without a background refetch.
 
 ### `useTanstackQueryAdapter` — memoized hook variant
 

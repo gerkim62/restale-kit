@@ -51,10 +51,11 @@ private readonly debug: boolean
 These two values are structurally part of the connection identity, same as `url` — there is no way to change them without a new `EventSource`. The fix is to fold them into the existing swap mechanism rather than add a new one:
 
 ```ts
-const identityKey = `${url}\u0000${String(opts.target ?? '')}\u0000${String(opts.withCredentials ?? false)}`
+const target = opts.target ?? (opts.onInvalidate as any)?.__restaleTarget
+const identityKey = `${url}\u0000${String(target ?? '')}\u0000${String(opts.withCredentials ?? false)}`
 
 if (identityRef.current !== identityKey) {
-  pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, { ...opts })
+  pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, { ...opts, target })
   identityRef.current = identityKey
 }
 ```
@@ -79,13 +80,15 @@ jsBackoffAutoReconnect: boolean
 ```
 
 ```ts
-// useReStale.ts — unconditionally, every render, once `client` exists
-if (client) {
-  client.debug = opts.debug ?? false
-  client.reconnectOptions = opts.reconnect
-  client.maxRetries = opts.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
-  // ...same normalization currently done once in the constructor for autoReconnect
-}
+// useReStale.ts — in a commit effect after render
+useEffect(() => {
+  if (!client) return
+  client.updateRuntimeOptions({
+    autoReconnect: opts.autoReconnect,
+    reconnect: opts.reconnect,
+    debug: opts.debug,
+  })
+}, [client, opts.autoReconnect, opts.reconnect, opts.debug])
 ```
 
 No equality check is required — these fields are only read at the moment a decision is made (next log line, next backoff calculation), so overwriting them every render is safe. A reconnect already in flight simply finishes using whatever value was current when it started; there is no torn-state risk.

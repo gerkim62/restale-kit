@@ -1805,6 +1805,28 @@ describe('frameguard-spec §4.1.2 — revoke event from renew exhaustion carries
     expect(detail.requested).toBeUndefined()
     expect(detail.supported).toBeUndefined()
   })
+
+  it('cancels pending retryTimer and updates status when updateRuntimeOptions disables autoReconnect while retry is queued', () => {
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { maxRetries: 3, baseDelayMs: 1000 },
+    })
+    void client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+
+    // Trigger an error to schedule a retry
+    MockEventSource.instances[0]?.emitError()
+    expect(client.status.status).toBe('connecting')
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    // Update runtime options to disable autoReconnect before the retry delay expires
+    client.updateRuntimeOptions({ autoReconnect: false })
+
+    expect(client.status).toEqual({ status: 'closed', reason: 'manual' })
+
+    // Advance timers and verify no new EventSource instance was created
+    vi.advanceTimersByTime(2000)
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
 })
 
 describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmatory reconnect', () => {
@@ -1849,3 +1871,4 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
     expect(renewUrl).toBe(originalUrl)
   })
 })
+

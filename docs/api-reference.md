@@ -155,12 +155,12 @@ import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } fro
 class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
-  TTarget extends SignalTarget | readonly SignalTarget[] = SignalTarget,
+  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > {
   constructor(options?: {
-    target?: SignalTarget | SignalTarget[]
+    target?: TTarget
     metaSchema?: StandardSchemaV1<unknown, TMeta>
-    pubsub?: PubSubAdapter
+    pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
     controlTopic?: string                             // default '__restale_control__'
@@ -169,6 +169,7 @@ class SSEChannelGroup<
 
   readonly size: number
   readonly controlTopic: string
+  readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
   readonly channelDefaults?: ChannelDefaults
 
@@ -178,8 +179,8 @@ class SSEChannelGroup<
    */
   createFetchResponse(
     request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta>
-  ): { response: Response; channel: SSEChannel<TSignal> }
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
+  ): { response: Response; channel: SSEChannel<TSignal, TTarget> }
 
   /**
    * Attaches an SSE channel to a Node.js HTTP response or Fastify reply, registers it with the group, and returns { channel }.
@@ -188,29 +189,29 @@ class SSEChannelGroup<
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta>
-  ): { channel: SSEChannel<TSignal> }
+    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
+  ): { channel: SSEChannel<TSignal, TTarget> }
 
   register(
-    channel: SSEChannel<TSignal>,
+    channel: SSEChannel<TSignal, TTarget>,
     ...args: undefined extends TMeta
       ? [meta?: TMeta, options?: { topics?: string[] }]
       : [meta: TMeta, options?: { topics?: string[] }]
   ): void
 
-  deregister(channel: SSEChannel<TSignal>): void
+  deregister(channel: SSEChannel<TSignal, TTarget>): void
 
   broadcast(
-    signal: TSignal | TSignal[],
+    signal: GroupSignalInput<TSignal, TTarget>,
     predicate?: (meta: TMeta | undefined) => boolean
   ): void
 
-  broadcastToAll(signal: TSignal | TSignal[]): void
+  broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void
 
   /** Available on single-target channel groups only. On multi-target groups, signal parameter is typed as `never`. */
-  broadcastByKey(signal: TSignal): void
+  broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
 
-  publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+  publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void>
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>

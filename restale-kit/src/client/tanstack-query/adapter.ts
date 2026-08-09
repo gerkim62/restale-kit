@@ -16,8 +16,6 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
  * projects use different patch/minor versions of `@tanstack/react-query`.
  */
 export interface QueryClientLike {
-  setQueryData(queryKey: readonly unknown[], updater: unknown, options?: unknown): unknown
-  setQueriesData?(filters: QueryFilters, updater: unknown, options?: unknown): unknown
   invalidateQueries(filters?: InvalidateQueryFilters, options?: unknown): Promise<void>
   removeQueries(filters?: QueryFilters, options?: unknown): void
   resetQueries(filters?: QueryFilters, options?: unknown): Promise<void>

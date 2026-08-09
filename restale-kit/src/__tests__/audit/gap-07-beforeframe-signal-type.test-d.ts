@@ -66,6 +66,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             }
             if (ctx.signal.action === 'mutate') {
               expectTypeOf(ctx.signal.revalidate).toEqualTypeOf<boolean | undefined>()
+              // @ts-expect-error - optimisticData should not exist on SWRSignal
+              const opt = ctx.signal.optimisticData
             }
           }
           return { action: 'send' }
@@ -143,6 +145,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             }
             // @ts-expect-error - predicate should not exist on TanStackQuerySignal
             const p = ctx.signal.predicate
+            // @ts-expect-error - optimisticData should not exist on TanStackQuerySignal
+            const opt = ctx.signal.optimisticData
           }
           return { action: 'send' }
         }

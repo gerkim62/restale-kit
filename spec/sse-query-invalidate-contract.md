@@ -732,7 +732,6 @@ interface UseReStaleResult {
   isConnected: boolean            // true if connection status is 'open'
   reconnect(): Promise<void>
   close(): void
-  updateClientContext(clientContext: JSONValue): Promise<void>
 }
 
 function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
