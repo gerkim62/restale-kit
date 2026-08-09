@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget, JSONValue } from '@/types/protocol.js'
 import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -109,6 +109,8 @@ export interface UseReStaleResult {
   reconnect(): Promise<void>
   /** Manually close the connection. */
   close(): void
+  /** Updates the connection's clientContext on the server. */
+  updateClientContext(clientContext: JSONValue): Promise<void>
 }
 
 const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
@@ -324,8 +326,20 @@ export function useReStale<
     }
   }, [client, disabled])
 
+  // Sync clientContext whenever opts.clientContext changes or when status becomes open
+  const clientContextOpt = opts.clientContext
+  useEffect(() => {
+    if (client && clientContextOpt !== undefined && connection.status === 'open') {
+      void client.updateClientContext(clientContextOpt)
+    }
+  }, [client, clientContextOpt, connection.status])
+
   const reconnect = useCallback(() => (client ? client.connect() : Promise.resolve()), [client])
   const close = useCallback(() => { client?.close() }, [client])
+  const updateClientContext = useCallback(
+    (context: JSONValue) => (client ? client.updateClientContext(context) : Promise.resolve()),
+    [client]
+  )
 
   const attempt = client ? client.attempt : 0
   const isConnecting = connection.status === 'connecting' && attempt === 0
@@ -345,5 +359,6 @@ export function useReStale<
     isError,
     reconnect,
     close,
+    updateClientContext,
   }
 }

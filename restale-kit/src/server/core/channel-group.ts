@@ -207,6 +207,27 @@ export interface SSEChannelGroupOptions<
   channelDefaults?: ChannelDefaults
 }
 
+export interface BroadcastContextualOptions<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TClientContext = unknown,
+> {
+  /**
+   * Optional predicate function to filter which connections should receive the update.
+   * Receives connection metadata and clientContext. Default: () => true.
+   */
+  where?: (meta: TMeta | undefined, context: TClientContext | undefined) => boolean
+
+  /**
+   * Async signal generator executed per matching connection.
+   * Return a signal (or array of signals) containing optimisticData, or null/undefined to skip.
+   */
+  signal: (
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
+}
+
 
 /**
  * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
@@ -952,9 +973,69 @@ class SSEChannelGroupImplementation<
    */
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
-    predicate: (meta: TMeta | undefined) => boolean
-  ): void {
-    this.broadcastRaw(signal, predicate)
+    predicate?: (meta: TMeta | undefined) => boolean
+  ): void
+  broadcast(
+    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
+  ): Promise<void>
+  broadcast(
+    signalOrOptions: GroupSignalInput<TSignal, TTarget> | BroadcastContextualOptions<TSignal, TMeta, TClientContext>,
+    predicate?: (meta: TMeta | undefined) => boolean
+  ): void | Promise<void> {
+    if (
+      signalOrOptions !== null &&
+      typeof signalOrOptions === 'object' &&
+      'signal' in signalOrOptions &&
+      typeof (signalOrOptions as { signal?: unknown }).signal === 'function'
+    ) {
+      return this.broadcastContextualRaw(
+        signalOrOptions as BroadcastContextualOptions<TSignal, TMeta, TClientContext>
+      )
+    }
+    this.broadcastRaw(
+      signalOrOptions as TSignal | TSignal[],
+      predicate ?? (() => true)
+    )
+  }
+
+  private async broadcastContextualRaw(
+    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
+  ): Promise<void> {
+    const where = options.where ?? (() => true)
+    const signalFn = options.signal
+    const errors: unknown[] = []
+
+    for (const [channel, entry] of this.channels) {
+      if (!where(entry.meta, entry.clientContext)) continue
+
+      try {
+        const resolvedSignal = await signalFn(entry.meta, entry.clientContext)
+        if (resolvedSignal === null || resolvedSignal === undefined) continue
+
+        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal as TSignal | TSignal[])
+        validateSignalPayload(normalizedSignal)
+        this.validateGroupSignalTargets(normalizedSignal)
+
+        this.deliverToChannel(channel, normalizedSignal, 'broadcast')
+      } catch (error) {
+        if (error instanceof ChannelClosedError) {
+          this.deregister(channel)
+        } else {
+          const err = error instanceof Error ? error : new Error(String(error))
+          console.error(
+            "[ERROR][SSEChannelGroup.broadcast] Contextual signal generator error",
+            "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
+            "\n  clientContext:", JSON.stringify(entry.clientContext, null, 2).slice(0, 500),
+            "\n  error:", err.stack || err.message
+          )
+          errors.push(error)
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new AggregateError(errors, 'Contextual broadcast encountered validation or runtime errors')
+    }
   }
 
   private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
