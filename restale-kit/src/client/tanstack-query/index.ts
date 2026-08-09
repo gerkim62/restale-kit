@@ -1,1 +1,6 @@
-export { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from './adapter.js'
+export {
+  tanstackQueryAdapter,
+  useTanstackQueryAdapter,
+  type QueryClientLike,
+  type TanStackQueryAdapterOptions,
+} from './adapter.js'

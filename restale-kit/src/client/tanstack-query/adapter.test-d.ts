@@ -33,6 +33,7 @@ describe('tanstackQueryAdapter type safety', () => {
 
   test('tanstackQueryAdapter accepts structural QueryClientLike interface without nominal class errors', () => {
     const structuralClient = {
+      setQueryData: () => undefined,
       invalidateQueries: async () => {},
       removeQueries: () => {},
       resetQueries: async () => {},
@@ -55,5 +56,4 @@ describe('tanstackQueryAdapter type safety', () => {
     expectTypeOf<typeof incompatibleClient>().not.toExtend<QueryClientLike>()
   })
 })
-
 

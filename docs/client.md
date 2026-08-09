@@ -62,6 +62,9 @@ useReStale(url: string, options: {
 
   // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
+
+  // Optimistic data pushes
+  revalidateOptimisticData?: boolean // default true — revalidate after writing pushed data
 })
 ```
 
@@ -336,6 +339,8 @@ useReStale('/sse', { onInvalidate })
 
 Batch signals (arrays) are processed one-by-one in order.
 
+When a signal includes `optimisticData`, the adapter writes it with `queryClient.setQueryData(queryKey, optimisticData)`. It then invalidates the query by default; pass `{ revalidateOptimisticData: false }` to `tanstackQueryAdapter` or `useTanstackQueryAdapter` to keep the pushed value without a background refetch.
+
 ### `useTanstackQueryAdapter` — memoized hook variant
 
 ```ts
@@ -387,9 +392,12 @@ function App() {
 | `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, { revalidate: false })` — clears cache without revalidating |
 | `revalidate: false` | `boolean` | `mutate(filter, undefined, { revalidate: false })` — forces clear without revalidating |
 | `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
+| `optimisticData` | `JSONValue` | `mutate(key, optimisticData, { revalidate })` for that exact key |
 
 
 > **Note:** SWR has no separate "mark stale" operation, so `'invalidate'` and `'refetch'` both trigger immediate revalidation.
+
+For an `optimisticData` signal, `revalidate` defaults to `true`. Configure `{ revalidateOptimisticData: false }` on `swrAdapter` or `useSwrAdapter` to retain the pushed data without a background revalidation.
 
 ### SWR key format
 

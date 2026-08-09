@@ -31,6 +31,7 @@ export interface TanStackQuerySignal extends BaseInvalidateSignal {
   type?: QueryFilters['type']
   action?: TanStackQueryAction
   stale?: boolean
+  optimisticData?: JSONValue
 }
 
 export const SWR_ACTIONS = ['revalidate', 'purge', 'remove', 'mutate'] as const
@@ -61,6 +62,7 @@ export interface GenericInvalidateSignal extends BaseInvalidateSignal {
   key: JSONValue[]
   exact?: boolean
   action?: GenericAction
+  optimisticData?: JSONValue
 }
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]

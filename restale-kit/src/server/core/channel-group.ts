@@ -194,10 +194,12 @@ export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+  TClientContext = unknown,
 > {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
+  clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
   pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
@@ -213,16 +215,28 @@ export interface SSEChannelGroupOptions<
  *
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
+ * @typeParam TTarget - The target or targets handled by this group.
+ * @typeParam TClientContext - Client-supplied, unauthenticated data that shapes a slice of
+ * already-authorized data (for example pagination, sort, or filters). Never use it to
+ * determine authorization scope; derive authorization from `meta` or the live authenticated
+ * request handling the mutation instead.
  */
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+  TClientContext = unknown,
 > {
-  private readonly channels = new Map<RegisteredChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly channels = new Map<RegisteredChannel<TSignal>, {
+    meta: TMeta | undefined
+    clientContext: TClientContext | undefined
+    topics: Set<string>
+    connectionId: string
+  }>()
   private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
+  private readonly clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
   private readonly pubsub?: PubSubAdapter<TSignal>
   readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
@@ -232,9 +246,10 @@ class SSEChannelGroupImplementation<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext> = {}) {
     this.target = options.target
     this.metaSchema = options.metaSchema
+    this.clientContextSchema = options.clientContextSchema
     this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
 
     if (options.target !== undefined) {
@@ -328,6 +343,33 @@ class SSEChannelGroupImplementation<
                     this.closeLocalConnection(connectionId, scope)
                   }
                 }
+              } else if (
+                dataObj &&
+                typeof dataObj === 'object' &&
+                !Array.isArray(dataObj) &&
+                'type' in dataObj &&
+                dataObj.type === 'updateClientContext' &&
+                'updateClientContext' in dataObj
+              ) {
+                const updatePayload = dataObj.updateClientContext
+                if (updatePayload && typeof updatePayload === 'object' && !Array.isArray(updatePayload)) {
+                  const connectionId = 'connectionId' in updatePayload && typeof updatePayload.connectionId === 'string'
+                    ? updatePayload.connectionId
+                    : undefined
+                  const clientContext = 'clientContext' in updatePayload ? updatePayload.clientContext : undefined
+                  let scope: Record<string, JSONValue> | undefined
+                  if ('scope' in updatePayload) {
+                    const scopeVal = updatePayload.scope
+                    if (scopeVal && typeof scopeVal === 'object' && !Array.isArray(scopeVal) && isJSONValue(scopeVal)) {
+                      scope = scopeVal
+                    } else {
+                      return
+                    }
+                  }
+                  if (connectionId !== undefined && clientContext !== undefined && isJSONValue(clientContext)) {
+                    this.applyRemoteClientContext(connectionId, clientContext, scope)
+                  }
+                }
               } else {
                 this.closeLocalMatches(msg.data)
               }
@@ -377,12 +419,7 @@ class SSEChannelGroupImplementation<
       if (scope !== undefined) {
         const entry = this.channels.get(channel)
         if (!entry) continue
-        const meta = entry.meta
-        if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
-        if (!isJSONValue(meta)) continue
-        // Use structural deep equality so nested objects/arrays in scope match
-        // correctly — including values reconstructed after remote serialization.
-        if (!matchesJSONValue(meta, scope, false)) continue
+        if (!entryMatchesScope(entry.meta, scope)) continue
       }
 
       try {
@@ -520,6 +557,48 @@ class SSEChannelGroupImplementation<
     return meta
   }
 
+  private validateClientContext(clientContext: TClientContext): TClientContext {
+    if (this.clientContextSchema) {
+      return validateStandardSchema(clientContext, this.clientContextSchema)
+    }
+    return clientContext
+  }
+
+  private updateLocalClientContext(
+    connectionId: string,
+    clientContext: TClientContext,
+    scope?: Record<string, JSONValue>
+  ): boolean {
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels || channels.size === 0) return false
+
+    let updated = false
+    for (const channel of channels) {
+      const entry = this.channels.get(channel)
+      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
+      entry.clientContext = clientContext
+      updated = true
+    }
+    return updated
+  }
+
+  private applyRemoteClientContext(
+    connectionId: string,
+    clientContext: JSONValue,
+    scope?: Record<string, JSONValue>
+  ): void {
+    let validatedContext: TClientContext
+    try {
+      // Revalidate remote control messages as a defence-in-depth boundary: all
+      // pub/sub values are untrusted transport input, even when produced by a peer.
+      validatedContext = this.validateClientContext(clientContext as TClientContext)
+    } catch (error) {
+      console.error('[ERROR][SSEChannelGroup.updateClientContext] Ignored invalid remote clientContext:', error)
+      return
+    }
+    this.updateLocalClientContext(connectionId, validatedContext, scope)
+  }
+
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     if (target === undefined) return
     validateTargetConfiguration(target)
@@ -560,7 +639,12 @@ class SSEChannelGroupImplementation<
     }
 
     const connectionId = channel.connectionId
-    this.channels.set(channel, { meta: validatedMeta, topics: topicsSet, connectionId })
+    this.channels.set(channel, {
+      meta: validatedMeta,
+      clientContext: existingEntry?.clientContext,
+      topics: topicsSet,
+      connectionId,
+    })
     if (connectionId) {
       let set = this.connectionIndex.get(connectionId)
       if (!set) {
@@ -654,6 +738,67 @@ class SSEChannelGroupImplementation<
   }
 
   /**
+   * Stores client-provided query-shaping state for every local channel belonging
+   * to `connectionId`. `clientContext` is untrusted and must never be used as an
+   * authorization boundary; use `scope` to pin this update to trusted `meta`.
+   */
+  async updateClientContext(
+    connectionId: string,
+    clientContext: TClientContext,
+    options?: {
+      scope?: TMeta extends object
+        ? Partial<Record<keyof TMeta, JSONValue | undefined>>
+        : Record<string, JSONValue | undefined>
+    }
+  ): Promise<{ updated: boolean }> {
+    if (typeof connectionId !== 'string' || connectionId.trim() === '') {
+      throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
+    }
+
+    const validatedContext = this.validateClientContext(clientContext)
+    const scope = normalizeConnectionScope(
+      options?.scope,
+      '[SSEChannelGroup.updateClientContext]'
+    )
+
+    // Control-topic messages must be JSON-safe. Client contexts originate in an
+    // HTTP JSON body, so rejecting non-JSON data makes local and clustered
+    // deployments behave consistently and prevents a partial local-only update.
+    if (this.pubsub && !isJSONValue(validatedContext)) {
+      throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
+    }
+
+    const updated = this.updateLocalClientContext(connectionId, validatedContext, scope)
+
+    if (this.pubsub) {
+      await this.pubsub.publish(this.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          updateClientContext: {
+            connectionId,
+            clientContext: validatedContext as JSONValue,
+            ...(scope !== undefined ? { scope } : {}),
+          },
+        },
+      })
+    }
+
+    return { updated }
+  }
+
+  /** Returns the current client context for a local connection, if one is registered. */
+  getClientContext(connectionId: string): TClientContext | undefined {
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels) return undefined
+    for (const channel of channels) {
+      const entry = this.channels.get(channel)
+      if (entry) return entry.clientContext
+    }
+    return undefined
+  }
+
+  /**
    * Revokes connections by subset-matching channel metadata against `criteria`.
    *
    * Closes all matching channels locally and broadcasts the criteria to the cluster-wide control topic.
@@ -728,27 +873,10 @@ class SSEChannelGroupImplementation<
       throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
     }
 
-    let prunedScope: Record<string, JSONValue> | undefined = undefined
-    if (scope !== undefined) {
-      if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
-        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
-      }
-      const scopeRecord: Record<string, JSONValue | undefined> = scope
-      const targetScope: Record<string, JSONValue> = {}
-      Object.setPrototypeOf(targetScope, null)
-      for (const [k, v] of Object.entries(scopeRecord)) {
-        if (v !== undefined) {
-          if (!isJSONValue(v)) {
-            throw new Error('[SSEChannelGroup.revokeByConnectionId] scope values must be valid JSONValues.')
-          }
-          targetScope[k] = v
-        }
-      }
-      if (Object.keys(targetScope).length === 0) {
-        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must contain at least one non-undefined property.')
-      }
-      prunedScope = targetScope
-    }
+    const prunedScope = normalizeConnectionScope(
+      scope,
+      '[SSEChannelGroup.revokeByConnectionId]'
+    )
 
     const localClosed = this.closeLocalConnection(connectionId, prunedScope)
 
@@ -968,7 +1096,8 @@ export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
+  TClientContext = unknown,
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TClientContext>
 
 interface SSEChannelGroupConstructor {
   new <
@@ -998,6 +1127,13 @@ interface SSEChannelGroupConstructor {
   >(
     options: { metaSchema: TSchema } & SSEChannelGroupOptions<TSignal, TMeta>
   ): SSEChannelGroup<TSignal, TMeta>
+  new <
+    TClientContext,
+    TSchema extends StandardSchemaV1<unknown, TClientContext>,
+    TSignal extends InvalidateSignal = InvalidateSignal,
+  >(
+    options: { clientContextSchema: TSchema } & SSEChannelGroupOptions<TSignal, unknown, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
+  ): SSEChannelGroup<TSignal, unknown, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
   new <TTarget extends SignalTarget>(
     options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
   ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
@@ -1008,9 +1144,10 @@ interface SSEChannelGroupConstructor {
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
     TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+    TClientContext = unknown,
   >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
-  ): SSEChannelGroup<TSignal, TMeta, TTarget>
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext>
+  ): SSEChannelGroup<TSignal, TMeta, TTarget, TClientContext>
 }
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
@@ -1094,4 +1231,47 @@ function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unk
 
 function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Checks whether a channel entry's stored `meta` is a JSON superset of the
+ * given `scope`. Used by both `closeLocalConnection` (revocation) and
+ * `updateLocalClientContext` (context updates) for scope-pinning.
+ */
+function entryMatchesScope(meta: unknown, scope: Record<string, JSONValue>): boolean {
+  if (!isJSONValue(meta)) return false
+  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false
+  return matchesJSONValue(meta, scope, false)
+}
+
+/**
+ * Normalises a caller-supplied scope object: prunes `undefined`-valued keys,
+ * validates that remaining values are JSON-safe, and rejects scopes that resolve
+ * to an empty object (which would unsafely match every connection).
+ *
+ * Returns `undefined` when no scope was supplied, or a null-prototype record
+ * containing only defined JSON values otherwise.
+ */
+function normalizeConnectionScope(
+  scope: Record<string, JSONValue | undefined> | undefined,
+  label: string
+): Record<string, JSONValue> | undefined {
+  if (scope === undefined) return undefined
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
+    throw new Error(`${label} scope must be a non-null JSON plain object.`)
+  }
+  const targetScope: Record<string, JSONValue> = {}
+  Object.setPrototypeOf(targetScope, null)
+  for (const [k, v] of Object.entries(scope)) {
+    if (v !== undefined) {
+      if (!isJSONValue(v)) {
+        throw new Error(`${label} scope values must be valid JSONValues.`)
+      }
+      targetScope[k] = v
+    }
+  }
+  if (Object.keys(targetScope).length === 0) {
+    throw new Error(`${label} scope must contain at least one non-undefined property.`)
+  }
+  return targetScope
 }

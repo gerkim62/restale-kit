@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
+import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TanStackQuerySignal } from '@/types/protocol.js'
 
@@ -129,6 +129,61 @@ describe('tanstackQueryAdapter', () => {
     const adapter = tanstackQueryAdapter(queryClient)
     expect((adapter as any).__restaleTarget).toBe('tanstack-query')
   })
+
+  it('writes optimisticData into the cache and revalidates by default', () => {
+    const cache = new Map<string, unknown>()
+    const invalidations: unknown[] = []
+    const queryClient: QueryClientLike = {
+      setQueryData(queryKey, data) {
+        cache.set(JSON.stringify(queryKey), data)
+      },
+      invalidateQueries(filters) {
+        invalidations.push(filters)
+        return Promise.resolve()
+      },
+      removeQueries: () => {},
+      resetQueries: () => Promise.resolve(),
+      cancelQueries: () => Promise.resolve(),
+      refetchQueries: () => Promise.resolve(),
+    }
+
+    tanstackQueryAdapter(queryClient)({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      exact: true,
+      optimisticData: { id: 1, done: true },
+    })
+
+    expect(cache.get(JSON.stringify(['todos']))).toEqual({ id: 1, done: true })
+    expect(invalidations).toEqual([{ queryKey: ['todos'], exact: true }])
+  })
+
+  it('writes optimisticData without revalidation when configured as trusted', () => {
+    const cache = new Map<string, unknown>()
+    const invalidations: unknown[] = []
+    const queryClient: QueryClientLike = {
+      setQueryData(queryKey, data) {
+        cache.set(JSON.stringify(queryKey), data)
+      },
+      invalidateQueries(filters) {
+        invalidations.push(filters)
+        return Promise.resolve()
+      },
+      removeQueries: () => {},
+      resetQueries: () => Promise.resolve(),
+      cancelQueries: () => Promise.resolve(),
+      refetchQueries: () => Promise.resolve(),
+    }
+
+    tanstackQueryAdapter(queryClient, { revalidateOptimisticData: false })({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      optimisticData: { id: 2 },
+    })
+
+    expect(cache.get(JSON.stringify(['todos']))).toEqual({ id: 2 })
+    expect(invalidations).toEqual([])
+  })
 })
 
 describe('useTanstackQueryAdapter', () => {
@@ -160,5 +215,4 @@ describe('useTanstackQueryAdapter', () => {
     expect((result.current as any).__restaleTarget).toBe('tanstack-query')
   })
 })
-
 

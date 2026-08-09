@@ -52,6 +52,7 @@ interface TanStackQuerySignal {
   type?: 'active' | 'inactive' | 'all'
   action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
   stale?: boolean
+  optimisticData?: JSONValue
 }
 
 interface SWRSignal {
@@ -73,6 +74,7 @@ interface GenericInvalidateSignal {
   key: JSONValue[]
   exact?: boolean
   action?: 'invalidate' | 'refetch' | 'remove'
+  optimisticData?: JSONValue
 }
 
 type ReStaleSignal =
@@ -155,11 +157,14 @@ import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } fro
 ```ts
 class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown
+  TMeta = unknown,
+  TTarget extends SignalTarget | readonly SignalTarget[] = SignalTarget,
+  TClientContext = unknown
 > {
   constructor(options?: {
     target?: SignalTarget | SignalTarget[]
     metaSchema?: StandardSchemaV1<unknown, TMeta>
+    clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
     pubsub?: PubSubAdapter
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
@@ -214,6 +219,8 @@ class SSEChannelGroup<
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
+  updateClientContext(connectionId: string, clientContext: TClientContext, options?: { scope?: Record<string, JSONValue> }): Promise<{ updated: boolean }>
+  getClientContext(connectionId: string): TClientContext | undefined
   dispose(): Promise<void>
 }
 ```
@@ -274,6 +281,7 @@ interface ClientOptions {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
+  revalidateOptimisticData?: boolean // default true
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
 }
 
@@ -405,6 +413,7 @@ interface SWRAdapterOptions<TSignal> {
   // Convert a non-canonical SWR key to a JSONValue[] for matching.
   // Omit when SWR keys are already JSONValue[] arrays.
   toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
+  revalidateOptimisticData?: boolean // default true
 }
 
 // Structural equivalent of SWR's global mutate (from useSWRConfig().mutate)

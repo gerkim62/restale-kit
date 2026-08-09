@@ -251,4 +251,44 @@ describe('SSEChannelGroup constructor metaSchema auto-inference', () => {
   })
 })
 
+describe('SSEChannelGroup clientContext type safety', () => {
+  test('keeps TTarget positional compatibility and constrains client context after it', () => {
+    interface UserMeta { userId: number; role?: string }
+    interface PushContext { page?: number; sortBy?: string }
+    const group = new SSEChannelGroup<TanStackQuerySignal, UserMeta, 'tanstack-query', PushContext>({
+      target: 'tanstack-query',
+    })
+
+    void group.updateClientContext('conn-1', { page: 2, sortBy: 'createdAt' })
+    void group.updateClientContext('conn-1', { page: 2 }, { scope: { userId: 123 } })
+    expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<PushContext | undefined>()
+    expectTypeOf(group.updateClientContext('conn-1', { page: 1 }))
+      .toEqualTypeOf<Promise<{ updated: boolean }>>()
+
+    // @ts-expect-error context keys are constrained to TClientContext
+    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' })
+    // @ts-expect-error known context fields retain their declared value type
+    void group.updateClientContext('conn-1', { page: 'two' })
+    // @ts-expect-error scope remains constrained by trusted TMeta
+    void group.updateClientContext('conn-1', { page: 2 }, { scope: { user_id: 123 } })
+  })
+
+  test('infers TClientContext from a standalone clientContextSchema', () => {
+    type PushContext = { page?: number }
+    const clientContextSchema = {} as import('@/types/index.js').StandardSchemaV1<unknown, PushContext>
+    const group = new SSEChannelGroup({ clientContextSchema })
+
+    void group.updateClientContext('conn-1', { page: 2 })
+    expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<PushContext | undefined>()
+
+    // @ts-expect-error schema output excludes undeclared context keys
+    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' })
+  })
+
+  test('defaults TClientContext to unknown when omitted', () => {
+    const group = new SSEChannelGroup<TanStackQuerySignal>({ target: 'tanstack-query' })
+    expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<unknown>()
+    void group.updateClientContext('conn-1', { arbitrary: 'shape' })
+  })
+})
 

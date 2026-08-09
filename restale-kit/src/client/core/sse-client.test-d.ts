@@ -77,6 +77,16 @@ describe('ClientOptions misuse prevention', () => {
   })
 })
 
+describe('ClientOptions optimistic data revalidation', () => {
+  test('accepts a boolean revalidation policy and rejects non-boolean values', () => {
+    const options: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: false }
+    expectTypeOf(options.revalidateOptimisticData).toEqualTypeOf<boolean | undefined>()
+
+    // @ts-expect-error revalidateOptimisticData is a boolean policy
+    const invalid: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: 'false' }
+  })
+})
+
 describe('SSEInvalidatorClient typed event listeners', () => {
   test('invalidate event detail is TSignal | TSignal[]', () => {
     const client = new SSEInvalidatorClient<SWRSignal>('https://example.com/sse', {

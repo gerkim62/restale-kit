@@ -19,6 +19,8 @@ export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInp
    * represents. Omit this when SWR keys are themselves ReStale keys.
    */
   toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
+  /** Whether pushed optimistic data should be revalidated in the background. Default: true. */
+  revalidateOptimisticData?: boolean
 }
 
 /**
@@ -28,6 +30,8 @@ export interface SWRMutator {
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
 }
+
+type SWRDataMutator = (key: Arguments, data: JSONValue, options: { revalidate: boolean }) => Promise<unknown>
 
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
@@ -55,6 +59,18 @@ export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
         const action = item.action
         const isPurge = action === 'purge' || action === 'remove'
         const isRevalidateFalse = item.revalidate === false
+
+        // A data push is an exact cache write, not a key-matching invalidation.
+        // Its revalidation policy is intentionally independent from the legacy
+        // `signal.revalidate` invalidation option.
+        if (Object.hasOwn(item, 'optimisticData')) {
+          const optimisticData = item.optimisticData
+          if (optimisticData === undefined) continue
+          void (mutate as unknown as SWRDataMutator)(item.key, optimisticData, {
+            revalidate: options?.revalidateOptimisticData ?? true,
+          })
+          continue
+        }
 
         const filter = (key?: Arguments) => {
           if (key === undefined || key === null) return false

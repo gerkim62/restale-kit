@@ -9,7 +9,7 @@
 import { describe, expectTypeOf, test } from 'vitest'
 import { createSSEChannel } from '@/testing/index.js'
 import type { BeforeFrameFn, FrameGuardCtx } from '@/types/protocol.js'
-import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal, InvalidateSignal } from '@/types/index.js'
+import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal, InvalidateSignal, JSONValue } from '@/types/index.js'
 
 describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
   describe('SWR channel beforeFrame type narrowing', () => {
@@ -125,8 +125,7 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             // @ts-expect-error - key should not exist on TanStackQuerySignal
             const k = ctx.signal.key
             
-            // @ts-expect-error - optimisticData should not exist on TanStackQuerySignal
-            const data = ctx.signal.optimisticData
+            expectTypeOf(ctx.signal.optimisticData).toEqualTypeOf<JSONValue | undefined>()
           }
           return { action: 'send' }
         }

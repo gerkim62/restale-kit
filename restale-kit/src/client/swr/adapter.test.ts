@@ -101,6 +101,33 @@ describe('swrAdapter', () => {
     expect(filter(undefined)).toBe(false)
     expect(filter('not-an-array')).toBe(false)
   })
+
+  it('writes optimisticData using the exact signal key and honors revalidation configuration', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate, { revalidateOptimisticData: false })
+
+    adapter({ target: 'swr', key: ['todos', 1], optimisticData: { id: 1, done: true } })
+
+    expect(mutate).toHaveBeenLastCalledWith(
+      ['todos', 1],
+      { id: 1, done: true },
+      { revalidate: false },
+    )
+  })
+
+  it('revalidates optimisticData by default and leaves invalidate-only signals on the matcher path', () => {
+    const mutateMock = vi.fn()
+    const mutate = mutateMock as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ target: 'swr', key: ['todos'], optimisticData: { id: 1 } })
+    expect(mutate).toHaveBeenLastCalledWith(['todos'], { id: 1 }, { revalidate: true })
+
+    adapter({ target: 'swr', key: ['todos'] })
+    const lastCall = mutateMock.mock.calls.at(-1)
+    expect(lastCall?.length).toBe(1)
+    expect(lastCall?.[0]).toEqual(expect.any(Function))
+  })
 })
 
 
@@ -139,4 +166,3 @@ describe('useSwrAdapter', () => {
     expect(options1.toInvalidateKey).toHaveBeenCalledTimes(1) // not called again
   })
 })
-

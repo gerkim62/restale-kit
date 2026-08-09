@@ -120,6 +120,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 |---|---|---|
 | `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
+| `clientContextSchema` | `StandardSchemaV1` | Validates client-supplied pagination, sort, or filter context before storage. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
@@ -148,6 +149,29 @@ group.deregister(channel)
 - `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
 
 **Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
+
+---
+
+## Client context for personalized data pushes
+
+`meta` is trusted identity captured at connection time; `clientContext` is untrusted, client-supplied query shape such as page, sort, or filters. Never use client context to decide what the connection is allowed to see—derive authorization from `meta` or the authenticated mutation request.
+
+Store it on the connection by handling a `POST` alongside the SSE `GET`. Scope-pin the update to the authenticated identity because connection IDs are correlation values, not credentials.
+
+```ts
+app.post('/sse', async (req, res) => {
+  const { connectionId, clientContext } = req.body
+  await group.updateClientContext(connectionId, clientContext, {
+    scope: { userId: req.user.id },
+  })
+  res.status(204).end()
+})
+
+// Later, while producing a signal for this connection:
+const context = group.getClientContext(connectionId)
+```
+
+`updateClientContext` returns `{ updated: false }` for an unknown connection or a scope mismatch. With a configured pub/sub adapter, updates are propagated through the control topic and applied only by the instance that owns the connection. Context is removed automatically when the channel deregisters.
 
 ---
 

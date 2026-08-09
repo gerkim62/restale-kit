@@ -11,6 +11,7 @@ import {
   TANSTACK_QUERY_ACTIONS,
   SWR_ACTIONS,
   GENERIC_ACTIONS,
+  isJSONValue,
   isJSONValueArray,
 } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
@@ -122,6 +123,9 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       signal.action = value.action
     }
     if (typeof value.stale === 'boolean') signal.stale = value.stale
+    if ('optimisticData' in value && isJSONValue(value.optimisticData)) {
+      signal.optimisticData = value.optimisticData
+    }
     return signal
   }
 
@@ -147,6 +151,9 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     }
     if (typeof value.revalidate === 'boolean') signal.revalidate = value.revalidate
     if (value.match === 'exact' || value.match === 'prefix') signal.match = value.match
+    if ('optimisticData' in value && isJSONValue(value.optimisticData)) {
+      signal.optimisticData = value.optimisticData
+    }
     return signal
   }
 
@@ -185,6 +192,9 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
   if (typeof value.exact === 'boolean') signal.exact = value.exact
   if (isGenericAction(value.action)) {
     signal.action = value.action
+  }
+  if ('optimisticData' in value && isJSONValue(value.optimisticData)) {
+    signal.optimisticData = value.optimisticData
   }
   return signal
 }
