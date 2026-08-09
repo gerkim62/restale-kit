@@ -971,6 +971,17 @@ class SSEChannelGroupImplementation<
    * group.broadcast({ key: ['todos'] }, (meta) => meta?.role === 'admin')
    * ```
    */
+  private isContextualBroadcastOptions(
+    input: GroupSignalInput<TSignal, TTarget> | BroadcastContextualOptions<TSignal, TMeta, TClientContext>
+  ): input is BroadcastContextualOptions<TSignal, TMeta, TClientContext> {
+    return (
+      input !== null &&
+      typeof input === 'object' &&
+      'signal' in input &&
+      typeof input.signal === 'function'
+    )
+  }
+
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
     predicate?: (meta: TMeta | undefined) => boolean
@@ -982,20 +993,10 @@ class SSEChannelGroupImplementation<
     signalOrOptions: GroupSignalInput<TSignal, TTarget> | BroadcastContextualOptions<TSignal, TMeta, TClientContext>,
     predicate?: (meta: TMeta | undefined) => boolean
   ): void | Promise<void> {
-    if (
-      signalOrOptions !== null &&
-      typeof signalOrOptions === 'object' &&
-      'signal' in signalOrOptions &&
-      typeof (signalOrOptions as { signal?: unknown }).signal === 'function'
-    ) {
-      return this.broadcastContextualRaw(
-        signalOrOptions as BroadcastContextualOptions<TSignal, TMeta, TClientContext>
-      )
+    if (this.isContextualBroadcastOptions(signalOrOptions)) {
+      return this.broadcastContextualRaw(signalOrOptions)
     }
-    this.broadcastRaw(
-      signalOrOptions as TSignal | TSignal[],
-      predicate ?? (() => true)
-    )
+    this.broadcastRaw(signalOrOptions, predicate ?? (() => true))
   }
 
   private async broadcastContextualRaw(
@@ -1012,7 +1013,7 @@ class SSEChannelGroupImplementation<
         const resolvedSignal = await signalFn(entry.meta, entry.clientContext)
         if (resolvedSignal === null || resolvedSignal === undefined) continue
 
-        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal as TSignal | TSignal[])
+        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
         validateSignalPayload(normalizedSignal)
         this.validateGroupSignalTargets(normalizedSignal)
 
