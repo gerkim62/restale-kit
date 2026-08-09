@@ -1,4 +1,4 @@
-import type { InvalidateSignal, JSONValue } from '@/types/protocol.js'
+import type { InvalidateSignal } from '@/types/protocol.js'
 import type {
   ConnectionStatus,
   ClientOptions,

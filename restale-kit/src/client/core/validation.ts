@@ -11,7 +11,6 @@ import {
   TANSTACK_QUERY_ACTIONS,
   SWR_ACTIONS,
   GENERIC_ACTIONS,
-  isJSONValue,
   isJSONValueArray,
 } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'

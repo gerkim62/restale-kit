@@ -1,4 +1,4 @@
-import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget, JSONValue } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 
 /**
  * A phantom brand that marks an `onInvalidate` callback as having been produced

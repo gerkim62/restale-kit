@@ -1086,16 +1086,6 @@ function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
 }
 
 /**
- * Narrows an arbitrary value to `JSONValue` via the runtime `isJSONValue` guard,
- * throwing if the check fails. This avoids an unsafe `as JSONValue` cast when
- * the caller has already ensured the value is JSON-safe through a prior guard.
- */
-function assertJSONValue(value: unknown, message: string): JSONValue {
-  if (isJSONValue(value)) return value
-  throw new Error(message)
-}
-
-/**
  * Checks whether a channel entry's stored `meta` is a JSON superset of the
  * given `scope`. Used by both `closeLocalConnection` (revocation) and
  * `updateLocalClientContext` (context updates) for scope-pinning.
