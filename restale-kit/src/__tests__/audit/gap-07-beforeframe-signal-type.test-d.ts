@@ -9,7 +9,7 @@
 import { describe, expectTypeOf, test } from 'vitest'
 import { createSSEChannel } from '@/testing/index.js'
 import type { BeforeFrameFn, FrameGuardCtx } from '@/types/protocol.js'
-import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal, InvalidateSignal } from '@/types/index.js'
+import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal, InvalidateSignal, JSONValue } from '@/types/index.js'
 
 describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
   describe('SWR channel beforeFrame type narrowing', () => {
@@ -65,7 +65,9 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
               return { action: 'skip' }
             }
             if (ctx.signal.action === 'mutate') {
-              expectTypeOf(ctx.signal.optimisticData).not.toEqualTypeOf<never>()
+              expectTypeOf(ctx.signal.revalidate).toEqualTypeOf<boolean | undefined>()
+              // @ts-expect-error - optimisticData should not exist on SWRSignal
+              const opt = ctx.signal.optimisticData
             }
           }
           return { action: 'send' }
@@ -124,9 +126,6 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
           if (ctx.frameType === 'signal' && !Array.isArray(ctx.signal)) {
             // @ts-expect-error - key should not exist on TanStackQuerySignal
             const k = ctx.signal.key
-            
-            // @ts-expect-error - optimisticData should not exist on TanStackQuerySignal
-            const data = ctx.signal.optimisticData
           }
           return { action: 'send' }
         }
@@ -146,6 +145,8 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             }
             // @ts-expect-error - predicate should not exist on TanStackQuerySignal
             const p = ctx.signal.predicate
+            // @ts-expect-error - optimisticData should not exist on TanStackQuerySignal
+            const opt = ctx.signal.optimisticData
           }
           return { action: 'send' }
         }
@@ -205,9 +206,6 @@ describe('Gap 7: beforeFrame should receive narrowed signal type', () => {
             
             // @ts-expect-error - queryKey should not exist on RTKQuerySignal
             const qk = ctx.signal.queryKey
-            
-            // @ts-expect-error - optimisticData should not exist on RTKQuerySignal
-            const data = ctx.signal.optimisticData
           }
           return { action: 'send' }
         }

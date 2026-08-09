@@ -729,6 +729,7 @@ interface UseReStaleOptions<TSignal extends InvalidateSignal = InvalidateSignal>
 interface UseReStaleResult {
   connectionId: string            // unique ID for this SSE connection instance
   connection: ConnectionStatus
+  isConnected: boolean            // true if connection status is 'open'
   reconnect(): Promise<void>
   close(): void
 }

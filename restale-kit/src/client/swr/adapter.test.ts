@@ -101,6 +101,7 @@ describe('swrAdapter', () => {
     expect(filter(undefined)).toBe(false)
     expect(filter('not-an-array')).toBe(false)
   })
+
 })
 
 
@@ -139,4 +140,3 @@ describe('useSwrAdapter', () => {
     expect(options1.toInvalidateKey).toHaveBeenCalledTimes(1) // not called again
   })
 })
-

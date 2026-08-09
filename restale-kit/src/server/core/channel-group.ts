@@ -6,6 +6,7 @@ import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { generateInstanceId } from '@/utils/id.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
@@ -213,15 +214,21 @@ export interface SSEChannelGroupOptions<
  *
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
+ * @typeParam TTarget - The target or targets handled by this group.
  */
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > {
-  private readonly channels = new Map<RegisteredChannel<TSignal>, { meta: TMeta | undefined; topics: Set<string>; connectionId: string }>()
+  private readonly channels = new Map<RegisteredChannel<TSignal>, {
+    meta: TMeta | undefined
+    topics: Set<string>
+    connectionId: string
+  }>()
   private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
+  private readonly instanceId = generateInstanceId()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly pubsub?: PubSubAdapter<TSignal>
   readonly target?: TTarget
@@ -377,12 +384,7 @@ class SSEChannelGroupImplementation<
       if (scope !== undefined) {
         const entry = this.channels.get(channel)
         if (!entry) continue
-        const meta = entry.meta
-        if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
-        if (!isJSONValue(meta)) continue
-        // Use structural deep equality so nested objects/arrays in scope match
-        // correctly — including values reconstructed after remote serialization.
-        if (!matchesJSONValue(meta, scope, false)) continue
+        if (!entryMatchesScope(entry.meta, scope)) continue
       }
 
       try {
@@ -560,7 +562,11 @@ class SSEChannelGroupImplementation<
     }
 
     const connectionId = channel.connectionId
-    this.channels.set(channel, { meta: validatedMeta, topics: topicsSet, connectionId })
+    this.channels.set(channel, {
+      meta: validatedMeta,
+      topics: topicsSet,
+      connectionId,
+    })
     if (connectionId) {
       let set = this.connectionIndex.get(connectionId)
       if (!set) {
@@ -728,27 +734,10 @@ class SSEChannelGroupImplementation<
       throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
     }
 
-    let prunedScope: Record<string, JSONValue> | undefined = undefined
-    if (scope !== undefined) {
-      if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
-        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.')
-      }
-      const scopeRecord: Record<string, JSONValue | undefined> = scope
-      const targetScope: Record<string, JSONValue> = {}
-      Object.setPrototypeOf(targetScope, null)
-      for (const [k, v] of Object.entries(scopeRecord)) {
-        if (v !== undefined) {
-          if (!isJSONValue(v)) {
-            throw new Error('[SSEChannelGroup.revokeByConnectionId] scope values must be valid JSONValues.')
-          }
-          targetScope[k] = v
-        }
-      }
-      if (Object.keys(targetScope).length === 0) {
-        throw new Error('[SSEChannelGroup.revokeByConnectionId] scope must contain at least one non-undefined property.')
-      }
-      prunedScope = targetScope
-    }
+    const prunedScope = normalizeConnectionScope(
+      scope,
+      '[SSEChannelGroup.revokeByConnectionId]'
+    )
 
     const localClosed = this.closeLocalConnection(connectionId, prunedScope)
 
@@ -803,9 +792,9 @@ class SSEChannelGroupImplementation<
    */
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
-    predicate: (meta: TMeta | undefined) => boolean
+    predicate?: (meta: TMeta | undefined) => boolean
   ): void {
-    this.broadcastRaw(signal, predicate)
+    this.broadcastRaw(signal, predicate ?? (() => true))
   }
 
   private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
@@ -1094,4 +1083,47 @@ function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unk
 
 function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Checks whether a channel entry's stored `meta` is a JSON superset of the
+ * given `scope`. Used by both `closeLocalConnection` (revocation) and
+ * `updateLocalClientContext` (context updates) for scope-pinning.
+ */
+function entryMatchesScope(meta: unknown, scope: Record<string, JSONValue>): boolean {
+  if (!isJSONValue(meta)) return false
+  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false
+  return matchesJSONValue(meta, scope, false)
+}
+
+/**
+ * Normalises a caller-supplied scope object: prunes `undefined`-valued keys,
+ * validates that remaining values are JSON-safe, and rejects scopes that resolve
+ * to an empty object (which would unsafely match every connection).
+ *
+ * Returns `undefined` when no scope was supplied, or a null-prototype record
+ * containing only defined JSON values otherwise.
+ */
+function normalizeConnectionScope(
+  scope: Record<string, JSONValue | undefined> | undefined,
+  label: string
+): Record<string, JSONValue> | undefined {
+  if (scope === undefined) return undefined
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
+    throw new Error(`${label} scope must be a non-null JSON plain object.`)
+  }
+  const targetScope: Record<string, JSONValue> = {}
+  Object.setPrototypeOf(targetScope, null)
+  for (const [k, v] of Object.entries(scope)) {
+    if (v !== undefined) {
+      if (!isJSONValue(v)) {
+        throw new Error(`${label} scope values must be valid JSONValues.`)
+      }
+      targetScope[k] = v
+    }
+  }
+  if (Object.keys(targetScope).length === 0) {
+    throw new Error(`${label} scope must contain at least one non-undefined property.`)
+  }
+  return targetScope
 }

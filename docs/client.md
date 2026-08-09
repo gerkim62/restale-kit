@@ -49,6 +49,7 @@ useReStale(url: string, options: {
   autoReconnect?: boolean       // default true
   withCredentials?: boolean     // default false — send cookies cross-origin
   disabled?: boolean            // default false — skip connection while true
+  debug?: boolean               // default false — enable console logging
 
   // Backoff
   reconnect?: {
@@ -65,7 +66,9 @@ useReStale(url: string, options: {
 })
 ```
 
-> **Option stability note:** `autoReconnect`, `reconnect`, `target`, and `withCredentials` are applied only when the `SSEInvalidatorClient` is first created. In the React hook, the client is recreated only when `url` changes — so changing these options on a later render has no effect until the `url` prop also changes.
+> **Option reactivity note:** Options split into two categories when changed on re-render:
+> - **Connection identity options (`url`, `target`, `withCredentials`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
+> - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
 >
 > **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 

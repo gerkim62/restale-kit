@@ -147,3 +147,5 @@ describe('Signal payload strict narrowing', () => {
     const _invalidKeySignal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: [() => {}] }
   })
 })
+
+

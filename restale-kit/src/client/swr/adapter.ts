@@ -27,6 +27,7 @@ export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInp
 export interface SWRMutator {
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
+  (key: Arguments, data: JSONValue, options: { revalidate: boolean }): Promise<unknown>
 }
 
 /**

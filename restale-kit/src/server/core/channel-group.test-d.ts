@@ -250,5 +250,3 @@ describe('SSEChannelGroup constructor metaSchema auto-inference', () => {
     })
   })
 })
-
-

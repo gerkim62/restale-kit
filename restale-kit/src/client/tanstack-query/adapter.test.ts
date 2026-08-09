@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { tanstackQueryAdapter, useTanstackQueryAdapter } from './adapter.js'
+import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from './adapter.js'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TanStackQuerySignal } from '@/types/protocol.js'
 
@@ -129,6 +129,7 @@ describe('tanstackQueryAdapter', () => {
     const adapter = tanstackQueryAdapter(queryClient)
     expect((adapter as any).__restaleTarget).toBe('tanstack-query')
   })
+
 })
 
 describe('useTanstackQueryAdapter', () => {
@@ -160,5 +161,4 @@ describe('useTanstackQueryAdapter', () => {
     expect((result.current as any).__restaleTarget).toBe('tanstack-query')
   })
 })
-
 

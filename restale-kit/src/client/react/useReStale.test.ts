@@ -153,6 +153,86 @@ describe('useReStale', () => {
     expect(url).not.toContain('__restale_target__=swr')
   })
 
+  it('recreates the client when target changes without changing the URL', () => {
+    const onInvalidate = asAdapter<SignalTarget>(vi.fn())
+    const { rerender } = renderHook(
+      ({ target }: { target: SignalTarget }) => useReStale('/sse', { onInvalidate, target }),
+      { initialProps: { target: 'swr' as SignalTarget } }
+    )
+
+    const first = MockEventSource.instances[0]
+    expect(first?.url).toContain('__restale_target__=swr')
+
+    rerender({ target: 'tanstack-query' })
+
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(first?.readyState).toBe(MockEventSource.CLOSED)
+    expect(MockEventSource.instances[1]?.url).toContain('__restale_target__=tanstack-query')
+  })
+
+  it('recreates the client when withCredentials changes without changing the URL', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ withCredentials }) => useReStale('/sse', { onInvalidate, withCredentials }),
+      { initialProps: { withCredentials: false } }
+    )
+
+    const first = MockEventSource.instances[0]
+    expect(first?.options?.withCredentials).toBe(false)
+
+    rerender({ withCredentials: true })
+
+    expect(MockEventSource.instances).toHaveLength(2)
+    expect(first?.readyState).toBe(MockEventSource.CLOSED)
+    expect(MockEventSource.instances[1]?.options?.withCredentials).toBe(true)
+  })
+
+  it('applies reconnect option changes without recreating the client', () => {
+    vi.useFakeTimers()
+
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ autoReconnect, maxRetries }) =>
+        useReStale('/sse', {
+          onInvalidate,
+          autoReconnect,
+          reconnect: { maxRetries, baseDelayMs: 50, jitter: false },
+        }),
+      { initialProps: { autoReconnect: false, maxRetries: 0 } }
+    )
+
+    rerender({ autoReconnect: true, maxRetries: 1 })
+
+    act(() => {
+      MockEventSource.instances[0]?.emitError()
+    })
+
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    act(() => {
+      vi.advanceTimersByTime(60)
+    })
+
+    expect(MockEventSource.instances).toHaveLength(2)
+
+    vi.useRealTimers()
+  })
+
+  it('applies debug option changes without recreating the client', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ debug }) => useReStale('/sse', { onInvalidate, debug }),
+      { initialProps: { debug: false } }
+    )
+
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    rerender({ debug: true })
+
+    // Connection must not be recreated when debug mode is updated
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
   it('calls onRetriesExhausted callback when retries are exhausted', () => {
     vi.useFakeTimers()
 
@@ -258,5 +338,26 @@ describe('useReStale', () => {
 
     expect(onRetriesExhausted).not.toHaveBeenCalled()
     expect(onRevoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs debug messages on mount, connect failure, and unmount when debug option is enabled', () => {
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+
+    const { unmount } = renderHook(() =>
+      useReStale('/sse', { debug: true, onInvalidate })
+    )
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[restale-kit][useReStale] Effect mounted')
+    )
+
+    unmount()
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[restale-kit][useReStale] Effect unmounting')
+    )
+
+    consoleLogSpy.mockRestore()
   })
 })

@@ -42,7 +42,6 @@ export interface SWRSignal extends BaseInvalidateSignal {
   key: string | JSONValue[]
   action?: SWRAction
   revalidate?: boolean
-  optimisticData?: JSONValue
   match?: 'exact' | 'prefix'
 }
 

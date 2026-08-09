@@ -30,7 +30,7 @@ export type TanStackQuerySignalInput = TanStackQuerySignal
  * Gap 8: Constrained specifically to TanStackQuerySignal.
  */
 export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
-  queryClient: QueryClientLike
+  queryClient: QueryClientLike,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
@@ -98,10 +98,15 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
  * useReStale('/api/sse', { onInvalidate }) // target inferred as 'tanstack-query'
  */
 export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
-  queryClient: QueryClientLike
+  queryClient: QueryClientLike,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
-    useCallback(tanstackQueryAdapter<TSignal>(queryClient), [queryClient])
+    useCallback(
+      (signal: TSignal | TSignal[]) => {
+        tanstackQueryAdapter<TSignal>(queryClient)(signal)
+      },
+      [queryClient]
+    )
   )
 }
