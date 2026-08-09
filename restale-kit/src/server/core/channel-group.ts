@@ -6,6 +6,7 @@ import { ChannelClosedError } from '@/types/errors.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { generateInstanceId } from '@/utils/id.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
@@ -190,6 +191,19 @@ type GroupSignalInput<
       ? SignalInputForTarget<TTarget>
       : unknown)
 
+export interface ContextualGeneratorHandler<
+  TSignal extends InvalidateSignal = InvalidateSignal,
+  TMeta = unknown,
+  TClientContext = unknown,
+> {
+  where?: (payload: unknown, meta: TMeta | undefined, context: TClientContext | undefined) => boolean
+  signal: (
+    payload: unknown,
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
+}
+
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
@@ -205,6 +219,24 @@ export interface SSEChannelGroupOptions<
   eventBufferCapacity?: number
   controlTopic?: string
   channelDefaults?: ChannelDefaults
+
+  /**
+   * Group-level signal generator executed on every cluster node when a contextual broadcast payload is published.
+   */
+  contextualSignal?: (
+    payload: unknown,
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
+
+  /**
+   * Group-level predicate function executed on every cluster node for contextual broadcasts.
+   */
+  contextualWhere?: (
+    payload: unknown,
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => boolean
 }
 
 export interface BroadcastContextualOptions<
@@ -213,10 +245,15 @@ export interface BroadcastContextualOptions<
   TClientContext = unknown,
 > {
   /**
-   * Optional predicate function to filter which connections should receive the update.
-   * Receives connection metadata and clientContext. Default: () => true.
+   * Optional payload serialized and sent across the PubSub cluster so remote nodes evaluate their contextual generators.
    */
-  where?: (meta: TMeta | undefined, context: TClientContext | undefined) => boolean
+  payload?: unknown
+
+  /**
+   * Optional predicate function to filter which connections should receive the update.
+   * Receives connection metadata, clientContext, and payload. Default: () => true.
+   */
+  where?: (meta: TMeta | undefined, context: TClientContext | undefined, payload?: unknown) => boolean
 
   /**
    * Async signal generator executed per matching connection.
@@ -224,7 +261,8 @@ export interface BroadcastContextualOptions<
    */
   signal: (
     meta: TMeta | undefined,
-    context: TClientContext | undefined
+    context: TClientContext | undefined,
+    payload?: unknown
   ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
 }
 
@@ -256,9 +294,21 @@ class SSEChannelGroupImplementation<
   }>()
   private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
+  private readonly instanceId = generateInstanceId()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
   private readonly clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
   private readonly pubsub?: PubSubAdapter<TSignal>
+  private readonly contextualSignal?: (
+    payload: unknown,
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
+  private readonly contextualWhere?: (
+    payload: unknown,
+    meta: TMeta | undefined,
+    context: TClientContext | undefined
+  ) => boolean
+  private readonly contextualHandlers = new Map<string, ContextualGeneratorHandler<TSignal, TMeta, TClientContext>>()
   readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
@@ -272,6 +322,8 @@ class SSEChannelGroupImplementation<
     this.metaSchema = options.metaSchema
     this.clientContextSchema = options.clientContextSchema
     this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
+    this.contextualSignal = options.contextualSignal
+    this.contextualWhere = options.contextualWhere
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)
@@ -391,6 +443,20 @@ class SSEChannelGroupImplementation<
                     this.applyRemoteClientContext(connectionId, clientContext, scope)
                   }
                 }
+              } else if (
+                dataObj &&
+                typeof dataObj === 'object' &&
+                !Array.isArray(dataObj) &&
+                'type' in dataObj &&
+                dataObj.type === 'contextualBroadcast'
+              ) {
+                const senderInstanceId = 'senderInstanceId' in dataObj ? dataObj.senderInstanceId : undefined
+                if (senderInstanceId === this.instanceId) return
+                const payload = 'payload' in dataObj ? dataObj.payload : undefined
+                const handlerName = 'handlerName' in dataObj && typeof dataObj.handlerName === 'string' ? dataObj.handlerName : undefined
+                this.executeContextualBroadcastFromControl(payload, handlerName).catch((err: unknown) => {
+                  console.error('[ERROR][SSEChannelGroup.initControlSubscription] Contextual broadcast error:', err)
+                })
               } else {
                 this.closeLocalMatches(msg.data)
               }
@@ -1011,10 +1077,10 @@ class SSEChannelGroupImplementation<
     const errors: unknown[] = []
 
     for (const [channel, entry] of this.channels) {
-      if (!where(entry.meta, entry.clientContext)) continue
+      if (!where(entry.meta, entry.clientContext, options.payload)) continue
 
       try {
-        const resolvedSignal = await signalFn(entry.meta, entry.clientContext)
+        const resolvedSignal = await signalFn(entry.meta, entry.clientContext, options.payload)
         if (resolvedSignal === null || resolvedSignal === undefined) continue
 
         const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
@@ -1029,6 +1095,125 @@ class SSEChannelGroupImplementation<
           const err = error instanceof Error ? error : new Error(String(error))
           console.error(
             "[ERROR][SSEChannelGroup.broadcast] Contextual signal generator error",
+            "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
+            "\n  clientContext:", JSON.stringify(entry.clientContext, null, 2).slice(0, 500),
+            "\n  error:", err.stack || err.message
+          )
+          errors.push(error)
+        }
+      }
+    }
+
+    if (options.payload !== undefined && this.pubsub) {
+      const controlData: Record<string, JSONValue> = {
+        type: 'contextualBroadcast',
+        senderInstanceId: this.instanceId,
+      }
+      if (isJSONValue(options.payload)) {
+        controlData.payload = options.payload
+      }
+      await this.pubsub.publish(this.controlTopic, {
+        kind: 'control',
+        data: controlData,
+      })
+    }
+
+    if (errors.length > 0) {
+      throw new AggregateError(errors, 'Contextual broadcast encountered validation or runtime errors')
+    }
+  }
+
+  /**
+   * Registers a named contextual generator handler on this group instance.
+   *
+   * @param name - Unique handler identifier used when publishing a contextual broadcast.
+   * @param handler - Object containing `where` predicate and `signal` generator functions.
+   */
+  registerContextualHandler(
+    name: string,
+    handler: ContextualGeneratorHandler<TSignal, TMeta, TClientContext>
+  ): void {
+    if (typeof name !== 'string' || removeInvisibleWhitespace(name) === '') {
+      throw new Error('[SSEChannelGroup.registerContextualHandler] Handler name must be a non-empty string.')
+    }
+    if (!handler || typeof handler.signal !== 'function') {
+      throw new Error('[SSEChannelGroup.registerContextualHandler] Handler must supply a signal function.')
+    }
+    this.contextualHandlers.set(name, handler)
+  }
+
+  /**
+   * Broadcasts a contextual payload to active connections on this node and across all cluster nodes via PubSub.
+   *
+   * Each node in the cluster receives the payload via PubSub and executes its registered contextual generator
+   * against its own local connections.
+   */
+  async broadcastContextual(payload?: unknown): Promise<void>
+  async broadcastContextual(handlerName: string, payload: unknown): Promise<void>
+  async broadcastContextual(payloadOrHandlerName?: unknown, payload?: unknown): Promise<void> {
+    let handlerName: string | undefined = undefined
+    let eventPayload: unknown = payloadOrHandlerName
+
+    if (typeof payloadOrHandlerName === 'string' && payload !== undefined) {
+      handlerName = payloadOrHandlerName
+      eventPayload = payload
+    } else if (typeof payloadOrHandlerName === 'string' && this.contextualHandlers.has(payloadOrHandlerName)) {
+      handlerName = payloadOrHandlerName
+      eventPayload = undefined
+    }
+
+    // 1. Local execution
+    await this.executeContextualBroadcastFromControl(eventPayload, handlerName)
+
+    // 2. Cluster PubSub broadcast to remote nodes
+    if (this.pubsub) {
+      const controlData: Record<string, JSONValue> = {
+        type: 'contextualBroadcast',
+        senderInstanceId: this.instanceId,
+      }
+      if (handlerName !== undefined) {
+        controlData.handlerName = handlerName
+      }
+      if (eventPayload !== undefined && isJSONValue(eventPayload)) {
+        controlData.payload = eventPayload
+      }
+      await this.pubsub.publish(this.controlTopic, {
+        kind: 'control',
+        data: controlData,
+      })
+    }
+  }
+
+  private async executeContextualBroadcastFromControl(
+    payload: unknown,
+    handlerName?: string
+  ): Promise<void> {
+    const handler = handlerName ? this.contextualHandlers.get(handlerName) : undefined
+    const where = handler?.where ?? this.contextualWhere ?? (() => true)
+    const signalFn = handler?.signal ?? this.contextualSignal
+
+    if (!signalFn) return
+
+    const errors: unknown[] = []
+    for (const [channel, entry] of this.channels) {
+      if (!where(payload, entry.meta, entry.clientContext)) continue
+
+      try {
+        const resolvedSignal = await signalFn(payload, entry.meta, entry.clientContext)
+        if (resolvedSignal === null || resolvedSignal === undefined) continue
+
+        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
+        validateSignalPayload(normalizedSignal)
+        this.validateGroupSignalTargets(normalizedSignal)
+
+        this.deliverToChannel(channel, normalizedSignal, 'broadcast')
+      } catch (error) {
+        if (error instanceof ChannelClosedError) {
+          this.deregister(channel)
+        } else {
+          const err = error instanceof Error ? error : new Error(String(error))
+          console.error(
+            "[ERROR][SSEChannelGroup.broadcastContextual] Contextual signal generator error",
             "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
             "\n  clientContext:", JSON.stringify(entry.clientContext, null, 2).slice(0, 500),
             "\n  error:", err.stack || err.message

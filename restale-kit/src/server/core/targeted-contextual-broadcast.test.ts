@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { SSEChannelGroup } from './channel-group.js'
 import { createSSEChannel } from './channel.js'
 import type { TanStackQuerySignal, SWRSignal, InvalidateSignal } from '../../types/protocol.js'
+import { MemoryPubSubAdapter } from '../../test-fixtures/pubsub.js'
 
 describe('SSEChannelGroup targeted contextual broadcast', () => {
   interface TestMeta {
@@ -292,5 +293,137 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
         },
       })
     ).rejects.toThrow(AggregateError)
+  })
+
+  // CLUSTER BROADCAST TEST 1: broadcastContextual(payload) across multi-node cluster over PubSub
+  it('evaluates contextual generator across multiple server nodes when broadcastContextual is called', async () => {
+    const pubsub = new MemoryPubSubAdapter<TanStackQuerySignal>()
+
+    // Server Node 1 Group setup
+    const groupNode1 = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+      pubsub,
+      contextualSignal: async (payload: any, meta, context) => {
+        if (context?.page !== undefined && context.page === payload?.page) {
+          return { queryKey: ['products', context.page], optimisticData: [payload.item] }
+        }
+        return null
+      },
+    })
+
+    // Server Node 2 Group setup
+    const groupNode2 = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+      pubsub,
+      contextualSignal: async (payload: any, meta, context) => {
+        if (context?.page !== undefined && context.page === payload?.page) {
+          return { queryKey: ['products', context.page], optimisticData: [payload.item] }
+        }
+        return null
+      },
+    })
+
+    const node1Signals: TanStackQuerySignal[] = []
+    const channelNode1 = createSSEChannel({
+      target: 'tanstack-query',
+      connectionId: 'conn-node-1',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          if (Array.isArray(ctx.signal)) node1Signals.push(...ctx.signal)
+          else node1Signals.push(ctx.signal)
+        }
+        return { action: 'send' }
+      },
+    })
+    groupNode1.register(channelNode1, { userId: 'node-1-user' })
+    await groupNode1.updateClientContext(channelNode1.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'node-1-user' } })
+
+    const node2Signals: TanStackQuerySignal[] = []
+    const channelNode2 = createSSEChannel({
+      target: 'tanstack-query',
+      connectionId: 'conn-node-2',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          if (Array.isArray(ctx.signal)) node2Signals.push(...ctx.signal)
+          else node2Signals.push(ctx.signal)
+        }
+        return { action: 'send' }
+      },
+    })
+    groupNode2.register(channelNode2, { userId: 'node-2-user' })
+    await groupNode2.updateClientContext(channelNode2.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'node-2-user' } })
+
+    // Node 1 invokes broadcastContextual
+    await groupNode1.broadcastContextual({ page: 1, item: 'cluster-product-101' })
+
+    // Give microtasks time to deliver PubSub message across MemoryPubSubAdapter
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Both Node 1 and Node 2 should have evaluated their local connections and delivered the signal!
+    expect(node1Signals).toHaveLength(1)
+    expect(node1Signals[0]).toEqual({
+      target: 'tanstack-query',
+      queryKey: ['products', 1],
+      optimisticData: ['cluster-product-101'],
+    })
+
+    expect(node2Signals).toHaveLength(1)
+    expect(node2Signals[0]).toEqual({
+      target: 'tanstack-query',
+      queryKey: ['products', 1],
+      optimisticData: ['cluster-product-101'],
+    })
+  })
+
+  // CLUSTER BROADCAST TEST 2: Named contextual handler execution across cluster
+  it('executes registered named contextual handler across multi-node cluster over PubSub', async () => {
+    const pubsub = new MemoryPubSubAdapter<TanStackQuerySignal>()
+
+    const handler = {
+      where: (payload: any, meta: any, context: any) => context?.sort === payload?.sort,
+      signal: async (payload: any, meta: any, context: any) => ({
+        queryKey: ['sorted-products', payload.sort],
+        optimisticData: [payload.title],
+      }),
+    }
+
+    const groupNode1 = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+      pubsub,
+    })
+    groupNode1.registerContextualHandler('sorted-update', handler)
+
+    const groupNode2 = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+      pubsub,
+    })
+    groupNode2.registerContextualHandler('sorted-update', handler)
+
+    const node2Signals: TanStackQuerySignal[] = []
+    const channelNode2 = createSSEChannel({
+      target: 'tanstack-query',
+      connectionId: 'conn-node-2-named',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          if (Array.isArray(ctx.signal)) node2Signals.push(...ctx.signal)
+          else node2Signals.push(ctx.signal)
+        }
+        return { action: 'send' }
+      },
+    })
+    groupNode2.register(channelNode2, { userId: 'user-node-2' })
+    await groupNode2.updateClientContext(channelNode2.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'user-node-2' } })
+
+    // Node 1 triggers named broadcast
+    await groupNode1.broadcastContextual('sorted-update', { sort: 'price', title: 'Cheapest Item' })
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(node2Signals).toHaveLength(1)
+    expect(node2Signals[0]).toEqual({
+      target: 'tanstack-query',
+      queryKey: ['sorted-products', 'price'],
+      optimisticData: ['Cheapest Item'],
+    })
   })
 })

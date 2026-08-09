@@ -14,9 +14,9 @@ When backend data changes (e.g., a new product is added or a price updates), bro
 Furthermore, different clients are viewing different "windows" of data (e.g., User A is on Page 1 sorted by Price, User B is on Page 5 sorted by Rating). Sending blanket data updates to all clients wastes bandwidth for data they aren't looking at.
 
 ### The Solution
-`restale-kit` already stores `clientContext` (e.g., `{ page: 1, sort: 'price' }`) per connection and synchronizes it across multi-server pub/sub clusters. 
+`restale-kit` stores `clientContext` (e.g., `{ page: 1, sort: 'price' }`) per connection. 
 
-This spec introduces an overloaded variant of `SSEChannelGroup.prototype.broadcast()` that accepts an **async signal generator** and a **contextual predicate**. It allows backend mutations to push pre-computed, windowed `optimisticData` payloads directly into each client's query cache across multi-server clusters—with **zero direct Redis/PubSub code required from the developer**.
+This spec introduces an overloaded variant of `SSEChannelGroup.prototype.broadcast()` that accepts an **async signal generator** and a **contextual predicate**. It allows backend mutations to push pre-computed, windowed `optimisticData` payloads directly into each client's query cache on matching active local connections—evaluating `where(meta, context)` and `signal(meta, context)` locally without requiring manual filtering.
 
 ---
 
@@ -209,9 +209,9 @@ watchEffect(() => {
 
 ---
 
-## 4. Multi-Server Cluster Architecture
+## 4. Multi-Server Cluster Architecture (`broadcastContextual`)
 
-In a multi-server production deployment (e.g. 4 Node.js instances behind a load balancer with Redis):
+In multi-server production deployments (e.g. 4 Node.js instances behind a load balancer with Redis):
 
 ```
                        ┌────────────────────────┐
@@ -219,9 +219,9 @@ In a multi-server production deployment (e.g. 4 Node.js instances behind a load 
                        └───────────┬────────────┘
                                    │
                                    ▼
-                       [group.broadcast(options)]
+                   [group.broadcastContextual(payload)]
                                    │
-         (Publishes internal control frame via configured PubSub adapter)
+         (Publishes `contextualBroadcast` control frame over `controlTopic`)
                                    │
                                    ▼
                        ┌────────────────────────┐
@@ -236,19 +236,18 @@ In a multi-server production deployment (e.g. 4 Node.js instances behind a load 
            │                       │                       │
  (Evaluates local        (Evaluates local        (Evaluates local
   connections &           connections &           connections &
-  executes async          executes async          executes async
-  signal generator)       signal generator)       signal generator)
+  executes generator)     executes generator)     executes generator)
            │                       │                       │
            ▼                       ▼                       ▼
   Local SSE Streams       Local SSE Streams       Local SSE Streams
 ```
 
-1. **Node 1** invokes `group.broadcast(options)`.
-2. `restale-kit` serializes a `contextualBroadcast` control frame and publishes it over the configured `PubSubAdapter`.
-3. **Every server node** in the cluster receives the control frame.
-4. Each server node iterates over its **own local active SSE connections** (`group.channels`).
-5. For each local connection matching `where(meta, context)`, the node executes the `signal(meta, context)` generator.
-6. The resolved `optimisticData` signal is delivered down the local SSE stream directly into the client's query cache.
+1. **Node 1** invokes `group.broadcastContextual(payload)` (or `group.broadcastContextual(handlerName, payload)`).
+2. **Node 1** evaluates its active local connections against its registered contextual generator function (`contextualSignal` / `contextualWhere`).
+3. **Node 1** publishes a `contextualBroadcast` control message (`{ kind: 'control', data: { type: 'contextualBroadcast', senderInstanceId, handlerName, payload } }`) over `controlTopic`.
+4. **Every server node** (Node 2, Node 3) receives the control message via PubSub. Remote nodes filter out self-echo based on `senderInstanceId`.
+5. **Node 2 and Node 3** each execute their registered contextual generator function (`contextualSignal(payload, meta, context)`) against their own local active SSE connections.
+6. The resolved `optimisticData` payloads are delivered down each server node's local SSE streams directly into the respective client query caches.
 
 ---
 
@@ -268,5 +267,7 @@ In a multi-server production deployment (e.g. 4 Node.js instances behind a load 
 1. **No Automatic Framework Memoization**: `restale-kit` will **not** attempt to memoize `signal(meta, context)` calls across connections automatically. Because `meta` carries authoritative user authorization state (`userId`, `role`), memoizing solely on `clientContext` could introduce security vulnerabilities (e.g., leaking privileged data across different user identities). Application-level batching/caching (such as `DataLoader` or Redis LRU) remains the responsibility of application code.
 
 2. **No Silent Timeout Transformations**: `restale-kit` will **not** silently convert timed-out or failing `signal(meta, context)` executions into plain invalidation signals behind the developer's back. DB timeouts must be managed at the application layer (via `AbortController` or DB query timeouts). If `signal()` rejects or throws, standard exception logging and error reporting apply.
+
+3. **No Direct Serialization of Inline Function Closures**: JavaScript function closures (`signal` / `where` functions defined inline in an API route) cannot be serialized into JSON across PubSub channels. To achieve cluster-wide contextual broadcasts across multi-node setups, applications configure `contextualSignal` on `SSEChannelGroupOptions` or register named handlers via `group.registerContextualHandler(name, handler)` so every server instance can independently execute its local generator when a `broadcastContextual(payload)` control message arrives over PubSub.
 
 ---
