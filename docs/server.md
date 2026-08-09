@@ -254,6 +254,37 @@ await group.broadcast({
 - **Error Isolation**: If `signal` throws an error for one connection, other matching connections still receive their signals. Errors are collected and thrown as an `AggregateError` at the end of the broadcast.
 - **Automatic Disconnect Deregistration**: If a client disconnects while `signal` is awaiting an async operation, the connection is deregistered cleanly without throwing an unhandled exception.
 
+#### Infinite Scroll & Multi-Page Feeds
+
+Infinite scroll feeds (such as `useInfiniteQuery` in TanStack Query or `useSWRInfinite` in SWR) track loaded page depth on the client via `clientContext` (e.g. `clientContext: { maxPage: 3, sort: 'newest' }`).
+
+When a mutation occurs on the server, target infinite scroll connections by inspecting `context.maxPage`:
+
+```ts
+await group.broadcast({
+  // Only target connections that have loaded at least to page N
+  where: (meta, context) => (context?.maxPage ?? 1) >= targetPage,
+
+  signal: async (meta, context) => {
+    // Fetch refreshed pages up to the client's current scroll depth
+    const pages = await db.getFeedPages({
+      maxPage: context.maxPage,
+      sort: context.sort,
+    })
+
+    return {
+      queryKey: ['feed', { sort: context.sort }],
+      optimisticData: {
+        pages,
+        pageParams: Array.from({ length: context.maxPage }, (_, i) => i + 1),
+      },
+    }
+  },
+})
+```
+
+If optimistic payload generation for multi-page lists is too complex, send a lightweight invalidation signal (`{ queryKey: ['feed'], action: 'invalidate' }`). Both TanStack Query and SWR will automatically refetch only the active pages currently loaded in the user's viewport without resetting scroll position.
+
 ### `broadcastByKey(signal)` — automatic key-based matching
 
 `broadcastByKey` automatically matches a signal's cache key against each channel's registered metadata (`meta`), eliminating the need to write manual predicate functions.

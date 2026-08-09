@@ -126,6 +126,47 @@ Each matcher can be an exact status (`401`), a status class (`'4xx'`), or an inc
 
 For retryable responses such as `429` or `503`, set `retryAfter: 'respect'` to use the server's `Retry-After` header for the next retry. It accepts either delay seconds or an HTTP-date; invalid or absent values fall back to normal exponential backoff.
 
+### Infinite Scroll & `useInfiniteQuery`
+
+Pass the current page depth or active filter criteria as `clientContext`. As the user scrolls and loads additional pages, `useReStale` automatically updates `clientContext` on the server:
+
+```tsx
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useReStale } from 'restale-kit/react'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+
+function InfiniteFeed() {
+  const queryClient = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(queryClient)
+
+  const { data, fetchNextPage, hasNextPage } = useInfiniteQuery({
+    queryKey: ['feed', { sort: 'newest' }],
+    queryFn: ({ pageParam = 1 }) => fetch(`/api/feed?page=${pageParam}`).then(r => r.json()),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+  })
+
+  // Track max loaded page depth for real-time contextual SSE updates
+  const maxPage = data?.pages.length ?? 1
+
+  useReStale('/api/sse', {
+    onInvalidate,
+    clientContext: { maxPage, sort: 'newest' },
+  })
+
+  return (
+    <div>
+      {data?.pages.map((page, i) => (
+        <div key={i}>
+          {page.items.map((item: any) => <div key={item.id}>{item.title}</div>)}
+        </div>
+      ))}
+      {hasNextPage && <button onClick={() => void fetchNextPage()}>Load More</button>}
+    </div>
+  )
+}
+```
+
 ### Server-initiated revocation
 
 When the server calls `channel.revoke()` (e.g. on logout or session expiry), it sends a terminal `revoke` SSE event before closing the stream. The client:
