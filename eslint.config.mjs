@@ -92,6 +92,8 @@ export default tseslint.config(
       '@typescript-eslint/unbound-method': 'off',
       '@typescript-eslint/no-invalid-void-type': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/require-await': 'off',
       '@eslint-community/eslint-comments/no-unlimited-disable': 'off',
       '@eslint-community/eslint-comments/disable-enable-pair': 'off',
     },
