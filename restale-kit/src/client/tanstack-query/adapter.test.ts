@@ -185,11 +185,12 @@ describe('tanstackQueryAdapter', () => {
     expect(invalidations).toEqual([])
   })
 
-  it('uses setQueriesData with full query filters scope when available on QueryClient', () => {
+  it('uses setQueriesData with full query filters scope and seeds exact query key when setQueriesData is available on QueryClient', () => {
+    const setQueryData = vi.fn()
     const setQueriesData = vi.fn()
     const invalidateQueries = vi.fn().mockResolvedValue(undefined)
     const queryClient: QueryClientLike = {
-      setQueryData: vi.fn(),
+      setQueryData,
       setQueriesData,
       invalidateQueries,
       removeQueries: () => {},
@@ -206,6 +207,7 @@ describe('tanstackQueryAdapter', () => {
       optimisticData: { id: 3 },
     })
 
+    expect(setQueryData).toHaveBeenCalledWith(['todos'], { id: 3 })
     expect(setQueriesData).toHaveBeenCalledWith(
       { queryKey: ['todos'], exact: false, type: 'active' },
       { id: 3 }

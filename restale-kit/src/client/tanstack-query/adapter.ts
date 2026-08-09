@@ -67,10 +67,9 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
         // `optimisticData` is a direct cache write. When requested, follow it
         // with the ordinary invalidation path so the source of truth refreshes.
         if (Object.hasOwn(s, 'optimisticData')) {
+          queryClient.setQueryData(queryKey, s.optimisticData)
           if (typeof queryClient.setQueriesData === 'function') {
             queryClient.setQueriesData(filters, s.optimisticData)
-          } else {
-            queryClient.setQueryData(queryKey, s.optimisticData)
           }
           if (options?.revalidateOptimisticData ?? true) {
             const invalidateFilters: InvalidateQueryFilters = { ...filters }
