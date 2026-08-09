@@ -219,7 +219,7 @@ In multi-server production deployments (e.g. 4 Node.js instances behind a load b
                        └───────────┬────────────┘
                                    │
                                    ▼
-                   [group.broadcastContextual(payload)]
+                [group.broadcast({ where, signal })]
                                    │
          (Publishes `contextualBroadcast` control frame over `controlTopic`)
                                    │
@@ -243,10 +243,10 @@ In multi-server production deployments (e.g. 4 Node.js instances behind a load b
 ```
 
 1. **Server Node** receives a mutation request and invokes `group.broadcast({ where, signal })`.
-2. **`broadcastContextualRaw`** iterates over active local SSE connections registered on that server instance.
-3. For each local connection, it evaluates `where(meta, context)`.
-4. If `where` returns `true`, it executes `signal(meta, context)` to compute the targeted signal/`optimisticData` payload for that client's context.
-5. The resolved signal is delivered directly down the local connection's SSE stream without publishing or subscribing to a `contextualBroadcast` control frame over PubSub.
+2. **Cluster-wide distribution**: The method publishes a `contextualBroadcast` control frame containing the `where` and `signal` functions (or a handler name) to the PubSub `controlTopic`.
+3. **Every cluster node** receives the control frame and evaluates its local SSE connections.
+4. For each local connection where `where(meta, context)` returns `true`, the node executes `signal(meta, context)` to compute the targeted signal/`optimisticData` payload.
+5. The resolved signal is delivered directly down each matching connection's SSE stream across all nodes in the cluster.
 
 ---
 
