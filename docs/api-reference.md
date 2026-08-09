@@ -207,8 +207,11 @@ class SSEChannelGroup<
 
   broadcast(
     signal: TSignal | TSignal[],
-    predicate: (meta: TMeta) => boolean
+    predicate?: (meta: TMeta) => boolean
   ): void
+  broadcast(
+    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
+  ): Promise<void>
 
   broadcastToAll(signal: TSignal | TSignal[]): void
 
@@ -282,6 +285,7 @@ interface ClientOptions {
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
+  clientContext?: JSONValue         // optional client-supplied pagination, sort, or filter context auto-synced to server
 }
 
 interface AutoReconnectOptions {

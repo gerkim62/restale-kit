@@ -62,12 +62,15 @@ useReStale(url: string, options: {
 
   // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
+
+  // Context (optional)
+  clientContext?: JSONValue     // optional — client-supplied pagination, sort, or filter context auto-synced to the server
 })
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:
 > - **Connection identity options (`url`, `target`, `withCredentials`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
-> - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
+> - **Live runtime options (`autoReconnect`, `reconnect`, `debug`, `clientContext`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream. When `clientContext` changes, it is automatically posted to the server.
 >
 > **Note on `revalidateOptimisticData`:** `revalidateOptimisticData` is an **adapter-level option** passed to `useTanstackQueryAdapter` or `useSwrAdapter`, not a `useReStale` option. `useReStale` manages the network stream and delegates signal execution to `onInvalidate`.
 >
@@ -81,6 +84,7 @@ useReStale(url: string, options: {
   connection: ConnectionStatus  // current state
   reconnect(): Promise<void>    // manually reconnect; resets backoff counter
   close(): void                 // manually close
+  updateClientContext(context: JSONValue): Promise<void> // manually update client context on server
 }
 ```
 

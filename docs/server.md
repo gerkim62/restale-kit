@@ -221,6 +221,39 @@ group.broadcast(
 
 The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i.e. metadata was omitted on registration), the predicate receives `undefined` and must handle it explicitly.
 
+### `broadcast({ where?, signal })` — targeted contextual broadcast
+
+When pushing optimistic data or personalized payloads, different connected clients need different data depending on their active pagination, filters, or sorting (`clientContext`).
+
+Use the object overload of `group.broadcast` to generate customized invalidations asynchronously per connection:
+
+```ts
+await group.broadcast({
+  // Filter which connections to target (receives meta & clientContext)
+  where: (meta, context) => meta?.orgId === currentOrgId && context?.page !== undefined,
+
+  // Async generator executed per matching connection
+  signal: async (meta, context) => {
+    const products = await db.getProducts({
+      orgId: currentOrgId,
+      page: context.page,
+      sort: context.sort,
+    })
+
+    return {
+      queryKey: ['products', { page: context.page, sort: context.sort }],
+      optimisticData: products,
+    }
+  },
+})
+```
+
+#### Key Characteristics:
+- **Async Generator**: `signal(meta, context)` can be `async` and receives both trusted connection `meta` and unauthenticated client-supplied `clientContext`.
+- **Null / Undefined Skipping**: Returning `null` or `undefined` from `signal` cleanly skips data delivery for that specific connection.
+- **Error Isolation**: If `signal` throws an error for one connection, other matching connections still receive their signals. Errors are collected and thrown as an `AggregateError` at the end of the broadcast.
+- **Automatic Disconnect Deregistration**: If a client disconnects while `signal` is awaiting an async operation, the connection is deregistered cleanly without throwing an unhandled exception.
+
 ### `broadcastByKey(signal)` — automatic key-based matching
 
 `broadcastByKey` automatically matches a signal's cache key against each channel's registered metadata (`meta`), eliminating the need to write manual predicate functions.
