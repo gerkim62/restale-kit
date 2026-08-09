@@ -475,47 +475,6 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
     })
   })
 
-  describe('OptimisticData with non-finite numbers', () => {
-    it('should reject NaN in SWR optimisticData', () => {
-      const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
-      
-      expect(() => {
-        channel.invalidate({
-          target: 'swr',
-          key: ['todos', 1],
-          action: 'mutate',
-          optimisticData: { id: 1, value: NaN }
-        })
-      }).toThrow()
-    })
-
-    it('should reject Infinity in SWR optimisticData', () => {
-      const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
-      
-      expect(() => {
-        channel.invalidate({
-          target: 'swr',
-          key: ['items'],
-          action: 'mutate',
-          optimisticData: { count: Infinity }
-        })
-      }).toThrow()
-    })
-
-    it('should accept finite numbers in optimisticData', () => {
-      const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
-      
-      expect(() => {
-        channel.invalidate({
-          target: 'swr',
-          key: ['todos', 1],
-          action: 'mutate',
-          optimisticData: { id: 1, done: true, priority: 5 }
-        })
-      }).not.toThrow()
-    })
-  })
-
   describe('Edge cases with special number values', () => {
     it('should accept Number.MAX_SAFE_INTEGER', () => {
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })

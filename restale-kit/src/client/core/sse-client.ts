@@ -72,7 +72,6 @@ export class SSEInvalidatorClient<
   private readonly withCredentials: boolean
   private debug = false
   private readonly currentConnectionId: string
-  private currentClientContext: JSONValue | undefined
 
   private opened = false
   private eventSource: SSE | null = null
@@ -105,7 +104,6 @@ export class SSEInvalidatorClient<
     }
     
     this.currentConnectionId = generateUUID()
-    this.currentClientContext = opts?.clientContext
     this.url = url
     let eventSourceUrl = appendQueryParam(
       url,
@@ -268,41 +266,6 @@ export class SSEInvalidatorClient<
     }
   }
 
-  /**
-   * Updates the connection's clientContext on the server.
-   *
-   * Posts `{ connectionId, clientContext }` to the SSE endpoint URL.
-   */
-  async updateClientContext(clientContext: JSONValue): Promise<void> {
-    this.currentClientContext = clientContext
-    if (this.currentStatus.status !== 'open') {
-      return
-    }
-
-    const postUrl = this.url
-    const body = JSON.stringify({
-      connectionId: this.currentConnectionId,
-      clientContext,
-    })
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    const init: RequestInit = {
-      method: 'POST',
-      headers,
-      body,
-      credentials: this.withCredentials ? 'include' : 'same-origin',
-    }
-
-    try {
-      await fetch(postUrl, init)
-    } catch (err) {
-      if (this.debug) {
-        console.error('[restale-kit][SSEInvalidatorClient] Failed to update clientContext:', err)
-      }
-    }
-  }
-
   // --- Typed addEventListener / removeEventListener overloads ---
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
@@ -403,9 +366,6 @@ export class SSEInvalidatorClient<
       this.opened = true
       this.currentAttempt = 0
       this.setStatus({ status: 'open' })
-      if (this.currentClientContext !== undefined) {
-        void this.updateClientContext(this.currentClientContext)
-      }
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId}). Stream is live.`

@@ -369,28 +369,6 @@ describe('SSEInvalidatorClient', () => {
     expect(client.lastEventId).toBe('evt-100')
   })
 
-  it('surfaces generic optimisticData unchanged to raw listeners', async () => {
-    const client = new SSEInvalidatorClient('/sse')
-    const received: unknown[] = []
-    client.addEventListener('invalidate', (event) => {
-      received.push(event.detail)
-    })
-
-    const connection = client.connect()
-    const source = MockEventSource.instances[0]
-    source.emitOpen()
-    await connection
-
-    source.emitCustomEvent(
-      'invalidate',
-      JSON.stringify({ target: 'generic', key: ['todos'], optimisticData: { id: 1, done: true } }),
-    )
-
-    expect(received).toEqual([
-      { target: 'generic', key: ['todos'], optimisticData: { id: 1, done: true } },
-    ])
-  })
-
   it('dispatches error custom event on invalid payload structure', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const errorSpy = vi.fn()

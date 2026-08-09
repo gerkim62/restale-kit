@@ -130,94 +130,6 @@ describe('tanstackQueryAdapter', () => {
     expect((adapter as any).__restaleTarget).toBe('tanstack-query')
   })
 
-  it('writes optimisticData into the cache and revalidates by default', () => {
-    const cache = new Map<string, unknown>()
-    const invalidations: unknown[] = []
-    const queryClient: QueryClientLike = {
-      setQueryData(queryKey, data) {
-        cache.set(JSON.stringify(queryKey), data)
-      },
-      invalidateQueries(filters) {
-        invalidations.push(filters)
-        return Promise.resolve()
-      },
-      removeQueries: () => {},
-      resetQueries: () => Promise.resolve(),
-      cancelQueries: () => Promise.resolve(),
-      refetchQueries: () => Promise.resolve(),
-    }
-
-    tanstackQueryAdapter(queryClient)({
-      target: 'tanstack-query',
-      queryKey: ['todos'],
-      exact: true,
-      optimisticData: { id: 1, done: true },
-    })
-
-    expect(cache.get(JSON.stringify(['todos']))).toEqual({ id: 1, done: true })
-    expect(invalidations).toEqual([{ queryKey: ['todos'], exact: true }])
-  })
-
-  it('writes optimisticData without revalidation when configured as trusted', () => {
-    const cache = new Map<string, unknown>()
-    const invalidations: unknown[] = []
-    const queryClient: QueryClientLike = {
-      setQueryData(queryKey, data) {
-        cache.set(JSON.stringify(queryKey), data)
-      },
-      invalidateQueries(filters) {
-        invalidations.push(filters)
-        return Promise.resolve()
-      },
-      removeQueries: () => {},
-      resetQueries: () => Promise.resolve(),
-      cancelQueries: () => Promise.resolve(),
-      refetchQueries: () => Promise.resolve(),
-    }
-
-    tanstackQueryAdapter(queryClient, { revalidateOptimisticData: false })({
-      target: 'tanstack-query',
-      queryKey: ['todos'],
-      optimisticData: { id: 2 },
-    })
-
-    expect(cache.get(JSON.stringify(['todos']))).toEqual({ id: 2 })
-    expect(invalidations).toEqual([])
-  })
-
-  it('uses setQueriesData with full query filters scope and seeds exact query key when setQueriesData is available on QueryClient', () => {
-    const setQueryData = vi.fn()
-    const setQueriesData = vi.fn()
-    const invalidateQueries = vi.fn().mockResolvedValue(undefined)
-    const queryClient: QueryClientLike = {
-      setQueryData,
-      setQueriesData,
-      invalidateQueries,
-      removeQueries: () => {},
-      resetQueries: () => Promise.resolve(),
-      cancelQueries: () => Promise.resolve(),
-      refetchQueries: () => Promise.resolve(),
-    }
-
-    tanstackQueryAdapter(queryClient)({
-      target: 'tanstack-query',
-      queryKey: ['todos'],
-      exact: false,
-      type: 'active',
-      optimisticData: { id: 3 },
-    })
-
-    expect(setQueryData).toHaveBeenCalledWith(['todos'], { id: 3 })
-    expect(setQueriesData).toHaveBeenCalledWith(
-      { queryKey: ['todos'], exact: false, type: 'active' },
-      { id: 3 }
-    )
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['todos'],
-      exact: false,
-      type: 'active',
-    })
-  })
 })
 
 describe('useTanstackQueryAdapter', () => {
@@ -241,43 +153,6 @@ describe('useTanstackQueryAdapter', () => {
     rerender({ client: queryClient })
     const cb2 = result.current
     expect(cb1).toBe(cb2)
-  })
-
-  it('maintains a stable callback reference across rerenders with updated options and respects new option values', () => {
-    const setQueryData = vi.fn()
-    const invalidateQueries = vi.fn()
-    const queryClient = {
-      setQueryData,
-      invalidateQueries,
-      removeQueries: vi.fn(),
-      resetQueries: vi.fn(),
-      cancelQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const options1 = { revalidateOptimisticData: true }
-    const options2 = { revalidateOptimisticData: false }
-
-    const { result, rerender } = renderHook(
-      ({ opts }) => useTanstackQueryAdapter(queryClient, opts),
-      { initialProps: { opts: options1 } }
-    )
-
-    const cb1 = result.current
-
-    // Rerender with new options object
-    rerender({ opts: options2 })
-    expect(result.current).toBe(cb1)
-
-    // Invoke callback and verify options2 is respected (revalidateOptimisticData: false -> no invalidateQueries call)
-    cb1({
-      target: 'tanstack-query',
-      queryKey: ['todos'],
-      optimisticData: { id: 1 },
-    })
-
-    expect(setQueryData).toHaveBeenCalledWith(['todos'], { id: 1 })
-    expect(invalidateQueries).not.toHaveBeenCalled()
   })
 
   it('exposes __restaleTarget brand set to "tanstack-query"', () => {

@@ -77,13 +77,6 @@ describe('ClientOptions misuse prevention', () => {
   })
 })
 
-describe('ClientOptions optimistic data revalidation', () => {
-  test('rejects revalidateOptimisticData on ClientOptions since it is an adapter-level option', () => {
-    // @ts-expect-error revalidateOptimisticData is an adapter option, not a ClientOptions option
-    const invalid: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: false }
-  })
-})
-
 describe('SSEInvalidatorClient typed event listeners', () => {
   test('invalidate event detail is TSignal | TSignal[]', () => {
     const client = new SSEInvalidatorClient<SWRSignal>('https://example.com/sse', {

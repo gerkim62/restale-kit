@@ -148,26 +148,4 @@ describe('Signal payload strict narrowing', () => {
   })
 })
 
-describe('optimistic data push signal types', () => {
-  test('TanStack and generic signals accept JSON optimisticData and reject non-JSON values', () => {
-    const tanstack: TanStackQuerySignal = {
-      queryKey: ['todos'],
-      optimisticData: { id: 1, done: true },
-    }
-    const generic: GenericInvalidateSignal = {
-      key: ['todos'],
-      optimisticData: ['updated', 1],
-    }
-    expectTypeOf(tanstack.optimisticData).toEqualTypeOf<JSONValue | undefined>()
-    expectTypeOf(generic.optimisticData).toEqualTypeOf<JSONValue | undefined>()
 
-    // @ts-expect-error functions do not survive a JSON round trip
-    const invalidTanstack: TanStackQuerySignal = { queryKey: ['todos'], optimisticData: () => {} }
-    // @ts-expect-error functions do not survive a JSON round trip
-    const invalidGeneric: GenericInvalidateSignal = { key: ['todos'], optimisticData: () => {} }
-  })
-
-  test('SWR and TanStack use precisely the same optimisticData wire type', () => {
-    expectTypeOf<SWRSignal['optimisticData']>().toEqualTypeOf<TanStackQuerySignal['optimisticData']>()
-  })
-})

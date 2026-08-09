@@ -52,7 +52,6 @@ interface TanStackQuerySignal {
   type?: 'active' | 'inactive' | 'all'
   action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
   stale?: boolean
-  optimisticData?: JSONValue
 }
 
 interface SWRSignal {
@@ -60,7 +59,6 @@ interface SWRSignal {
   key: string | JSONValue[]
   action?: 'revalidate' | 'purge' | 'remove' | 'mutate'
   revalidate?: boolean
-  optimisticData?: JSONValue
   match?: 'exact' | 'prefix'
 }
 
@@ -74,7 +72,6 @@ interface GenericInvalidateSignal {
   key: JSONValue[]
   exact?: boolean
   action?: 'invalidate' | 'refetch' | 'remove'
-  optimisticData?: JSONValue
 }
 
 type ReStaleSignal =
@@ -159,12 +156,10 @@ class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | readonly SignalTarget[] = SignalTarget,
-  TClientContext = unknown
 > {
   constructor(options?: {
     target?: SignalTarget | SignalTarget[]
     metaSchema?: StandardSchemaV1<unknown, TMeta>
-    clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
     pubsub?: PubSubAdapter
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
@@ -209,9 +204,6 @@ class SSEChannelGroup<
     signal: TSignal | TSignal[],
     predicate?: (meta: TMeta | undefined) => boolean
   ): void
-  broadcast(
-    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
-  ): Promise<void>
 
   broadcastToAll(signal: TSignal | TSignal[]): void
 
@@ -222,8 +214,6 @@ class SSEChannelGroup<
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
-  updateClientContext(connectionId: string, clientContext: TClientContext, options: { scope: Record<string, JSONValue> }): Promise<{ updated: boolean }>
-  getClientContext(connectionId: string): TClientContext | undefined
   dispose(): Promise<void>
 }
 ```
@@ -393,9 +383,6 @@ function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSi
   options?: TanStackQueryAdapterOptions
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
-interface TanStackQueryAdapterOptions {
-  revalidateOptimisticData?: boolean // default true
-}
 ```
 
 ---
@@ -426,7 +413,6 @@ interface SWRAdapterOptions<TSignal> {
   // Convert a non-canonical SWR key to a JSONValue[] for matching.
   // Omit when SWR keys are already JSONValue[] arrays.
   toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
-  revalidateOptimisticData?: boolean // default true
 }
 
 // Structural equivalent of SWR's global mutate (from useSWRConfig().mutate)

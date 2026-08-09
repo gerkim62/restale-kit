@@ -44,11 +44,11 @@ describe('Gap 4: Single-target API types vs runtime behavior', () => {
       // With action
       channel.invalidate({ key: ['todos'], action: 'revalidate' });
       
-      // With optimisticData
+      // With match option
       channel.invalidate({ 
         key: ['todos', 1], 
         action: 'mutate',
-        optimisticData: { id: 1, done: true }
+        match: 'exact'
       });
     });
 

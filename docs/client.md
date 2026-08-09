@@ -62,17 +62,12 @@ useReStale(url: string, options: {
 
   // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
-
-  // Context (optional)
-  clientContext?: JSONValue     // optional — client-supplied pagination, sort, or filter context auto-synced to the server
 })
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:
 > - **Connection identity options (`url`, `target`, `withCredentials`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
-> - **Live runtime options (`autoReconnect`, `reconnect`, `debug`, `clientContext`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream. When `clientContext` changes, it is automatically posted to the server.
->
-> **Note on `revalidateOptimisticData`:** `revalidateOptimisticData` is an **adapter-level option** passed to `useTanstackQueryAdapter` or `useSwrAdapter`, not a `useReStale` option. `useReStale` manages the network stream and delegates signal execution to `onInvalidate`.
+> - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
 >
 > **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 
@@ -84,7 +79,6 @@ useReStale(url: string, options: {
   connection: ConnectionStatus  // current state
   reconnect(): Promise<void>    // manually reconnect; resets backoff counter
   close(): void                 // manually close
-  updateClientContext(context: JSONValue): Promise<void> // manually update client context on server
 }
 ```
 
@@ -125,47 +119,6 @@ useReStale('/sse', {
 Each matcher can be an exact status (`401`), a status class (`'4xx'`), or an inclusive range (`{ from: 400, to: 499 }`). The default is no matches, preserving normal retry behaviour. A rejected handshake sets the connection to `{ status: 'closed', reason: 'rejected' }` and calls `onRejected`; it is distinct from a server-sent `revoke` frame.
 
 For retryable responses such as `429` or `503`, set `retryAfter: 'respect'` to use the server's `Retry-After` header for the next retry. It accepts either delay seconds or an HTTP-date; invalid or absent values fall back to normal exponential backoff.
-
-### Infinite Scroll & `useInfiniteQuery`
-
-Pass the current page depth or active filter criteria as `clientContext`. As the user scrolls and loads additional pages, `useReStale` automatically updates `clientContext` on the server:
-
-```tsx
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useReStale } from 'restale-kit/react'
-import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-
-function InfiniteFeed() {
-  const queryClient = useQueryClient()
-  const onInvalidate = useTanstackQueryAdapter(queryClient)
-
-  const { data, fetchNextPage, hasNextPage } = useInfiniteQuery({
-    queryKey: ['feed', { sort: 'newest' }],
-    queryFn: ({ pageParam = 1 }) => fetch(`/api/feed?page=${pageParam}`).then(r => r.json()),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.nextPage,
-  })
-
-  // Track max loaded page depth for real-time contextual SSE updates
-  const maxPage = data?.pages.length ?? 1
-
-  useReStale('/api/sse', {
-    onInvalidate,
-    clientContext: { maxPage, sort: 'newest' },
-  })
-
-  return (
-    <div>
-      {data?.pages.map((page, i) => (
-        <div key={i}>
-          {page.items.map((item: any) => <div key={item.id}>{item.title}</div>)}
-        </div>
-      ))}
-      {hasNextPage && <button onClick={() => void fetchNextPage()}>Load More</button>}
-    </div>
-  )
-}
-```
 
 ### Server-initiated revocation
 
@@ -438,12 +391,9 @@ function App() {
 | `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, { revalidate: false })` — clears cache without revalidating |
 | `revalidate: false` | `boolean` | `mutate(filter, undefined, { revalidate: false })` — forces clear without revalidating |
 | `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
-| `optimisticData` | `JSONValue` | `mutate(key, optimisticData, { revalidate })` for that exact key |
 
 
 > **Note:** SWR has no separate "mark stale" operation, so `'invalidate'` and `'refetch'` both trigger immediate revalidation.
-
-For an `optimisticData` signal, `revalidate` defaults to `true`. Configure `{ revalidateOptimisticData: false }` on `swrAdapter` or `useSwrAdapter` to retain the pushed data without a background revalidation.
 
 ### SWR key format
 

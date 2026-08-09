@@ -191,79 +191,19 @@ type GroupSignalInput<
       ? SignalInputForTarget<TTarget>
       : unknown)
 
-export interface ContextualGeneratorHandler<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TClientContext = unknown,
-> {
-  where?: (payload: unknown, meta: TMeta | undefined, context: TClientContext | undefined) => boolean
-  signal: (
-    payload: unknown,
-    meta: TMeta | undefined,
-    context: TClientContext | undefined
-  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
-}
-
 export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
-  TClientContext = unknown,
 > {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
   pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
   channelDefaults?: ChannelDefaults
-
-  /**
-   * Group-level signal generator executed on every cluster node when a contextual broadcast payload is published.
-   */
-  contextualSignal?: (
-    payload: unknown,
-    meta: TMeta | undefined,
-    context: TClientContext | undefined
-  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
-
-  /**
-   * Group-level predicate function executed on every cluster node for contextual broadcasts.
-   */
-  contextualWhere?: (
-    payload: unknown,
-    meta: TMeta | undefined,
-    context: TClientContext | undefined
-  ) => boolean
-}
-
-export interface BroadcastContextualOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TClientContext = unknown,
-> {
-  /**
-   * Optional payload serialized and sent across the PubSub cluster so remote nodes evaluate their contextual generators.
-   */
-  payload?: unknown
-
-  /**
-   * Optional predicate function to filter which connections should receive the update.
-   * Receives connection metadata, clientContext, and payload. Default: () => true.
-   */
-  where?: (meta: TMeta | undefined, context: TClientContext | undefined, payload?: unknown) => boolean
-
-  /**
-   * Async signal generator executed per matching connection.
-   * Return a signal (or array of signals) containing optimisticData, or null/undefined to skip.
-   */
-  signal: (
-    meta: TMeta | undefined,
-    context: TClientContext | undefined,
-    payload?: unknown
-  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
 }
 
 
@@ -275,20 +215,14 @@ export interface BroadcastContextualOptions<
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
  * @typeParam TTarget - The target or targets handled by this group.
- * @typeParam TClientContext - Client-supplied, unauthenticated data that shapes a slice of
- * already-authorized data (for example pagination, sort, or filters). Never use it to
- * determine authorization scope; derive authorization from `meta` or the live authenticated
- * request handling the mutation instead.
  */
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-  TClientContext = unknown,
 > {
   private readonly channels = new Map<RegisteredChannel<TSignal>, {
     meta: TMeta | undefined
-    clientContext: TClientContext | undefined
     topics: Set<string>
     connectionId: string
   }>()
@@ -296,19 +230,7 @@ class SSEChannelGroupImplementation<
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly instanceId = generateInstanceId()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
   private readonly pubsub?: PubSubAdapter<TSignal>
-  private readonly contextualSignal?: (
-    payload: unknown,
-    meta: TMeta | undefined,
-    context: TClientContext | undefined
-  ) => Promise<TSignal | TSignal[] | null | undefined> | TSignal | TSignal[] | null | undefined
-  private readonly contextualWhere?: (
-    payload: unknown,
-    meta: TMeta | undefined,
-    context: TClientContext | undefined
-  ) => boolean
-  private readonly contextualHandlers = new Map<string, ContextualGeneratorHandler<TSignal, TMeta, TClientContext>>()
   readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
   readonly controlTopic: string
@@ -317,13 +239,10 @@ class SSEChannelGroupImplementation<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext> = {}) {
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.target = options.target
     this.metaSchema = options.metaSchema
-    this.clientContextSchema = options.clientContextSchema
     this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
-    this.contextualSignal = options.contextualSignal
-    this.contextualWhere = options.contextualWhere
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)
@@ -416,47 +335,6 @@ class SSEChannelGroupImplementation<
                     this.closeLocalConnection(connectionId, scope)
                   }
                 }
-              } else if (
-                dataObj &&
-                typeof dataObj === 'object' &&
-                !Array.isArray(dataObj) &&
-                'type' in dataObj &&
-                dataObj.type === 'updateClientContext' &&
-                'updateClientContext' in dataObj
-              ) {
-                const updatePayload = dataObj.updateClientContext
-                if (updatePayload && typeof updatePayload === 'object' && !Array.isArray(updatePayload)) {
-                  const connectionId = 'connectionId' in updatePayload && typeof updatePayload.connectionId === 'string'
-                    ? updatePayload.connectionId
-                    : undefined
-                  const clientContext = 'clientContext' in updatePayload ? updatePayload.clientContext : undefined
-                  let scope: Record<string, JSONValue> | undefined
-                  if ('scope' in updatePayload) {
-                    const scopeVal = updatePayload.scope
-                    if (scopeVal && typeof scopeVal === 'object' && !Array.isArray(scopeVal) && isJSONValue(scopeVal)) {
-                      scope = scopeVal
-                    } else {
-                      return
-                    }
-                  }
-                  if (connectionId !== undefined && clientContext !== undefined && isJSONValue(clientContext)) {
-                    this.applyRemoteClientContext(connectionId, clientContext, scope)
-                  }
-                }
-              } else if (
-                dataObj &&
-                typeof dataObj === 'object' &&
-                !Array.isArray(dataObj) &&
-                'type' in dataObj &&
-                dataObj.type === 'contextualBroadcast'
-              ) {
-                const senderInstanceId = 'senderInstanceId' in dataObj ? dataObj.senderInstanceId : undefined
-                if (senderInstanceId === this.instanceId) return
-                const payload = 'payload' in dataObj ? dataObj.payload : undefined
-                const handlerName = 'handlerName' in dataObj && typeof dataObj.handlerName === 'string' ? dataObj.handlerName : undefined
-                this.executeContextualBroadcastFromControl(payload, handlerName).catch((err: unknown) => {
-                  console.error('[ERROR][SSEChannelGroup.initControlSubscription] Contextual broadcast error:', err)
-                })
               } else {
                 this.closeLocalMatches(msg.data)
               }
@@ -644,63 +522,6 @@ class SSEChannelGroupImplementation<
     return meta
   }
 
-  private validateClientContext(clientContext: TClientContext): TClientContext {
-    if (this.clientContextSchema) {
-      return validateStandardSchema(clientContext, this.clientContextSchema)
-    }
-    return clientContext
-  }
-
-  private updateLocalClientContext(
-    connectionId: string,
-    clientContext: TClientContext,
-    scope?: Record<string, JSONValue>
-  ): boolean {
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels || channels.size === 0) return false
-
-    let updated = false
-    for (const channel of channels) {
-      const entry = this.channels.get(channel)
-      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
-      entry.clientContext = clientContext
-      updated = true
-    }
-    return updated
-  }
-
-  private applyRemoteClientContext(
-    connectionId: string,
-    clientContext: unknown,
-    scope?: Record<string, JSONValue>
-  ): void {
-    // When a schema is configured, validate the untrusted transport value through
-    // it — `validateStandardSchema` safely narrows `unknown` → `TClientContext`.
-    if (this.clientContextSchema) {
-      let validatedContext: TClientContext
-      try {
-        validatedContext = validateStandardSchema(clientContext, this.clientContextSchema)
-      } catch (error) {
-        console.error('[ERROR][SSEChannelGroup.updateClientContext] Ignored invalid remote clientContext:', error)
-        return
-      }
-      this.updateLocalClientContext(connectionId, validatedContext, scope)
-      return
-    }
-
-    // Without a schema, `TClientContext` defaults to `unknown`. The value
-    // was already validated as JSON-safe by the sending instance's
-    // `updateClientContext` and passed through the control topic.
-    // No runtime narrowing is possible — write it via the channels map directly.
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels || channels.size === 0) return
-    for (const channel of channels) {
-      const entry = this.channels.get(channel)
-      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
-      setEntryClientContext(entry, clientContext)
-    }
-  }
-
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
     if (target === undefined) return
     validateTargetConfiguration(target)
@@ -743,7 +564,6 @@ class SSEChannelGroupImplementation<
     const connectionId = channel.connectionId
     this.channels.set(channel, {
       meta: validatedMeta,
-      clientContext: existingEntry?.clientContext,
       topics: topicsSet,
       connectionId,
     })
@@ -837,77 +657,6 @@ class SSEChannelGroupImplementation<
         topicManager.remove(channel)
       }
     }
-  }
-
-  /**
-   * Stores client-provided query-shaping state for every local channel belonging
-   * to `connectionId`. `clientContext` is untrusted and must never be used as an
-   * authorization boundary; `scope` is required to pin this update to trusted `meta`.
-   */
-  async updateClientContext(
-    connectionId: string,
-    clientContext: TClientContext,
-    options: {
-      scope: TMeta extends object
-        ? Partial<Record<keyof TMeta, JSONValue | undefined>>
-        : Record<string, JSONValue | undefined>
-    }
-  ): Promise<{ updated: boolean }> {
-    if (typeof connectionId !== 'string' || connectionId.trim() === '') {
-      throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
-    }
-
-    if (!options || typeof options !== 'object' || options.scope === undefined) {
-      throw new Error('[SSEChannelGroup.updateClientContext] scope option is required.')
-    }
-
-    const validatedContext = this.validateClientContext(clientContext)
-    const scope = normalizeConnectionScope(
-      options.scope,
-      '[SSEChannelGroup.updateClientContext]'
-    )
-
-    // Control-topic messages must be JSON-safe. Client contexts originate in an
-    // HTTP JSON body, so rejecting non-JSON data makes local and clustered
-    // deployments behave consistently and prevents a partial local-only update.
-    if (this.pubsub && !isJSONValue(validatedContext)) {
-      throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
-    }
-
-    const updated = this.updateLocalClientContext(connectionId, validatedContext, scope)
-
-    if (this.pubsub) {
-      // The isJSONValue guard above already rejected non-JSON contexts
-      // when pubsub is configured, so this assertion is guaranteed to hold.
-      const jsonContext = assertJSONValue(
-        validatedContext,
-        '[SSEChannelGroup.updateClientContext] clientContext is not a valid JSONValue (should be unreachable).'
-      )
-      await this.pubsub.publish(this.controlTopic, {
-        kind: 'control',
-        data: {
-          type: 'updateClientContext',
-          updateClientContext: {
-            connectionId,
-            clientContext: jsonContext,
-            ...(scope !== undefined ? { scope } : {}),
-          },
-        },
-      })
-    }
-
-    return { updated }
-  }
-
-  /** Returns the current client context for a local connection, if one is registered. */
-  getClientContext(connectionId: string): TClientContext | undefined {
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels) return undefined
-    for (const channel of channels) {
-      const entry = this.channels.get(channel)
-      if (entry) return entry.clientContext
-    }
-    return undefined
   }
 
   /**
@@ -1041,220 +790,11 @@ class SSEChannelGroupImplementation<
    * group.broadcast({ key: ['todos'] }, (meta) => meta?.role === 'admin')
    * ```
    */
-  private isContextualBroadcastOptions(
-    input: GroupSignalInput<TSignal, TTarget> | BroadcastContextualOptions<TSignal, TMeta, TClientContext>
-  ): input is BroadcastContextualOptions<TSignal, TMeta, TClientContext> {
-    return (
-      input !== null &&
-      typeof input === 'object' &&
-      'signal' in input &&
-      typeof input.signal === 'function'
-    )
-  }
-
   broadcast(
     signal: GroupSignalInput<TSignal, TTarget>,
     predicate?: (meta: TMeta | undefined) => boolean
-  ): void
-  broadcast(
-    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
-  ): Promise<void>
-  broadcast(
-    signalOrOptions: GroupSignalInput<TSignal, TTarget> | BroadcastContextualOptions<TSignal, TMeta, TClientContext>,
-    predicate?: (meta: TMeta | undefined) => boolean
-  ): void | Promise<void> {
-    if (this.isContextualBroadcastOptions(signalOrOptions)) {
-      return this.broadcastContextualRaw(signalOrOptions)
-    }
-    this.broadcastRaw(signalOrOptions, predicate ?? (() => true))
-  }
-
-  private async broadcastContextualRaw(
-    options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
-  ): Promise<void> {
-    const where = options.where ?? (() => true)
-    const signalFn = options.signal
-    const errors: unknown[] = []
-    const signalCache = new Map<string, Promise<TSignal | TSignal[] | null | undefined>>()
-
-    for (const [channel, entry] of this.channels) {
-      if (!where(entry.meta, entry.clientContext, options.payload)) continue
-
-      try {
-        const cacheKey = getContextCacheKey(entry.meta, entry.clientContext)
-        const cachedPromise = cacheKey !== null ? signalCache.get(cacheKey) : undefined
-        let signalPromise: Promise<TSignal | TSignal[] | null | undefined>
-
-        if (cachedPromise !== undefined) {
-          signalPromise = cachedPromise
-        } else {
-          signalPromise = Promise.resolve().then(() => signalFn(entry.meta, entry.clientContext, options.payload))
-          if (cacheKey !== null) {
-            signalCache.set(cacheKey, signalPromise)
-          }
-        }
-
-        const resolvedSignal = await signalPromise
-        if (resolvedSignal === null || resolvedSignal === undefined) continue
-
-        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
-        validateSignalPayload(normalizedSignal)
-        this.validateGroupSignalTargets(normalizedSignal)
-
-        this.deliverToChannel(channel, normalizedSignal, 'broadcast')
-      } catch (error) {
-        if (error instanceof ChannelClosedError) {
-          this.deregister(channel)
-        } else {
-          const err = error instanceof Error ? error : new Error(String(error))
-          console.error(
-            "[ERROR][SSEChannelGroup.broadcast] Contextual signal generator error",
-            "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
-            "\n  clientContext:", JSON.stringify(entry.clientContext, null, 2).slice(0, 500),
-            "\n  error:", err.stack || err.message
-          )
-          errors.push(error)
-        }
-      }
-    }
-
-    if (options.payload !== undefined && this.pubsub) {
-      const controlData: Record<string, JSONValue> = {
-        type: 'contextualBroadcast',
-        senderInstanceId: this.instanceId,
-      }
-      if (isJSONValue(options.payload)) {
-        controlData.payload = options.payload
-      }
-      await this.pubsub.publish(this.controlTopic, {
-        kind: 'control',
-        data: controlData,
-      })
-    }
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, 'Contextual broadcast encountered validation or runtime errors')
-    }
-  }
-
-  /**
-   * Registers a named contextual generator handler on this group instance.
-   *
-   * @param name - Unique handler identifier used when publishing a contextual broadcast.
-   * @param handler - Object containing `where` predicate and `signal` generator functions.
-   */
-  registerContextualHandler(
-    name: string,
-    handler: ContextualGeneratorHandler<TSignal, TMeta, TClientContext>
   ): void {
-    if (typeof name !== 'string' || removeInvisibleWhitespace(name) === '') {
-      throw new Error('[SSEChannelGroup.registerContextualHandler] Handler name must be a non-empty string.')
-    }
-    if (!handler || typeof handler.signal !== 'function') {
-      throw new Error('[SSEChannelGroup.registerContextualHandler] Handler must supply a signal function.')
-    }
-    this.contextualHandlers.set(name, handler)
-  }
-
-  /**
-   * Broadcasts a contextual payload to active connections on this node and across all cluster nodes via PubSub.
-   *
-   * Each node in the cluster receives the payload via PubSub and executes its registered contextual generator
-   * against its own local connections.
-   */
-  async broadcastContextual(payload?: unknown): Promise<void>
-  async broadcastContextual(handlerName: string, payload: unknown): Promise<void>
-  async broadcastContextual(payloadOrHandlerName?: unknown, payload?: unknown): Promise<void> {
-    let handlerName: string | undefined = undefined
-    let eventPayload: unknown = payloadOrHandlerName
-
-    if (typeof payloadOrHandlerName === 'string' && payload !== undefined) {
-      handlerName = payloadOrHandlerName
-      eventPayload = payload
-    } else if (typeof payloadOrHandlerName === 'string' && this.contextualHandlers.has(payloadOrHandlerName)) {
-      handlerName = payloadOrHandlerName
-      eventPayload = undefined
-    }
-
-    // 1. Local execution
-    await this.executeContextualBroadcastFromControl(eventPayload, handlerName)
-
-    // 2. Cluster PubSub broadcast to remote nodes
-    if (this.pubsub) {
-      const controlData: Record<string, JSONValue> = {
-        type: 'contextualBroadcast',
-        senderInstanceId: this.instanceId,
-      }
-      if (handlerName !== undefined) {
-        controlData.handlerName = handlerName
-      }
-      if (eventPayload !== undefined && isJSONValue(eventPayload)) {
-        controlData.payload = eventPayload
-      }
-      await this.pubsub.publish(this.controlTopic, {
-        kind: 'control',
-        data: controlData,
-      })
-    }
-  }
-
-  private async executeContextualBroadcastFromControl(
-    payload: unknown,
-    handlerName?: string
-  ): Promise<void> {
-    const handler = handlerName ? this.contextualHandlers.get(handlerName) : undefined
-    const where = handler?.where ?? this.contextualWhere ?? (() => true)
-    const signalFn = handler?.signal ?? this.contextualSignal
-
-    if (!signalFn) return
-
-    const errors: unknown[] = []
-    const signalCache = new Map<string, Promise<TSignal | TSignal[] | null | undefined>>()
-
-    for (const [channel, entry] of this.channels) {
-      if (!where(payload, entry.meta, entry.clientContext)) continue
-
-      try {
-        const cacheKey = getContextCacheKey(entry.meta, entry.clientContext)
-        const cachedPromise = cacheKey !== null ? signalCache.get(cacheKey) : undefined
-        let signalPromise: Promise<TSignal | TSignal[] | null | undefined>
-
-        if (cachedPromise !== undefined) {
-          signalPromise = cachedPromise
-        } else {
-          signalPromise = Promise.resolve().then(() => signalFn(payload, entry.meta, entry.clientContext))
-          if (cacheKey !== null) {
-            signalCache.set(cacheKey, signalPromise)
-          }
-        }
-
-        const resolvedSignal = await signalPromise
-        if (resolvedSignal === null || resolvedSignal === undefined) continue
-
-        const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
-        validateSignalPayload(normalizedSignal)
-        this.validateGroupSignalTargets(normalizedSignal)
-
-        this.deliverToChannel(channel, normalizedSignal, 'broadcast')
-      } catch (error) {
-        if (error instanceof ChannelClosedError) {
-          this.deregister(channel)
-        } else {
-          const err = error instanceof Error ? error : new Error(String(error))
-          console.error(
-            "[ERROR][SSEChannelGroup.broadcastContextual] Contextual signal generator error",
-            "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
-            "\n  clientContext:", JSON.stringify(entry.clientContext, null, 2).slice(0, 500),
-            "\n  error:", err.stack || err.message
-          )
-          errors.push(error)
-        }
-      }
-    }
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, 'Contextual broadcast encountered validation or runtime errors')
-    }
+    this.broadcastRaw(signal, predicate ?? (() => true))
   }
 
   private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
@@ -1417,8 +957,7 @@ export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-  TClientContext = unknown,
-> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TClientContext>
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
 
 interface SSEChannelGroupConstructor {
   new <
@@ -1448,13 +987,6 @@ interface SSEChannelGroupConstructor {
   >(
     options: { metaSchema: TSchema } & SSEChannelGroupOptions<TSignal, TMeta>
   ): SSEChannelGroup<TSignal, TMeta>
-  new <
-    TClientContext,
-    TSchema extends StandardSchemaV1<unknown, TClientContext>,
-    TSignal extends InvalidateSignal = InvalidateSignal,
-  >(
-    options: { clientContextSchema: TSchema } & SSEChannelGroupOptions<TSignal, unknown, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
-  ): SSEChannelGroup<TSignal, unknown, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
   new <TTarget extends SignalTarget>(
     options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
   ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
@@ -1465,21 +997,12 @@ interface SSEChannelGroupConstructor {
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
     TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-    TClientContext = unknown,
   >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext>
-  ): SSEChannelGroup<TSignal, TMeta, TTarget, TClientContext>
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
+  ): SSEChannelGroup<TSignal, TMeta, TTarget>
 }
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
-
-function getContextCacheKey(meta: unknown, context: unknown): string | null {
-  try {
-    return JSON.stringify([meta ?? null, context ?? null])
-  } catch {
-    return null
-  }
-}
 
 function hasPubSubMethods<TSignal extends InvalidateSignal>(
   pubsub: unknown
@@ -1613,20 +1136,4 @@ function normalizeConnectionScope(
     throw new Error(`${label} scope must contain at least one non-undefined property.`)
   }
   return targetScope
-}
-
-/**
- * Writes an untrusted transport value into a channel entry's `clientContext`
- * slot. This is the sole trust boundary for the no-schema remote control path:
- * when no `clientContextSchema` is configured, `TClientContext` defaults to
- * `unknown` and there is no runtime schema to narrow through. The structural
- * parameter type `{ clientContext: unknown }` accepts any entry whose
- * `clientContext` field exists — `T | undefined` is always assignable to
- * `unknown` — so the write is type-safe without a cast.
- */
-function setEntryClientContext(
-  entry: { clientContext: unknown },
-  value: unknown,
-): void {
-  entry.clientContext = value
 }

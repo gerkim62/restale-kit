@@ -4,7 +4,7 @@ import { isObject } from '@/pubsub/core/pubsub-utils.js';
 import type { TanStackQuerySignal } from '@/types/protocol.js';
 import { SIGNAL_TARGETS } from '@/utils/constants.js';
 import type { InvalidateQueryFilters, QueryFilters } from '@tanstack/react-query';
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 
 function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
@@ -27,18 +27,12 @@ export interface QueryClientLike {
 
 export type TanStackQuerySignalInput = TanStackQuerySignal
 
-export interface TanStackQueryAdapterOptions {
-  /** Whether pushed optimistic data should be revalidated in the background. Default: true. */
-  revalidateOptimisticData?: boolean
-}
-
 /**
  * Creates an `onInvalidate` callback for TanStack Query.
  * Gap 8: Constrained specifically to TanStackQuerySignal.
  */
 export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClientLike,
-  options?: TanStackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
@@ -63,23 +57,6 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
         const filters: QueryFilters = { queryKey }
         if (exact !== undefined) filters.exact = exact
         if (type !== undefined) filters.type = type
-
-        // `optimisticData` is a direct cache write. When requested, follow it
-        // with the ordinary invalidation path so the source of truth refreshes.
-        if (Object.hasOwn(s, 'optimisticData')) {
-          queryClient.setQueryData(queryKey, s.optimisticData)
-          if (typeof queryClient.setQueriesData === 'function') {
-            queryClient.setQueriesData(filters, s.optimisticData)
-          }
-          if (options?.revalidateOptimisticData ?? true) {
-            const invalidateFilters: InvalidateQueryFilters = { ...filters }
-            if (stale !== undefined) {
-              invalidateFilters.refetchType = stale ? 'none' : 'active'
-            }
-            void queryClient.invalidateQueries(invalidateFilters)
-          }
-          continue
-        }
 
         switch (action) {
           case 'remove':
@@ -124,16 +101,12 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
  */
 export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClientLike,
-  options?: TanStackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
-  const optionsRef = useRef(options)
-  optionsRef.current = options
-
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
     useCallback(
       (signal: TSignal | TSignal[]) => {
-        tanstackQueryAdapter<TSignal>(queryClient, optionsRef.current)(signal)
+        tanstackQueryAdapter<TSignal>(queryClient)(signal)
       },
       [queryClient]
     )

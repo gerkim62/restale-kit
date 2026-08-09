@@ -139,8 +139,6 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   withCredentials?: boolean
   /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
-  /** Initial clientContext state to associate with this connection on the server. */
-  clientContext?: JSONValue
   target?: TargetForSignal<TSignal>
   callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
