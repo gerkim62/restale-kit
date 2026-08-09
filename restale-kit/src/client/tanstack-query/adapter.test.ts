@@ -209,6 +209,43 @@ describe('useTanstackQueryAdapter', () => {
     expect(cb1).toBe(cb2)
   })
 
+  it('maintains a stable callback reference across rerenders with updated options and respects new option values', () => {
+    const setQueryData = vi.fn()
+    const invalidateQueries = vi.fn()
+    const queryClient = {
+      setQueryData,
+      invalidateQueries,
+      removeQueries: vi.fn(),
+      resetQueries: vi.fn(),
+      cancelQueries: vi.fn(),
+      refetchQueries: vi.fn(),
+    } as unknown as QueryClient
+
+    const options1 = { revalidateOptimisticData: true }
+    const options2 = { revalidateOptimisticData: false }
+
+    const { result, rerender } = renderHook(
+      ({ opts }) => useTanstackQueryAdapter(queryClient, opts),
+      { initialProps: { opts: options1 } }
+    )
+
+    const cb1 = result.current
+
+    // Rerender with new options object
+    rerender({ opts: options2 })
+    expect(result.current).toBe(cb1)
+
+    // Invoke callback and verify options2 is respected (revalidateOptimisticData: false -> no invalidateQueries call)
+    cb1({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      optimisticData: { id: 1 },
+    })
+
+    expect(setQueryData).toHaveBeenCalledWith(['todos'], { id: 1 })
+    expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+
   it('exposes __restaleTarget brand set to "tanstack-query"', () => {
     const queryClient = {} as unknown as QueryClient
     const { result } = renderHook(() => useTanstackQueryAdapter(queryClient))

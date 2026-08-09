@@ -4,7 +4,7 @@ import { isObject } from '@/pubsub/core/pubsub-utils.js';
 import type { TanStackQuerySignal } from '@/types/protocol.js';
 import { SIGNAL_TARGETS } from '@/utils/constants.js';
 import type { InvalidateQueryFilters, QueryFilters } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
   return val === 'active' || val === 'inactive' || val === 'all'
@@ -122,8 +122,16 @@ export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput
   queryClient: QueryClientLike,
   options?: TanStackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
-    useCallback(tanstackQueryAdapter<TSignal>(queryClient, options), [queryClient, options])
+    useCallback(
+      (signal: TSignal | TSignal[]) => {
+        tanstackQueryAdapter<TSignal>(queryClient, optionsRef.current)(signal)
+      },
+      [queryClient]
+    )
   )
 }

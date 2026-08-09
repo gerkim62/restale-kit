@@ -218,6 +218,21 @@ describe('useReStale', () => {
     vi.useRealTimers()
   })
 
+  it('applies debug option changes without recreating the client', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ debug }) => useReStale('/sse', { onInvalidate, debug }),
+      { initialProps: { debug: false } }
+    )
+
+    expect(MockEventSource.instances).toHaveLength(1)
+
+    rerender({ debug: true })
+
+    // Connection must not be recreated when debug mode is updated
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
+
   it('calls onRetriesExhausted callback when retries are exhausted', () => {
     vi.useFakeTimers()
 

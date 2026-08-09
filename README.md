@@ -37,6 +37,7 @@ flowchart LR
 - **🔄 Flexible Client Support:** Built-in adapters for **TanStack Query** and **SWR**, native wire protocol support for **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
 - **🔌 Multi-Runtime Server Adapters:** Drop-in support for Express, Fastify, Hono, Node `http`, Bun, Deno, and standard Fetch API runtimes.
 - **🎯 Precision Invalidation:** Flexible key matching supports prefix keys, exact matches, hierarchical paths, and object-subset targeting.
+- **⚡️ Client Context & Optimistic Data Push:** Server can target pushed data payloads directly to connections using client context (page, sort, filters), updating client caches without intermediate refetches.
 - **🛡️ Standard Schema Validation:** Validate invalidation payloads on server & client using Zod, Valibot, ArkType, or any Standard Schema validator.
 - **🌐 Horizontally Scalable:** Pub/Sub adapters for Redis, Ably, and Pusher enable multi-instance and serverless cluster invalidations.
 - **⚡️ Resilience Built-In:** Automatic client reconnects with exponential backoff, jitter, and history replay via `Last-Event-ID`.
