@@ -259,18 +259,20 @@ describe('SSEChannelGroup clientContext type safety', () => {
       target: 'tanstack-query',
     })
 
-    void group.updateClientContext('conn-1', { page: 2, sortBy: 'createdAt' })
+    void group.updateClientContext('conn-1', { page: 2, sortBy: 'createdAt' }, { scope: { userId: 123 } })
     void group.updateClientContext('conn-1', { page: 2 }, { scope: { userId: 123 } })
     expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<PushContext | undefined>()
-    expectTypeOf(group.updateClientContext('conn-1', { page: 1 }))
+    expectTypeOf(group.updateClientContext('conn-1', { page: 1 }, { scope: { userId: 123 } }))
       .toEqualTypeOf<Promise<{ updated: boolean }>>()
 
     // @ts-expect-error context keys are constrained to TClientContext
-    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' })
+    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' }, { scope: { userId: 123 } })
     // @ts-expect-error known context fields retain their declared value type
-    void group.updateClientContext('conn-1', { page: 'two' })
+    void group.updateClientContext('conn-1', { page: 'two' }, { scope: { userId: 123 } })
     // @ts-expect-error scope remains constrained by trusted TMeta
     void group.updateClientContext('conn-1', { page: 2 }, { scope: { user_id: 123 } })
+    // @ts-expect-error scope option is required
+    void group.updateClientContext('conn-1', { page: 2 })
   })
 
   test('infers TClientContext from a standalone clientContextSchema', () => {
@@ -278,17 +280,17 @@ describe('SSEChannelGroup clientContext type safety', () => {
     const clientContextSchema = {} as import('@/types/index.js').StandardSchemaV1<unknown, PushContext>
     const group = new SSEChannelGroup({ clientContextSchema })
 
-    void group.updateClientContext('conn-1', { page: 2 })
+    void group.updateClientContext('conn-1', { page: 2 }, { scope: { key: 'val' } })
     expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<PushContext | undefined>()
 
     // @ts-expect-error schema output excludes undeclared context keys
-    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' })
+    void group.updateClientContext('conn-1', { page: 2, userId: 'spoofed' }, { scope: { key: 'val' } })
   })
 
   test('defaults TClientContext to unknown when omitted', () => {
     const group = new SSEChannelGroup<TanStackQuerySignal>({ target: 'tanstack-query' })
     expectTypeOf(group.getClientContext('conn-1')).toEqualTypeOf<unknown>()
-    void group.updateClientContext('conn-1', { arbitrary: 'shape' })
+    void group.updateClientContext('conn-1', { arbitrary: 'shape' }, { scope: { key: 'val' } })
   })
 })
 

@@ -1150,7 +1150,7 @@ describe('client context storage and control propagation', () => {
     group.register(first, { userId: 100, role: 'admin' })
     group.register(second, { userId: 100, role: 'admin' })
 
-    await expect(group.updateClientContext(first.connectionId, { page: 2, sortBy: 'createdAt' }))
+    await expect(group.updateClientContext(first.connectionId, { page: 2, sortBy: 'createdAt' }, { scope: { userId: 100 } }))
       .resolves.toEqual({ updated: true })
 
     expect(group.getClientContext(first.connectionId)).toEqual({ page: 2, sortBy: 'createdAt' })
@@ -1158,10 +1158,23 @@ describe('client context storage and control propagation', () => {
     expect(group['channels'].get(second)?.clientContext).toEqual({ page: 2, sortBy: 'createdAt' })
   })
 
+  it('rejects updateClientContext when scope option is missing or empty', async () => {
+    const group = createGroup()
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'ctx-missing-scope' })
+    group.register(channel, { userId: 100, role: 'admin' })
+
+    // @ts-expect-error scope is required
+    await expect(group.updateClientContext(channel.connectionId, { page: 1 }))
+      .rejects.toThrow('[SSEChannelGroup.updateClientContext] scope option is required.')
+
+    await expect(group.updateClientContext(channel.connectionId, { page: 1 }, { scope: {} } as any))
+      .rejects.toThrow('[SSEChannelGroup.updateClientContext] scope must contain at least one non-undefined property.')
+  })
+
   it('returns updated false and leaves no observable state for an unknown connection', async () => {
     const group = createGroup()
 
-    await expect(group.updateClientContext('unknown-connection', { page: 1 }))
+    await expect(group.updateClientContext('unknown-connection', { page: 1 }, { scope: { userId: 100 } }))
       .resolves.toEqual({ updated: false })
     expect(group.getClientContext('unknown-connection')).toBeUndefined()
   })
@@ -1189,7 +1202,7 @@ describe('client context storage and control propagation', () => {
     const channel = createSSEChannel({ target: 'swr', connectionId: 'ctx-invalid-schema' })
     group.register(channel, { userId: 100 })
 
-    await expect(group.updateClientContext(channel.connectionId, { page: 1 }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 1 }, { scope: { userId: 100 } }))
       .rejects.toThrow(SchemaValidationError)
     expect(group.getClientContext(channel.connectionId)).toBeUndefined()
     expect(group['channels'].get(channel)?.clientContext).toBeUndefined()
@@ -1204,7 +1217,7 @@ describe('client context storage and control propagation', () => {
     const channel = createSSEChannel({ target: 'swr', connectionId: 'ctx-schema-output' })
     group.register(channel, { userId: 100 })
 
-    await group.updateClientContext(channel.connectionId, { page: 999 })
+    await group.updateClientContext(channel.connectionId, { page: 999 }, { scope: { userId: 100 } })
     expect(group.getClientContext(channel.connectionId)).toEqual({ page: 1, sortBy: 'updatedAt' })
   })
 
@@ -1229,7 +1242,7 @@ describe('client context storage and control propagation', () => {
     const group = createGroup()
     const channel = createSSEChannel({ target: 'swr', connectionId: 'ctx-cleanup' })
     group.register(channel, { userId: 100 })
-    await group.updateClientContext(channel.connectionId, { page: 1 })
+    await group.updateClientContext(channel.connectionId, { page: 1 }, { scope: { userId: 100 } })
 
     group.deregister(channel)
 

@@ -31,7 +31,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       },
     })
     group.register(channel1, { userId: 'alice' })
-    await group.updateClientContext(channel1.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channel1.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'alice' } })
 
     const signals2: TanStackQuerySignal[] = []
     const channel2 = createSSEChannel({
@@ -46,7 +46,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       },
     })
     group.register(channel2, { userId: 'bob' })
-    await group.updateClientContext(channel2.connectionId, { page: 2, sort: 'rating' })
+    await group.updateClientContext(channel2.connectionId, { page: 2, sort: 'rating' }, { scope: { userId: 'bob' } })
 
     await group.broadcast({
       where: (meta, context) => context?.page === 1,
@@ -85,7 +85,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       },
     })
     group.register(channel, { userId: 'charlie' })
-    await group.updateClientContext(channel.connectionId, { page: 99, sort: 'newest' })
+    await group.updateClientContext(channel.connectionId, { page: 99, sort: 'newest' }, { scope: { userId: 'charlie' } })
 
     await group.broadcast({
       signal: async (meta, context) => {
@@ -116,7 +116,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       },
     })
     group.register(channel, { userId: 'grace' })
-    await group.updateClientContext(channel.connectionId, { page: 5, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 5, sort: 'price' }, { scope: { userId: 'grace' } })
 
     await group.broadcast({
       where: (meta, context) => context?.page === 1, // Grace is on page 5 -> mismatch
@@ -148,7 +148,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
     })
     group.register(channel, { userId: 'henry' })
     // Step 1: Initial context on page 1
-    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'henry' } })
 
     // Broadcast 1: Server sends optimistic data for page 1
     await group.broadcast({
@@ -161,7 +161,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
     expect(receivedSignals[0].queryKey).toEqual(['products', { page: 1 }])
 
     // Step 2: Client navigates to page 2 -> updateClientContext arrives at server
-    await group.updateClientContext(channel.connectionId, { page: 2, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 2, sort: 'price' }, { scope: { userId: 'henry' } })
 
     // Broadcast 2: Server sends optimistic data for page 2
     await group.broadcast({
@@ -193,14 +193,14 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       },
     })
     group.register(channelAlice, { userId: 'alice' })
-    await group.updateClientContext(channelAlice.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channelAlice.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'alice' } })
 
     const channelError = createSSEChannel({
       target: 'tanstack-query',
       connectionId: 'conn-err',
     })
     group.register(channelError, { userId: 'broken-user' })
-    await group.updateClientContext(channelError.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channelError.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'broken-user' } })
 
     await expect(
       group.broadcast({
@@ -228,7 +228,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       connectionId: 'conn-bad-payload',
     })
     group.register(channel, { userId: 'dave' })
-    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'dave' } })
 
     await expect(
       group.broadcast({
@@ -250,7 +250,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       connectionId: 'conn-close-during-async',
     })
     group.register(channel, { userId: 'eve' })
-    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'eve' } })
 
     expect(group.getClientContext(channel.connectionId)).toEqual({ page: 1, sort: 'price' })
 
@@ -283,7 +283,7 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
       connectionId: 'conn-multi-target',
     })
     group.register(channel, { userId: 'frank' })
-    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' })
+    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' }, { scope: { userId: 'frank' } })
 
     await expect(
       group.broadcast({

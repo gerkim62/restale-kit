@@ -776,13 +776,13 @@ class SSEChannelGroupImplementation<
   /**
    * Stores client-provided query-shaping state for every local channel belonging
    * to `connectionId`. `clientContext` is untrusted and must never be used as an
-   * authorization boundary; use `scope` to pin this update to trusted `meta`.
+   * authorization boundary; `scope` is required to pin this update to trusted `meta`.
    */
   async updateClientContext(
     connectionId: string,
     clientContext: TClientContext,
-    options?: {
-      scope?: TMeta extends object
+    options: {
+      scope: TMeta extends object
         ? Partial<Record<keyof TMeta, JSONValue | undefined>>
         : Record<string, JSONValue | undefined>
     }
@@ -791,9 +791,13 @@ class SSEChannelGroupImplementation<
       throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
     }
 
+    if (!options || typeof options !== 'object' || options.scope === undefined) {
+      throw new Error('[SSEChannelGroup.updateClientContext] scope option is required.')
+    }
+
     const validatedContext = this.validateClientContext(clientContext)
     const scope = normalizeConnectionScope(
-      options?.scope,
+      options.scope,
       '[SSEChannelGroup.updateClientContext]'
     )
 

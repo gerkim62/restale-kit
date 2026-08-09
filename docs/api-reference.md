@@ -222,7 +222,7 @@ class SSEChannelGroup<
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
-  updateClientContext(connectionId: string, clientContext: TClientContext, options?: { scope?: Record<string, JSONValue> }): Promise<{ updated: boolean }>
+  updateClientContext(connectionId: string, clientContext: TClientContext, options: { scope: Record<string, JSONValue> }): Promise<{ updated: boolean }>
   getClientContext(connectionId: string): TClientContext | undefined
   dispose(): Promise<void>
 }
