@@ -213,7 +213,7 @@ watchEffect(() => {
 
 In multi-server production deployments (e.g. 4 Node.js instances behind a load balancer with Redis):
 
-```
+```text
                        ┌────────────────────────┐
                        │  Mutation (Node 1)     │
                        └───────────┬────────────┘
@@ -242,12 +242,11 @@ In multi-server production deployments (e.g. 4 Node.js instances behind a load b
   Local SSE Streams       Local SSE Streams       Local SSE Streams
 ```
 
-1. **Node 1** invokes `group.broadcast({ payload, where, signal })`.
-2. **Node 1** evaluates its active local connections against the provided or registered contextual generator functions (`where` / `signal`).
-3. **Node 1** publishes a `contextualBroadcast` control message (`{ kind: 'control', data: { type: 'contextualBroadcast', senderInstanceId, handlerName, payload } }`) over `controlTopic`.
-4. **Every server node** (Node 2, Node 3) receives the control message via PubSub. Remote nodes filter out self-echo based on `senderInstanceId`.
-5. **Node 2 and Node 3** each execute their registered contextual generator functions (`contextualSignal(payload, meta, context)`) against their own local active SSE connections.
-6. The resolved `optimisticData` payloads are delivered down each server node's local SSE streams directly into the respective client query caches.
+1. **Server Node** receives a mutation request and invokes `group.broadcast({ where, signal })`.
+2. **`broadcastContextualRaw`** iterates over active local SSE connections registered on that server instance.
+3. For each local connection, it evaluates `where(meta, context)`.
+4. If `where` returns `true`, it executes `signal(meta, context)` to compute the targeted signal/`optimisticData` payload for that client's context.
+5. The resolved signal is delivered directly down the local connection's SSE stream without publishing or subscribing to a `contextualBroadcast` control frame over PubSub.
 
 ---
 

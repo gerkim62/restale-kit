@@ -207,7 +207,7 @@ class SSEChannelGroup<
 
   broadcast(
     signal: TSignal | TSignal[],
-    predicate?: (meta: TMeta) => boolean
+    predicate?: (meta: TMeta | undefined) => boolean
   ): void
   broadcast(
     options: BroadcastContextualOptions<TSignal, TMeta, TClientContext>
@@ -362,8 +362,12 @@ interface UseReStaleOptions<TSignal> extends ClientOptions {
 interface UseReStaleResult {
   connectionId: string
   connection: ConnectionStatus
+  /** Helper boolean: true if connection.status is 'open' */
+  isConnected: boolean
   reconnect(): Promise<void>
   close(): void
+  /** Updates the connection's clientContext on the server. */
+  updateClientContext(clientContext: JSONValue): Promise<void>
 }
 ```
 

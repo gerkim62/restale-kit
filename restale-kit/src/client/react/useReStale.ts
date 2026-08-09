@@ -173,6 +173,7 @@ export function useReStale<
         autoReconnect: opts.autoReconnect,
         reconnect: opts.reconnect,
         withCredentials: opts.withCredentials,
+        clientContext: opts.clientContext,
         debug: opts.debug,
         // Auto-infer target from the adapter's brand when not set explicitly.
         target,
@@ -188,11 +189,14 @@ export function useReStale<
   }
 
   const client = clientRef.current
-  client?.updateRuntimeOptions({
-    autoReconnect: opts.autoReconnect,
-    reconnect: opts.reconnect,
-    debug: opts.debug,
-  })
+  useEffect(() => {
+    if (!client) return
+    client.updateRuntimeOptions({
+      autoReconnect: opts.autoReconnect,
+      reconnect: opts.reconnect,
+      debug: opts.debug,
+    })
+  }, [client, opts.autoReconnect, opts.reconnect, opts.debug])
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(
