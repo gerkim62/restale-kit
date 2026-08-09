@@ -281,7 +281,6 @@ interface ClientOptions {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
-  revalidateOptimisticData?: boolean // default true
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
 }
 
@@ -373,7 +372,8 @@ import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanst
 import type { QueryClient } from '@tanstack/react-query'
 
 function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient
+  queryClient: QueryClient,
+  options?: TanStackQueryAdapterOptions
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
 /**
@@ -381,8 +381,13 @@ function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSigna
  * Call at the component top level; returns a stable branded callback across renders.
  */
 function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient
+  queryClient: QueryClient,
+  options?: TanStackQueryAdapterOptions
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
+
+interface TanStackQueryAdapterOptions {
+  revalidateOptimisticData?: boolean // default true
+}
 ```
 
 ---

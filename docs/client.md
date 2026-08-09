@@ -62,15 +62,14 @@ useReStale(url: string, options: {
 
   // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
-
-  // Optimistic data pushes
-  revalidateOptimisticData?: boolean // default true — revalidate after writing pushed data
 })
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:
 > - **Connection identity options (`url`, `target`, `withCredentials`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
 > - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
+>
+> **Note on `revalidateOptimisticData`:** `revalidateOptimisticData` is an **adapter-level option** passed to `useTanstackQueryAdapter` or `useSwrAdapter`, not a `useReStale` option. `useReStale` manages the network stream and delegates signal execution to `onInvalidate`.
 >
 > **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 

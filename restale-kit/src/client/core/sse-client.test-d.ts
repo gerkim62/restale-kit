@@ -78,12 +78,9 @@ describe('ClientOptions misuse prevention', () => {
 })
 
 describe('ClientOptions optimistic data revalidation', () => {
-  test('accepts a boolean revalidation policy and rejects non-boolean values', () => {
-    const options: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: false }
-    expectTypeOf(options.revalidateOptimisticData).toEqualTypeOf<boolean | undefined>()
-
-    // @ts-expect-error revalidateOptimisticData is a boolean policy
-    const invalid: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: 'false' }
+  test('rejects revalidateOptimisticData on ClientOptions since it is an adapter-level option', () => {
+    // @ts-expect-error revalidateOptimisticData is an adapter option, not a ClientOptions option
+    const invalid: ClientOptions<TanStackQuerySignal> = { revalidateOptimisticData: false }
   })
 })
 

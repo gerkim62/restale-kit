@@ -139,11 +139,6 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   withCredentials?: boolean
   /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
-  /**
-   * Whether an incoming `optimisticData` payload should be followed by a background
-   * revalidation against the source of truth. Default: true.
-   */
-  revalidateOptimisticData?: boolean
   target?: TargetForSignal<TSignal>
   callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
