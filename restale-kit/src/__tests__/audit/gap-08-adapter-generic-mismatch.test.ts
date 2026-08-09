@@ -10,7 +10,7 @@
  * declared input at runtime.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { tanstackQueryAdapter } from '../../client/tanstack-query/adapter.js';
 import { swrAdapter, type SWRMutator } from '../../client/swr/adapter.js';
@@ -18,8 +18,7 @@ import { rtkQueryAdapter } from '../../client/rtk-query/adapter.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
 
 function createMockMutate(): SWRMutator {
-  const fn = (matcher: (key?: unknown) => boolean) => Promise.resolve([]);
-  return fn as SWRMutator;
+  return vi.fn().mockResolvedValue([]) as SWRMutator;
 }
 
 describe('Gap 8: Adapter generic parameters tied to target', () => {

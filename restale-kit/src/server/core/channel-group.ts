@@ -584,19 +584,34 @@ class SSEChannelGroupImplementation<
 
   private applyRemoteClientContext(
     connectionId: string,
-    clientContext: JSONValue,
+    clientContext: unknown,
     scope?: Record<string, JSONValue>
   ): void {
-    let validatedContext: TClientContext
-    try {
-      // Revalidate remote control messages as a defence-in-depth boundary: all
-      // pub/sub values are untrusted transport input, even when produced by a peer.
-      validatedContext = this.validateClientContext(clientContext as TClientContext)
-    } catch (error) {
-      console.error('[ERROR][SSEChannelGroup.updateClientContext] Ignored invalid remote clientContext:', error)
+    // When a schema is configured, validate the untrusted transport value through
+    // it — `validateStandardSchema` safely narrows `unknown` → `TClientContext`.
+    if (this.clientContextSchema) {
+      let validatedContext: TClientContext
+      try {
+        validatedContext = validateStandardSchema(clientContext, this.clientContextSchema)
+      } catch (error) {
+        console.error('[ERROR][SSEChannelGroup.updateClientContext] Ignored invalid remote clientContext:', error)
+        return
+      }
+      this.updateLocalClientContext(connectionId, validatedContext, scope)
       return
     }
-    this.updateLocalClientContext(connectionId, validatedContext, scope)
+
+    // Without a schema, `TClientContext` defaults to `unknown`. The value
+    // was already validated as JSON-safe by the sending instance's
+    // `updateClientContext` and passed through the control topic.
+    // No runtime narrowing is possible — write it via the channels map directly.
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels || channels.size === 0) return
+    for (const channel of channels) {
+      const entry = this.channels.get(channel)
+      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
+      setEntryClientContext(entry, clientContext)
+    }
   }
 
   private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
@@ -771,13 +786,19 @@ class SSEChannelGroupImplementation<
     const updated = this.updateLocalClientContext(connectionId, validatedContext, scope)
 
     if (this.pubsub) {
+      // The isJSONValue guard above already rejected non-JSON contexts
+      // when pubsub is configured, so this assertion is guaranteed to hold.
+      const jsonContext = assertJSONValue(
+        validatedContext,
+        '[SSEChannelGroup.updateClientContext] clientContext is not a valid JSONValue (should be unreachable).'
+      )
       await this.pubsub.publish(this.controlTopic, {
         kind: 'control',
         data: {
           type: 'updateClientContext',
           updateClientContext: {
             connectionId,
-            clientContext: validatedContext as JSONValue,
+            clientContext: jsonContext,
             ...(scope !== undefined ? { scope } : {}),
           },
         },
@@ -1234,6 +1255,16 @@ function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
 }
 
 /**
+ * Narrows an arbitrary value to `JSONValue` via the runtime `isJSONValue` guard,
+ * throwing if the check fails. This avoids an unsafe `as JSONValue` cast when
+ * the caller has already ensured the value is JSON-safe through a prior guard.
+ */
+function assertJSONValue(value: unknown, message: string): JSONValue {
+  if (isJSONValue(value)) return value
+  throw new Error(message)
+}
+
+/**
  * Checks whether a channel entry's stored `meta` is a JSON superset of the
  * given `scope`. Used by both `closeLocalConnection` (revocation) and
  * `updateLocalClientContext` (context updates) for scope-pinning.
@@ -1274,4 +1305,20 @@ function normalizeConnectionScope(
     throw new Error(`${label} scope must contain at least one non-undefined property.`)
   }
   return targetScope
+}
+
+/**
+ * Writes an untrusted transport value into a channel entry's `clientContext`
+ * slot. This is the sole trust boundary for the no-schema remote control path:
+ * when no `clientContextSchema` is configured, `TClientContext` defaults to
+ * `unknown` and there is no runtime schema to narrow through. The structural
+ * parameter type `{ clientContext: unknown }` accepts any entry whose
+ * `clientContext` field exists — `T | undefined` is always assignable to
+ * `unknown` — so the write is type-safe without a cast.
+ */
+function setEntryClientContext(
+  entry: { clientContext: unknown },
+  value: unknown,
+): void {
+  entry.clientContext = value
 }

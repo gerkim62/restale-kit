@@ -29,9 +29,8 @@ export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInp
 export interface SWRMutator {
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
+  (key: Arguments, data: JSONValue, options: { revalidate: boolean }): Promise<unknown>
 }
-
-type SWRDataMutator = (key: Arguments, data: JSONValue, options: { revalidate: boolean }) => Promise<unknown>
 
 /**
  * Creates an `onInvalidate` callback for SWR's global `mutate` function.
@@ -66,7 +65,7 @@ export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
         if (Object.hasOwn(item, 'optimisticData')) {
           const optimisticData = item.optimisticData
           if (optimisticData === undefined) continue
-          void (mutate as unknown as SWRDataMutator)(item.key, optimisticData, {
+          void mutate(item.key, optimisticData, {
             revalidate: options?.revalidateOptimisticData ?? true,
           })
           continue
