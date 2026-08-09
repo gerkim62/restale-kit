@@ -97,6 +97,83 @@ describe('SSEChannelGroup targeted contextual broadcast', () => {
     expect(signals).toHaveLength(0)
   })
 
+  // TEST: Predicate mismatch (where returns false)
+  it('does not send any signal when predicate (where) evaluates to false', async () => {
+    const group = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+    })
+
+    const signals: TanStackQuerySignal[] = []
+    const channel = createSSEChannel({
+      target: 'tanstack-query',
+      connectionId: 'conn-no-match',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          if (Array.isArray(ctx.signal)) signals.push(...ctx.signal)
+          else signals.push(ctx.signal)
+        }
+        return { action: 'send' }
+      },
+    })
+    group.register(channel, { userId: 'grace' })
+    await group.updateClientContext(channel.connectionId, { page: 5, sort: 'price' })
+
+    await group.broadcast({
+      where: (meta, context) => context?.page === 1, // Grace is on page 5 -> mismatch
+      signal: async (meta, context) => {
+        return { queryKey: ['products', context?.page ?? 1], optimisticData: [] }
+      },
+    })
+
+    expect(signals).toHaveLength(0)
+  })
+
+  // TEST: Stale context resolution and query key scoping
+  it('uses registered server context and updates dynamically when updateClientContext is called', async () => {
+    const group = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
+      target: 'tanstack-query',
+    })
+
+    const receivedSignals: TanStackQuerySignal[] = []
+    const channel = createSSEChannel({
+      target: 'tanstack-query',
+      connectionId: 'conn-stale-test',
+      beforeFrame: (ctx) => {
+        if (ctx.frameType === 'signal') {
+          if (Array.isArray(ctx.signal)) receivedSignals.push(...ctx.signal)
+          else receivedSignals.push(ctx.signal)
+        }
+        return { action: 'send' }
+      },
+    })
+    group.register(channel, { userId: 'henry' })
+    // Step 1: Initial context on page 1
+    await group.updateClientContext(channel.connectionId, { page: 1, sort: 'price' })
+
+    // Broadcast 1: Server sends optimistic data for page 1
+    await group.broadcast({
+      signal: async (meta, context) => {
+        return { queryKey: ['products', { page: context?.page ?? 1 }], optimisticData: [{ id: 1 }] }
+      },
+    })
+
+    expect(receivedSignals).toHaveLength(1)
+    expect(receivedSignals[0].queryKey).toEqual(['products', { page: 1 }])
+
+    // Step 2: Client navigates to page 2 -> updateClientContext arrives at server
+    await group.updateClientContext(channel.connectionId, { page: 2, sort: 'price' })
+
+    // Broadcast 2: Server sends optimistic data for page 2
+    await group.broadcast({
+      signal: async (meta, context) => {
+        return { queryKey: ['products', { page: context?.page ?? 2 }], optimisticData: [{ id: 2 }] }
+      },
+    })
+
+    expect(receivedSignals).toHaveLength(2)
+    expect(receivedSignals[1].queryKey).toEqual(['products', { page: 2 }])
+  })
+
   // NEGATIVE TEST 1: Aggregates errors when signal generator throws for one connection
   it('throws AggregateError when signal generator fails for a connection while delivering to others', async () => {
     const group = new SSEChannelGroup<TanStackQuerySignal, TestMeta, 'tanstack-query', TestContext>({
