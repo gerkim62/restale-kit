@@ -1,43 +1,43 @@
 # Getting Started
 
-> **What it does:** After a DB write on the server, call `channel.invalidate()`. Every connected browser client automatically refetches its stale queries. No polling, no websockets.
+## 1. Prerequisites
+
+- **Node.js**: `>=18.0.0`
+- **Peer Dependencies**:
+  - For TanStack Query (React): `@tanstack/react-query` (`^5.0.0`), `react` (`^18.0.0` or `^19.0.0`)
+  - For SWR: `swr` (`^2.0.0`), `react` (`^18.0.0` or `^19.0.0`)
 
 ---
 
-## Prerequisites
+## 2. Install
 
-- **Node.js**: `>=18.0.0` (uses native Web Streams `ReadableStream`, Web Fetch API, `EventTarget`, and ES2024 features).
+Install `restale-kit` along with the peer dependencies required for your stack.
 
----
+### TanStack Query (React)
 
-## Installation
+```sh
+npm install restale-kit @tanstack/react-query react react-dom
+```
+
+### SWR (React)
+
+```sh
+npm install restale-kit swr react react-dom
+```
+
+### Vanilla JS (No UI framework)
 
 ```sh
 npm install restale-kit
 ```
 
-Install peer dependencies for your stack:
-
-```sh
-# Using TanStack Query (React)
-npm install @tanstack/react-query react
-
-# Using SWR
-npm install swr
-
-# Distributed pub/sub (pick one)
-npm install ioredis    # Redis
-npm install ably       # Ably
-npm install pusher     # Pusher
-```
-
-All peers are optional — only install what you use.
-
 ---
 
-## 5-minute setup: Express + TanStack Query
+## 3. 5-Minute Setup
 
-### 1. Server
+The following example establishes an Express server that pushes invalidation signals whenever a todo item is created, and a React component that automatically refetches its queries upon receiving the signal.
+
+### Server (`server.ts`)
 
 ```ts
 import express from 'express'
@@ -50,68 +50,90 @@ const group = new SSEChannelGroup({
   channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
-// SSE endpoint — clients connect here
-app.get('/sse', (req, res) => {
+app.get('/api/sse', (req, res) => {
   group.attachNodeResponse(req, res)
 })
 
-// After any mutation, broadcast the invalidation
-app.post('/api/todos', async (req, res) => {
-  // ... write to DB ...
+app.post('/api/todos', (req, res) => {
   group.broadcastToAll({ queryKey: ['todos'] })
   res.status(201).json({ success: true })
 })
 
-app.listen(3000)
+app.listen(3000, () => {
+  console.log('Server listening on http://localhost:3000')
+})
 ```
 
-> **Note:** `group.attachNodeResponse` / `group.createFetchResponse` requires the `__restale_cid__` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
-
-### 2. Client (React + TanStack Query)
+### Client (`App.tsx`)
 
 ```tsx
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import React from 'react'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReStale } from 'restale-kit/react'
 import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
-function App() {
-  const queryClient = useQueryClient()
-  const onInvalidate = useTanstackQueryAdapter(queryClient)
+const queryClient = new QueryClient()
 
-  // Connect to SSE; automatically invalidates queries on signal
-  useReStale('/sse', { onInvalidate })
+function TodoList() {
+  const qc = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter(qc)
 
-  const { data: todos } = useQuery({
+  useReStale('/api/sse', { onInvalidate })
+
+  const { data: todos, isLoading } = useQuery({
     queryKey: ['todos'],
-    queryFn: () => fetch('/api/todos').then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch('/api/todos')
+      return res.json() as Promise<Array<{ id: number; title: string }>>
+    },
   })
 
-  return <ul>{todos?.map(t => <li key={t.id}>{t.title}</li>)}</ul>
+  if (isLoading) return <div>Loading...</div>
+
+  return (
+    <ul>
+      {todos?.map((todo) => (
+        <li key={todo.id}>{todo.title}</li>
+      ))}
+    </ul>
+  )
+}
+
+export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TodoList />
+    </QueryClientProvider>
+  )
 }
 ```
 
-That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
+---
 
-> **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachNodeResponse(req, res)`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
->
-> ```ts
-> app.use(authMiddleware) // auth middleware populates req.user
->
-> app.get('/sse', (req, res) => {
->   group.attachNodeResponse(req, res, {
->     meta: { userId: req.user.id }, // ← add metadata now
->   })
-> })
-> ```
->
-> See [Server guide → Broadcasting](./server.md#broadcasting) and [Connection Revocation](./server.md#connection-revocation) for details.
+## 4. Verify It Works
+
+1. Start the Express server (`npx tsx server.ts`) and mount the React application.
+2. Open the browser DevTools **Network** tab and filter by **EventStream** or `sse`. Confirm an active GET request to `/api/sse?__restale_cid__=...&__restale_target__=tanstack-query` with HTTP status `200`.
+3. Send a POST request to create a todo item:
+   ```sh
+   curl -X POST http://localhost:3000/api/todos -H "Content-Type: application/json" -d '{}'
+   ```
+4. Observe the Network tab: an SSE event `event: invalidate` with payload `{"target":"tanstack-query","queryKey":["todos"]}` arrives, and TanStack Query automatically issues a background `GET /api/todos` request to update the UI.
 
 ---
 
-## Next steps
+## 5. What Just Happened
 
-- **Other server frameworks (Hono, Fastify, Node)** → [Server guide](./server.md)
-- **SWR, vanilla JS client** → [Client guide](./client.md)
-- **Per-user invalidation, metadata filtering** → [Server guide → Broadcasting](./server.md#broadcasting)
-- **Zod / Standard Schema validation** → [Validation guide](./validation.md)
-- **Multi-instance / serverless scaling** → [Pub/Sub guide](./pubsub.md)
+When the React component mounts, `useReStale` initializes an SSE stream to `/api/sse`, sending a generated client correlation ID (`__restale_cid__`) and target identifier. The server registers the connection inside `SSEChannelGroup`. When `group.broadcastToAll({ queryKey: ['todos'] })` is called on the server, the signal travels over the open SSE connection, where `useTanstackQueryAdapter` intercepts it and invokes `queryClient.invalidateQueries({ queryKey: ['todos'] })`.
+
+For a deeper dive into the architectural flow, see [Concepts](./concepts.md).
+
+---
+
+## 6. Next Steps
+
+- **Integrating Fastify, Hono, Bun, Deno, or Next.js** → See [Server Guide](./server.md)
+- **Using SWR or Vanilla JS** → See [Client Guide](./client.md)
+- **Targeting specific users with metadata** → See [Server Guide → Per-User Invalidation](./server.md#per-user-invalidation)
+- **Securing SSE streams with HTTP-only cookies** → See [Security Guide](./security.md)
+- **Scaling across multiple server instances** → See [Pub/Sub Guide](./pubsub.md)

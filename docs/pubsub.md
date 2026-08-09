@@ -1,90 +1,30 @@
-# Pub/Sub Guide
+# Pub/Sub & Horizontal Scaling Guide
 
-## Why pub/sub?
+## 1. When to Use Pub/Sub
 
-When you run **multiple server instances** (horizontal scaling, serverless, edge), each instance holds its own in-memory `SSEChannelGroup`. A client's SSE connection is tied to whichever instance accepted it — but a mutation might happen on a _different_ instance.
+Single-instance deployments maintain all client SSE connections in a single server process. Methods like `group.broadcastToAll` or `group.broadcast` operate in-memory on local channels.
 
-Without pub/sub: instance 2 mutates the DB, calls `group.publish(...)`, but has no local channels → no client receives the signal.
-
-With pub/sub: instance 2 publishes to a broker. The broker delivers to instance 1 (which holds the client's SSE connection). Instance 1 delivers the signal locally.
+When running multiple server instances (e.g., behind a load balancer, in serverless environments, or in Kubernetes clusters), client SSE connections are distributed across nodes. A database mutation handled by Instance A needs to invalidate cache states for clients connected to Instance B. Pub/sub brokers bridge nodes so signals published by any instance reach all connected clients cluster-wide.
 
 ```text
-Client ──SSE──► Instance 1 ──subscribe──► Broker ◄──publish── Instance 2 ──DB write
+Client A ──SSE──► Node 1 ──subscribe──► Broker ◄──publish── Node 2 ◄── Mutation Request
 ```
 
-> **Single-instance apps don't need pub/sub.** Use `broadcastToAll` or `broadcast` directly.
+---
+
+## 2. Architecture
+
+1. **Topic Subscription**: When a client attaches to an `SSEChannelGroup` with topics (`topics: ['user_123']`), the local group subscribes to those topics on the pub/sub broker.
+2. **Publishing**: Any server instance calls `group.publish('user_123', signal)`.
+3. **Broker Distribution**: The broker broadcasts the message envelope to all server nodes subscribed to `'user_123'`.
+4. **Local Delivery**: Each node receives the message and writes the invalidation frame to its locally connected client streams.
+5. **Auto-Unsubscribe**: When the last local channel assigned to a topic disconnects, the node unsubscribes from the broker topic automatically.
 
 ---
 
-## How it works
+## 3. Adapter Setup
 
-1. When a channel is registered with `topics`, the group subscribes to those topics on the broker (first registration on a topic creates one broker subscription).
-2. Any instance calls `group.publish(topic, signal)`.
-3. The broker delivers to all subscribed instances.
-4. Each instance delivers the signal to locally-held channels registered on that topic.
-5. When the last channel on a topic disconnects, the group unsubscribes from the broker.
-
----
-
-## Optional payload encryption
-
-Pub/sub payload encryption is disabled by default. Use it when you need to keep mutation keys and metadata private while they travel through the broker, including from a hosted or third-party provider. It is not required for normal operation; the broker's own TLS and access controls may already meet your transport-security requirements.
-
-To enable AES-256-GCM encryption, provide a valid, non-empty `encryptionKey`. You do not need to pass `{ encrypt: false }` when encryption is not needed.
-
-> [!IMPORTANT]
-> **When enabled:** Generate an encryption key of 32+ bytes of entropy via a CSPRNG (e.g., base64 or hex encoded via `openssl rand -base64 32` or `openssl rand -hex 32`), not a human-chosen passphrase. Encryption adds key-distribution and coordinated-rollout work, so enable it only where the added payload privacy is useful.
->
-> **No Mixed-Mode Support**: You cannot mix encrypted and unencrypted publishers/subscribers in the same cluster. Mismatched messages are dropped. This constraint is critical to prevent an attacker with access to the pub/sub broker from injecting plain unencrypted payloads to bypass decryption and tamper with client invalidation states.
->
-> **Key Rotation & Rollout**: There is no multi-key support or key-rotation mechanism. If you rotate the key, decryption of any in-flight or previously-published messages encrypted under the old key will fail. Decryption failures are caught safely (logged as warnings, dropping the message, and continuing processing). A coordinated/drained deploy is recommended for any key configuration updates.
-
-
----
-
-## Setup pattern
-
-```ts
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
-import { redisPubSubAdapter } from 'restale-kit/redis'
-import Redis from 'ioredis'
-
-const redis = new Redis(process.env.REDIS_URL)
-
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-  pubsub: redisPubSubAdapter(redis),
-})
-
-app.use(authenticateUser) // Ensure req.user is populated by auth middleware
-
-app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, {
-    topics: [`user:${req.user.id}`, 'global'],
-  })
-})
-
-// From any instance — no need to know which instance holds the client
-async function onTodoMutation(userId: string) {
-  await group.publish(`user:${userId}`, { key: ['todos'] })
-}
-
-async function onGlobalChange() {
-  await group.publish('global', { key: [] })
-}
-
-// Revoke one connection cluster-wide. userId/sessionId are obtained from
-// authenticated server state, not from the client request body.
-async function logoutUserConnection(userId: string, sessionId: string, connectionId: string) {
-  await group.revokeByConnectionId(connectionId, { userId, sessionId })
-}
-```
-
-`connectionId` is an opaque client correlation value, not an authorization credential. Always combine it with trusted metadata such as `userId` or a server-authenticated `sessionId` when revoking from an HTTP handler.
-
----
-
-## Redis adapter (`ioredis`)
+### Redis (`redisPubSubAdapter`)
 
 ```sh
 npm install ioredis
@@ -92,66 +32,43 @@ npm install ioredis
 
 ```ts
 import Redis from 'ioredis'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 
-// Pass a single client — the adapter creates a duplicate internally for subscribe
-const redis = new Redis(process.env.REDIS_URL)
+const redisClient = new Redis(process.env.REDIS_URL!)
 
 const group = new SSEChannelGroup({
-  pubsub: redisPubSubAdapter(redis, {
-    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-  }),
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  pubsub: redisPubSubAdapter(redisClient),
 })
 ```
 
-> **Self-echo suppression:** Redis pub/sub delivers messages back to the publisher if it's also subscribed. The adapter handles this transparently — your `onMessage` handler will not be called for messages you published.
+> **Gotcha:** `redisPubSubAdapter` automatically creates a duplicate Redis connection (`redisClient.duplicate()`) internally for blocking pub/sub subscriptions.
 
 ---
 
-## Ably adapter
+### Ably (`ablyPubSubAdapter`)
 
 ```sh
 npm install ably
 ```
 
 ```ts
-import * as Ably from 'ably'
+import Ably from 'ably'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { ablyPubSubAdapter } from 'restale-kit/ably'
 
-const ably = new Ably.Realtime({
-  key: process.env.ABLY_API_KEY,
-})
+const ablyClient = new Ably.Realtime({ key: process.env.ABLY_API_KEY! })
 
 const group = new SSEChannelGroup({
-  pubsub: ablyPubSubAdapter(ably, {
-    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-  }),
-})
-```
-
-Self-echo suppression is handled automatically via an internal envelope tag — you don't need to configure anything special on the Ably client.
-
-If you prefer to use Ably's native echo suppression instead, pass `useNativeEchoSuppression: true` **and** configure `echoMessages: false` on your Ably client:
-
-```ts
-const ably = new Ably.Realtime({
-  key: process.env.ABLY_API_KEY,
-  echoMessages: false, // required when useNativeEchoSuppression: true
-})
-
-const group = new SSEChannelGroup({
-  pubsub: ablyPubSubAdapter(ably, {
-    useNativeEchoSuppression: true,
-    encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-  }),
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  pubsub: ablyPubSubAdapter(ablyClient),
 })
 ```
 
 ---
 
-## Pusher adapter
-
-Pusher delivers messages to servers via **HTTP webhooks** rather than a persistent connection, so you need an extra webhook route.
+### Pusher (`pusherPubSubAdapter`)
 
 ```sh
 npm install pusher
@@ -159,97 +76,89 @@ npm install pusher
 
 ```ts
 import Pusher from 'pusher'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 import { pusherPubSubAdapter } from 'restale-kit/pusher'
 
-const pusher = new Pusher({
-  appId: process.env.PUSHER_APP_ID,
-  key: process.env.PUSHER_KEY,
-  secret: process.env.PUSHER_SECRET,
-  cluster: process.env.PUSHER_CLUSTER,
+const pusherClient = new Pusher({
+  appId: process.env.PUSHER_APP_ID!,
+  key: process.env.PUSHER_KEY!,
+  secret: process.env.PUSHER_SECRET!,
+  cluster: process.env.PUSHER_CLUSTER!,
 })
 
-const pubsub = pusherPubSubAdapter(pusher, {
-  encryptionKey: process.env.PUBSUB_ENCRYPTION_KEY!,
-})
-
-const group = new SSEChannelGroup({ pubsub })
-
-// Required: receive Pusher's webhook messages
-app.post('/pusher/webhook', express.raw({ type: '*/*' }), (req, res) => {
-  // Pass the raw body string and headers to the adapter
-  const body = req.body.toString()
-  const headers = req.headers as Record<string, string>
-  const processed = pubsub.handleWebhook(body, headers)
-  res.status(processed ? 200 : 400).end()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  pubsub: pusherPubSubAdapter(pusherClient),
 })
 ```
 
 ---
 
-## `PubSubAdapter` interface
+## 4. Topics
 
-If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, etc.):
+Topics isolate signal delivery to specific channels or user groups:
 
 ```ts
-import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
-import type { PubSubMessage, InvalidateSignal } from 'restale-kit'
+app.get('/api/sse', (req, res) => {
+  const userId = req.user.id
+  group.attachNodeResponse(req, res, {
+    topics: [`user:${userId}`, 'global_announcements'],
+  })
+})
 
-function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
-  // Omitted options keep broker payloads unencrypted.
-  const encryptionKey = options.encryptionKey
-
-  return {
-    async publish(topic, message) {
-      // Send a PubSubMessage envelope to the broker on topic. When encryptionKey
-      // is defined, encrypt the envelope payload with it and bind it to topic;
-      // otherwise send the plaintext envelope.
-      // message is a discriminated union:
-      // - Signals: { kind: 'signal', data: TSignal | TSignal[], id?: string }
-      //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }
-      //   When an eventStore is configured, id carries the sequence event ID for Last-Event-ID replay across instances.
-      // - Control: { kind: 'control', data: JSONValue }
-    },
-
-    async subscribe(topic, onMessage) {
-      // Subscribe to topic; call onMessage(message) when a PubSubMessage arrives.
-      // Ensure batched signals remain preserved as { kind: 'signal', data: [signalA, signalB] } upon delivery.
-      // Return an unsubscribe function.
-      return async () => {
-        // Unsubscribe from topic
-      }
-    },
-
-    onError(handler) {
-      // Optional: register a handler for adapter-internal errors
-    },
-  }
-}
+// Publish signal to a specific user topic
+await group.publish('user:user_123', { queryKey: ['orders'] })
 ```
 
-**Adapter contract rules:**
-- **Encryption options:** Custom adapters should default `PubSubEncryptionOptions` to no encryption and encrypt message payloads only when an `encryptionKey` is configured (e.g. using `wrapEnvelope`/`unwrapEnvelope` with topic AAD binding).
-- **Preserve batches:** If `publish(topic, [a, b])` is called, `onMessage` on the receiving side must fire once with `[a, b]`, not twice separately.
-- **Self-echo suppression:** `onMessage` must not be called for messages this adapter instance published (use an internal origin tag, not a mutation of the signal).
-- **Broker reconnects:** Adapters own their own retry logic. `onError` is for observability only.
-- **Pass a pre-constructed client:** Never accept credentials or URLs — take an already-authenticated broker client.
+---
+
+## 5. `controlTopic`
+
+The `controlTopic` option (defaulting to `'__restale_control__'`) specifies the internal pub/sub topic used for cluster-wide administrative operations such as remote connection revocation. Change this setting only if you need to isolate multiple `SSEChannelGroup` clusters running on the same pub/sub broker.
+
+```ts
+const group = new SSEChannelGroup({
+  controlTopic: 'my_app_control_channel',
+  pubsub: redisPubSubAdapter(redisClient),
+})
+```
 
 ---
 
-## Topic design patterns
+## 6. Encryption
 
-Topics are plain strings — design them to match your invalidation granularity:
+Pub/sub payload encryption protects query keys and metadata in transit across third-party brokers using AES-256-GCM symmetric encryption with topic-bound Additional Authenticated Data (AAD).
 
-| Pattern | Topic example | Use case |
-|---|---|---|
-| Per-user | `user:42` | User-specific data |
-| Per-tenant | `tenant:acme` | Multi-tenant SaaS |
-| Global | `global` | Config, feature flags |
-| Per-resource | `post:99:comments` | Fine-grained resource |
+### Enabling Encryption
+
+To enable encryption, pass an `encryptionKey` option to the pub/sub adapter:
+
+```ts
+const pubsub = redisPubSubAdapter(redisClient, {
+  encryptionKey: process.env.PUB_SUB_ENCRYPTION_KEY,
+})
+```
+
+### Key Generation Command
+
+Generate a secure 32-byte (256-bit) base64 or hex key using OpenSSL:
+
+```sh
+openssl rand -base64 32
+```
+
+### Critical Security Constraints
+
+- **No Mixed-Mode Support**: All nodes in a cluster must use identical encryption keys and options. Mixing encrypted and unencrypted publishers/subscribers results in dropped frames.
+- **Key Rotation Limitation**: `restale-kit` does not support simultaneous multi-key decryption. Updating encryption keys requires a coordinated deployment across nodes.
 
 ---
 
-## Delivery guarantees
+## 7. Cluster-Wide Connection Revocation
 
-- **At most once per currently-subscribed instance.** If an instance loses its broker connection while a signal is published, that signal is dropped for that instance's clients.
-- **Event history replay:** Pass a shared `eventStore` (or `eventBufferCapacity`) to `SSEChannelGroup` or your transport method (`attachNodeResponse` / `createFetchResponse`) to enable `Last-Event-ID` event replay for reconnecting clients. Without an event store configured, clients that were disconnected when a signal fired do not receive missed events upon reconnect.
-- Invalidation signals without replay configured are cheap to re-emit on subsequent mutations.
+Calling `group.revokeByConnectionId` or `group.revokeWhere` on a multi-instance group publishes a revocation control message to the `controlTopic`. Every server node receives the control signal and closes matching local channels immediately:
+
+```ts
+// Executed on Node A — revokes the connection across all cluster nodes
+await group.revokeByConnectionId(connectionId, 'logout')
+```

@@ -1,18 +1,32 @@
 # Server Guide
 
-The server side has two concerns:
-1. **Accepting SSE connections** — using a framework adapter to create an `SSEChannel` per client.
-2. **Broadcasting invalidations** — using `SSEChannelGroup` to send signals to the right clients.
+The server side of `restale-kit` manages incoming client SSE streams via framework adapters, tracks connection metadata, and broadcasts cache-invalidation signals when backend mutations occur.
+
+For authentication practices, see [Security Guide](./security.md). For multi-instance scaling, see [Pub/Sub Guide](./pubsub.md).
 
 ---
 
-## Establishing channels via `SSEChannelGroup`
+## 1. `SSEChannelGroup` Options
 
-`SSEChannelGroup` is the single entry point for establishing and managing channels. Creating and registering channels occurs atomically in a single method call:
-- `group.createFetchResponse(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
-- `group.attachNodeResponse(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
+`SSEChannelGroup` is the central manager for server-side connections.
 
-All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
+```ts
+const group = new SSEChannelGroup(options)
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `target` | `SignalTarget \| SignalTarget[]` | `undefined` | Target discriminator(s) for automatic signal tagging across channels in this group. |
+| `metaSchema` | `StandardSchemaV1` | `undefined` | Standard Schema (Zod, Valibot, ArkType) for validating metadata passed to `attachNodeResponse` or `createFetchResponse`. |
+| `pubsub` | `PubSubAdapter` | `undefined` | Distributed pub/sub adapter (Redis, Ably, Pusher) for multi-instance scaling. |
+| `eventStore` | `EventStore` | `undefined` | Shared history store for recording frames and replaying missed events via `Last-Event-ID`. |
+| `eventBufferCapacity` | `number` | `undefined` | Capacity for automatic event store instantiation when `eventStore` is omitted. |
+| `controlTopic` | `string` | `'__restale_control__'` | Pub/sub channel name used for cluster-wide control signals (e.g. revocation). |
+| `channelDefaults` | `ChannelDefaults` | `undefined` | Default configuration (`keepaliveIntervalMs`, `retryIntervalMs`, `lifetime`, `beforeFrame`, `guardKeepalive`) applied to all channels. |
+
+---
+
+## 2. Framework Adapters
 
 ### Express
 
@@ -22,59 +36,55 @@ import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = express()
 const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
-app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, {
-    meta: { userId: req.user?.id },
-  })
+app.get('/api/sse', (req, res) => {
+  group.attachNodeResponse(req, res)
 })
 ```
 
-### Native Node.js `http`
+### Fastify
+
+`group.attachNodeResponse` accepts Fastify's `request` and `reply` objects and automatically invokes `reply.hijack()` to take control of the underlying socket.
+
+```ts
+import Fastify from 'fastify'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+const app = Fastify()
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+
+app.get('/api/sse', (request, reply) => {
+  group.attachNodeResponse(request, reply)
+})
+```
+
+> **Note:** Do not call `reply.hijack()` manually before calling `attachNodeResponse`. `attachNodeResponse` handles socket hijacking safely.
+
+### Node `http`
 
 ```ts
 import http from 'node:http'
 import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
-  if (req.method === 'GET' && url.pathname === '/sse') {
-    group.attachNodeResponse(req, res, {
-      meta: { userId: req.user?.id },
-    })
+  if (req.method === 'GET' && url.pathname === '/api/sse') {
+    group.attachNodeResponse(req, res)
   }
 })
 ```
 
-### Fastify
+### Hono
 
-`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` automatically calls `reply.hijack()` for you.
-
-```ts
-import Fastify from 'fastify'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
-
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-})
-const app = Fastify()
-
-app.get('/sse', (request, reply) => {
-  group.attachNodeResponse(request, reply, {
-    meta: { userId: request.user?.id },
-  })
-})
-```
-
-### Hono & Fetch API (Cloudflare Workers, Bun, Deno, edge)
-
-Fetch-API runtimes return both the `Response` object and the `SSEChannel` reference.
+Fetch-based runtimes return `{ response, channel }`. Return `response` from your route handler.
 
 ```ts
 import { Hono } from 'hono'
@@ -82,365 +92,218 @@ import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 const app = new Hono()
 const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
-app.use('*', authMiddleware) // Auth middleware sets userId on context
-
-app.get('/sse', (c) => {
-  const { response } = group.createFetchResponse(c.req.raw, {
-    meta: { userId: c.get('userId') },
-  })
+app.get('/api/sse', (c) => {
+  const { response } = group.createFetchResponse(c.req.raw)
   return response
 })
 ```
 
----
-
-## `SSEChannelGroup`
-
-`SSEChannelGroup` manages all connected clients and is where you send invalidation signals and control revocations.
+### Bun
 
 ```ts
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
-const group = new SSEChannelGroup()
-
-// With typed metadata
-interface ClientMeta {
-  userId: string
-  roles: string[]
-}
-const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
-```
-
-**Constructor options:**
-
-| Option | Type | Description |
-|---|---|---|
-| `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
-| `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
-| `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
-| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
-| `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
-| `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
-
----
-
-## `register` and `deregister`
-
-```ts
-// If TMeta accepts undefined, metadata is optional:
-group.register(channel)
-
-// If TMeta does not accept undefined, metadata is required:
-group.register(channel, meta)
-
-// With topics routing:
-group.register(channel, meta, { topics: ['user:42', 'global'] })
-
-group.deregister(channel)
-```
-
-- `meta` is optional only when `TMeta` accepts `undefined`. If it does not accept `undefined`, metadata must be provided.
-- Omitting `meta` (or passing `undefined`) registers `undefined` as metadata, meaning the channel has no metadata properties. See [Broadcasting without metadata](#broadcasting-without-metadata) and [Revocation without metadata](#revocation-without-metadata) for the implications.
-- `topics` is an optional list of pub/sub topic strings this connection subscribes to. Only relevant when using a pub/sub adapter.
-
-**Automatic cleanup:** When a channel closes (peer disconnect, server `close()`, or stream cancellation), it is automatically deregistered from the group. You do not need a manual `req.on('close', ...)` listener for cleanup. `group.deregister(channel)` is still available if you need to remove a channel before it closes.
-
----
-
-## Broadcasting
-
-### `broadcastToAll(signal)` — all clients
-
-```ts
-// Invalidate the 'todos' key for every connected client
-group.broadcastToAll({ key: ['todos'] })
-
-// Invalidate everything (useful after a deployment)
-group.broadcastToAll({ key: [] })
-
-// Batch: multiple signals in one SSE frame
-group.broadcastToAll([
-  { key: ['todos'] },
-  { key: ['todos-count'] },
-])
-```
-
-### Target Signal Requirements & Wire Optimization
-
-- **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` on signal objects (e.g. `{ key: ['todos'] }`). The channel automatically attaches `target: 'swr'` before recording to `EventStore` or passing to `pubsub`.
-- **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Every signal object MUST explicitly specify `target`, and invalidation batches must supply signals for all declared targets.
-- **Wire Optimization**: The outgoing SSE byte frame strips the `target` property from JSON data lines (`data: {"key":["todos"]}`), since the active target is specified in the connection header (`X-ReStale-Target`).
-
-`broadcastToAll` reaches **all** registered channels, including those registered without metadata.
-
-### `broadcast(signal, predicate)` — filtered broadcast (preferred)
-
-Use a predicate against each channel's registered metadata to scope the invalidation:
-
-```ts
-// Only invalidate for a specific user
-group.broadcast(
-  { key: ['todos', { userId: '42' }] },
-  (meta) => meta.userId === '42'
-)
-
-// Invalidate admin data only for admin users
-group.broadcast(
-  { key: ['admin-data'] },
-  (meta) => meta.roles.includes('admin')
-)
-```
-
-The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i.e. metadata was omitted on registration), the predicate receives `undefined` and must handle it explicitly.
-
-### `broadcastByKey(signal)` — automatic key-based matching
-
-`broadcastByKey` automatically matches a signal's cache key against each channel's registered metadata (`meta`), eliminating the need to write manual predicate functions.
-
-```ts
-// Instead of writing a manual predicate:
-// group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
-
-// Simply use broadcastByKey:
-group.broadcastByKey({ key: ['todos', { userId }] })
-```
-
-#### How Key Matching Works
-The signal's `key` is compared against each channel's registered metadata (`meta`). A channel receives the signal when its registered metadata matches or extends the signal key. For example, if a client registered with `meta: { userId: '42' }`, a signal with `key: ['todos', { userId: '42' }]` will deliver to that client automatically.
-
-#### Target Restrictions: Single-Target Groups Only
-> [!NOTE]
-> `broadcastByKey` is available on **single-target channel groups** (e.g. `new SSEChannelGroup({ channelDefaults: { target: 'swr' } })`).
-> 
-> On **multi-target channel groups** (e.g. `target: ['swr', 'tanstack-query']`), `broadcastByKey` is restricted at the type level (`never`). This is because multi-target broadcasts require passing a batch array containing distinct signals for each target framework (`[SWRSignal, TanStackQuerySignal]`), which cannot be unambiguously matched with a single key. On multi-target groups, use `group.broadcast(batch, predicate)` instead:
-> 
-> ```ts
-> // Multi-target group broadcast:
-> group.broadcast(
->   [
->     { target: 'swr', key: ['todos', { userId: '42' }] },
->     { target: 'tanstack-query', queryKey: ['todos', { userId: '42' }] },
->   ],
->   (meta) => meta.userId === '42'
-> )
-> ```
-
-### Broadcasting without metadata
-
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
-
----
-
-## Connection Lifecycle: Lifetime & Reconnection Guards
-
-The **Frame Guard** feature allows you to enforce automatic connection renewal on a deadline (e.g., tied to authentication token expiry) and to gate outgoing signals with custom guards before they are sent to clients.
-
-### Connection Lifetime & Deadline Renewal
-
-A channel can have an absolute or relative deadline after which it must be renewed:
-
-```ts
-// Relative: expire after 5 minutes
-const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
-  lifetime: { ttlMs: 5 * 60 * 1000 }
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
 })
 
-// Absolute: expire at the token's exp claim (epoch ms)
-const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
-  lifetime: { deadline: tokenPayload.exp * 1000 }
-})
-```
-
-When the deadline approaches (after applying jitter to prevent thundering herds), the channel sends a `renew` SSE event frame to the client. The client then makes confirmatory reconnect attempt(s) through your real authentication middleware, allowing the server to refresh the client's session or reject the renewal based on auth state. The number of attempts is controlled by `maxAttempts` (default: 1).
-
-The `renew` frame includes:
-- `maxAttempts` — how many times the client should retry if the reconnect fails (default: 1)
-- `retryDelayMs` — milliseconds to wait between retry attempts (default: 250ms)
-
-If the client's confirmatory reconnect succeeds, the connection is resumed from the new channel. If all attempts exhaust, the client closes.
-
-By default, when deadline fires, a `renew` frame is sent (equivalent to `onDeadline: 'reconnect'`). To send a terminal `revoke` instead (for cases where the deadline itself is authoritative, such as a signed token's `exp`), use:
-
-```ts
-lifetime: { deadline: tokenExp, onDeadline: 'revoke' }
-```
-
-Or customize the `maxAttempts` / `retryDelayMs` values sent in the `renew` frame:
-
-```ts
-lifetime: {
-  ttlMs: 5 * 60 * 1000,
-  onDeadline: { maxAttempts: 2, retryDelayMs: 500 }
-}
-```
-
-### Frame Guard (`beforeFrame`)
-
-Before each outgoing signal frame (and optionally keepalive frames), you can run a custom synchronous guard function to inspect or reject the frame:
-
-```ts
-const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
-  beforeFrame: (ctx) => {
-    // ctx.signal: the signal about to be sent (undefined for keepalive)
-    // ctx.frameType: 'signal' or 'keepalive'
-    // ctx.connectionId: the connection ID
-    // ctx.requestedTarget: the client's requested target (if any)
-    // ctx.isResume: true if this connection started from Last-Event-ID
-
-    if (/* client no longer has permission */) {
-      return { action: 'close', reason: 'permission-denied' }
+Bun.serve({
+  port: 3000,
+  fetch(req) {
+    const url = new URL(req.url)
+    if (url.pathname === '/api/sse') {
+      const { response } = group.createFetchResponse(req)
+      return response
     }
-    return { action: 'send' }
+    return new Response('Not Found', { status: 404 })
   },
-  // By default, beforeFrame runs before signal frames only.
-  // Set guardKeepalive: true to also run it before keepalive ticks (if keepalive is enabled).
-  keepaliveIntervalMs: 5000,
-  guardKeepalive: false,
 })
 ```
 
-The guard function must be synchronous and can return one of three results:
+### Deno
 
-| Result | Effect |
-|---|---|
-| `{ action: 'send' }` | Frame is sent normally. |
-| `{ action: 'skip' }` | Frame is silently dropped; connection stays open. Useful for rate-limiting or sampling. |
-| `{ action: 'close', reason?: string }` | Send a terminal `revoke` frame with the supplied reason, then close the connection. No auto-reconnect. |
+```ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
-Errors thrown in `beforeFrame` are treated as `{ action: 'close' }`.
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
 
-### Distributing defaults via `channelDefaults`
+Deno.serve((req) => {
+  const url = new URL(req.url)
+  if (url.pathname === '/api/sse') {
+    const { response } = group.createFetchResponse(req)
+    return response
+  }
+  return new Response('Not Found', { status: 404 })
+})
+```
 
-In a multi-channel group, you can distribute Frame Guard settings to all channels created through the group:
+### Cloudflare Workers
+
+```ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+
+export default {
+  fetch(request: Request): Response {
+    const url = new URL(request.url)
+    if (url.pathname === '/api/sse') {
+      const { response } = group.createFetchResponse(request)
+      return response
+    }
+    return new Response('Not Found', { status: 404 })
+  },
+}
+```
+
+### Next.js Edge Route Handler
+
+```ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+export const runtime = 'edge'
+
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+
+export function GET(request: Request): Response {
+  const { response } = group.createFetchResponse(request)
+  return response
+}
+```
+
+---
+
+## 3. Broadcasting
+
+`SSEChannelGroup` provides three broadcasting methods for delivering invalidation signals to connected clients:
+
+### `broadcastToAll(signal)`
+Sends an invalidation signal to every active channel in the group.
+
+```ts
+group.broadcastToAll({ queryKey: ['posts'] })
+```
+
+### `broadcast(signal, predicate)`
+Evaluates a predicate function against each channel's registered metadata (`meta`), delivering the signal only when the predicate returns `true`.
+
+```ts
+group.broadcast(
+  { queryKey: ['orders'] },
+  (meta) => meta.role === 'admin'
+)
+```
+
+### `broadcastByKey(key, signal)`
+Convenience helper that broadcasts to channels matching a key-value pair in metadata (`meta[key] === value`).
+
+```ts
+group.broadcastByKey('userId', 'user_123', { queryKey: ['profile'] })
+```
+
+---
+
+## 4. Per-User Invalidation
+
+Attach user metadata during channel registration to route invalidations to specific authenticated users:
+
+```ts
+import express from 'express'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+interface UserMeta {
+  userId: string
+  tenantId: string
+}
+
+const app = express()
+const group = new SSEChannelGroup<InvalidateSignal, UserMeta>({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+
+// Authentication middleware populates req.user
+app.get('/api/sse', (req, res) => {
+  const userId = req.headers['x-user-id'] as string
+  const tenantId = req.headers['x-tenant-id'] as string
+
+  group.attachNodeResponse(req, res, {
+    meta: { userId, tenantId },
+  })
+})
+
+// Target a single user
+app.post('/api/user/update', (req, res) => {
+  const targetUserId = req.body.userId
+  group.broadcast(
+    { queryKey: ['user', targetUserId] },
+    (meta) => meta.userId === targetUserId
+  )
+  res.json({ success: true })
+})
+```
+
+---
+
+## 5. Connection Revocation
+
+Revocation forcibly closes an active client SSE stream from the server and signals the client to suppress automatic reconnection attempts.
+
+### `revokeByConnectionId(connectionId, reason?)`
+Closes all channels matching a specific connection ID (`__restale_cid__`).
+
+```ts
+await group.revokeByConnectionId(connectionId, 'logout')
+```
+
+### `revokeWhere(predicate, reason?)`
+Closes all channels whose metadata satisfies the predicate function.
+
+```ts
+await group.revokeWhere(
+  (meta) => meta.userId === 'user_123',
+  'session-expired'
+)
+```
+
+When a channel is revoked, a `revoke` event frame is sent to the client carrying the specified reason string before the stream terminates.
+
+---
+
+## 6. Event Replay & `Last-Event-ID`
+
+When client network connections drop and reconnect, the browser automatically sends the `Last-Event-ID` HTTP header containing the last received frame ID. `SSEChannelGroup` can replay missed invalidation signals upon connection resume.
+
+To enable event replay, configure an event store capacity:
+
+```ts
+const group = new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  eventBufferCapacity: 100, // Retains the last 100 invalidation events
+})
+```
+
+When a client resumes with a `Last-Event-ID` header, `SSEChannelGroup` looks up missed signals from the event buffer and replays them immediately before resuming live event streaming.
+
+---
+
+## 7. Keepalive
+
+By default, keepalive comments are disabled (`keepaliveIntervalMs: 0`). To prevent intermediate proxies, firewalls, or load balancers from timing out idle connections, configure a keepalive interval in milliseconds:
 
 ```ts
 const group = new SSEChannelGroup({
   channelDefaults: {
-    target: 'swr',
-    lifetime: { ttlMs: 5 * 60 * 1000 },
-    guardKeepalive: true,
-  }
-})
-
-app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, {
-    meta: { userId: req.user.id },
-    // Channel-specific options can override defaults:
-    // lifetime: { ttlMs: 10 * 60 * 1000 }
-  })
-})
-```
-
----
-
-## Connection Revocation
-
-To actively close client connections (e.g., on logout, session expiration, or user ban), the group provides two dedicated APIs.
-
-### Criteria-Based Revocation (`revokeWhere()`)
-
-Closes all channels whose metadata matches `criteria` via subset matching. If a pub/sub adapter is configured, also broadcasts to the control topic so remote instances close matching connections.
-
-Before closing each channel, `revokeWhere` sends a terminal `revoke` SSE event frame to the client. The client receives this frame, sets its status to `{ status: 'closed', reason: 'revoked' }`, suppresses automatic reconnection, and calls `onRevoke` if provided. This distinguishes an intentional server kick from a transient network error.
-
-```ts
-// Close all connections for user-42 across the entire cluster
-await group.revokeWhere({ userId: 'user-42' })
-```
-
-Returns `{ localClosed: number }`.
-
-### Connection-Specific Revocation (`revokeByConnectionId()`)
-
-Closes the single channel identified by `connectionId`. Pass `scope` (a partial metadata object) to verify ownership before closing — if the channel's metadata does not match `scope`, nothing happens and `{ closed: false }` is returned.
-
-Like `revokeWhere`, this sends a terminal `revoke` SSE event frame to the client before closing the channel. The client will not auto-reconnect after receiving it.
-
-When a pub/sub adapter is configured, `revokeByConnectionId` automatically broadcasts a control message to the cluster so that the connection is revoked on whichever server instance it is currently connected to.
-
-```ts
-// Close one specific connection, scoped to the requesting user
-const result = await group.revokeByConnectionId(connectionId, { userId: req.user.id })
-// result: { closed: boolean }
-```
-
-### Revocation without metadata
-
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) **cannot be targeted by `revokeWhere()`**. Omitting metadata registers `undefined` as metadata. Because `undefined` is not a valid JSON value, criteria matching is skipped entirely for those channels — even `revokeWhere({})` returns `localClosed: 0` for them.
-
-To revoke a channel that has no metadata, use `revokeByConnectionId(connectionId)` instead:
-
-```ts
-// ❌ Does not work — revokeWhere cannot match channels with undefined meta
-await group.revokeWhere({})
-
-// ✅ Works — revokeByConnectionId looks up by connectionId, bypassing metadata matching
-await group.revokeByConnectionId(channel.connectionId)
-```
-
-If you need criteria-based revocation, always register channels with explicit metadata.
-
-### Security: always scope client-supplied connection IDs
-
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
-
-Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeByConnectionId(...)` or in the criteria of `revokeWhere(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization. Always pass `scope` with trusted server-side identity (e.g. `{ userId: req.user.id }`) so that a forged or leaked `connectionId` cannot close another user's connection.
-
-If the client does not send a connection ID, revoke the trusted session instead using criteria-based revocation; this may close more than one tab:
-
-```ts
-await group.revokeWhere({
-  userId: req.user.id,
-  sessionId: req.session.id,
-})
-```
-
-When a pub/sub adapter is configured, `revokeWhere()` automatically broadcasts control messages across the cluster to reach matching connections on other server instances.
-
----
-
-## Reconnection & Event History Replay
-
-To prevent missed invalidation signals during momentary network drops, create a shared `eventStore` and pass it to `SSEChannelGroup`:
-
-```ts
-import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
-
-// Shared event store (retains history for Last-Event-ID replay)
-const eventStore = createEventStore({ capacity: 100 })
-const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
-  eventStore,
-})
-
-app.get('/sse', (req, res) => {
-  // group.attachNodeResponse automatically connects eventStore to channels
-  group.attachNodeResponse(req, res, {
-    meta: { userId: req.user.id },
-  })
-})
-```
-
-When a client reconnects sending the standard `Last-Event-ID` HTTP header (enforced up to a maximum length of 512 bytes for security protection), `group.attachNodeResponse` / `group.createFetchResponse` extracts the header and connects `eventStore` to the channel, which automatically replays missed invalidation events in sequence before resuming the live stream.
-
-> **Tip — pair with Frame Guard lifetime:** If you use `lifetime: { onDeadline: 'reconnect' }` (the default), configure a shared `eventStore` at the same time. During the brief close-and-reconnect window triggered by a deadline, any signals sent by the server may not be delivered to the client. An `eventStore` ensures those signals are replayed when the client reconnects with `Last-Event-ID`.
-
----
-
-## Teardown (`dispose()`)
-
-Call `group.dispose()` during graceful server shutdown to unsubscribe control topic listeners without force-closing client channels:
-
-```ts
-process.on('SIGTERM', async () => {
-  await group.dispose()
-  server.close()
+    target: SIGNAL_TARGETS.TANSTACK_QUERY,
+    keepaliveIntervalMs: 15_000, // Emits `: keepalive` frame every 15 seconds
+  },
 })
 ```

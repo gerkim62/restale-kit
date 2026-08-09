@@ -1,52 +1,50 @@
 # API Reference
 
-Complete export surface for every `restale-kit` subpath. All subpaths are ESM-only.
-
 ---
 
-## `restale-kit` — core types and errors
+## `restale-kit`
+
+### Constants
 
 ```ts
-import type {
-  JSONValue,
-  ReStaleSignal,
-  InvalidateSignal,
-  TanStackQuerySignal,
-  SWRSignal,
-  RTKQuerySignal,
-  GenericInvalidateSignal,
-  SSEInvalidateEvent,
-  ChannelState,
-  StandardSchemaV1,
-} from 'restale-kit'
-import {
-  ChannelClosedError,
-  SchemaValidationError,
-  SIGNAL_TARGETS,
-  isJSONValue,
-  isJSONValueArray,
-  matchesInvalidateSignalKey,
-  validateStandardSchema,
-} from 'restale-kit'
-```
-
-### Types
-
-```ts
-type JSONValue =
-  | string | number | boolean | null
-  | JSONValue[]
-  | { [key: string]: JSONValue }
-
-const SIGNAL_TARGETS: {
-  readonly TANSTACK: 'tanstack-query'
+export const SIGNAL_TARGETS: {
+  readonly TANSTACK_QUERY: 'tanstack-query'
   readonly SWR: 'swr'
   readonly RTK: 'rtk-query'
   readonly GENERIC: 'generic'
 }
+```
 
-interface TanStackQuerySignal {
-  target: 'tanstack-query'
+### Functions
+
+```ts
+export function isJSONValue(value: unknown): value is JSONValue
+export function isJSONValueArray(value: unknown): value is JSONValue[]
+export function matchesInvalidateSignalKey(cacheKey: unknown, signal: ReStaleSignal): boolean
+export function validateStandardSchema<T>(schema: StandardSchemaV1<T>, input: unknown): Promise<T>
+```
+
+### Classes & Error Types
+
+```ts
+export class ChannelClosedError extends Error {
+  readonly name: 'ChannelClosedError'
+}
+
+export class SchemaValidationError extends Error {
+  readonly name: 'SchemaValidationError'
+  readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
+}
+```
+
+### Types & Interfaces
+
+```ts
+export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
+export type SignalTarget = typeof SIGNAL_TARGETS[keyof typeof SIGNAL_TARGETS]
+
+export interface TanStackQuerySignal {
+  target?: typeof SIGNAL_TARGETS.TANSTACK_QUERY
   queryKey: JSONValue[]
   exact?: boolean
   type?: 'active' | 'inactive' | 'all'
@@ -54,311 +52,289 @@ interface TanStackQuerySignal {
   stale?: boolean
 }
 
-interface SWRSignal {
-  target: 'swr'
+export interface SWRSignal {
+  target?: typeof SIGNAL_TARGETS.SWR
   key: string | JSONValue[]
   action?: 'revalidate' | 'purge' | 'remove' | 'mutate'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
 }
 
-interface RTKQuerySignal {
-  target: 'rtk-query'
+export interface RTKQuerySignal {
+  target?: typeof SIGNAL_TARGETS.RTK
   tags: Array<string | { type: string; id?: string | number }>
 }
 
-interface GenericInvalidateSignal {
-  target?: 'generic'
+export interface GenericInvalidateSignal {
+  target?: typeof SIGNAL_TARGETS.GENERIC
   key: JSONValue[]
   exact?: boolean
   action?: 'invalidate' | 'refetch' | 'remove'
 }
 
-type ReStaleSignal =
-  | TanStackQuerySignal
-  | SWRSignal
-  | RTKQuerySignal
-  | GenericInvalidateSignal
+export type ReStaleSignal = TanStackQuerySignal | SWRSignal | RTKQuerySignal | GenericInvalidateSignal
+export type InvalidateSignal = ReStaleSignal
 
-type ReStaleSignalForTarget<TTarget extends SignalTarget> =
-  TTarget extends typeof SIGNAL_TARGETS.TANSTACK_QUERY
-    ? TanStackQuerySignal
-    : TTarget extends typeof SIGNAL_TARGETS.SWR
-      ? SWRSignal
-      : TTarget extends typeof SIGNAL_TARGETS.RTK
-        ? RTKQuerySignal
-        : GenericInvalidateSignal
+export type ReStaleSignalForTarget<TTarget extends SignalTarget> =
+  TTarget extends typeof SIGNAL_TARGETS.TANSTACK_QUERY ? TanStackQuerySignal :
+  TTarget extends typeof SIGNAL_TARGETS.SWR ? SWRSignal :
+  TTarget extends typeof SIGNAL_TARGETS.RTK ? RTKQuerySignal : GenericInvalidateSignal
 
-/**
- * Invalidation signal input type computed from target config.
- * - Single target: `target` property is optional and automatically defaulted.
- * - Multi-target array: explicit `target` is strictly required on every signal.
- */
-type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
-  [TTarget] extends [SignalTarget]
-    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
-      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
-    : ReStaleSignal | ReStaleSignal[]
+export type TargetForSignal<TSignal extends InvalidateSignal> = ...
+export type ExplicitSignalForTarget<TTarget extends SignalTarget> = ReStaleSignalForTarget<TTarget> & { target: TTarget }
+export type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined> = ...
 
-type InvalidateSignal = ReStaleSignal
+export type SSEInvalidateEvent<TSignal extends InvalidateSignal = InvalidateSignal> = TSignal | TSignal[]
 
-type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
-
-type ChannelState = 'open' | 'closed'
-```
-
-### Target & Wire Framing Behavior
-
-- **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` when calling `invalidate()`, `publish()`, or `broadcast()`. The single target is automatically attached internally.
-- **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Callers must pass an explicit `target` on every signal object and supply signals for all declared targets.
-- **Internal Storage & PubSub**: Signals stored in `EventStore` and sent across PubSub adapters retain the `target` property (`{ target: 'swr', key: [...] }`), keeping storage and pubsub fully target-aware.
-- **Wire Framing Optimization**: SSE data frames delivered over the wire strip the redundant `target` property (`data: {"key":["items"]}`), as the active target is already named in the connection header (`X-ReStale-Target`).
-
-### Utilities
-
-- `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
-- `isJSONValueArray(value: unknown): value is JSONValue[]`: Checks if a value is an array of JSON-serializable elements.
-- `matchesInvalidateSignalKey(cacheKey: JSONValue, signal: ReStaleSignal): boolean`: Determines whether a cache key matches a given signal.
-- `validateStandardSchema<T>(value: unknown, schema: StandardSchemaV1<unknown, T>): T`: Synchronously validates input against a Standard Schema v1 compliance object.
-
-### Errors
-
-
-```ts
-class ChannelClosedError extends Error {
-  readonly name: 'ChannelClosedError'
-  // Thrown by channel.invalidate() when state is 'closed'
+export interface EventRecord<TSignal extends InvalidateSignal = InvalidateSignal> {
+  id: string
+  signal: TSignal | TSignal[]
 }
 
-class SchemaValidationError extends Error {
-  readonly name: 'SchemaValidationError'
-  readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
-  // Thrown when signal or metadata validation fails
+export interface EventStoreResult<TSignal extends InvalidateSignal = InvalidateSignal> {
+  events: EventRecord<TSignal>[]
+  stale: boolean
+}
+
+export interface EventStore<TSignal extends InvalidateSignal = InvalidateSignal> {
+  readonly add: (signal: TSignal | TSignal[], customId?: string) => EventRecord<TSignal>
+  readonly getEventsAfter: (lastEventId: string) => EventStoreResult<TSignal>
+  readonly clear: () => void
+}
+
+export type ChannelState = 'open' | 'closed'
+
+export type OnDeadline = 'reconnect' | 'revoke' | { maxAttempts?: number; retryDelayMs?: number }
+
+export type LifetimeOptions =
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
+  | { ttlMs?: undefined; deadline?: undefined; onDeadline?: OnDeadline }
+
+export type FrameGuardResult =
+  | { action: 'send' }
+  | { action: 'skip' }
+  | { action: 'close'; reason?: string }
+
+export interface SignalFrameCtx<TSignal extends InvalidateSignal = InvalidateSignal> {
+  readonly connectionId: string
+  readonly requestedTarget: string | undefined
+  readonly isResume: boolean
+  readonly frameType: 'signal'
+  readonly signal: TSignal | TSignal[]
+}
+
+export interface KeepaliveFrameCtx {
+  readonly connectionId: string
+  readonly requestedTarget: string | undefined
+  readonly isResume: boolean
+  readonly frameType: 'keepalive'
+  readonly signal: undefined
+}
+
+export type FrameGuardCtx<TSignal extends InvalidateSignal = InvalidateSignal> = SignalFrameCtx<TSignal> | KeepaliveFrameCtx
+export type BeforeFrameFn<TSignal extends InvalidateSignal = InvalidateSignal> = (ctx: FrameGuardCtx<TSignal>) => FrameGuardResult
+
+export type RevokeEventDetail =
+  | { reason: 'unsupported-target'; requested: string; supported: string[] }
+  | { reason?: string; requested?: never; supported?: never }
+
+export interface RenewEventDetail {
+  reason: 'deadline'
+  maxAttempts: number
+  retryDelayMs: number
 }
 ```
-
----
 
 ---
 
 ## `restale-kit/server`
 
-```ts
-import { SSEChannelGroup, createEventStore } from 'restale-kit/server'
-import type { SSEChannel, SSEChannelOptions, SSEChannelGroupOptions, ChannelSetupOptions } from 'restale-kit/server'
-import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
-```
-
-### `SSEChannelGroup(options?)`
+### Classes & Constructors
 
 ```ts
-class SSEChannelGroup<
+export class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
 > {
-  constructor(options?: {
-    target?: TTarget
-    metaSchema?: StandardSchemaV1<unknown, TMeta>
-    pubsub?: PubSubAdapter<TSignal>
-    eventStore?: EventStore<TSignal>
-    eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
-    controlTopic?: string                             // default '__restale_control__'
-    channelDefaults?: ChannelDefaults                 // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
-  })
+  constructor(options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>)
 
-  readonly size: number
-  readonly controlTopic: string
   readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
+  readonly controlTopic: string
   readonly channelDefaults?: ChannelDefaults
 
-  /**
-   * Creates a Web Standard Fetch API Response object, registers the channel with the group, and returns { response, channel }.
-   * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
-   */
-  createFetchResponse(
-    request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { response: Response; channel: SSEChannel<TSignal, TTarget> }
+  attachNodeResponse(req: IncomingMessage | FastifyRequestLike, res: ServerResponse | FastifyReplyLike, options?: ChannelSetupOptions<TSignal, TMeta>): SSEChannel<TSignal>
+  createFetchResponse(request: Request, options?: ChannelSetupOptions<TSignal, TMeta>): { response: Response; channel: SSEChannel<TSignal> }
 
-  /**
-   * Attaches an SSE channel to a Node.js HTTP response or Fastify reply, registers it with the group, and returns { channel }.
-   * @framework Node.js, Express, Fastify
-   */
-  attachNodeResponse(
-    req: IncomingMessage | FastifyRequestLike,
-    res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { channel: SSEChannel<TSignal, TTarget> }
+  broadcastToAll(signal: TSignal | TSignal[], customId?: string): void
+  broadcast(signal: TSignal | TSignal[], predicate: (meta: TMeta) => boolean, customId?: string): void
+  broadcastByKey<K extends keyof TMeta>(key: K, value: TMeta[K], signal: TSignal | TSignal[], customId?: string): void
 
-  register(
-    channel: SSEChannel<TSignal, TTarget>,
-    ...args: undefined extends TMeta
-      ? [meta?: TMeta, options?: { topics?: string[] }]
-      : [meta: TMeta, options?: { topics?: string[] }]
-  ): void
-
-  deregister(channel: SSEChannel<TSignal, TTarget>): void
-
-  broadcast(
-    signal: GroupSignalInput<TSignal, TTarget>,
-    predicate?: (meta: TMeta | undefined) => boolean
-  ): void
-
-  broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void
-
-  /** Available on single-target channel groups only. On multi-target groups, signal parameter is typed as `never`. */
-  broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
-
-  publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void>
-
-  revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
-  revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
-  dispose(): Promise<void>
+  publish(topic: string, signal: TSignal | TSignal[]): Promise<void>
+  revokeByConnectionId(connectionId: string, reason?: string): Promise<void>
+  revokeWhere(predicate: (meta: TMeta) => boolean, reason?: string): Promise<void>
+  closeAll(reason?: string): Promise<void>
 }
 ```
 
----
-
-## `restale-kit/testing`
-
-Test utility entrypoint for unit testing server-side channel group behaviors without real HTTP requests.
+### Functions
 
 ```ts
-import { createSSEChannel } from 'restale-kit/testing'
-import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
+export function createEventStore<TSignal extends InvalidateSignal = InvalidateSignal>(capacity?: number): EventStore<TSignal>
 ```
 
-### `createSSEChannel(options)`
+### Types & Interfaces
 
 ```ts
-function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions
-): SSEChannel<TSignal>
+export interface SSEChannelGroupOptions<TSignal extends InvalidateSignal, TMeta, TTarget> {
+  target?: TTarget
+  metaSchema?: StandardSchemaV1<unknown, TMeta>
+  pubsub?: PubSubAdapter<TSignal>
+  eventStore?: EventStore<TSignal>
+  eventBufferCapacity?: number
+  controlTopic?: string
+  channelDefaults?: ChannelDefaults
+}
+
+export type ChannelSetupOptions<TSignal extends InvalidateSignal, TMeta, TTarget> = Omit<SSEChannelOptions<TSignal>, 'target'> & {
+  target?: TTarget
+  topics?: string[]
+} & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
+
+export interface SSEChannelOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+  target?: SignalTarget | SignalTarget[] | readonly SignalTarget[]
+  keepaliveIntervalMs?: number
+  retryIntervalMs?: number
+  lastEventId?: string
+  eventStore?: EventStore<TSignal>
+  eventBufferCapacity?: number
+  idGenerator?: () => string
+  connectionId?: string
+  requestedTarget?: string
+  lifetime?: LifetimeOptions
+  beforeFrame?: BeforeFrameFn<TSignal>
+  guardKeepalive?: boolean
+}
+
+export interface SSEChannel<TSignal extends InvalidateSignal = InvalidateSignal> {
+  readonly state: ChannelState
+  readonly connectionId: string
+  readonly requestedTarget?: string
+  invalidate(signal: TSignal | TSignal[], customId?: string): string
+  revoke(reason?: string): void
+  close(): void
+}
 ```
 
 ---
 
 ## `restale-kit/client`
 
+### Classes
+
 ```ts
-import { SSEInvalidatorClient } from 'restale-kit/client'
-import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RevokeEventDetail } from 'restale-kit/client'
-import type { InvalidateSignal } from 'restale-kit/client' // re-exported for convenience
+export class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal> extends EventTarget {
+  constructor(url: string, opts?: ClientOptions<TSignal>)
+  readonly connectionId: string
+  readonly status: ConnectionStatus
+  readonly attempt: number
+  connect(): Promise<void>
+  close(): void
+  updateRuntimeOptions(opts?: Pick<ClientOptions<TSignal>, 'autoReconnect' | 'reconnect' | 'debug'>): void
+}
 ```
 
-### `SSEInvalidatorClient`
+### Functions
 
 ```ts
-class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
-  extends EventTarget
-{
-  constructor(url: string, options?: ClientOptions)
-  get connectionId(): string
-  get endpointUrl(): string      // the URL passed to the constructor (without __restale_cid__)
-  get status(): ConnectionStatus
-  get lastEventId(): string | null
-  connect(): Promise<void>
-  close(): void                  // closes with reason 'manual'
-  closeWithUnmount(): void       // closes with reason 'unmount'; used by the React hook on unmount
+export function makeAdaptedCallback<TTarget extends SignalTarget, TSignal extends ReStaleSignalForTarget<TTarget>>(
+  target: TTarget,
+  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void)
+): AdaptedInvalidateCallback<TTarget, TSignal>
+```
 
-  addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
-    type: K,
-    listener: (ev: SSEInvalidatorClientEventMap<TSignal>[K]) => void,
-    options?: boolean | AddEventListenerOptions
-  ): void
-  // standard removeEventListener overloads also available
-}
+### Types & Interfaces
 
-interface ClientOptions {
-  autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
-  withCredentials?: boolean         // default false
-  reconnect?: ReconnectOptions
-  target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
-  clientContext?: JSONValue         // optional client-supplied pagination, sort, or filter context auto-synced to server
-}
+```ts
+export type AdaptedInvalidateCallback<TTarget extends SignalTarget = SignalTarget, TSignal extends InvalidateSignal = InvalidateSignal> =
+  ((signal: TSignal | TSignal[]) => void) & { readonly target: TTarget; readonly __restaleTarget: TTarget }
 
-interface AutoReconnectOptions {
-  native?: boolean                  // default true (native EventSource auto-reconnect)
-  jsBackoff?: boolean               // default true (JS exponential backoff retries)
-}
-
-interface ReconnectOptions {
-  baseDelayMs?: number              // default 1_000
-  maxDelayMs?: number               // default 30_000
-  jitter?: boolean                  // default true
-  maxRetries?: number               // default Infinity
-}
-
-type ConnectionStatus =
+export type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
   | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
+  | { status: 'closed'; reason: 'rejected'; response: RejectedConnectionResponse }
   | { status: 'error'; error: Event }
-// reason: 'manual'  — caller called client.close()
-// reason: 'unmount' — React hook unmounted
-// reason: 'revoked' — server sent a terminal revoke frame; auto-reconnect suppressed
 
-interface SSEInvalidatorClientEventMap<TSignal> {
-  invalidate: CustomEvent<TSignal | TSignal[]>
-  statuschange: CustomEvent<ConnectionStatus>
-  error: CustomEvent<Event>
-  /** Fired when the server sends a terminal `revoke` frame. Auto-reconnect is suppressed. */
-  revoke: CustomEvent<RevokeEventDetail>
+export interface RejectedConnectionResponse {
+  status: number
+  headers: Readonly<Record<string, readonly string[]>>
 }
 
-type RevokeEventDetail =
-  | {
-      reason: 'unsupported-target'
-      requested: string
-      supported: string[]
-    }
-  | {
-      reason: Exclude<string, 'unsupported-target'> | undefined
-      requested?: never
-      supported?: never
-    }
+export interface ReconnectOptions {
+  baseDelayMs?: number
+  maxDelayMs?: number
+  jitter?: boolean
+  maxRetries?: number
+  nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
+  retryAfter?: 'respect' | 'ignore'
+}
+
+export interface AutoReconnectOptions {
+  native?: boolean
+  jsBackoff?: boolean
+}
+
+export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
+  autoReconnect?: boolean | AutoReconnectOptions
+  reconnect?: ReconnectOptions
+  withCredentials?: boolean
+  debug?: boolean
+  target?: TargetForSignal<TSignal>
+  onConnect?: (event: Event) => void
+  onDisconnect?: (event: Event) => void
+  onError?: (error: unknown) => void
+}
 ```
 
 ---
 
 ## `restale-kit/react`
 
+### Functions
+
 ```ts
-import { useReStale } from 'restale-kit/react'
-import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus, RevokeEventDetail } from 'restale-kit/react'
-
-function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useReStale<TTarget extends TargetForSignal<TSignal>, TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>>(
   url: string,
-  options: UseReStaleOptions<TSignal>
+  opts: UseReStaleOptions<TTarget, TSignal>
 ): UseReStaleResult
+```
 
-interface UseReStaleOptions<TSignal> extends ClientOptions {
-  disabled?: boolean                // default false
-  onInvalidate: (signal: TSignal | TSignal[]) => void  // required
-  /**
-   * Called when the server sends a terminal `revoke` frame.
-   * The connection is already closed; auto-reconnect is suppressed.
-   * Branch on `detail.reason` to distinguish revocation causes:
-   * - `'unsupported-target'` — server does not support the requested target (detail includes requested & supported)
-   * - any other string (e.g. `'logout'`, `'banned'`) — application-level revocation
-   */
+### Types & Interfaces
+
+```ts
+export interface UseReStaleOptions<TTarget extends SignalTarget = SignalTarget, TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>> extends Omit<ClientOptions<TSignal>, 'target'> {
+  disabled?: boolean
+  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal>
+  target?: TTarget
   onRevoke?: (detail: RevokeEventDetail) => void
+  onRejected?: (response: RejectedConnectionResponse) => void
+  onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 }
-// Option stability: autoReconnect, reconnect, and withCredentials are
-// applied only at client creation time. Changing them after mount has no effect until
-// the url prop changes (which recreates the SSEInvalidatorClient).
 
-interface UseReStaleResult {
+export interface UseReStaleResult {
   connectionId: string
   connection: ConnectionStatus
-  /** Helper boolean: true if connection.status is 'open' */
+  attempt: number
+  isConnecting: boolean
   isConnected: boolean
+  isReconnecting: boolean
+  isClosed: boolean
+  isError: boolean
   reconnect(): Promise<void>
   close(): void
-  /** Updates the connection's clientContext on the server. */
-  updateClientContext(clientContext: JSONValue): Promise<void>
 }
 ```
 
@@ -367,23 +343,21 @@ interface UseReStaleResult {
 ## `restale-kit/tanstack-query`
 
 ```ts
-import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-import type { QueryClient } from '@tanstack/react-query'
-
-function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient,
-  options?: TanStackQueryAdapterOptions
+export function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
-/**
- * Memoized hook variant of tanstackQueryAdapter.
- * Call at the component top level; returns a stable branded callback across renders.
- */
-function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient,
-  options?: TanStackQueryAdapterOptions
+export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
+export interface QueryClientLike {
+  invalidateQueries(filters?: unknown, options?: unknown): Promise<void>
+  removeQueries(filters?: unknown, options?: unknown): void
+  resetQueries(filters?: unknown, options?: unknown): Promise<void>
+  cancelQueries(filters?: unknown, options?: unknown): Promise<void>
+  refetchQueries(filters?: unknown, options?: unknown): Promise<void>
+}
 ```
 
 ---
@@ -391,36 +365,31 @@ function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSi
 ## `restale-kit/swr`
 
 ```ts
-import { swrAdapter } from 'restale-kit/swr'
-import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
-import type { Arguments } from 'swr'
-
-function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'swr', TSignal>
 
-/**
- * Memoized hook variant of swrAdapter.
- * Call at the component top level; stores options in a ref so they update on re-render
- * without breaking referential stability.
- */
-function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'swr', TSignal>
+```
 
-interface SWRAdapterOptions<TSignal> {
-  // Convert a non-canonical SWR key to a JSONValue[] for matching.
-  // Omit when SWR keys are already JSONValue[] arrays.
-  toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
-}
+---
 
-// Structural equivalent of SWR's global mutate (from useSWRConfig().mutate)
-interface SWRMutator {
-  (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
-  (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
-}
+## `restale-kit/rtk-query`
+
+```ts
+export function rtkQueryAdapter<TSignal extends RTKQuerySignal = RTKQuerySignal>(
+  dispatch: (action: unknown) => unknown,
+  api: { util: { invalidateTags(tags: unknown[]): unknown } }
+): AdaptedInvalidateCallback<'rtk-query', TSignal>
+
+export function useRtkQueryAdapter<TSignal extends RTKQuerySignal = RTKQuerySignal>(
+  dispatch: (action: unknown) => unknown,
+  api: { util: { invalidateTags(tags: unknown[]): unknown } }
+): AdaptedInvalidateCallback<'rtk-query', TSignal>
 ```
 
 ---
@@ -428,26 +397,10 @@ interface SWRMutator {
 ## `restale-kit/pubsub`
 
 ```ts
-import type { PubSubAdapter, PubSubEncryptionOptions, PubSubDecryptionError } from 'restale-kit/pubsub'
-import type { PubSubMessage, JSONValue, InvalidateSignal } from 'restale-kit'
-
-interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
+export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
   publish(topic: string, message: PubSubMessage<TSignal>): Promise<void>
-  subscribe(
-    topic: string,
-    onMessage: (message: PubSubMessage<TSignal>) => void
-  ): Promise<() => void | Promise<void>>
-  onError?(handler: (error: unknown) => void): void
+  subscribe(topic: string, onMessage: (message: PubSubMessage<TSignal>) => void): Promise<() => Promise<void>>
 }
-
-type PubSubEncryptionOptions =
-  | { encrypt?: false; encryptionKey?: never }
-  | { encrypt?: true; encryptionKey: string }
-
-class PubSubDecryptionError extends Error {
-  readonly cause?: unknown
-}
-
 ```
 
 ---
@@ -455,27 +408,10 @@ class PubSubDecryptionError extends Error {
 ## `restale-kit/redis`
 
 ```ts
-import { redisPubSubAdapter } from 'restale-kit/redis'
-import type { RedisClient } from 'restale-kit/redis'
-
-// Minimal structural interface compatible with ioredis and node-redis legacy mode (event-emitter format):
-interface RedisClient {
-  publish(topic: string, message: string): unknown
-  subscribe(topic: string): unknown
-  unsubscribe(topic: string): unknown
-  duplicate(): RedisClient
-  on(event: 'error', listener: (err: unknown) => void): unknown
-  on(event: 'message', listener: (channel: string, message: string) => void): unknown
-}
-
-function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: RedisClient,
-  options?: { subscribeClient?: RedisClient } & PubSubEncryptionOptions
+export function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  client: unknown,
+  options?: RedisPubSubOptions
 ): PubSubAdapter<TSignal>
-// Pass a single client — the adapter calls client.duplicate() internally for subscriptions.
-// Or pass a pre-created subscribeClient to use your own separate connection.
-// Encryption is disabled by default. Pass `{ encryptionKey: string }` to enable it.
-
 ```
 
 ---
@@ -483,36 +419,10 @@ function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>
 ## `restale-kit/ably`
 
 ```ts
-import { ablyPubSubAdapter } from 'restale-kit/ably'
-import type { AblyClient, AblyChannel } from 'restale-kit/ably'
-
-// Minimal structural interfaces compatible with the Ably SDK:
-interface AblyChannel {
-  publish(name: string, data: unknown): unknown
-  subscribe(listener: (message: { data: unknown }) => void): unknown
-  unsubscribe(listener: (message: { data: unknown }) => void): unknown
-  on?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
-  off?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
-}
-
-interface AblyClient {
-  options?: { echoMessages?: boolean }
-  connection?: {
-    on(event: 'error', listener: (err: unknown) => void): unknown
-  }
-  channels: {
-    get(name: string): AblyChannel
-  }
-}
-
-function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  client: AblyClient,
-  options?: { useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions
+export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  client: unknown,
+  options?: AblyPubSubOptions
 ): PubSubAdapter<TSignal>
-// When useNativeEchoSuppression is true, the Ably client must be instantiated with
-// echoMessages: false — otherwise the adapter throws at construction time.
-// Encryption is disabled by default. Pass `{ encryptionKey: string }` to enable it.
-
 ```
 
 ---
@@ -520,26 +430,18 @@ function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
 ## `restale-kit/pusher`
 
 ```ts
-import { pusherPubSubAdapter } from 'restale-kit/pusher'
-import type { PusherClient, PusherWebhook } from 'restale-kit/pusher'
+export function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+  client: unknown,
+  options?: PusherPubSubOptions
+): PubSubAdapter<TSignal>
+```
 
-// Minimal structural interfaces compatible with the pusher npm package:
-interface PusherWebhook {
-  isValid(): boolean
-  getEvents(): Array<{ channel: string; name: string; data: string | object }>
-}
+---
 
-interface PusherClient {
-  trigger(channel: string, event: string, data: unknown): unknown
-  webhook(options: { headers: Record<string, string>; rawBody: string }): PusherWebhook
-}
+## `restale-kit/testing`
 
-function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  pusherServerClient: PusherClient,
-  options?: PubSubEncryptionOptions
-): PubSubAdapter<TSignal> & {
-  // Required: call from your Pusher webhook route
-  handleWebhook(rawBody: string, headers: Record<string, string>): boolean
-}
-
+```ts
+export function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
+  options: SSEChannelOptions<TSignal>
+): SSEChannel<TSignal>
 ```

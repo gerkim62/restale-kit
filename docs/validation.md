@@ -1,95 +1,120 @@
-# Validation & Security Guide
+# Validation & Type Safety Guide
 
-In `restale-kit`, invalidation signals rely on **built-in wire-format structural validation** and **TypeScript compile-time type safety**. You do not need to supply or configure any schemas for invalidation signals.
-
-For connection metadata registered with `SSEChannelGroup`, optional runtime schema validation is available via `metaSchema` using standard schema libraries (Zod, Valibot, ArkType).
+`restale-kit` provides two validation layers: **built-in wire-format structural validation** for incoming SSE frames on the client, and **optional metadata schema validation** via Standard Schema v1 on the server.
 
 ---
 
-## Built-in Structural Validation (Always Active)
+## 1. Built-In Structural Validation
 
-Every incoming SSE payload is structurally validated by `restale-kit` before being emitted as an `invalidate` event:
+Client-side structural validation is always active and requires zero configuration. When an SSE message arrives, `SSEInvalidatorClient` validates the payload structure before emitting an `invalidate` event:
 
-1. `JSON.parse` must succeed.
-2. Result must be a plain object or array of plain objects.
-3. Each object must be a valid `InvalidateSignal` shape for its detected target:
+1. Verifies that `JSON.parse` succeeds.
+2. Asserts that the parsed result is a plain object or an array of plain objects.
+3. Validates required fields for the detected target:
+   - `tanstack-query`: Asserts `queryKey` is an array.
+   - `swr`: Asserts `key` is a string or array.
+   - `rtk-query`: Asserts `tags` is an array.
+   - `generic`: Asserts `key` is an array.
 
-   **`TanStackQuerySignal`** (`target: 'tanstack-query'`):
-   - `queryKey` must be present and be an `Array`.
-   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'`.
-   - `exact` (if present) must be `boolean`.
-   - `type` (if present) must be `'all' | 'active' | 'inactive'`.
-
-   **`SWRSignal`** (`target: 'swr'`):
-   - `key` must be present and be a `string` or `Array`.
-   - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove' | 'mutate'`.
-   - `match` (if present) must be `'exact' | 'prefix'`.
-   - `revalidate` (if present) must be `boolean`.
-   - `optimisticData` (if present) must be a valid JSON-serializable value (`string`, `number`, `boolean`, `null`, `Array`, or `Object`). Pushes instant optimistic data updates directly to SWR cache.
-
-   **`RTKQuerySignal`** (`target: 'rtk-query'`):
-   - `tags` must be present and be an `Array`.
-
-   **`GenericInvalidateSignal`** (`target: 'generic'` or `target` absent):
-   - `key` must be present and be an `Array`.
-   - `exact` (if present) must be `boolean`.
-   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'remove'`.
-
-4. Unknown fields are ignored (forward-compatible).
-
-If any of these structural checks fail, the client emits an `error` event instead of `invalidate`.
+If structural validation fails, the client drops the payload and fires an `error` event carrying the validation failure.
 
 ---
 
-## Metadata Validation with `metaSchema` (Optional)
+## 2. Metadata Validation via `metaSchema`
 
-When attaching channels to an `SSEChannelGroup`, you can pass a Standard Schema (Zod, Valibot, etc.) as `metaSchema` to validate client metadata at registration time:
+When attaching client channels on the server, you can supply a `metaSchema` compliant with **Standard Schema v1** (supported natively by Zod, Valibot, ArkType, etc.) to validate registration metadata.
+
+Validation runs synchronously during `group.attachNodeResponse` or `group.createFetchResponse`. If validation fails, `SchemaValidationError` is thrown immediately.
+
+### Zod Example
 
 ```ts
 import { z } from 'zod'
-import { SSEChannelGroup } from 'restale-kit/server'
+import { SSEChannelGroup, SchemaValidationError } from 'restale-kit/server'
 
-const ClientMetaSchema = z.object({
-  userId: z.string(),
-  role: z.enum(['user', 'admin']),
-})
-type ClientMeta = z.infer<typeof ClientMetaSchema>
-
-const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>({
-  target: 'tanstack-query',
-  metaSchema: ClientMetaSchema,
+const UserMetaSchema = z.object({
+  userId: z.string().uuid(),
+  tenantId: z.string(),
+  role: z.enum(['admin', 'user']),
 })
 
-app.get('/sse', (req, res) => {
-  // Throws SchemaValidationError if metadata validation fails
-  group.attachNodeResponse(req, res, {
-    meta: {
-      userId: req.user.id,
-      role: req.user.role,
-    },
-  })
+type UserMeta = z.infer<typeof UserMetaSchema>
+
+const group = new SSEChannelGroup<InvalidateSignal, UserMeta>({
+  metaSchema: UserMetaSchema,
 })
 
-// Predicate in broadcast is fully typed against ClientMeta:
-group.broadcast(
-  { key: ['admin-data'] },
-  (meta) => meta.role === 'admin' // ✅ fully typed
-)
+app.get('/api/sse', (req, res) => {
+  try {
+    group.attachNodeResponse(req, res, {
+      meta: {
+        userId: req.user.id,
+        tenantId: req.user.tenantId,
+        role: req.user.role,
+      },
+    })
+  } catch (err) {
+    if (err instanceof SchemaValidationError) {
+      console.error('Metadata validation failed:', err.issues)
+      res.status(400).send('Invalid metadata')
+    }
+  }
+})
 ```
 
-### `SchemaValidationError`
-
-When metadata fails validation against `metaSchema`, `SchemaValidationError` is thrown synchronously during registration:
+### Valibot Example
 
 ```ts
-import { SchemaValidationError } from 'restale-kit'
+import * as v from 'valibot'
+import { SSEChannelGroup } from 'restale-kit/server'
 
-try {
-  group.attachNodeResponse(req, res, { meta: invalidMeta })
-} catch (err) {
-  if (err instanceof SchemaValidationError) {
-    console.error(err.message) // formatted issue summary
-    console.error(err.issues)  // StandardSchemaV1.Issue array
-  }
+const UserMetaSchema = v.object({
+  userId: v.pipe(v.string(), v.uuid()),
+  role: v.picklist(['admin', 'user']),
+})
+
+const group = new SSEChannelGroup({
+  metaSchema: UserMetaSchema,
+})
+```
+
+---
+
+## 3. TypeScript Generics
+
+Constrain signal and metadata types end-to-end across server and client components:
+
+### Server-Side Constrained Group
+
+```ts
+import type { TanStackQuerySignal } from 'restale-kit'
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+interface AppMeta {
+  userId: string
+}
+
+const group = new SSEChannelGroup<TanStackQuerySignal, AppMeta>({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+
+// Correct: broadcast is typed strictly to TanStackQuerySignal
+group.broadcastToAll({
+  queryKey: ['todos'],
+})
+```
+
+### Client-Side Constrained Hook
+
+```tsx
+import type { TanStackQuerySignal } from 'restale-kit'
+import { useReStale } from 'restale-kit/react'
+import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+
+function Component() {
+  const qc = useQueryClient()
+  const onInvalidate = useTanstackQueryAdapter<TanStackQuerySignal>(qc)
+
+  useReStale('/api/sse', { onInvalidate })
 }
 ```
