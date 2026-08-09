@@ -79,6 +79,8 @@ export default tseslint.config(
   {
     files: ['**/__tests__/**/*.ts', '**/*.test.ts', '**/*.test-d.ts', '**/test-fixtures/**/*.ts'],
     rules: {
+       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-type-assertion': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
@@ -97,12 +99,5 @@ export default tseslint.config(
     },
   },
 
-  // 📝 Type-test files (.test-d.ts) specific exemptions
-  {
-    files: ['**/*.test-d.ts'],
-    rules: {
-      '@typescript-eslint/no-floating-promises': 'off',
-      '@typescript-eslint/require-await': 'off',
-    },
-  },
+
 )
