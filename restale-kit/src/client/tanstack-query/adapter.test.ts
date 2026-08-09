@@ -184,6 +184,38 @@ describe('tanstackQueryAdapter', () => {
     expect(cache.get(JSON.stringify(['todos']))).toEqual({ id: 2 })
     expect(invalidations).toEqual([])
   })
+
+  it('uses setQueriesData with full query filters scope when available on QueryClient', () => {
+    const setQueriesData = vi.fn()
+    const invalidateQueries = vi.fn().mockResolvedValue(undefined)
+    const queryClient: QueryClientLike = {
+      setQueryData: vi.fn(),
+      setQueriesData,
+      invalidateQueries,
+      removeQueries: () => {},
+      resetQueries: () => Promise.resolve(),
+      cancelQueries: () => Promise.resolve(),
+      refetchQueries: () => Promise.resolve(),
+    }
+
+    tanstackQueryAdapter(queryClient)({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      exact: false,
+      type: 'active',
+      optimisticData: { id: 3 },
+    })
+
+    expect(setQueriesData).toHaveBeenCalledWith(
+      { queryKey: ['todos'], exact: false, type: 'active' },
+      { id: 3 }
+    )
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['todos'],
+      exact: false,
+      type: 'active',
+    })
+  })
 })
 
 describe('useTanstackQueryAdapter', () => {
