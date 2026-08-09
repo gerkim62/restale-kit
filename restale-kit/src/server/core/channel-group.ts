@@ -1075,12 +1075,26 @@ class SSEChannelGroupImplementation<
     const where = options.where ?? (() => true)
     const signalFn = options.signal
     const errors: unknown[] = []
+    const signalCache = new Map<string, Promise<TSignal | TSignal[] | null | undefined>>()
 
     for (const [channel, entry] of this.channels) {
       if (!where(entry.meta, entry.clientContext, options.payload)) continue
 
       try {
-        const resolvedSignal = await signalFn(entry.meta, entry.clientContext, options.payload)
+        const cacheKey = getContextCacheKey(entry.meta, entry.clientContext)
+        const cachedPromise = cacheKey !== null ? signalCache.get(cacheKey) : undefined
+        let signalPromise: Promise<TSignal | TSignal[] | null | undefined>
+
+        if (cachedPromise !== undefined) {
+          signalPromise = cachedPromise
+        } else {
+          signalPromise = Promise.resolve().then(() => signalFn(entry.meta, entry.clientContext, options.payload))
+          if (cacheKey !== null) {
+            signalCache.set(cacheKey, signalPromise)
+          }
+        }
+
+        const resolvedSignal = await signalPromise
         if (resolvedSignal === null || resolvedSignal === undefined) continue
 
         const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
@@ -1195,11 +1209,26 @@ class SSEChannelGroupImplementation<
     if (!signalFn) return
 
     const errors: unknown[] = []
+    const signalCache = new Map<string, Promise<TSignal | TSignal[] | null | undefined>>()
+
     for (const [channel, entry] of this.channels) {
       if (!where(payload, entry.meta, entry.clientContext)) continue
 
       try {
-        const resolvedSignal = await signalFn(payload, entry.meta, entry.clientContext)
+        const cacheKey = getContextCacheKey(entry.meta, entry.clientContext)
+        const cachedPromise = cacheKey !== null ? signalCache.get(cacheKey) : undefined
+        let signalPromise: Promise<TSignal | TSignal[] | null | undefined>
+
+        if (cachedPromise !== undefined) {
+          signalPromise = cachedPromise
+        } else {
+          signalPromise = Promise.resolve().then(() => signalFn(payload, entry.meta, entry.clientContext))
+          if (cacheKey !== null) {
+            signalCache.set(cacheKey, signalPromise)
+          }
+        }
+
+        const resolvedSignal = await signalPromise
         if (resolvedSignal === null || resolvedSignal === undefined) continue
 
         const normalizedSignal = this.normalizeSignalForGroup(resolvedSignal)
@@ -1443,6 +1472,14 @@ interface SSEChannelGroupConstructor {
 }
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
+
+function getContextCacheKey(meta: unknown, context: unknown): string | null {
+  try {
+    return JSON.stringify([meta ?? null, context ?? null])
+  } catch {
+    return null
+  }
+}
 
 function hasPubSubMethods<TSignal extends InvalidateSignal>(
   pubsub: unknown

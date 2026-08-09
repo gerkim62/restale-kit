@@ -242,11 +242,11 @@ In multi-server production deployments (e.g. 4 Node.js instances behind a load b
   Local SSE Streams       Local SSE Streams       Local SSE Streams
 ```
 
-1. **Node 1** invokes `group.broadcastContextual(payload)` (or `group.broadcastContextual(handlerName, payload)`).
-2. **Node 1** evaluates its active local connections against its registered contextual generator function (`contextualSignal` / `contextualWhere`).
+1. **Node 1** invokes `group.broadcast({ payload, where, signal })`.
+2. **Node 1** evaluates its active local connections against the provided or registered contextual generator functions (`where` / `signal`).
 3. **Node 1** publishes a `contextualBroadcast` control message (`{ kind: 'control', data: { type: 'contextualBroadcast', senderInstanceId, handlerName, payload } }`) over `controlTopic`.
 4. **Every server node** (Node 2, Node 3) receives the control message via PubSub. Remote nodes filter out self-echo based on `senderInstanceId`.
-5. **Node 2 and Node 3** each execute their registered contextual generator function (`contextualSignal(payload, meta, context)`) against their own local active SSE connections.
+5. **Node 2 and Node 3** each execute their registered contextual generator functions (`contextualSignal(payload, meta, context)`) against their own local active SSE connections.
 6. The resolved `optimisticData` payloads are delivered down each server node's local SSE streams directly into the respective client query caches.
 
 ---
@@ -268,6 +268,17 @@ In multi-server production deployments (e.g. 4 Node.js instances behind a load b
 
 2. **No Silent Timeout Transformations**: `restale-kit` will **not** silently convert timed-out or failing `signal(meta, context)` executions into plain invalidation signals behind the developer's back. DB timeouts must be managed at the application layer (via `AbortController` or DB query timeouts). If `signal()` rejects or throws, standard exception logging and error reporting apply.
 
-3. **No Direct Serialization of Inline Function Closures**: JavaScript function closures (`signal` / `where` functions defined inline in an API route) cannot be serialized into JSON across PubSub channels. To achieve cluster-wide contextual broadcasts across multi-node setups, applications configure `contextualSignal` on `SSEChannelGroupOptions` or register named handlers via `group.registerContextualHandler(name, handler)` so every server instance can independently execute its local generator when a `broadcastContextual(payload)` control message arrives over PubSub.
+3. **No Direct Serialization of Inline Function Closures**: JavaScript function closures (`signal` / `where` functions defined inline in an API route) cannot be serialized into JSON across PubSub channels. To achieve cluster-wide contextual broadcasts across multi-node setups, applications configure `contextualSignal` on `SSEChannelGroupOptions` or register named handlers via `group.registerContextualHandler(name, handler)` so every server instance can independently execute its local generator when a `contextualBroadcast` control message arrives over PubSub.
 
 ---
+
+## 7. Performance & Load Management Strategy
+
+### 7.1 Shared vs. Distinct Contexts & Built-in Deduplication
+- **Shared Contexts**: When multiple active connections share identical `(meta, clientContext)` tuples (e.g., windowed feeds, public metrics, shared category views), `restale-kit` automatically deduplicates generator executions per broadcast pass. The generator function runs **once** per unique context tuple per node, delivering the single result to all matching local connections.
+- **Distinct Contexts**: When active connections carry unique identity or context combinations, generator functions evaluate per unique tuple.
+
+### 7.2 Choosing Between Data Push & Plain Invalidation
+- **Targeted Data Push (`optimisticData`)**: Recommended for shared feeds, high-value windowed updates, or scoped queries where pushing fresh data avoids downstream thundering-herd API re-fetches.
+- **Plain Signal Invalidation (`group.broadcast({ queryKey })`)**: Recommended for highly distinct or high-cardinality identity scopes. Sending a plain invalidation signal executes zero database queries on the SSE server process, delegating data retrieval to standard HTTP API endpoints as clients require it.
+- **Generator Opt-out (`null`)**: Signal generators can dynamically return `null` for specific connection contexts (e.g., inactive tabs or non-visible page offsets) to skip data payload generation for non-critical views.

@@ -61,7 +61,13 @@ describe('SSEChannelGroup targeted contextual broadcast type safety', () => {
     })
 
     void group.broadcast({
-      where: () => true,
+      payload: { filter: 'tech' },
+      where: (meta, context, payload) => {
+        expectTypeOf(meta).toEqualTypeOf<UserMeta | undefined>()
+        expectTypeOf(context).toEqualTypeOf<ProductContext | undefined>()
+        expectTypeOf(payload).toEqualTypeOf<unknown>()
+        return true
+      },
       // @ts-expect-error signal cannot return SWR signal shape (key) when group target is tanstack-query
       signal: async () => {
         return { key: ['products'] }
@@ -76,6 +82,41 @@ describe('SSEChannelGroup targeted contextual broadcast type safety', () => {
       signal: async () => {
         return { queryKey: ['products'] }
       },
+    })
+  })
+
+  test('typechecks registerContextualHandler and broadcast options with payload', () => {
+    const group = new SSEChannelGroup<
+      TanStackQuerySignal,
+      UserMeta,
+      'tanstack-query',
+      ProductContext
+    >({
+      target: 'tanstack-query',
+    })
+
+    expectTypeOf(group.registerContextualHandler).toBeFunction()
+
+    group.registerContextualHandler('product-update', {
+      where: (payload, meta, context) => {
+        expectTypeOf(meta).toEqualTypeOf<UserMeta | undefined>()
+        expectTypeOf(context).toEqualTypeOf<ProductContext | undefined>()
+        return true
+      },
+      signal: async (payload, meta, context) => {
+        expectTypeOf(meta).toEqualTypeOf<UserMeta | undefined>()
+        expectTypeOf(context).toEqualTypeOf<ProductContext | undefined>()
+        return { queryKey: ['products'], optimisticData: [payload as any] }
+      },
+    })
+
+    void group.broadcast({
+      payload: { page: 1 },
+      where: (meta, context, payload) => context?.page === (payload as any)?.page,
+      signal: async (meta, context, payload) => ({
+        queryKey: ['products', context?.page ?? 1],
+        optimisticData: [payload as any],
+      }),
     })
   })
 })
