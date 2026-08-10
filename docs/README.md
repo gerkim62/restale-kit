@@ -30,5 +30,3 @@ restale-kit/redis          → redisPubSubAdapter
 restale-kit/ably           → ablyPubSubAdapter
 restale-kit/pusher         → pusherPubSubAdapter
 ```
-
-> **Spec / design documents** live in [`spec/`](../spec/README.md) — useful for understanding the wire protocol and architectural decisions, not required for day-to-day usage.

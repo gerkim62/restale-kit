@@ -145,7 +145,7 @@ await client.connect()
 
 ## 📂 Repository & Workspace Layout
 
-This repository is a monorepo powered by `pnpm` containing the core library, documentation, design specifications, and runnable example apps:
+This repository is a monorepo powered by `pnpm` containing the core library, documentation, and runnable example apps:
 
 - **[restale-kit/](./restale-kit/)** — The published NPM library source code (server & client adapters, pub/sub drivers, standard schema support).
 - **[docs/](./docs/)** — Detailed user documentation and integration guides.
@@ -159,7 +159,6 @@ This repository is a monorepo powered by `pnpm` containing the core library, doc
   - Backend: [Express](./examples/backend/express/), [Hono](./examples/backend/hono/), [Fastify](./examples/backend/fastify/), [Node http](./examples/backend/node/)
   - Frontend: [React + TanStack Query](./examples/frontend/react-query/), [React + SWR](./examples/frontend/react-swr/)
   - Full-stack: [Vercel Serverless + Redis](./examples/vercel-redis/)
-- **[spec/](./spec/)** — Architectural decision records, frame guard specifications, and wire protocol definitions.
 
 ---
 
