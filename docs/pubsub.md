@@ -60,6 +60,7 @@ app.use(authenticateUser) // Ensure req.user is populated by auth middleware
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
+    meta: { userId: req.user.id, sessionId: req.session.id },
     topics: [`user:${req.user.id}`, 'global'],
   })
 })

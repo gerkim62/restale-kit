@@ -6,6 +6,8 @@ Complete export surface for every `restale-kit` subpath. All subpaths are ESM-on
 
 ## `restale-kit` — core types and errors
 
+The conditional helper types used internally to correlate signals and targets are intentionally not exported. The signatures below use `SignalTarget` and similar names only as explanatory pseudotypes; consumer code should use the exported signal unions and `SIGNAL_TARGETS` values.
+
 ```ts
 import type {
   JSONValue,
@@ -39,14 +41,14 @@ type JSONValue =
   | { [key: string]: JSONValue }
 
 const SIGNAL_TARGETS: {
-  readonly TANSTACK: 'tanstack-query'
+  readonly TANSTACK_QUERY: 'tanstack-query'
   readonly SWR: 'swr'
   readonly RTK: 'rtk-query'
   readonly GENERIC: 'generic'
 }
 
 interface TanStackQuerySignal {
-  target: 'tanstack-query'
+  target?: 'tanstack-query'
   queryKey: JSONValue[]
   exact?: boolean
   type?: 'active' | 'inactive' | 'all'
@@ -55,7 +57,7 @@ interface TanStackQuerySignal {
 }
 
 interface SWRSignal {
-  target: 'swr'
+  target?: 'swr'
   key: string | JSONValue[]
   action?: 'revalidate' | 'purge' | 'remove' | 'mutate'
   revalidate?: boolean
@@ -63,7 +65,7 @@ interface SWRSignal {
 }
 
 interface RTKQuerySignal {
-  target: 'rtk-query'
+  target?: 'rtk-query'
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -80,26 +82,6 @@ type ReStaleSignal =
   | RTKQuerySignal
   | GenericInvalidateSignal
 
-type ReStaleSignalForTarget<TTarget extends SignalTarget> =
-  TTarget extends typeof SIGNAL_TARGETS.TANSTACK_QUERY
-    ? TanStackQuerySignal
-    : TTarget extends typeof SIGNAL_TARGETS.SWR
-      ? SWRSignal
-      : TTarget extends typeof SIGNAL_TARGETS.RTK
-        ? RTKQuerySignal
-        : GenericInvalidateSignal
-
-/**
- * Invalidation signal input type computed from target config.
- * - Single target: `target` property is optional and automatically defaulted.
- * - Multi-target array: explicit `target` is strictly required on every signal.
- */
-type SignalInputForTarget<TTarget extends SignalTarget | SignalTarget[] | undefined = SignalTarget | SignalTarget[]> =
-  [TTarget] extends [SignalTarget]
-    ? (Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }) |
-      Array<Omit<ReStaleSignalForTarget<TTarget>, 'target'> & { target?: TTarget }>
-    : ReStaleSignal | ReStaleSignal[]
-
 type InvalidateSignal = ReStaleSignal
 
 type SSEInvalidateEvent = InvalidateSignal | InvalidateSignal[]
@@ -112,7 +94,7 @@ type ChannelState = 'open' | 'closed'
 - **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` when calling `invalidate()`, `publish()`, or `broadcast()`. The single target is automatically attached internally.
 - **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Callers must pass an explicit `target` on every signal object and supply signals for all declared targets.
 - **Internal Storage & PubSub**: Signals stored in `EventStore` and sent across PubSub adapters retain the `target` property (`{ target: 'swr', key: [...] }`), keeping storage and pubsub fully target-aware.
-- **Wire Framing Optimization**: SSE data frames delivered over the wire strip the redundant `target` property (`data: {"key":["items"]}`), as the active target is already named in the connection header (`X-ReStale-Target`).
+- **Wire framing**: SSE data frames retain the signal discriminator (for example, `data: {"target":"swr","key":["items"]}`). `X-ReStale-Target` communicates the negotiated connection target; it does not replace the signal discriminator.
 
 ### Utilities
 
@@ -144,8 +126,8 @@ class SchemaValidationError extends Error {
 ## `restale-kit/server`
 
 ```ts
-import { SSEChannelGroup, createEventStore } from 'restale-kit/server'
-import type { SSEChannel, SSEChannelOptions, SSEChannelGroupOptions, ChannelSetupOptions } from 'restale-kit/server'
+import { SSEChannelGroup, createSSEChannel, createEventStore } from 'restale-kit/server'
+import type { SSEChannel, SSEChannelOptions, DirectSSEChannelOptions, SSEChannelGroupOptions, ChannelSetupOptions, ChannelDefaults, FastifyRequestLike, FastifyReplyLike } from 'restale-kit/server'
 import type { EventStore, EventStoreOptions, EventRecord, EventStoreResult } from 'restale-kit/server'
 ```
 
@@ -227,14 +209,14 @@ Test utility entrypoint for unit testing server-side channel group behaviors wit
 
 ```ts
 import { createSSEChannel } from 'restale-kit/testing'
-import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
+import type { SSEChannel, DirectSSEChannelOptions } from 'restale-kit/testing'
 ```
 
 ### `createSSEChannel(options)`
 
 ```ts
 function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options: SSEChannelOptions
+  options: DirectSSEChannelOptions
 ): SSEChannel<TSignal>
 ```
 
@@ -244,7 +226,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { SSEInvalidatorClient } from 'restale-kit/client'
-import type { ClientOptions, ReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RevokeEventDetail } from 'restale-kit/client'
+import type { ClientOptions, ReconnectOptions, AutoReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RejectedConnectionResponse, RevokeEventDetail, RenewEventDetail, AdaptedInvalidateCallback } from 'restale-kit/client'
 import type { InvalidateSignal } from 'restale-kit/client' // re-exported for convenience
 ```
 
@@ -261,7 +243,6 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   get lastEventId(): string | null
   connect(): Promise<void>
   close(): void                  // closes with reason 'manual'
-  closeWithUnmount(): void       // closes with reason 'unmount'; used by the React hook on unmount
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
     type: K,
@@ -276,12 +257,16 @@ interface ClientOptions {
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
-  clientContext?: JSONValue         // optional client-supplied pagination, sort, or filter context auto-synced to server
+  debug?: boolean
+  callback?: AdaptedInvalidateCallback | ((signal: InvalidateSignal | InvalidateSignal[]) => void)
+  onConnect?: (event: Event) => void
+  onDisconnect?: (event: Event) => void
+  onError?: (error: unknown) => void
 }
 
 interface AutoReconnectOptions {
-  native?: boolean                  // default true (native EventSource auto-reconnect)
-  jsBackoff?: boolean               // default true (JS exponential backoff retries)
+  native?: boolean                  // default true (managed mid-stream retry)
+  jsBackoff?: boolean               // default true (managed setup/error backoff)
 }
 
 interface ReconnectOptions {
@@ -289,12 +274,22 @@ interface ReconnectOptions {
   maxDelayMs?: number               // default 30_000
   jitter?: boolean                  // default true
   maxRetries?: number               // default Infinity
+  nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
+  retryAfter?: 'respect' | 'ignore'
+}
+
+type HttpStatusMatcher = number | '1xx' | '2xx' | '3xx' | '4xx' | '5xx' | { from: number; to: number }
+
+interface RejectedConnectionResponse {
+  status: number
+  headers: Readonly<Record<string, readonly string[]>>
 }
 
 type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
   | { status: 'closed'; reason: 'manual' | 'unmount' | 'revoked' }
+  | { status: 'closed'; reason: 'rejected'; response: RejectedConnectionResponse }
   | { status: 'error'; error: Event }
 // reason: 'manual'  — caller called client.close()
 // reason: 'unmount' — React hook unmounted
@@ -304,8 +299,11 @@ interface SSEInvalidatorClientEventMap<TSignal> {
   invalidate: CustomEvent<TSignal | TSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
+  rejected: CustomEvent<RejectedConnectionResponse>
   /** Fired when the server sends a terminal `revoke` frame. Auto-reconnect is suppressed. */
   revoke: CustomEvent<RevokeEventDetail>
+  renew: CustomEvent<RenewEventDetail>
+  retriesexhausted: CustomEvent<{ attempts: number; maxRetries: number }>
 }
 
 type RevokeEventDetail =
@@ -345,6 +343,8 @@ interface UseReStaleOptions<TSignal> extends ClientOptions {
    * - any other string (e.g. `'logout'`, `'banned'`) — application-level revocation
    */
   onRevoke?: (detail: RevokeEventDetail) => void
+  onRejected?: (response: RejectedConnectionResponse) => void
+  onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 }
 // Option stability: autoReconnect, reconnect, and withCredentials are
 // applied only at client creation time. Changing them after mount has no effect until
@@ -357,8 +357,11 @@ interface UseReStaleResult {
   isConnected: boolean
   reconnect(): Promise<void>
   close(): void
-  /** Updates the connection's clientContext on the server. */
-  updateClientContext(clientContext: JSONValue): Promise<void>
+  attempt: number
+  isConnecting: boolean
+  isReconnecting: boolean
+  isClosed: boolean
+  isError: boolean
 }
 ```
 
@@ -370,9 +373,16 @@ interface UseReStaleResult {
 import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import type { QueryClient } from '@tanstack/react-query'
 
+interface QueryClientLike {
+  invalidateQueries(filters?: unknown): unknown
+  refetchQueries(filters?: unknown): unknown
+  resetQueries(filters?: unknown): unknown
+  removeQueries(filters?: unknown): unknown
+  cancelQueries(filters?: unknown): unknown
+}
+
 function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient,
-  options?: TanStackQueryAdapterOptions
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
 /**
@@ -380,10 +390,25 @@ function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSigna
  * Call at the component top level; returns a stable branded callback across renders.
  */
 function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
-  queryClient: QueryClient,
-  options?: TanStackQueryAdapterOptions
+  queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
+```
+
+---
+
+## `restale-kit/rtk-query`
+
+```ts
+import { rtkQueryAdapter, useRtkQueryAdapter } from 'restale-kit/rtk-query'
+import type { RTKQueryApiLike, RTKQuerySignalInput } from 'restale-kit/rtk-query'
+
+interface RTKQueryApiLike {
+  util: { invalidateTags(tags: RTKQuerySignalInput['tags']): void }
+}
+
+function rtkQueryAdapter(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', RTKQuerySignalInput>
+function useRtkQueryAdapter(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', RTKQuerySignalInput>
 ```
 
 ---

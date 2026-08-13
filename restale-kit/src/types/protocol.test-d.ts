@@ -85,6 +85,15 @@ describe('LifetimeOptions mutual exclusivity', () => {
     // @ts-expect-error ttlMs and deadline are mutually exclusive
     const invalidOpt: LifetimeOptions = { ttlMs: 5000, deadline: 10000 }
   })
+
+  test('does not expose the removed reconnect setting', () => {
+    const removedReconnect = {
+      ttlMs: 5000,
+      // @ts-expect-error `reconnect` belongs to client options, not a channel lifetime.
+      reconnect: { maxRetries: 3 },
+    } satisfies LifetimeOptions
+    expectTypeOf(removedReconnect.ttlMs).toEqualTypeOf<number>()
+  })
 })
 
 describe('FrameGuardCtx discrimination', () => {
@@ -147,5 +156,4 @@ describe('Signal payload strict narrowing', () => {
     const _invalidKeySignal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: [() => {}] }
   })
 })
-
 

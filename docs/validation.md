@@ -25,7 +25,6 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
    - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove' | 'mutate'`.
    - `match` (if present) must be `'exact' | 'prefix'`.
    - `revalidate` (if present) must be `boolean`.
-   - `optimisticData` (if present) must be a valid JSON-serializable value (`string`, `number`, `boolean`, `null`, `Array`, or `Object`). Pushes instant optimistic data updates directly to SWR cache.
 
    **`RTKQuerySignal`** (`target: 'rtk-query'`):
    - `tags` must be present and be an `Array`.
@@ -47,6 +46,7 @@ When attaching channels to an `SSEChannelGroup`, you can pass a Standard Schema 
 
 ```ts
 import { z } from 'zod'
+import type { InvalidateSignal } from 'restale-kit'
 import { SSEChannelGroup } from 'restale-kit/server'
 
 const ClientMetaSchema = z.object({
@@ -72,7 +72,7 @@ app.get('/sse', (req, res) => {
 
 // Predicate in broadcast is fully typed against ClientMeta:
 group.broadcast(
-  { key: ['admin-data'] },
+  { queryKey: ['admin-data'] },
   (meta) => meta.role === 'admin' // ✅ fully typed
 )
 ```

@@ -5,7 +5,7 @@ The client side connects to your SSE endpoint and translates incoming invalidati
 1. **`SSEInvalidatorClient`** — framework-agnostic core client (vanilla JS, EventTarget).
 2. **`useReStale`** — React hook wrapping the client in `useSyncExternalStore`.
 
-Plus two ready-made cache adapters: **TanStack Query** and **SWR**.
+Plus three ready-made cache adapters: **TanStack Query**, **SWR**, and **RTK Query**.
 
 ---
 
@@ -44,9 +44,10 @@ useReStale(url: string, options: {
   // Revocation (optional)
   onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
   onRejected?: (response: RejectedConnectionResponse) => void // called for a configured terminal HTTP status
+  onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 
   // Connection
-  autoReconnect?: boolean       // default true
+  autoReconnect?: boolean | { native?: boolean; jsBackoff?: boolean } // default true
   withCredentials?: boolean     // default false — send cookies cross-origin
   disabled?: boolean            // default false — skip connection while true
   debug?: boolean               // default false — enable console logging
@@ -78,6 +79,12 @@ useReStale(url: string, options: {
 {
   connectionId: string          // unique ID generated for this SSE connection instance
   connection: ConnectionStatus  // current state
+  attempt: number               // current reconnect attempt
+  isConnecting: boolean         // connecting before a retry
+  isConnected: boolean          // stream is open
+  isReconnecting: boolean       // connecting after a failed attempt
+  isClosed: boolean             // closed state
+  isError: boolean              // retry budget exhausted or retries disabled
   reconnect(): Promise<void>    // manually reconnect; resets backoff counter
   close(): void                 // manually close
 }
@@ -174,6 +181,14 @@ client.addEventListener('renew', (event) => {
   // Client will make exactly maxAttempts confirmatory reconnect attempts
   // at retryDelayMs intervals. On success, the session is renewed.
   // On exhaustion, the connection closes with reason: 'revoked'.
+})
+
+client.addEventListener('rejected', (event) => {
+  console.warn('SSE handshake rejected:', event.detail.status, event.detail.headers)
+})
+
+client.addEventListener('retriesexhausted', (event) => {
+  console.error('SSE retries exhausted:', event.detail.attempts, event.detail.maxRetries)
 })
 ```
 
@@ -308,6 +323,21 @@ client.close()
 | `'error'` | Cancels pending retry timer, opens a new connection, resets backoff |
 
 ---
+
+## RTK Query adapter
+
+```tsx
+import { useReStale } from 'restale-kit/react'
+import { useRtkQueryAdapter } from 'restale-kit/rtk-query'
+
+function App({ api }: { api: { util: { invalidateTags(tags: unknown[]): void } } }) {
+  const onInvalidate = useRtkQueryAdapter(api)
+  useReStale('/sse', { onInvalidate })
+  return null
+}
+```
+
+`rtkQueryAdapter` delegates each matching signal to `api.util.invalidateTags(signal.tags)`.
 
 ## TanStack Query adapter
 
@@ -448,7 +478,7 @@ The status transitions to `{ status: 'connecting' }`, and `statuschange` fires. 
 
 **With `autoReconnect: false`, or when retries are exhausted:**
 
-The status transitions to `{ status: 'error', error: Event }`. All automatic background reconnect attempts (both native browser `EventSource` reconnects and JavaScript backoff retries) are suppressed. However, manual reconnection via `reconnect()` (hook) or `client.connect()` remains enabled and can be called explicitly at any time.
+The status transitions to `{ status: 'error', error: Event }`. All automatic managed retries are suppressed. However, manual reconnection via `reconnect()` (hook) or `client.connect()` remains enabled and can be called explicitly at any time.
 
 ```text
 'open' → 'error'   ← immediate, no automatic retries (manual reconnect() still permitted)
@@ -456,15 +486,15 @@ The status transitions to `{ status: 'error', error: Event }`. All automatic bac
 
 **Granular retry control (`autoReconnect: { native?: boolean, jsBackoff?: boolean }`):**
 
-To independently control native browser mid-stream reconnects vs. JavaScript backoff retries, pass an object to `autoReconnect`:
+To independently control managed mid-stream retries vs. JavaScript backoff retries during connection setup, pass an object to `autoReconnect`. The client disables `sse.js` native reconnect and owns both retry paths.
 
 ```ts
-// Example: Disable native browser auto-reconnect, force JS exponential backoff on drops
+// Example: Disable managed mid-stream retries, keep JS setup backoff enabled
 useReStale('/sse', {
   autoReconnect: { native: false, jsBackoff: true },
 })
 
-// Example: Allow native browser reconnects, but do NOT retry initial/fatal failures via JS
+// Example: Allow managed mid-stream retries, but do NOT retry initial failures via JS
 useReStale('/sse', {
   autoReconnect: { native: true, jsBackoff: false },
 })

@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { internal_attachSSE } from '@/server/node/attach.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { createEventStore } from '@/server/core/event-store.js'
+import { SSEChannelGroup } from '@/server/core/channel-group.js'
 
 const decoder = new TextDecoder()
 
@@ -68,6 +69,22 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
 
     const text = await readStreamChunk(response.body!)
     expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"],"target":"swr"}\n\n')
+  })
+
+  it('Fetch: group event history is replayed to a transport-created reconnect', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    group.createFetchResponse(new Request('https://example.com/sse?__restale_cid__=first'), {})
+    group.broadcastToAll({ key: ['already-seen'] })
+    group.broadcastToAll({ key: ['todos'] })
+
+    const { response } = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=second', { headers: { 'Last-Event-ID': '1' } }),
+      {}
+    )
+    const text = await readStreamChunk(response.body!)
+
+    expect(text).toBe('id: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n')
   })
 
   it('Node: internal_attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {

@@ -70,6 +70,10 @@ export class SSEInvalidatorClient<
   private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
   private reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly withCredentials: boolean
+  private readonly callback?: ClientOptions<TSignal>['callback']
+  private readonly onConnect?: ClientOptions<TSignal>['onConnect']
+  private readonly onDisconnect?: ClientOptions<TSignal>['onDisconnect']
+  private readonly onError?: ClientOptions<TSignal>['onError']
   private debug = false
   private readonly currentConnectionId: string
 
@@ -119,6 +123,10 @@ export class SSEInvalidatorClient<
       )
     }
     this.eventSourceUrl = eventSourceUrl
+    this.callback = opts?.callback
+    this.onConnect = opts?.onConnect
+    this.onDisconnect = opts?.onDisconnect
+    this.onError = opts?.onError
     this.updateRuntimeOptions(opts)
     this.withCredentials = opts?.withCredentials ?? false
 
@@ -129,6 +137,7 @@ export class SSEInvalidatorClient<
     }
   }
 
+  /** @internal Used by the React binding to apply changed hook props. */
   updateRuntimeOptions(opts?: Pick<ClientOptions<TSignal>, 'autoReconnect' | 'reconnect' | 'debug'>): void {
     const autoReconnectOpt = opts?.autoReconnect
     if (typeof autoReconnectOpt === 'object') {
@@ -263,6 +272,7 @@ export class SSEInvalidatorClient<
    * Behaves identically to `close()` but the resulting status reason is `'unmount'`
    * instead of `'manual'`, matching the documented contract.
    */
+  /** @internal Used by the React binding to distinguish unmount cleanup from `close()`. */
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
@@ -370,6 +380,7 @@ export class SSEInvalidatorClient<
 
     es.onopen = (event: SSEvent) => {
       if (!this.isValidHandshake(es, event)) {
+        this.emitError(event)
         this.handleReconnectError(es, event)
         return
       }
@@ -377,6 +388,7 @@ export class SSEInvalidatorClient<
       this.opened = true
       this.currentAttempt = 0
       this.setStatus({ status: 'open' })
+      this.invokeUserCallback('onConnect', this.onConnect, event)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId}). Stream is live.`
@@ -389,7 +401,7 @@ export class SSEInvalidatorClient<
     }
 
     es.onerror = (event: SSEvent) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: event}))
+      this.emitError(event)
       this.handleReconnectError(es, event)
     }
 
@@ -404,6 +416,7 @@ export class SSEInvalidatorClient<
 
     const rejectedResponse = this.getRejectedResponse(es, event)
     if (rejectedResponse !== null) {
+      this.invokeUserCallback('onDisconnect', this.onDisconnect, event)
       this.teardown()
       this.setStatus({ status: 'closed', reason: 'rejected', response: rejectedResponse })
       this.dispatchEvent(new CustomEvent('rejected', { detail: rejectedResponse }))
@@ -420,6 +433,7 @@ export class SSEInvalidatorClient<
     const retryAfterDelay = this.reconnectOptions?.retryAfter === 'respect'
       ? this.getRetryAfterDelay(es, event)
       : undefined
+    this.invokeUserCallback('onDisconnect', this.onDisconnect, event)
     this.teardown()
 
     if (!this.revoked && !this.renewing && canRetry && this.currentAttempt < this.maxRetries) {
@@ -496,6 +510,9 @@ export class SSEInvalidatorClient<
         // Built-in structural validation
         validated = validatePayload(event.data)
         this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
+        // Payload validation proves the wire union; `TSignal` is the consumer's narrower view.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated wire payload is exposed through the caller's generic signal view.
+        this.invokeUserCallback('callback', this.callback, validated as TSignal | TSignal[])
 
         if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
           this.currentLastEventId = event.lastEventId
@@ -513,9 +530,7 @@ export class SSEInvalidatorClient<
         )
         const message = error.message
         const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
-        this.dispatchEvent(
-          new CustomEvent('error', { detail })
-        )
+        this.emitError(detail)
       }
     })
 
@@ -685,6 +700,7 @@ export class SSEInvalidatorClient<
 
         renewEs.onopen = (event: SSEvent) => {
           if (!this.isValidHandshake(renewEs, event)) {
+            this.emitError(event)
             renewEs.onopen = () => {}
             renewEs.onerror = () => {}
             onRenewError()
@@ -698,6 +714,7 @@ export class SSEInvalidatorClient<
 
         renewEs.onerror = () => {
           if (this.eventSource !== renewEs) return
+          this.emitError(new Event('error'))
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
           onRenewError()
@@ -729,8 +746,28 @@ export class SSEInvalidatorClient<
 
     // Wire onerror for mid-stream drops on the new connection.
     es.onerror = (event: SSEvent) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: event }))
+      this.emitError(event)
       this.handleReconnectError(es, event)
+    }
+  }
+
+  /** Dispatches an error and then invokes the configured error callback safely. */
+  private emitError(error: unknown): void {
+    this.dispatchEvent(new CustomEvent('error', { detail: error }))
+    this.invokeUserCallback('onError', this.onError, error)
+  }
+
+  /**
+   * User callbacks are observers: an exception must not change connection state or
+   * prevent other lifecycle work. Reporting through the console avoids recursively
+   * invoking a failing `onError` callback.
+   */
+  private invokeUserCallback<T>(name: string, callback: ((value: T) => void) | undefined, value: T): void {
+    if (!callback) return
+    try {
+      callback(value)
+    } catch (error) {
+      console.error(`[restale-kit][SSEInvalidatorClient] ${name} callback threw`, error)
     }
   }
 

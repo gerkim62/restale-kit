@@ -242,6 +242,12 @@ class SSEChannelGroupImplementation<
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.target = options.target
     this.metaSchema = options.metaSchema
+    if (options.pubsub !== undefined && !hasPubSubMethods<TSignal>(options.pubsub)) {
+      console.warn(
+        '[SSEChannelGroup] pubsub configuration objects are not adapters and are ignored. ' +
+        'Pass a PubSubAdapter (for example redisPubSubAdapter(redis)) to enable cross-instance delivery.'
+      )
+    }
     this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
 
     if (options.target !== undefined) {

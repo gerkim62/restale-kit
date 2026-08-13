@@ -312,9 +312,8 @@ export type OnDeadline =
  * { deadline: tokenPayload.exp * 1000, onDeadline: 'revoke' }
  */
 export type LifetimeOptions =
-  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline; reconnect?: unknown }
-  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline; reconnect?: unknown }
-  | { ttlMs?: undefined; deadline?: undefined; onDeadline?: OnDeadline; reconnect?: unknown }
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
 
 /**
  * The three outcomes `beforeFrame` may return.

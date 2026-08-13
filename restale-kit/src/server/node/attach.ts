@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import type { InvalidateSignal } from '@/types/protocol.js'
-import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
+import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
@@ -26,8 +26,8 @@ export interface FastifyRequestLike {
 export function internal_attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelOptions<TSignal>,
-  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
+  options: SSEChannelTransportOptions<TSignal>,
+  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults' | 'eventStore'>
 ): SSEChannel<TSignal> {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
@@ -47,11 +47,12 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
 
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
-  const baseOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelTransportOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
+    eventStore: options.eventStore ?? group?.eventStore,
   }
 
   const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)

@@ -1,4 +1,13 @@
-import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
+import type {
+  InvalidateSignal,
+  SignalTarget,
+  TargetForSignal,
+  ReStaleSignalForTarget,
+  RevokeEventDetail,
+  RenewEventDetail,
+} from '@/types/protocol.js'
+
+export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
 
 /**
  * A phantom brand that marks an `onInvalidate` callback as having been produced
@@ -126,7 +135,7 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
    * Whether to automatically reconnect on failure. Default: true.
    *
    * Accepts a `boolean` or an `AutoReconnectOptions` object for granular control over
-   * native browser EventSource mid-stream reconnects vs. JavaScript backoff retries.
+   * managed mid-stream retries vs. JavaScript backoff retries during connection setup.
    * Manual reconnection via `connect()` remains available regardless of setting.
    */
   autoReconnect?: boolean | AutoReconnectOptions
@@ -159,21 +168,6 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
  * })
  * ```
  */
-export type RevokeEventDetail =
-  | {
-      /** The connection was rejected because the requested target is not in the server's supported set. */
-      reason: 'unsupported-target'
-      /** The target value the client requested (from `__restale_target__`). */
-      requested: string
-      /** The target values the server channel is configured to support. */
-      supported: string[]
-    }
-  | {
-      reason?: 'deadline' | 'session-expired' | 'logout' | 'banned' | 'unauthorized' | 'custom' | (string & { readonly 'unsupported-target'?: never })
-      requested?: never
-      supported?: never
-    }
-
 /**
  * Typed event map for `SSEInvalidatorClient`.
  */
@@ -210,16 +204,4 @@ export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> 
    * Accompanies the final `statuschange` event transitioning to `{ status: 'error' }`.
    */
   retriesexhausted: CustomEvent<{ attempts: number; maxRetries: number }>
-}
-
-/**
- * Payload carried by the `renew` CustomEvent.
- */
-export interface RenewEventDetail {
-  /** Always `'deadline'` — the only reason a server currently sends `renew`. */
-  reason: 'deadline'
-  /** How many confirmatory reconnect attempts the client will make. */
-  maxAttempts: number
-  /** Base delay in milliseconds between attempts when `maxAttempts > 1`. */
-  retryDelayMs: number
 }

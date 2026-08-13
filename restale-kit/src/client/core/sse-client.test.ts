@@ -34,6 +34,32 @@ describe('SSEInvalidatorClient', () => {
     })
   })
 
+  it('honors lifecycle and invalidation callbacks without letting callback errors break the client', async () => {
+    const callback = vi.fn(() => {
+      throw new Error('observer failure')
+    })
+    const onConnect = vi.fn()
+    const onDisconnect = vi.fn()
+    const onError = vi.fn()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const client = new SSEInvalidatorClient('/sse', { callback, onConnect, onDisconnect, onError })
+
+    const pending = client.connect()
+    const source = MockEventSource.instances[0]
+    if (source === undefined) throw new Error('Expected an EventSource instance')
+    source.emitOpen()
+    await pending
+    source.emitCustomEvent('invalidate', JSON.stringify({ key: ['todos'] }))
+    source.emitError(new Event('error'))
+
+    expect(onConnect).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledWith({ key: ['todos'] })
+    expect(onError).toHaveBeenCalled()
+    expect(onDisconnect).toHaveBeenCalledTimes(1)
+    expect(client.status.status).toBe('connecting')
+    errorSpy.mockRestore()
+  })
+
   describe('handshake validation', () => {
     it('rejects onopen if Content-Type is application/json', () => {
       const client = new SSEInvalidatorClient('/sse', {
@@ -1871,4 +1897,3 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
     expect(renewUrl).toBe(originalUrl)
   })
 })
-
