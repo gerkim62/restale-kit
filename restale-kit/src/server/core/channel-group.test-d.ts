@@ -9,6 +9,11 @@ import type {
 } from '@/types/index.js'
 
 describe('SSEChannelGroup generic and metadata enforcement', () => {
+  test('pubsub configuration requires a concrete adapter', () => {
+    // @ts-expect-error Configuration objects are not pub/sub adapters.
+    new SSEChannelGroup({ pubsub: { type: 'redis', encryptionKey: 'secret' } })
+  })
+
   test('register requires metadata when TMeta is defined and non-optional', () => {
     interface UserMeta {
       userId: string

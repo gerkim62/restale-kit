@@ -199,7 +199,8 @@ export interface SSEChannelGroupOptions<
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
+  /** Broker adapter used for cross-instance signal delivery and control messages. */
+  pubsub?: PubSubAdapter<TSignal>
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
@@ -243,12 +244,12 @@ class SSEChannelGroupImplementation<
     this.target = options.target
     this.metaSchema = options.metaSchema
     if (options.pubsub !== undefined && !hasPubSubMethods<TSignal>(options.pubsub)) {
-      console.warn(
-        '[SSEChannelGroup] pubsub configuration objects are not adapters and are ignored. ' +
-        'Pass a PubSubAdapter (for example redisPubSubAdapter(redis)) to enable cross-instance delivery.'
+      throw new TypeError(
+        '[SSEChannelGroup] pubsub must implement publish() and subscribe(). ' +
+        'Pass a PubSubAdapter (for example redisPubSubAdapter(redis)).'
       )
     }
-    this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
+    this.pubsub = options.pubsub
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)

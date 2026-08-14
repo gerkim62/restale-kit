@@ -1,6 +1,6 @@
 # API Reference
 
-Complete export surface for every `restale-kit` subpath. All subpaths are ESM-only.
+Reference for the supported `restale-kit` entry points. All subpaths are ESM-only; consult the generated declarations for exhaustive type-only exports.
 
 ---
 

@@ -709,7 +709,7 @@ export class SSEInvalidatorClient<
           // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
-          this.wireRenewSuccess(renewEs, onRenewOpen)
+          this.wireRenewSuccess(renewEs, event, onRenewOpen)
         }
 
         renewEs.onerror = () => {
@@ -730,10 +730,11 @@ export class SSEInvalidatorClient<
    * After a successful renew confirmatory reconnect, re-wires the full event listeners
    * (invalidate, revoke, renew) on the newly opened EventSource and transitions to `open`.
    */
-  private wireRenewSuccess(es: SSE, onOpenCallback: () => void): void {
+  private wireRenewSuccess(es: SSE, event: SSEvent, onOpenCallback: () => void): void {
     this.opened = true
     this.currentAttempt = 0
     this.setStatus({ status: 'open' })
+    this.invokeUserCallback('onConnect', this.onConnect, event)
     onOpenCallback()
 
     if (this.connectPromise) {

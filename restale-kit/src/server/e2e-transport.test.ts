@@ -16,10 +16,10 @@ async function readStreamChunk(stream: ReadableStream<Uint8Array>): Promise<stri
   return value ? decoder.decode(value) : ''
 }
 
-function createMockNodeRequest(url: string): IncomingMessage {
+function createMockNodeRequest(url: string, headers: Record<string, string> = {}): IncomingMessage {
   return Object.assign(new EventEmitter(), {
     url,
-    headers: {},
+    headers,
   }) as unknown as IncomingMessage
 }
 
@@ -85,6 +85,27 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const text = await readStreamChunk(response.body!)
 
     expect(text).toBe('id: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n')
+  })
+
+  it('Node: group event history is replayed to a transport-created reconnect', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    const first = createMockNodeRequest('/sse?__restale_cid__=first')
+    group.attachNodeResponse(first, createMockNodeResponse(), {})
+    group.broadcastToAll({ key: ['already-seen'] })
+    group.broadcastToAll({ key: ['todos'] })
+
+    const response = createMockNodeResponse()
+    group.attachNodeResponse(
+      createMockNodeRequest('/sse?__restale_cid__=second', { 'last-event-id': '1' }),
+      response,
+      {}
+    )
+    await vi.advanceTimersByTimeAsync(50)
+
+    expect((response as any).__chunks.join('')).toBe(
+      ':\n\nid: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n'
+    )
   })
 
   it('Node: internal_attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {

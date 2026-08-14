@@ -60,6 +60,23 @@ describe('SSEInvalidatorClient', () => {
     errorSpy.mockRestore()
   })
 
+  it('calls onConnect after a successful renew reconnect', async () => {
+    const onConnect = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { onConnect })
+
+    const pending = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await pending
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+    MockEventSource.instances[1]?.emitOpen()
+
+    expect(onConnect).toHaveBeenCalledTimes(2)
+    expect(client.status.status).toBe('open')
+  })
+
   describe('handshake validation', () => {
     it('rejects onopen if Content-Type is application/json', () => {
       const client = new SSEInvalidatorClient('/sse', {

@@ -12,6 +12,7 @@ import type { ServerResponse } from 'node:http';
 import { describe, it, expect, vi } from 'vitest';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
+import { MemoryPubSubAdapter } from '../../test-fixtures/pubsub.js';
 
 function createMockResponse(): ServerResponse {
   const res = new Writable({
@@ -241,7 +242,7 @@ describe('Gap 5: Transport setup target override', () => {
     it('should validate topics alongside target', () => {
       const group = new SSEChannelGroup<SWRSignal>({
         target: 'swr',
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal>()
       });
       
       const mockReq = new Request('http://localhost/sse?__restale_cid__=conn-1');

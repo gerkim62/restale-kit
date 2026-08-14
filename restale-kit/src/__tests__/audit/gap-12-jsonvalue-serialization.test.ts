@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest'
 import { createSSEChannel } from '@/testing/index.js'
 import { validatePayload } from '@/client/core/validation.js'
 import { SSEChannelGroup } from '@/server/core/index.js'
+import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
 import type { SWRSignal, RTKQuerySignal, TanStackQuerySignal } from '@/types/index.js'
 
 describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
@@ -343,7 +344,7 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
   describe('Publishing with non-finite numbers', () => {
     it('should reject publishing signal with NaN in key', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal>()
       })
       
       await expect(
@@ -356,7 +357,7 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
 
     it('should reject publishing signal with Infinity in key', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal>()
       })
       
       await expect(
@@ -369,7 +370,7 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
 
     it('should reject publishing RTK signal with NaN in tag ID', async () => {
       const group = new SSEChannelGroup<RTKQuerySignal>({
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<RTKQuerySignal>()
       })
       
       await expect(
@@ -382,7 +383,7 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
 
     it('should accept publishing signal with valid finite numbers', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal>()
       })
       
       await expect(
@@ -549,7 +550,7 @@ describe('Gap 12: JSONValue serialization with non-finite numbers', () => {
   describe('Validation consistency across operations', () => {
     it('should use same validation for invalidate and publish', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal>()
       })
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       

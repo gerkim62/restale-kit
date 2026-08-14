@@ -307,7 +307,6 @@ client.close()
 
 // Called by framework wrappers on component unmount (reason: 'unmount')
 // Behaves like close() but sets reason to 'unmount' — use close() in non-React code.
-// client.closeWithUnmount()
 ```
 
 ### `connect()` behavior by state
