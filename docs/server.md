@@ -260,7 +260,7 @@ const { channel } = group.attachNodeResponse(req, res, {
 When the deadline approaches (after applying jitter to prevent thundering herds), the channel sends a `renew` SSE event frame to the client. The client then makes confirmatory reconnect attempt(s) through your real authentication middleware, allowing the server to refresh the client's session or reject the renewal based on auth state. The number of attempts is controlled by `maxAttempts` (default: 1).
 
 The `renew` frame includes:
-- `maxAttempts` — how many times the client should retry if the reconnect fails (default: 1)
+- `maxAttempts` — how many times the client should retry if the reconnect fails (positive safe integer; default: `1`)
 - `retryDelayMs` — milliseconds to wait between retry attempts (default: 250ms)
 
 If the client's confirmatory reconnect succeeds, the connection is resumed from the new channel. If all attempts exhaust, the client closes.

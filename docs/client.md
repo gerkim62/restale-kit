@@ -169,7 +169,7 @@ When the server has a connection deadline (e.g., tied to an authentication token
 
 The `renew` event includes:
 - `reason: 'deadline'` — signals this is a server-initiated renewal (not a transient error)
-- `maxAttempts` — how many times to retry if the reconnect fails (typically 1 for strict auth)
+- `maxAttempts` — how many times to retry if the reconnect fails (a positive integer; typically `1` for strict auth)
 - `retryDelayMs` — milliseconds to wait between retry attempts
 
 The client automatically handles this flow:

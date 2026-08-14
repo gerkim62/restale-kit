@@ -406,7 +406,7 @@ export type RevokeEventDetail =
 export interface RenewEventDetail {
   /** Always `'deadline'` — the only reason a server currently sends `renew`. */
   reason: 'deadline'
-  /** How many reconnect attempts the client should make (typically 1 for strict auth). Must be a finite non-negative integer. */
+  /** How many reconnect attempts the client should make (typically 1 for strict auth). Must be a positive safe integer. */
   maxAttempts: number
   /** Milliseconds to wait between retry attempts. Must be a finite non-negative number. */
   retryDelayMs: number

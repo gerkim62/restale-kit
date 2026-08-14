@@ -87,6 +87,36 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     expect(text).toBe('id: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n')
   })
 
+  it('Fetch: deadline renewal closes the stream and a shared store replays the reconnect gap', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    const first = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=deadline-first'),
+      { lifetime: { ttlMs: 100 } }
+    )
+
+    group.broadcastToAll({ key: ['already-seen'] })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(first.channel.state).toBe('closed')
+    expect(await readStreamChunk(first.response.body!)).toContain('id: 1\nevent: invalidate')
+    expect(await readStreamChunk(first.response.body!)).toContain('event: renew')
+
+    // The first channel is closed, but the group-owned store continues recording broadcasts.
+    group.broadcastToAll({ key: ['written-during-reconnect'] })
+
+    const resumed = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=deadline-second', {
+        headers: { 'Last-Event-ID': '1' },
+      }),
+      {}
+    )
+
+    expect(await readStreamChunk(resumed.response.body!)).toBe(
+      'id: 2\nevent: invalidate\ndata: {"key":["written-during-reconnect"],"target":"swr"}\n\n'
+    )
+  })
+
   it('Node: group event history is replayed to a transport-created reconnect', async () => {
     const eventStore = createEventStore({ capacity: 10 })
     const group = new SSEChannelGroup({ target: 'swr', eventStore })

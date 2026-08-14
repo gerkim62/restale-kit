@@ -86,6 +86,20 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
     multiGroup.broadcastByKey({ target: 'swr', key: ['users'] })
   })
 
+  test('channelDefaults.target infers multi-target broadcast requirements', () => {
+    const multiGroup = new SSEChannelGroup({
+      channelDefaults: { target: ['swr', 'tanstack-query'] as const },
+    })
+
+    // @ts-expect-error channelDefaults target inference requires a complete multi-target batch
+    multiGroup.broadcastToAll({ key: ['users'] })
+
+    multiGroup.broadcastToAll([
+      { target: 'swr', key: ['users'] },
+      { target: 'tanstack-query', queryKey: ['users'] },
+    ])
+  })
+
   test('single-target group injects an omitted target', () => {
     const swrGroup = new SSEChannelGroup({ target: 'swr' })
 

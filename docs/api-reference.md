@@ -138,6 +138,7 @@ class SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+  TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
 > {
   constructor(options?: {
     target?: TTarget
@@ -200,6 +201,8 @@ class SSEChannelGroup<
   dispose(): Promise<void>
 }
 ```
+
+`TBroadcastTarget` is normally inferred. When a group has no top-level `target`, but `channelDefaults.target` is configured, it preserves the channel-level override behavior while enforcing that `broadcast()`, `broadcastToAll()`, and `publish()` receive complete signal batches for those default targets.
 
 ---
 

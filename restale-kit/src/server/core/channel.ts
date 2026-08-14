@@ -675,6 +675,12 @@ function validateNonNegativeFinite(name: string, value: number | undefined): voi
   }
 }
 
+function validatePositiveSafeInteger(name: string, value: number | undefined): void {
+  if (value !== undefined && (!Number.isFinite(value) || value < 1 || !Number.isSafeInteger(value))) {
+    throw new RangeError(`[createSSEChannel] ${name} must be a positive safe integer.`)
+  }
+}
+
 function validateChannelOptions<TSignal extends InvalidateSignal>(options: SSEChannelOptions<TSignal>): void {
   validateNonNegativeFinite('eventBufferCapacity', options.eventBufferCapacity)
   validateNonNegativeFinite('retryIntervalMs', options.retryIntervalMs)
@@ -696,7 +702,7 @@ function validateChannelOptions<TSignal extends InvalidateSignal>(options: SSECh
   validateNonNegativeFinite('lifetime.ttlMs', ttlMs)
   validateNonNegativeFinite('lifetime.deadline', deadline)
   if (typeof onDeadline === 'object') {
-    validateNonNegativeFinite('lifetime.onDeadline.maxAttempts', onDeadline.maxAttempts)
+    validatePositiveSafeInteger('lifetime.onDeadline.maxAttempts', onDeadline.maxAttempts)
     validateNonNegativeFinite('lifetime.onDeadline.retryDelayMs', onDeadline.retryDelayMs)
   }
 }
