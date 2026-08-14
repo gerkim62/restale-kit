@@ -37,7 +37,7 @@ flowchart LR
 - **🔄 Flexible Client Support:** Built-in adapters for **TanStack Query** and **SWR**, native wire protocol support for **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
 - **🔌 Multi-Runtime Server Adapters:** Drop-in support for Express, Fastify, Hono, Node `http`, Bun, Deno, and standard Fetch API runtimes.
 - **🎯 Precision Invalidation:** Flexible key matching supports prefix keys, exact matches, hierarchical paths, and object-subset targeting.
-- **🛡️ Standard Schema Validation:** Validate invalidation payloads on server & client using Zod, Valibot, ArkType, or any Standard Schema validator.
+- **🛡️ Standard Schema Metadata Validation:** Validate server-side connection metadata with Zod, Valibot, ArkType, or any Standard Schema validator; invalidation payloads receive built-in structural validation.
 - **🌐 Horizontally Scalable:** Pub/Sub adapters for Redis, Ably, and Pusher enable multi-instance and serverless cluster invalidations.
 - **⚡️ Resilience Built-In:** Automatic client reconnects with exponential backoff, jitter, and history replay via `Last-Event-ID`.
 
@@ -89,7 +89,10 @@ app.get('/sse', (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   // ... database mutation ...
-  group.broadcastToAll({ key: ['todos'] })
+  group.broadcastToAll([
+    { target: SIGNAL_TARGETS.SWR, key: ['todos'] },
+    { target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] },
+  ])
   res.status(201).json({ success: true })
 })
 
@@ -232,4 +235,4 @@ We warmly welcome contributions from everyone! Whether you are fixing a typo, im
 
 ## 📄 License
 
-Distributed under the MIT License. See [LICENSE](./restale-kit/README.md) for details.
+Distributed under the MIT License. See [LICENSE](./restale-kit/LICENSE) for details.

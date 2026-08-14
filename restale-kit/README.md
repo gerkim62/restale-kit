@@ -35,7 +35,7 @@ flowchart LR
 - **First-class server adapters:** Express, Fastify, Hono, Node `http`, and any Fetch-API runtime (Bun, Deno, Cloudflare Workers, Vercel Edge).
 - **First-class client adapters:** TanStack Query, SWR, and a React hook (`useReStale`) for zero-boilerplate wiring.
 - **Precision invalidation:** Hierarchical key matching with prefix, exact, and object-subset semantics.
-- **Optional Standard Schema validation:** Zod, Valibot, ArkType, etc. — type-safe signals and metadata at compile and runtime.
+- **Optional Standard Schema metadata validation:** Use Zod, Valibot, ArkType, etc. to validate connection metadata at runtime; signals have compile-time types and built-in structural validation.
 - **Horizontally scalable:** Built-in pub/sub adapters for Redis, Ably, and Pusher.
 - **Robust reconnection:** Exponential backoff with jitter; configurable retries.
 
@@ -112,7 +112,10 @@ app.get('/sse', (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   // ... write todo to DB ...
-  group.broadcastToAll({ target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] })
+  group.broadcastToAll([
+    { target: SIGNAL_TARGETS.SWR, key: ['todos'] },
+    { target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] },
+  ])
   res.status(201).json({ success: true })
 })
 

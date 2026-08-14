@@ -11,7 +11,7 @@
 | [Getting Started](./getting-started.md) | Install, minimal server + client wiring in 5 minutes |
 | [Server](./server.md) | All server adapters, `SSEChannelGroup`, broadcasting, topics |
 | [Client](./client.md) | `useReStale` hook, vanilla JS client, TanStack Query & SWR adapters |
-| [Validation](./validation.md) | Optional Zod / Standard Schema runtime validation |
+| [Validation](./validation.md) | Built-in signal validation and optional Zod / Standard Schema metadata validation |
 | [Pub/Sub](./pubsub.md) | Scaling across multiple instances with Redis, Ably, or Pusher |
 | [API Reference](./api-reference.md) | Every export, every type signature, in one place |
 
