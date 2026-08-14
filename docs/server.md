@@ -124,7 +124,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
+| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`, `eventBufferCapacity`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
 
 ---
 

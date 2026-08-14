@@ -51,7 +51,7 @@ flowchart LR
 |---|---|---|
 | **TanStack Query** (React / Solid / Vue) | ⚡️ First-class Adapter | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | **SWR** (React) | ⚡️ First-class Adapter | `swrAdapter`, `useSwrAdapter` |
-| **RTK Query** (Redux Toolkit) | 🔌 Wire Protocol | `target: 'rtk-query'` with tag-based invalidations |
+| **RTK Query** (Redux Toolkit) | ⚡️ First-class Adapter | `rtkQueryAdapter`, `useRtkQueryAdapter` |
 | **Zustand / Redux / Pinia** | 🎯 Generic Listener | `target: 'generic'` with custom `onInvalidate` callback |
 | **Vue / Nuxt** | 🟢 Framework Agnostic | `SSEInvalidatorClient` / custom handler |
 | **Svelte / SvelteKit** | 🟠 Framework Agnostic | `SSEInvalidatorClient` / custom handler |

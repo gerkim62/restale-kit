@@ -76,6 +76,7 @@ npm install pusher                        # Pusher pub/sub
 | `restale-kit/react` | `useReStale` | React hook for SSE stream management |
 | `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` | TanStack Query invalidation adapter |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` | SWR invalidation adapter |
+| `restale-kit/rtk-query` | `rtkQueryAdapter`, `useRtkQueryAdapter` | RTK Query tag invalidation adapter |
 | `restale-kit/pubsub` | `PubSubAdapter` interface | Base PubSub interface |
 | `restale-kit/redis` | `redisPubSubAdapter` | Redis PubSub adapter |
 | `restale-kit/ably` | `ablyPubSubAdapter` | Ably PubSub adapter |
@@ -300,12 +301,12 @@ type TanStackQuerySignal = {
 type SWRSignal = {
   target: 'swr'
   key: string | JSONValue[]
-  action?: 'revalidate' | 'purge' | 'remove'  // default 'revalidate'
+  action?: 'revalidate' | 'purge' | 'remove' | 'mutate'  // default 'revalidate'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
 }
 
-// RTK Query — tag-based invalidation (wire protocol only; no shipped adapter)
+// RTK Query — tag-based invalidation (handled by rtkQueryAdapter / useRtkQueryAdapter)
 type RTKQuerySignal = {
   target: 'rtk-query'
   tags: Array<string | { type: string; id?: string | number }>
@@ -541,7 +542,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
 | `onRevoke` | `(detail: RevokeEventDetail) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. Branch on `detail.reason` to handle `'unsupported-target'` vs application-level revocations. |
 | `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
-| `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
+| `withCredentials` | `boolean` | `false` | Include cookies in cross-origin EventSource requests. Custom `Authorization` headers are not supported by this API. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
 | `debug` | `boolean` | `false` | Enable verbose console debug logging for connection lifecycle events. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |
@@ -582,7 +583,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 ### `channel.invalidate(signal, customId?)`
 
-Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. If neither `eventBufferCapacity` nor `eventStore` is configured, the return value is `''` and can be ignored.
+Returns a `string` — the SSE event ID assigned to the invalidation frame. With `eventBufferCapacity` or a custom `eventStore`, the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` can replay missed events. Without history, the return value is `''` unless you supplied `customId` or configured `idGenerator`; such IDs are emitted but cannot be replayed.
 
 
 ---

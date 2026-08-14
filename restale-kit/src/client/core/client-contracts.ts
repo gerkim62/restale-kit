@@ -141,10 +141,7 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   autoReconnect?: boolean | AutoReconnectOptions
   /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
-  /**
-   * Pass credentials (cookies, authorization headers) with cross-origin SSE requests.
-   * Default: `false`.
-   */
+  /** Include cookies with cross-origin SSE requests. Default: `false`. Custom authorization headers are not supported. */
   withCredentials?: boolean
   /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean

@@ -415,13 +415,13 @@ function App() {
 
 | Signal field | Values | SWR `mutate` operation |
 |---|---|---|
-| `action: 'revalidate'` / `'invalidate'` | Default | `mutate(filter)` — revalidates matching keys |
+| `action: 'revalidate'` / `'mutate'` | Default | `mutate(filter)` — revalidates matching keys |
 | `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, { revalidate: false })` — clears cache without revalidating |
 | `revalidate: false` | `boolean` | `mutate(filter, undefined, { revalidate: false })` — forces clear without revalidating |
 | `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
 
 
-> **Note:** SWR has no separate "mark stale" operation, so `'invalidate'` and `'refetch'` both trigger immediate revalidation.
+> **Note:** SWR has no separate "mark stale" operation. `'revalidate'` (the default) and `'mutate'` both trigger immediate revalidation; `'invalidate'` and `'refetch'` are not valid SWR signal actions.
 
 ### SWR key format
 

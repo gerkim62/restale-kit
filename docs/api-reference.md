@@ -146,7 +146,7 @@ class SSEChannelGroup<
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
     controlTopic?: string                             // default '__restale_control__'
-    channelDefaults?: ChannelDefaults                 // fallback Frame Guard defaults (target, lifetime, guardKeepalive)
+    channelDefaults?: ChannelDefaults                 // fallback channel defaults (target, lifetime, guardKeepalive, eventBufferCapacity)
   })
 
   readonly size: number
@@ -327,14 +327,19 @@ type RevokeEventDetail =
 import { useReStale } from 'restale-kit/react'
 import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus, RevokeEventDetail } from 'restale-kit/react'
 
-function useReStale<TSignal extends InvalidateSignal = InvalidateSignal>(
+function useReStale<
+  TTarget extends SignalTarget,
+  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
+>(
   url: string,
-  options: UseReStaleOptions<TSignal>
+  options: UseReStaleOptions<TTarget, TSignal>
 ): UseReStaleResult
 
-interface UseReStaleOptions<TSignal> extends ClientOptions {
+interface UseReStaleOptions<TTarget extends SignalTarget, TSignal extends InvalidateSignal>
+  extends Omit<ClientOptions<TSignal>, 'target'> {
   disabled?: boolean                // default false
-  onInvalidate: (signal: TSignal | TSignal[]) => void  // required
+  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal> // required; adapter-branded
+  target?: NoInfer<TTarget>         // optional explicit target; must match the adapter brand
   /**
    * Called when the server sends a terminal `revoke` frame.
    * The connection is already closed; auto-reconnect is suppressed.
@@ -346,9 +351,8 @@ interface UseReStaleOptions<TSignal> extends ClientOptions {
   onRejected?: (response: RejectedConnectionResponse) => void
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
 }
-// Option stability: autoReconnect, reconnect, and withCredentials are
-// applied only at client creation time. Changing them after mount has no effect until
-// the url prop changes (which recreates the SSEInvalidatorClient).
+// Runtime updates: autoReconnect, reconnect, and debug are applied to the active client.
+// Identity updates: url, target, and withCredentials recreate the SSEInvalidatorClient.
 
 interface UseReStaleResult {
   connectionId: string
