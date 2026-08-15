@@ -11,6 +11,7 @@ import {
   TANSTACK_QUERY_ACTIONS,
   SWR_ACTIONS,
   GENERIC_ACTIONS,
+  isJSONValue,
   isJSONValueArray,
 } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
@@ -87,6 +88,14 @@ function isRTKTags(val: unknown): val is RTKQuerySignal['tags'] {
   return Array.isArray(val) && val.every(isRTKTag)
 }
 
+function validateInlineData(value: Record<string, unknown>): JSONValue | undefined {
+  if (!('inlineData' in value)) return undefined
+  if (!isJSONValue(value.inlineData)) {
+    throw new Error('Signal "inlineData" field must be JSON-serialisable')
+  }
+  return value.inlineData
+}
+
 function validateSingleSignal(value: unknown): ReStaleSignal {
   if (!isObject(value)) {
     throw new Error('Each signal must be a plain object')
@@ -110,6 +119,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if ('action' in value && !isTanStackQueryAction(value.action)) {
       throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
     }
+    const inlineData = validateInlineData(value)
     const signal: TanStackQuerySignal = {
       target: SIGNAL_TARGETS.TANSTACK_QUERY,
       queryKey: value.queryKey,
@@ -122,6 +132,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       signal.action = value.action
     }
     if (typeof value.stale === 'boolean') signal.stale = value.stale
+    if (inlineData !== undefined) signal.inlineData = inlineData
     return signal
   }
 
@@ -138,6 +149,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if ('revalidate' in value && typeof value.revalidate !== 'boolean') {
       throw new Error('SWR signal "revalidate" field must be a boolean')
     }
+    const inlineData = validateInlineData(value)
     const signal: SWRSignal = {
       target: SIGNAL_TARGETS.SWR,
       key: value.key,
@@ -147,6 +159,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     }
     if (typeof value.revalidate === 'boolean') signal.revalidate = value.revalidate
     if (value.match === 'exact' || value.match === 'prefix') signal.match = value.match
+    if (inlineData !== undefined) signal.inlineData = inlineData
     return signal
   }
 
@@ -180,11 +193,14 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     throw new Error(`Signal "action" field must be one of 'invalidate', 'refetch', 'remove' — got '${actionStr}'`)
   }
 
+  const inlineData = validateInlineData(value)
+
   const signal: GenericInvalidateSignal = { key: value.key }
   if (target === SIGNAL_TARGETS.GENERIC) signal.target = SIGNAL_TARGETS.GENERIC
   if (typeof value.exact === 'boolean') signal.exact = value.exact
   if (isGenericAction(value.action)) {
     signal.action = value.action
   }
+  if (inlineData !== undefined) signal.inlineData = inlineData
   return signal
 }

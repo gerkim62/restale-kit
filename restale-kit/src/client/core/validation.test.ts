@@ -122,6 +122,41 @@ describe('client validatePayload', () => {
     })
   })
 
+  it('preserves JSON-safe inlineData for TanStack Query, SWR, and generic signals', () => {
+    expect(validatePayload({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      inlineData: [{ id: 1, completed: false }],
+    })).toEqual({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      inlineData: [{ id: 1, completed: false }],
+    })
+
+    expect(validatePayload({
+      target: 'swr',
+      key: '/api/todos',
+      inlineData: { todos: [{ id: 1 }] },
+    })).toEqual({
+      target: 'swr',
+      key: '/api/todos',
+      inlineData: { todos: [{ id: 1 }] },
+    })
+
+    expect(validatePayload({ key: ['todos'], inlineData: null })).toEqual({
+      key: ['todos'],
+      inlineData: null,
+    })
+  })
+
+  it('rejects non-JSON-safe inlineData', () => {
+    expect(() => validatePayload({
+      target: 'tanstack-query',
+      queryKey: ['todos'],
+      inlineData: Infinity,
+    })).toThrow('Signal "inlineData" field must be JSON-serialisable')
+  })
+
   it('validates swr signal with string and array keys', () => {
     const rawString = JSON.stringify({
       target: 'swr',
@@ -229,6 +264,5 @@ describe('client validatePayload', () => {
     )
   })
 })
-
 
 
