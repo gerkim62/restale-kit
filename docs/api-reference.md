@@ -239,7 +239,7 @@ import type { InvalidateSignal } from 'restale-kit/client' // re-exported for co
 class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   extends EventTarget
 {
-  constructor(url: string, options?: ClientOptions)
+  constructor(url: string, options?: ClientOptions<TSignal>)
   get connectionId(): string
   get endpointUrl(): string      // the URL passed to the constructor (without __restale_cid__)
   get status(): ConnectionStatus
@@ -256,13 +256,13 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   // standard removeEventListener overloads also available
 }
 
-interface ClientOptions {
+interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   autoReconnect?: boolean | AutoReconnectOptions // default true (or { native?: boolean, jsBackoff?: boolean })
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
   debug?: boolean
-  callback?: AdaptedInvalidateCallback | ((signal: InvalidateSignal | InvalidateSignal[]) => void)
+  callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void

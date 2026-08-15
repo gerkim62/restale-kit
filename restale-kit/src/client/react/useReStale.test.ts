@@ -90,6 +90,45 @@ describe('useReStale', () => {
     expect(nextCallback).toHaveBeenCalledWith({ key: ['items'] })
   })
 
+  it('forwards the latest inherited client callbacks after a rerender', () => {
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const initial = {
+      callback: vi.fn(),
+      onConnect: vi.fn(),
+      onDisconnect: vi.fn(),
+      onError: vi.fn(),
+    }
+    const { rerender } = renderHook(
+      ({ callbacks }) => useReStale('/sse', { onInvalidate, ...callbacks }),
+      { initialProps: { callbacks: initial } }
+    )
+    const updated = {
+      callback: vi.fn(),
+      onConnect: vi.fn(),
+      onDisconnect: vi.fn(),
+      onError: vi.fn(),
+    }
+
+    rerender({ callbacks: updated })
+
+    const instance = MockEventSource.instances[0]
+    act(() => {
+      instance.emitOpen()
+      instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['items'] }))
+      instance.emitCustomEvent('invalidate', 'invalid json')
+      instance.emitError()
+    })
+
+    expect(initial.callback).not.toHaveBeenCalled()
+    expect(initial.onConnect).not.toHaveBeenCalled()
+    expect(initial.onDisconnect).not.toHaveBeenCalled()
+    expect(initial.onError).not.toHaveBeenCalled()
+    expect(updated.callback).toHaveBeenCalledWith({ key: ['items'] })
+    expect(updated.onConnect).toHaveBeenCalledTimes(1)
+    expect(updated.onDisconnect).toHaveBeenCalledTimes(1)
+    expect(updated.onError).toHaveBeenCalled()
+  })
+
   it('exposes reconnect and close handlers', () => {
     const onInvalidate = asAdapter<'swr'>(vi.fn())
     const { result } = renderHook(() =>

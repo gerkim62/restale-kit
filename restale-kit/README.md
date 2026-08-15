@@ -33,7 +33,7 @@ flowchart LR
 
 - **Framework agnostic:** Optional ecosystem integrations are peer dependencies; the browser client uses `sse.js` as its runtime transport.
 - **First-class server adapters:** Express, Fastify, Hono, Node `http`, and any Fetch-API runtime (Bun, Deno, Cloudflare Workers, Vercel Edge).
-- **First-class client adapters:** TanStack Query, SWR, and a React hook (`useReStale`) for zero-boilerplate wiring.
+- **First-class client adapters:** TanStack Query, SWR, RTK Query, and a React hook (`useReStale`) for zero-boilerplate wiring.
 - **Precision invalidation:** Hierarchical key matching with prefix, exact, and object-subset semantics.
 - **Optional Standard Schema metadata validation:** Use Zod, Valibot, ArkType, etc. to validate connection metadata at runtime; signals have compile-time types and built-in structural validation.
 - **Horizontally scalable:** Built-in pub/sub adapters for Redis, Ably, and Pusher.
@@ -559,9 +559,9 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
 | `reconnect.nonRetryableStatuses` | `HttpStatusMatcher \| HttpStatusMatcher[]` | none | HTTP statuses that close the connection as rejected instead of retrying. |
 | `reconnect.retryAfter` | `'ignore' \| 'respect'` | `'ignore'` | Whether retryable HTTP responses may set the next delay using `Retry-After`. |
-| `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
+| `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`, `useRtkQueryAdapter` → `'rtk-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
-### `group.attachNodeResponse(req, res, options)` / `group.createFetchResponse(request, options)`
+### Transport method comparison
 
 | Option | Type | Default | Description |
 |---|---|---|---|

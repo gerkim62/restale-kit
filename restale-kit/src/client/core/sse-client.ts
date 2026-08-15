@@ -70,10 +70,10 @@ export class SSEInvalidatorClient<
   private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
   private reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly withCredentials: boolean
-  private readonly callback?: ClientOptions<TSignal>['callback']
-  private readonly onConnect?: ClientOptions<TSignal>['onConnect']
-  private readonly onDisconnect?: ClientOptions<TSignal>['onDisconnect']
-  private readonly onError?: ClientOptions<TSignal>['onError']
+  private callback?: ClientOptions<TSignal>['callback']
+  private onConnect?: ClientOptions<TSignal>['onConnect']
+  private onDisconnect?: ClientOptions<TSignal>['onDisconnect']
+  private onError?: ClientOptions<TSignal>['onError']
   private debug = false
   private readonly currentConnectionId: string
 
@@ -138,7 +138,12 @@ export class SSEInvalidatorClient<
   }
 
   /** @internal Used by the React binding to apply changed hook props. */
-  updateRuntimeOptions(opts?: Pick<ClientOptions<TSignal>, 'autoReconnect' | 'reconnect' | 'debug'>): void {
+  updateRuntimeOptions(
+    opts?: Pick<
+      ClientOptions<TSignal>,
+      'autoReconnect' | 'reconnect' | 'debug' | 'callback' | 'onConnect' | 'onDisconnect' | 'onError'
+    >
+  ): void {
     const autoReconnectOpt = opts?.autoReconnect
     if (typeof autoReconnectOpt === 'object') {
       this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
@@ -151,6 +156,10 @@ export class SSEInvalidatorClient<
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.debug = opts?.debug ?? false
+    if (opts && Object.hasOwn(opts, 'callback')) this.callback = opts.callback
+    if (opts && Object.hasOwn(opts, 'onConnect')) this.onConnect = opts.onConnect
+    if (opts && Object.hasOwn(opts, 'onDisconnect')) this.onDisconnect = opts.onDisconnect
+    if (opts && Object.hasOwn(opts, 'onError')) this.onError = opts.onError
 
     if (this.retryTimer !== null) {
       const canRetry = this.jsBackoffAutoReconnect || (this.opened && this.nativeAutoReconnect)
@@ -754,7 +763,12 @@ export class SSEInvalidatorClient<
 
   /** Dispatches an error and then invokes the configured error callback safely. */
   private emitError(error: unknown): void {
-    this.dispatchEvent(new CustomEvent('error', { detail: error }))
+    const detail = error instanceof Event
+      ? error
+      : typeof ErrorEvent !== 'undefined'
+        ? new ErrorEvent('error', { message: error instanceof Error ? error.message : String(error) })
+        : new Event('error')
+    this.dispatchEvent(new CustomEvent('error', { detail }))
     this.invokeUserCallback('onError', this.onError, error)
   }
 

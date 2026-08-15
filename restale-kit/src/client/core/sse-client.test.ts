@@ -615,7 +615,7 @@ describe('SSEInvalidatorClient', () => {
 
       expect(errorSpy).toHaveBeenCalled()
       const errorDetail = errorSpy.mock.calls[0][0].detail
-      expect(errorDetail).toBeInstanceOf(Error)
+      expect(errorDetail).toBeInstanceOf(Event)
     } finally {
       globalThis.ErrorEvent = originalErrorEvent
     }

@@ -109,6 +109,9 @@ function mergeLifetimeParts(
   // Determine which time value (if any) the channel explicitly set to a non-undefined value.
   const channelHasTtl = Object.hasOwn(channel, 'ttlMs') && channel.ttlMs !== undefined
   const channelHasDeadline = Object.hasOwn(channel, 'deadline') && channel.deadline !== undefined
+  if (channelHasTtl && channelHasDeadline) {
+    throw new Error('[mergeChannelDefaults] lifetime.ttlMs and lifetime.deadline are mutually exclusive.')
+  }
   const channelHasTimeValue = channelHasTtl || channelHasDeadline
 
   // Determine whether the channel explicitly set onDeadline to a non-undefined value.

@@ -34,7 +34,7 @@ flowchart LR
 ## ✨ Features
 
 - **🚀 Universal & Framework Agnostic:** Optional ecosystem integrations are peer dependencies; the browser client uses `sse.js` as its runtime transport. Runs in Node.js, Bun, Deno, Cloudflare Workers, Next.js, and all modern browsers.
-- **🔄 Flexible Client Support:** Built-in adapters for **TanStack Query** and **SWR**, native wire protocol support for **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
+- **🔄 Flexible Client Support:** First-class adapters for **TanStack Query**, **SWR**, and **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
 - **🔌 Multi-Runtime Server Adapters:** Drop-in support for Express, Fastify, Hono, Node `http`, Bun, Deno, and standard Fetch API runtimes.
 - **🎯 Precision Invalidation:** Flexible key matching supports prefix keys, exact matches, hierarchical paths, and object-subset targeting.
 - **🛡️ Standard Schema Metadata Validation:** Validate server-side connection metadata with Zod, Valibot, ArkType, or any Standard Schema validator; invalidation payloads receive built-in structural validation.
