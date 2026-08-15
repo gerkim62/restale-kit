@@ -193,9 +193,9 @@ describe('Gap 6: Structural assignability across incompatible signal types', () 
         subscribe: () => Promise.resolve(() => {})
       }
       
-      // @ts-expect-error - TanStack signal incompatible with SWR adapter
       void swrAdapter.publish('topic', {
         kind: 'signal' as const,
+        // @ts-expect-error - TanStack signal incompatible with SWR adapter
         data: { target: 'tanstack-query' as const, queryKey: ['test'] }
       })
     })

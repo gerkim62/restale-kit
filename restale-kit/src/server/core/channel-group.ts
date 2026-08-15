@@ -195,10 +195,14 @@ export interface SSEChannelGroupOptions<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
+  TClientContext = unknown,
 > {
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
+  clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
+  resolveInlineData?: ResolveInlineData<TMeta, TClientContext, TSignal>
+  onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
   /** Broker adapter used for cross-instance signal delivery and control messages. */
   pubsub?: PubSubAdapter<TSignal>
   eventStore?: EventStore<TSignal>
@@ -206,6 +210,28 @@ export interface SSEChannelGroupOptions<
   controlTopic?: string
   channelDefaults?: ChannelDefaults
 }
+
+export interface InlineDataConnection<TMeta, TClientContext> {
+  readonly connectionId: string
+  readonly meta: TMeta | undefined
+  readonly clientContext: TClientContext | undefined
+}
+
+export interface InlineDataResult<TSignal extends InvalidateSignal> {
+  signal: TSignal
+  inlineData?: JSONValue
+}
+
+export type ResolveInlineData<TMeta, TClientContext, TSignal extends InvalidateSignal> = (
+  connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
+  payload: JSONValue
+) => Map<string, InlineDataResult<TSignal>> | Promise<Map<string, InlineDataResult<TSignal>>>
+
+type SchemaOutput<TSchema extends StandardSchemaV1<unknown, unknown>> =
+  TSchema extends StandardSchemaV1<unknown, infer TOutput> ? TOutput : unknown
+
+type SchemaValue<TExplicit, TSchema extends StandardSchemaV1<unknown, unknown>> =
+  unknown extends TExplicit ? SchemaOutput<TSchema> : TExplicit
 
 
 /**
@@ -223,9 +249,11 @@ class SSEChannelGroupImplementation<
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
   TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
+  TClientContext = unknown,
 > {
   private readonly channels = new Map<RegisteredChannel<TSignal>, {
     meta: TMeta | undefined
+    clientContext: TClientContext | undefined
     topics: Set<string>
     connectionId: string
   }>()
@@ -233,6 +261,9 @@ class SSEChannelGroupImplementation<
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly instanceId = generateInstanceId()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
+  private readonly clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
+  private readonly resolveInlineData?: ResolveInlineData<TMeta, TClientContext, TSignal>
+  private readonly onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
   private readonly pubsub?: PubSubAdapter<TSignal>
   readonly target?: TTarget
   readonly eventStore?: EventStore<TSignal>
@@ -242,9 +273,12 @@ class SSEChannelGroupImplementation<
   private controlUnsubscribeFn?: () => void | Promise<void>
   private controlPendingOp: Promise<void> = Promise.resolve()
 
-  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
+  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext> = {}) {
     this.target = options.target
     this.metaSchema = options.metaSchema
+    this.clientContextSchema = options.clientContextSchema
+    this.resolveInlineData = options.resolveInlineData
+    this.onInlineDataResolverError = options.onInlineDataResolverError
     if (options.pubsub !== undefined && !hasPubSubMethods<TSignal>(options.pubsub)) {
       throw new TypeError(
         '[SSEChannelGroup] pubsub must implement publish() and subscribe(). ' +
@@ -321,32 +355,14 @@ class SSEChannelGroupImplementation<
         try {
           const unsub = await pubsub.subscribe(this.controlTopic, (msg) => {
             if (msg.kind === 'control') {
-              const dataObj = msg.data
-              if (
-                dataObj &&
-                typeof dataObj === 'object' &&
-                !Array.isArray(dataObj) &&
-                'type' in dataObj &&
-                dataObj.type === 'revokeByConnectionId' &&
-                'revokeByConnectionId' in dataObj
-              ) {
-                const revokePayload = dataObj.revokeByConnectionId
-                if (revokePayload && typeof revokePayload === 'object' && !Array.isArray(revokePayload)) {
-                  if ('connectionId' in revokePayload && typeof revokePayload.connectionId === 'string') {
-                    const connectionId = revokePayload.connectionId
-                    let scope: Record<string, JSONValue> | undefined = undefined
-                    if ('scope' in revokePayload) {
-                      const scopeVal = revokePayload.scope
-                      if (scopeVal && typeof scopeVal === 'object' && !Array.isArray(scopeVal)) {
-                        scope = scopeVal
-                      }
-                    }
-                    this.closeLocalConnection(connectionId, scope)
-                  }
-                }
-              } else {
+              const handledTargetedControl = this.handleTargetedControlMessage(msg.data)
+              if (!handledTargetedControl) {
                 this.closeLocalMatches(msg.data)
               }
+            } else if (msg.kind === 'inlineData') {
+              void this.handleInlineDataMessage(msg).catch((error: unknown) => {
+                console.error('[SSEChannelGroup.handleInlineDataMessage] Failed to deliver inline data.', error)
+              })
             }
           })
           this.controlUnsubscribeFn = unsub
@@ -405,6 +421,106 @@ class SSEChannelGroupImplementation<
       closedAny = true
     }
     return closedAny
+  }
+
+  private handleTargetedControlMessage(data: JSONValue): boolean {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !('type' in data)) return false
+
+    if (data.type === 'revokeByConnectionId' && 'revokeByConnectionId' in data) {
+      const payload = data.revokeByConnectionId
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.connectionId !== 'string') {
+        return true
+      }
+      this.closeLocalConnection(payload.connectionId, readControlScope(payload))
+      return true
+    }
+
+    if (data.type === 'updateClientContext' && 'updateClientContext' in data) {
+      const payload = data.updateClientContext
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.connectionId !== 'string' || !('clientContext' in payload)) {
+        return true
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Cross-instance messages were origin-validated.
+      const clientContext = payload.clientContext as TClientContext
+      this.updateLocalClientContext(
+        payload.connectionId,
+        clientContext,
+        readControlScope(payload)
+      )
+      return true
+    }
+
+    return false
+  }
+
+  private updateLocalClientContext(
+    connectionId: string,
+    clientContext: TClientContext,
+    scope?: Record<string, JSONValue>
+  ): boolean {
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels || channels.size === 0) return false
+
+    let updated = false
+    for (const channel of channels) {
+      const entry = this.channels.get(channel)
+      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
+      entry.clientContext = clientContext
+      updated = true
+    }
+    return updated
+  }
+
+  private async handleInlineDataMessage(message: Extract<PubSubMessage<TSignal>, { kind: 'inlineData' }>): Promise<void> {
+    await this.deliverInlineData(message.topic, message.payload)
+  }
+
+  private async deliverInlineData(topic: string, payload: JSONValue): Promise<void> {
+    const topicManager = this.topics.get(topic)
+    if (!topicManager || topicManager.channels.size === 0) return
+    const resolver = this.resolveInlineData
+    if (!resolver) {
+      throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
+    }
+
+    const localChannels = Array.from(topicManager.channels)
+    const connections: InlineDataConnection<TMeta, TClientContext>[] = []
+    for (const channel of localChannels) {
+      const entry = this.channels.get(channel)
+      if (entry) {
+        connections.push({
+          connectionId: entry.connectionId,
+          meta: entry.meta,
+          clientContext: entry.clientContext,
+        })
+      }
+    }
+    if (connections.length === 0) return
+
+    const resolved = await resolver(connections, payload)
+    const missingConnectionIds = connections
+      .filter((connection) => !resolved.has(connection.connectionId))
+      .map((connection) => connection.connectionId)
+    if (missingConnectionIds.length > 0 && this.onInlineDataResolverError) {
+      try {
+        this.onInlineDataResolverError({ topic, missingConnectionIds })
+      } catch (error) {
+        console.error('[SSEChannelGroup.onInlineDataResolverError] callback threw', error)
+      }
+    }
+
+    for (const connection of connections) {
+      const result = resolved.get(connection.connectionId)
+      if (!result) continue
+      const channels = this.connectionIndex.get(connection.connectionId)
+      if (!channels) continue
+      const signal = result.inlineData === undefined
+        ? result.signal
+        : { ...result.signal, inlineData: result.inlineData } as TSignal
+      for (const channel of channels) {
+        this.deliverToChannel(channel, signal, 'publish', topic)
+      }
+    }
   }
 
   /**
@@ -573,6 +689,7 @@ class SSEChannelGroupImplementation<
     const connectionId = channel.connectionId
     this.channels.set(channel, {
       meta: validatedMeta,
+      clientContext: existingEntry?.clientContext,
       topics: topicsSet,
       connectionId,
     })
@@ -766,6 +883,54 @@ class SSEChannelGroupImplementation<
     return { closed: localClosed }
   }
 
+  async updateClientContext(
+    connectionId: string,
+    clientContext: TClientContext,
+    options?: {
+      scope?: TMeta extends object
+        ? Partial<Record<keyof TMeta, JSONValue | undefined>>
+        : Record<string, JSONValue | undefined>
+    }
+  ): Promise<{ updated: boolean }> {
+    if (typeof connectionId !== 'string' || connectionId.trim() === '') {
+      throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
+    }
+    const validatedClientContext = this.clientContextSchema
+      ? validateStandardSchema(clientContext, this.clientContextSchema)
+      : clientContext
+    const scope = normalizeConnectionScope(options?.scope, '[SSEChannelGroup.updateClientContext]')
+    const updated = this.updateLocalClientContext(connectionId, validatedClientContext, scope)
+
+    if (this.pubsub) {
+      if (!isJSONValue(validatedClientContext)) {
+        throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
+      }
+      await this.pubsub.publish(this.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          updateClientContext: {
+            connectionId,
+            clientContext: validatedClientContext,
+            ...(scope !== undefined ? { scope } : {}),
+          },
+        },
+      })
+    }
+
+    return { updated }
+  }
+
+  getClientContext(connectionId: string): TClientContext | undefined {
+    const channels = this.connectionIndex.get(connectionId)
+    if (!channels) return undefined
+    for (const channel of channels) {
+      const entry = this.channels.get(channel)
+      if (entry) return entry.clientContext
+    }
+    return undefined
+  }
+
   /**
    * Unsubscribes from the control topic and cleans up PubSub resources.
    */
@@ -935,6 +1100,21 @@ class SSEChannelGroupImplementation<
     await this.publishRaw(topic, signal)
   }
 
+  async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
+    validateTopic(topic, 'topic')
+    if (!isJSONValue(payload)) {
+      throw new Error('[SSEChannelGroup.pushInlineData] payload must be a valid JSONValue.')
+    }
+    if (!this.resolveInlineData) {
+      throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
+    }
+
+    await this.deliverInlineData(topic, payload)
+    if (this.pubsub) {
+      await this.pubsub.publish(this.controlTopic, { kind: 'inlineData', topic, payload })
+    }
+  }
+
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
     validateTopic(topic, 'topic')
     const normalizedSignal = this.normalizeSignalForGroup(signal)
@@ -967,91 +1147,124 @@ export type SSEChannelGroup<
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
   TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
-> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TBroadcastTarget>
+  TClientContext = unknown,
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TBroadcastTarget, TClientContext>
 
 interface SSEChannelGroupConstructor {
   new <
     TTarget extends SignalTarget,
-    TMeta,
-    TSchema extends StandardSchemaV1<unknown, TMeta>,
+    TMeta = unknown,
+    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
   >(
     options: {
       channelDefaults: ChannelDefaults & { target: TTarget }
-      metaSchema: TSchema
+      metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>
+      clientContextSchema?: TClientContextSchema
     } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>,
-      'channelDefaults' | 'metaSchema'
-  >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, TMeta, SignalTarget, TTarget>
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
+      'channelDefaults' | 'metaSchema' | 'clientContextSchema'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, SignalTarget, TTarget, TClientContext>
   new <
     TTarget extends readonly SignalTarget[],
-    TMeta,
-    TSchema extends StandardSchemaV1<unknown, TMeta>,
+    TMeta = unknown,
+    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
   >(
     options: {
       channelDefaults: ChannelDefaults & { target: TTarget }
-      metaSchema: TSchema
+      metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>
+      clientContextSchema?: TClientContextSchema
     } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>,
-      'channelDefaults' | 'metaSchema'
-  >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, TMeta, SignalTarget, TTarget>
-  new <TTarget extends SignalTarget>(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>,
-      'channelDefaults'
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
+      'channelDefaults' | 'metaSchema' | 'clientContextSchema'
     >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, SignalTarget, TTarget>
-  new <TTarget extends readonly SignalTarget[]>(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>,
-      'channelDefaults'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, SignalTarget, TTarget>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, SignalTarget, TTarget, TClientContext>
   new <
     TTarget extends SignalTarget,
-    TMeta,
-    TSchema extends StandardSchemaV1<unknown, TMeta>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
   >(
-    options: { target: TTarget; metaSchema: TSchema } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>,
-      'target' | 'metaSchema'
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+      clientContextSchema?: TClientContextSchema
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TClientContext>,
+      'channelDefaults' | 'clientContextSchema'
     >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, SignalTarget, TTarget, TClientContext>
   new <
     TTarget extends readonly SignalTarget[],
-    TMeta,
-    TSchema extends StandardSchemaV1<unknown, TMeta>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
   >(
-    options: { target: TTarget; metaSchema: TSchema } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>,
-      'target' | 'metaSchema'
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+      clientContextSchema?: TClientContextSchema
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TClientContext>,
+      'channelDefaults' | 'clientContextSchema'
     >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, SignalTarget, TTarget, TClientContext>
   new <
-    TMeta,
-    TSchema extends StandardSchemaV1<unknown, TMeta>,
-    TSignal extends InvalidateSignal = InvalidateSignal,
+    TTarget extends SignalTarget,
+    TMeta = unknown,
+    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
   >(
-    options: { metaSchema: TSchema } & SSEChannelGroupOptions<TSignal, TMeta>
-  ): SSEChannelGroup<TSignal, TMeta>
-  new <TTarget extends SignalTarget>(
-    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>, 'target'>
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget>
-  new <TTarget extends readonly SignalTarget[]>(
-    options: { target: TTarget } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>, 'target'>
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>
+    options: { target: TTarget; metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
+      'target' | 'metaSchema' | 'clientContextSchema'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TTarget, TClientContext>
+  new <
+    TTarget extends readonly SignalTarget[],
+    TMeta = unknown,
+    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
+  >(
+    options: { target: TTarget; metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
+      'target' | 'metaSchema' | 'clientContextSchema'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TTarget, TClientContext>
+  new <
+    TMeta = unknown,
+    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TSignal extends InvalidateSignal = InvalidateSignal,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
+  >(
+    options: { metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<TSignal, SchemaValue<TMeta, TSchema>, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>, 'metaSchema' | 'clientContextSchema'>
+  ): SSEChannelGroup<TSignal, SchemaValue<TMeta, TSchema>, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
+  new <
+    TTarget extends SignalTarget,
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
+  >(
+    options: { target: TTarget; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TClientContext>, 'target' | 'clientContextSchema'>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TTarget, TClientContext>
+  new <
+    TTarget extends readonly SignalTarget[],
+    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
+    TClientContext = SchemaOutput<TClientContextSchema>,
+  >(
+    options: { target: TTarget; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TClientContext>, 'target' | 'clientContextSchema'>
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TTarget, TClientContext>
   new <
     TSignal extends InvalidateSignal = InvalidateSignal,
     TMeta = unknown,
     TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+    TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
+    TClientContext = unknown,
   >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget>
-  ): SSEChannelGroup<TSignal, TMeta, TTarget>
+    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext>
+  ): SSEChannelGroup<TSignal, TMeta, TTarget, TBroadcastTarget, TClientContext>
 }
 
 export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
@@ -1135,6 +1348,12 @@ function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unk
 
 function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readControlScope(payload: Record<string, JSONValue>): Record<string, JSONValue> | undefined {
+  if (!('scope' in payload)) return undefined
+  const scope = payload.scope
+  return scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : undefined
 }
 
 /**

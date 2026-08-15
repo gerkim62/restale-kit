@@ -99,6 +99,32 @@ describe('tanstackQueryAdapter', () => {
     })
   })
 
+  it('writes inlineData to an exact query key before marking that key stale', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      setQueryData: vi.fn(),
+    } as unknown as QueryClientLike
+    const adapter = tanstackQueryAdapter(queryClient)
+
+    adapter({ target: 'tanstack-query', queryKey: ['todos'], inlineData: [{ id: 1 }] })
+
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(['todos'], [{ id: 1 }])
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos'], exact: true })
+  })
+
+  it('can trust pushed inlineData without marking it stale', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      setQueryData: vi.fn(),
+    } as unknown as QueryClientLike
+    const adapter = tanstackQueryAdapter(queryClient, { markInlineDataStale: false })
+
+    adapter({ target: 'tanstack-query', queryKey: ['todos'], inlineData: [{ id: 1 }] })
+
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(['todos'], [{ id: 1 }])
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
+  })
+
   it('ignores signals targeting other frameworks', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
@@ -161,4 +187,3 @@ describe('useTanstackQueryAdapter', () => {
     expect((result.current as any).__restaleTarget).toBe('tanstack-query')
   })
 })
-

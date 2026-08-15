@@ -54,6 +54,7 @@ interface TanStackQuerySignal {
   type?: 'active' | 'inactive' | 'all'
   action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
   stale?: boolean
+  inlineData?: JSONValue
 }
 
 interface SWRSignal {
@@ -62,6 +63,7 @@ interface SWRSignal {
   action?: 'revalidate' | 'purge' | 'remove' | 'mutate'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
+  inlineData?: JSONValue
 }
 
 interface RTKQuerySignal {
@@ -74,6 +76,7 @@ interface GenericInvalidateSignal {
   key: JSONValue[]
   exact?: boolean
   action?: 'invalidate' | 'refetch' | 'remove'
+  inlineData?: JSONValue
 }
 
 type ReStaleSignal =
@@ -139,10 +142,14 @@ class SSEChannelGroup<
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
   TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
+  TClientContext = unknown,
 > {
   constructor(options?: {
     target?: TTarget
     metaSchema?: StandardSchemaV1<unknown, TMeta>
+    clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
+    resolveInlineData?: ResolveInlineData<TMeta, TClientContext, TSignal>
+    onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
     eventBufferCapacity?: number                      // capacity of a group-owned EventStore shared by channels created through this group
@@ -195,6 +202,14 @@ class SSEChannelGroup<
   broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
 
   publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void>
+  pushInlineData(topic: string, payload: JSONValue): Promise<void>
+
+  updateClientContext(
+    connectionId: string,
+    clientContext: TClientContext,
+    options?: { scope?: TMeta extends object ? Partial<Record<keyof TMeta, JSONValue | undefined>> : Record<string, JSONValue | undefined> },
+  ): Promise<{ updated: boolean }>
+  getClientContext(connectionId: string): TClientContext | undefined
 
   revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }>
   revokeByConnectionId(connectionId: string, scope?: Record<string, JSONValue>): Promise<{ closed: boolean }>
@@ -203,6 +218,26 @@ class SSEChannelGroup<
 ```
 
 `TBroadcastTarget` is normally inferred. When a group has no top-level `target`, but `channelDefaults.target` is configured, it preserves the channel-level override behavior while enforcing that `broadcast()`, `broadcastToAll()`, and `publish()` receive complete signal batches for those default targets.
+
+```ts
+interface InlineDataConnection<TMeta, TClientContext> {
+  readonly connectionId: string
+  readonly meta: TMeta | undefined
+  readonly clientContext: TClientContext | undefined
+}
+
+interface InlineDataResult<TSignal extends InvalidateSignal> {
+  signal: TSignal
+  inlineData?: JSONValue
+}
+
+type ResolveInlineData<TMeta, TClientContext, TSignal extends InvalidateSignal> = (
+  connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
+  payload: JSONValue,
+) => Map<string, InlineDataResult<TSignal>> | Promise<Map<string, InlineDataResult<TSignal>>>
+```
+
+`updateClientContext()` throws `SchemaValidationError` when `clientContextSchema` rejects the value. `pushInlineData()` throws for invalid topics/payloads, when no resolver is configured, or when the local resolver throws. See [Client Context & Inline Data](./inline-data.md) for behavioral details.
 
 ---
 
@@ -246,6 +281,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   get attempt(): number          // current reconnect attempt (0 initially and after a successful open)
   get lastEventId(): string | null
   connect(): Promise<void>
+  updateClientContext(clientContext: JSONValue): Promise<{ updated: boolean }>
   close(): void                  // closes with reason 'manual'
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
@@ -261,6 +297,7 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   withCredentials?: boolean         // default false
   reconnect?: ReconnectOptions
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
+  clientContextUrl?: string         // POST endpoint for updateClientContext; defaults to the stream URL
   debug?: boolean
   callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
@@ -362,9 +399,15 @@ interface UseReStaleOptions<TTarget extends SignalTarget, TSignal extends Invali
   onRevoke?: (detail: RevokeEventDetail) => void
   onRejected?: (response: RejectedConnectionResponse) => void
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
+  clientContext?: JSONValue
+  clientContextSync?: {
+    maxAttempts?: number
+    retryDelayMs?: number
+    onExhausted?: 'retryOnNextChange' | 'disableUntilReconnect'
+  }
 }
 // Runtime updates: autoReconnect, reconnect, and debug are applied to the active client.
-// Identity updates: url, target, and withCredentials recreate the SSEInvalidatorClient.
+// Identity updates: url, target, withCredentials, and clientContextUrl recreate the SSEInvalidatorClient.
 
 interface UseReStaleResult {
   connectionId: string
@@ -390,6 +433,7 @@ import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanst
 import type { TanStackQuerySignal } from 'restale-kit'
 
 interface QueryClientLike {
+  setQueryData(queryKey: QueryKey, data: unknown): void
   invalidateQueries(filters?: unknown): unknown
   refetchQueries(filters?: unknown): unknown
   resetQueries(filters?: unknown): unknown
@@ -398,7 +442,8 @@ interface QueryClientLike {
 }
 
 function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
-  queryClient: QueryClientLike
+  queryClient: QueryClientLike,
+  options?: TanstackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
 /**
@@ -406,8 +451,13 @@ function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuer
  * Call at the component top level; returns a stable branded callback across renders.
  */
 function useTanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
-  queryClient: QueryClientLike
+  queryClient: QueryClientLike,
+  options?: TanstackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
+
+interface TanstackQueryAdapterOptions {
+  markInlineDataStale?: boolean // default true
+}
 
 ```
 
@@ -456,10 +506,12 @@ interface SWRAdapterOptions<TSignal> {
   // Convert a non-canonical SWR key to a JSONValue[] for matching.
   // Omit when SWR keys are already JSONValue[] arrays.
   toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
+  markInlineDataStale?: boolean // default true
 }
 
 // Structural equivalent of SWR's global mutate (from useSWRConfig().mutate)
 interface SWRMutator {
+  (key: Arguments): Promise<unknown>
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
 }
@@ -481,6 +533,11 @@ interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal> {
   ): Promise<() => void | Promise<void>>
   onError?(handler: (error: unknown) => void): void
 }
+
+type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
+  | { kind: 'signal'; data: TSignal | TSignal[]; id?: string }
+  | { kind: 'control'; data: JSONValue }
+  | { kind: 'inlineData'; topic: string; payload: JSONValue }
 
 type PubSubEncryptionOptions =
   | { encrypt?: false; encryptionKey?: never }

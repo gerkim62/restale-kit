@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, JSONValue, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -83,6 +83,14 @@ export interface UseReStaleOptions<
    * Accompanies the final status transition to `{ status: 'error' }`.
    */
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
+  /** Client-supplied query-shaping context registered after each successful open. */
+  clientContext?: JSONValue
+  /** Retry policy for automatic client-context registration. */
+  clientContextSync?: {
+    maxAttempts?: number
+    retryDelayMs?: number
+    onExhausted?: 'retryOnNextChange' | 'disableUntilReconnect'
+  }
 }
 
 /**
@@ -113,8 +121,13 @@ export interface UseReStaleResult {
 
 const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
 
-function getClientIdentityKey(url: string, target: SignalTarget | undefined, withCredentials: boolean | undefined): string {
-  return `${url}\u0000${(target ?? '')}\u0000${String(withCredentials ?? false)}`
+function getClientIdentityKey(
+  url: string,
+  target: SignalTarget | undefined,
+  withCredentials: boolean | undefined,
+  clientContextUrl: string | undefined
+): string {
+  return `${url}\u0000${(target ?? '')}\u0000${String(withCredentials ?? false)}\u0000${clientContextUrl ?? ''}`
 }
 
 /**
@@ -145,7 +158,7 @@ export function useReStale<
   onRetriesExhaustedRef.current = opts.onRetriesExhausted
 
   const target = opts.target ?? opts.onInvalidate.__restaleTarget
-  const identityKey = getClientIdentityKey(url, target, opts.withCredentials)
+  const identityKey = getClientIdentityKey(url, target, opts.withCredentials, opts.clientContextUrl)
 
   // Stable client reference — only recreated when connection identity changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
@@ -176,6 +189,7 @@ export function useReStale<
         onConnect: opts.onConnect,
         onDisconnect: opts.onDisconnect,
         onError: opts.onError,
+        clientContextUrl: opts.clientContextUrl,
         // Auto-infer target from the adapter's brand when not set explicitly.
         target,
       })
@@ -301,6 +315,51 @@ export function useReStale<
       client.removeEventListener('retriesexhausted', handler)
     }
   }, [client])
+
+  const contextSyncStateRef = useRef({ wasOpen: false, lastSerialized: undefined as string | undefined, disabled: false })
+  const clientContext = opts.clientContext
+  const serializedClientContext = clientContext === undefined ? undefined : JSON.stringify(clientContext)
+
+  // Context belongs to the server-side channel, so re-register it after every open.
+  useEffect(() => {
+    const state = contextSyncStateRef.current
+    if (!client || connection.status !== 'open') {
+      state.wasOpen = false
+      return
+    }
+
+    const openedNow = !state.wasOpen
+    state.wasOpen = true
+    if (serializedClientContext === undefined) return
+    if (clientContext === undefined) return
+    const contextToSync = clientContext
+    if (openedNow) state.disabled = false
+    if (state.disabled || (!openedNow && state.lastSerialized === serializedClientContext)) return
+    state.lastSerialized = serializedClientContext
+
+    let active = true
+    const maxAttempts = Math.max(1, Math.floor(opts.clientContextSync?.maxAttempts ?? 2))
+    const retryDelayMs = Math.max(0, Math.floor(opts.clientContextSync?.retryDelayMs ?? 200))
+    const onExhausted = opts.clientContextSync?.onExhausted ?? 'retryOnNextChange'
+    const sync = async (): Promise<void> => {
+      for (let attempt = 0; attempt < maxAttempts && active; attempt++) {
+        try {
+          const result = await client.updateClientContext(contextToSync)
+          if (result.updated) return
+        } catch {
+          // The final warning below is intentionally the only observable error surface.
+        }
+        if (attempt + 1 < maxAttempts && active) {
+          await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs))
+        }
+      }
+      if (!active) return
+      if (onExhausted === 'disableUntilReconnect') state.disabled = true
+      console.warn('[restale-kit][useReStale] Failed to synchronize clientContext.')
+    }
+    void sync()
+    return () => { active = false }
+  }, [client, connection.status, serializedClientContext, clientContext, opts.clientContextSync])
 
   // Open on mount / close on unmount
   useEffect(() => {

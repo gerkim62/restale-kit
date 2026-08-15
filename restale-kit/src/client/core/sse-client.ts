@@ -1,4 +1,4 @@
-import type { InvalidateSignal } from '@/types/protocol.js'
+import { isJSONValue, type InvalidateSignal, type JSONValue } from '@/types/protocol.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -65,6 +65,7 @@ export class SSEInvalidatorClient<
   declare readonly _signalType?: (signal: TSignal) => void
   private readonly url: string
   private readonly eventSourceUrl: string
+  private readonly clientContextUrl: string
   private nativeAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
   private jsBackoffAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
   private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
@@ -109,6 +110,7 @@ export class SSEInvalidatorClient<
     
     this.currentConnectionId = generateUUID()
     this.url = url
+    this.clientContextUrl = opts?.clientContextUrl ?? url
     let eventSourceUrl = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
@@ -196,6 +198,26 @@ export class SSEInvalidatorClient<
   /** The last event ID string received from the SSE stream, if any. */
   get lastEventId(): string | null {
     return this.currentLastEventId
+  }
+
+  /** Sends client-supplied query-shaping context to the server for this connection. */
+  async updateClientContext(clientContext: JSONValue): Promise<{ updated: boolean }> {
+    if (!isJSONValue(clientContext)) {
+      throw new Error('[SSEInvalidatorClient.updateClientContext] clientContext must be a valid JSONValue.')
+    }
+    const response = await fetch(this.clientContextUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        purpose: 'CLIENT_CONTEXT',
+        connectionId: this.currentConnectionId,
+        clientContext,
+      }),
+      credentials: this.withCredentials ? 'include' : 'same-origin',
+    })
+    if (response.status === 204) return { updated: true }
+    if (response.status === 404) return { updated: false }
+    throw new Error(`[SSEInvalidatorClient.updateClientContext] Request failed with status ${String(response.status)}.`)
   }
 
   /**

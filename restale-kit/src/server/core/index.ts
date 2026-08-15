@@ -2,7 +2,13 @@
 export { createSSEChannel } from './channel.js'
 export type { SSEChannel, SSEChannelOptions, DirectSSEChannelOptions } from './channel.js'
 export { SSEChannelGroup } from './channel-group.js'
-export type { SSEChannelGroupOptions, ChannelSetupOptions } from './channel-group.js'
+export type {
+  SSEChannelGroupOptions,
+  ChannelSetupOptions,
+  InlineDataConnection,
+  InlineDataResult,
+  ResolveInlineData,
+} from './channel-group.js'
 export type { FastifyRequestLike, FastifyReplyLike } from '../node/attach.js'
 export { createEventStore } from './event-store.js'
 export type { EventStoreOptions } from './event-store.js'

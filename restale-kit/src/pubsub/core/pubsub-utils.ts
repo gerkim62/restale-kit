@@ -42,6 +42,9 @@ export function isPubSubMessage<T extends InvalidateSignal>(val: unknown): val i
   if (val['kind'] === 'control') {
     return isJSONValue(val['data'])
   }
+  if (val['kind'] === 'inlineData') {
+    return typeof val['topic'] === 'string' && isJSONValue(val['payload'])
+  }
   return false
 }
 
@@ -87,5 +90,4 @@ export function createDecryptionErrorHandler(adapterName: string) {
     return false
   }
 }
-
 

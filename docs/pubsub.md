@@ -24,6 +24,8 @@ Client ──SSE──► Instance 1 ──subscribe──► Broker ◄──pu
 4. Each instance delivers the signal to locally-held channels registered on that topic.
 5. When the last channel on a topic disconnects, the group unsubscribes from the broker.
 
+Inline data push follows the same topology, but publishes only `{ kind: 'inlineData', topic, payload }` on the control topic. Every owning instance runs its own configured resolver against local `meta` and `clientContext`; neither value is sent through the broker. See [Client Context & Inline Data](./inline-data.md) for the resolver contract.
+
 ---
 
 ## Optional payload encryption
@@ -209,6 +211,7 @@ function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
       //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }
       //   When an eventStore is configured, id carries the sequence event ID for Last-Event-ID replay across instances.
       // - Control: { kind: 'control', data: JSONValue }
+      // - Inline data: { kind: 'inlineData', topic: string, payload: JSONValue }
     },
 
     async subscribe(topic, onMessage) {

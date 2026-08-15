@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
 import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
@@ -48,6 +48,28 @@ describe('useReStale', () => {
     unmount()
     expect(instance.readyState).toBe(MockEventSource.CLOSED)
     expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('synchronizes client context when opened and when its deep value changes', async () => {
+    const sync = vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockResolvedValue({ updated: true })
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ clientContext }) => useReStale('/sse', { onInvalidate, clientContext }),
+      { initialProps: { clientContext: { page: 1 } } }
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitOpen()
+    })
+    await waitFor(() => {
+      expect(sync).toHaveBeenCalledWith({ page: 1 })
+    })
+
+    rerender({ clientContext: { page: 2 } })
+    await waitFor(() => {
+      expect(sync).toHaveBeenLastCalledWith({ page: 2 })
+    })
   })
 
   it('does not open connection when disabled is true', () => {

@@ -53,6 +53,13 @@ useReStale(url: string, options: {
   withCredentials?: boolean     // default false — send cookies cross-origin
   disabled?: boolean            // default false — skip connection while true
   debug?: boolean               // default false — enable console logging
+  clientContext?: JSONValue     // optional query-shaping context registered after each successful open
+  clientContextUrl?: string     // optional POST URL; defaults to url
+  clientContextSync?: {
+    maxAttempts?: number        // default 2, including the initial POST
+    retryDelayMs?: number       // default 200
+    onExhausted?: 'retryOnNextChange' | 'disableUntilReconnect'
+  }
 
   // Backoff
   reconnect?: {
@@ -75,10 +82,24 @@ type HttpStatusMatcher =
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:
-> - **Connection identity options (`url`, `target`, `withCredentials`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
+> - **Connection identity options (`url`, `target`, `withCredentials`, `clientContextUrl`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
 > - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
 >
 > **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
+
+### Client context
+
+Use `clientContext` to tell the server which already-authorized slice of data this connection is displaying. Typical values include page, sort, and filter state. The hook posts it whenever its deep value changes while connected and after every transition to an open stream.
+
+```tsx
+useReStale('/sse', {
+  onInvalidate,
+  clientContext: { page, pageSize: 20, sortBy },
+  clientContextSync: { maxAttempts: 3, retryDelayMs: 200 },
+})
+```
+
+Context registration is fire-and-forget. A `404` can occur while a newly-opened stream is still registering; by default the hook retries once and then tries again on the next context change or stream open. Set `onExhausted: 'disableUntilReconnect'` to pause registration attempts after a failed sync. Context failures do not disable normal invalidation handling. See [Client Context & Inline Data](./inline-data.md) for the required server route and security rules.
 
 ### Return value
 
@@ -322,6 +343,12 @@ client.addEventListener('error', (event) => {
 
 await client.connect()
 
+// Caller-controlled context synchronization in non-React environments.
+const context = await client.updateClientContext({ page: 2, pageSize: 20 })
+if (!context.updated) {
+  // The stream has not registered yet or has already gone away.
+}
+
 // Manual close (reason: 'manual')
 client.close()
 
@@ -388,6 +415,10 @@ useReStale('/sse', { onInvalidate })
 
 Batch signals (arrays) are processed one-by-one in order.
 
+### Inline data
+
+When a `TanStackQuerySignal` contains `inlineData`, the adapter calls `setQueryData(queryKey, inlineData)` for that exact key. It then calls `invalidateQueries({ queryKey, exact: true })` by default so TanStack Query can revalidate. Pass `{ markInlineDataStale: false }` to `tanstackQueryAdapter` or `useTanstackQueryAdapter` to trust the pushed value and skip revalidation. `remove`, `reset`, and `cancel` keep their existing action behavior and ignore `inlineData`.
+
 ### `useTanstackQueryAdapter` — memoized hook variant
 
 ```ts
@@ -442,6 +473,12 @@ function App() {
 
 
 > **Note:** SWR has no separate "mark stale" operation. `'revalidate'` (the default) and `'mutate'` both trigger immediate revalidation; `'invalidate'` and `'refetch'` are not valid SWR signal actions.
+
+### Inline data
+
+When an `SWRSignal` contains `inlineData`, the adapter calls `mutate(key, inlineData, { revalidate: false })` for the exact key, then calls bare `mutate(key)` by default to mark that same key stale. Pass `{ markInlineDataStale: false }` to `swrAdapter` or `useSwrAdapter` to trust the pushed value. `purge` and `remove` keep their existing behavior and ignore `inlineData`.
+
+Inline-data writes never use the normal prefix or hierarchical matching path, so a connection-specific page cannot overwrite sibling cache entries.
 
 ### SWR key format
 

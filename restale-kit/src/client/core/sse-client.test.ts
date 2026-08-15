@@ -34,6 +34,29 @@ describe('SSEInvalidatorClient', () => {
     })
   })
 
+  it('posts client context and maps 204 and 404 responses', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new SSEInvalidatorClient('/sse', { clientContextUrl: '/context' })
+
+    fetchMock.mockResolvedValueOnce({ status: 204 })
+    await expect(client.updateClientContext({ page: 2 })).resolves.toEqual({ updated: true })
+    expect(fetchMock).toHaveBeenCalledWith('/context', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        purpose: 'CLIENT_CONTEXT',
+        connectionId: client.connectionId,
+        clientContext: { page: 2 },
+      }),
+      credentials: 'same-origin',
+    })
+
+    fetchMock.mockResolvedValueOnce({ status: 404 })
+    await expect(client.updateClientContext({ page: 3 })).resolves.toEqual({ updated: false })
+    vi.unstubAllGlobals()
+  })
+
   it('honors lifecycle and invalidation callbacks without letting callback errors break the client', async () => {
     const callback = vi.fn(() => {
       throw new Error('observer failure')

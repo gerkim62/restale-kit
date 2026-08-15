@@ -42,9 +42,9 @@ describe('PubSubAdapter interface typing', () => {
     type Adapter = PubSubAdapter<SWRSignal>
     const adapter = {} as Adapter
 
-    // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
     void adapter.publish('topic-name', {
       kind: 'signal',
+      // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
       data: { target: 'tanstack-query', queryKey: ['todos'] },
     })
   })

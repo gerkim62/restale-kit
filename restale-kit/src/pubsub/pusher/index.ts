@@ -50,7 +50,7 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
 
   return {
     async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
-      const eventName = message.kind === 'control' ? PUBSUB_EVENTS.CONTROL : PUBSUB_EVENTS.INVALIDATE
+      const eventName = message.kind === 'signal' ? PUBSUB_EVENTS.INVALIDATE : PUBSUB_EVENTS.CONTROL
       const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
       await pusherServerClient.trigger(topic, eventName, envelope)
     },
@@ -112,5 +112,4 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
     },
   }
 }
-
 
