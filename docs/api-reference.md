@@ -145,7 +145,7 @@ class SSEChannelGroup<
     metaSchema?: StandardSchemaV1<unknown, TMeta>
     pubsub?: PubSubAdapter<TSignal>
     eventStore?: EventStore<TSignal>
-    eventBufferCapacity?: number                      // capacity of auto-allocated EventStore (defaults to 50 when lifetime is set without eventStore)
+    eventBufferCapacity?: number                      // capacity of a group-owned EventStore shared by channels created through this group
     controlTopic?: string                             // default '__restale_control__'
     channelDefaults?: ChannelDefaults                 // fallback channel defaults (target, lifetime, guardKeepalive, eventBufferCapacity)
   })

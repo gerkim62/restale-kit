@@ -60,13 +60,18 @@ useReStale(url: string, options: {
     maxDelayMs?: number         // default 30_000
     jitter?: boolean            // default true
     maxRetries?: number         // default Infinity
-    nonRetryableStatuses?: number | '4xx' | '5xx' | { from: number, to: number }
+    nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
     retryAfter?: 'respect' | 'ignore' // default 'ignore'
   }
 
   // Target (optional)
   target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
 })
+
+type HttpStatusMatcher =
+  | number
+  | '1xx' | '2xx' | '3xx' | '4xx' | '5xx'
+  | { from: number, to: number }
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:

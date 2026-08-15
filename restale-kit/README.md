@@ -31,7 +31,7 @@ flowchart LR
 
 ## ✨ Features
 
-- **Framework agnostic:** Zero runtime dependencies in core. Works in any JS environment.
+- **Framework agnostic:** Optional ecosystem integrations are peer dependencies; the browser client uses `sse.js` as its runtime transport.
 - **First-class server adapters:** Express, Fastify, Hono, Node `http`, and any Fetch-API runtime (Bun, Deno, Cloudflare Workers, Vercel Edge).
 - **First-class client adapters:** TanStack Query, SWR, and a React hook (`useReStale`) for zero-boilerplate wiring.
 - **Precision invalidation:** Hierarchical key matching with prefix, exact, and object-subset semantics.
@@ -379,9 +379,9 @@ group.broadcast(
   (meta) => meta.userId === 42
 )
 
-// Broadcast using automatic key-based matching
-// Scalar or plain-object metadata is auto-wrapped into [meta] for key matching
-group.broadcastByKey({ key: ['todos', { userId: 42 }] })
+// Broadcast using automatic key-based matching. Metadata must use the same
+// positional key shape; a plain object is treated as a one-element key.
+group.broadcastByKey({ key: [{ userId: 42 }] })
 ```
 
 ---
@@ -561,7 +561,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.retryAfter` | `'ignore' \| 'respect'` | `'ignore'` | Whether retryable HTTP responses may set the next delay using `Retry-After`. |
 | `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
-### `group.attachNodeResponse(req, res, options?)` / `group.createFetchResponse(request, options?)`
+### `group.attachNodeResponse(req, res, options)` / `group.createFetchResponse(request, options)`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -569,7 +569,7 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
-| `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
+| `eventBufferCapacity` | `number` | `undefined` | Capacity of a channel-local EventStore ring buffer. Use a group-level or external shared store for replay after reconnect. |
 | `idGenerator` | `() => string` | `undefined` | Custom event ID generator for assigned event frames. An `EventStore` supplies auto-incrementing IDs when no generator is configured; without either, invalidation frames have no ID (`''`) unless the caller supplies `customId`. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport methods (`group.attachNodeResponse`, `group.createFetchResponse`). You never need to set or manage this parameter manually. |
 | `target` | `SignalTarget \| SignalTarget[]` | group default / required | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`). Optional if configured on the group or in `channelDefaults`; required for direct channels if not configured at the group level. |
@@ -580,20 +580,20 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|
 | `metaSchema` | Validates connection metadata on `register()`. |
 | `pubsub` | Pub/sub adapter for multi-instance scaling. |
-| `eventBufferCapacity` | Enables Last-Event-ID event history replay buffer. |
+| `eventBufferCapacity` | Creates a group-owned Last-Event-ID event history buffer shared by channels created through the group. |
 | `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
 
-### `group.attachNodeResponse(req, res, options?)` / `group.createFetchResponse(request, options?)`
+### `group.attachNodeResponse(req, res, options)` / `group.createFetchResponse(request, options)`
 
 | Method | Returns | Target Frameworks | Description |
 |---|---|---|---|
-| `group.attachNodeResponse(req, res, options?)` | `{ channel: SSEChannel<TSignal> }` | Node.js, Express, Fastify | Attaches SSE stream to Node/Express/Fastify HTTP response and automatically registers the channel in the group in 1 step. For Fastify, pass `request`/`reply` directly (`reply.hijack()` is invoked automatically). |
-| `group.createFetchResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Hono, Next.js, Bun, Deno, Edge | Creates Web Standard Fetch API SSE `Response` object and automatically registers the channel in the group in 1 step. |
+| `group.attachNodeResponse(req, res, options)` | `{ channel: SSEChannel<TSignal> }` | Node.js, Express, Fastify | Attaches SSE stream to Node/Express/Fastify HTTP response and automatically registers the channel in the group in 1 step. Pass `{}` when no setup options are needed. For Fastify, pass `request`/`reply` directly (`reply.hijack()` is invoked automatically). |
+| `group.createFetchResponse(request, options)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Hono, Next.js, Bun, Deno, Edge | Creates Web Standard Fetch API SSE `Response` object and automatically registers the channel in the group in 1 step. Pass `{}` when no setup options are needed. |
 
 ### `channel.invalidate(signal, customId?)`
 
-Returns a `string` — the SSE event ID assigned to the invalidation frame. With `eventBufferCapacity` or a custom `eventStore`, the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` can replay missed events. Without history, the return value is `''` unless you supplied `customId` or configured `idGenerator`; such IDs are emitted but cannot be replayed.
+Returns a `string` — the SSE event ID assigned to the invalidation frame. A group-level `eventBufferCapacity` or shared custom `eventStore` lets a reconnecting client replay missed events after it echoes `Last-Event-ID`. A channel-local buffer does not survive replacement-channel reconnects. Without shared history, the return value is `''` unless you supplied `customId` or configured `idGenerator`; such IDs are emitted but cannot be replayed.
 
 
 ---

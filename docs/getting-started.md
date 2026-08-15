@@ -52,7 +52,7 @@ const group = new SSEChannelGroup({
 
 // SSE endpoint — clients connect here
 app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res)
+  group.attachNodeResponse(req, res, {})
 })
 
 // After any mutation, broadcast the invalidation
@@ -92,7 +92,7 @@ function App() {
 
 That's it. When the server calls `group.broadcastToAll({ queryKey: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
 
-> **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachNodeResponse(req, res)`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
+> **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachNodeResponse(req, res, {})`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
 >
 > ```ts
 > app.use(authMiddleware) // auth middleware populates req.user
