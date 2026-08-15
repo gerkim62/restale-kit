@@ -141,7 +141,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       throw new Error('SWR signal must have a "key" property that is a string or an array of JSON-serialisable values')
     }
     if ('action' in value && !isSWRAction(value.action)) {
-      throw new Error(`SWR signal "action" field must be one of 'revalidate', 'purge', 'remove'`)
+      throw new Error(`SWR signal "action" field must be one of 'revalidate', 'purge', 'remove', 'mutate'`)
     }
     if ('match' in value && value.match !== 'exact' && value.match !== 'prefix') {
       throw new Error(`SWR signal "match" field must be 'exact' or 'prefix'`)

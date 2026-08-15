@@ -9,6 +9,7 @@ import { validatePayload } from '../../client/core/validation.js'
 import { createSSEChannel } from '../../server/core/channel.js'
 import { formatInvalidateFrame } from '../../server/core/framing.js'
 import type { ExplicitSignalForTarget, ReStaleSignal, RTKQuerySignal, SWRSignal, TanStackQuerySignal } from '../../types/protocol.js'
+import type { GenericInvalidateSignal } from '../../types/protocol.js'
 
 type TargetedSignal = ExplicitSignalForTarget<'tanstack-query'> | ExplicitSignalForTarget<'swr'> | ExplicitSignalForTarget<'rtk-query'>
 
@@ -37,6 +38,48 @@ async function nextChannelPayload(stream: ReadableStream<Uint8Array>): Promise<u
 }
 
 describe('Gap 1: target-specific wire frames client round-trip', () => {
+  it('round-trips every declared built-in wire field', () => {
+    // Required<> makes this fixture a compile-time tripwire: adding a protocol
+    // field requires a representative wire value and a round-trip assertion.
+    const signals = [
+      {
+        target: 'tanstack-query',
+        queryKey: ['todos', { page: 1 }],
+        exact: true,
+        type: 'all',
+        action: 'cancel',
+        stale: false,
+        inlineData: [{ id: 1, completed: false }],
+      },
+      {
+        target: 'swr',
+        key: ['/api/todos', { page: 1 }],
+        action: 'mutate',
+        revalidate: false,
+        match: 'exact',
+        inlineData: { todos: [{ id: 1 }] },
+      },
+      {
+        target: 'rtk-query',
+        tags: ['Todo', { type: 'User', id: 'user-1' }],
+      },
+      {
+        target: 'generic',
+        key: ['todos', { page: 1 }],
+        exact: true,
+        action: 'remove',
+        inlineData: null,
+      },
+    ] satisfies readonly [
+      Required<TanStackQuerySignal>,
+      Required<SWRSignal>,
+      Required<RTKQuerySignal>,
+      Required<GenericInvalidateSignal>,
+    ]
+
+    expect(validatePayload(wirePayload(signals))).toStrictEqual(signals)
+  })
+
   describe('TanStack Query signals', () => {
     it('preserves enough information to validate queryKey invalidation', () => {
       const signal: TanStackQuerySignal = { target: 'tanstack-query', queryKey: ['todos', 'list'] }

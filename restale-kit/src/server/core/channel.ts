@@ -10,6 +10,9 @@ import {
   type ReStaleSignalForTarget,
   type TargetForSignal,
   type SignalInputForTarget,
+  TANSTACK_QUERY_ACTIONS,
+  SWR_ACTIONS,
+  GENERIC_ACTIONS,
   isJSONValueArray,
   isJSONValue,
 } from '@/types/protocol.js'
@@ -655,11 +658,38 @@ function isInvalidateSignal(value: unknown): value is InvalidateSignal {
   if (!isRecord(value) || !isJSONValue(value)) return false
 
   const target = value.target
-  if (target === 'tanstack-query') return isJSONValueArray(value.queryKey)
-  if (target === 'swr') return typeof value.key === 'string' || isJSONValueArray(value.key)
+  if (target === 'tanstack-query') return isTanStackQuerySignal(value)
+  if (target === 'swr') return isSWRSignal(value)
   if (target === 'rtk-query') return Array.isArray(value.tags) && value.tags.every(isRTKTag)
   if (target !== undefined && target !== 'generic') return false
-  return isJSONValueArray(value.key)
+  return isGenericSignal(value)
+}
+
+function isTanStackQuerySignal(value: Record<string, unknown>): boolean {
+  return (
+    isJSONValueArray(value.queryKey) &&
+    (value.exact === undefined || typeof value.exact === 'boolean') &&
+    (value.type === undefined || value.type === 'active' || value.type === 'inactive' || value.type === 'all') &&
+    (value.action === undefined || (typeof value.action === 'string' && TANSTACK_QUERY_ACTIONS.includes(value.action as typeof TANSTACK_QUERY_ACTIONS[number]))) &&
+    (value.stale === undefined || typeof value.stale === 'boolean')
+  )
+}
+
+function isSWRSignal(value: Record<string, unknown>): boolean {
+  return (
+    (typeof value.key === 'string' || isJSONValueArray(value.key)) &&
+    (value.action === undefined || (typeof value.action === 'string' && SWR_ACTIONS.includes(value.action as typeof SWR_ACTIONS[number]))) &&
+    (value.revalidate === undefined || typeof value.revalidate === 'boolean') &&
+    (value.match === undefined || value.match === 'exact' || value.match === 'prefix')
+  )
+}
+
+function isGenericSignal(value: Record<string, unknown>): boolean {
+  return (
+    isJSONValueArray(value.key) &&
+    (value.exact === undefined || typeof value.exact === 'boolean') &&
+    (value.action === undefined || (typeof value.action === 'string' && GENERIC_ACTIONS.includes(value.action as typeof GENERIC_ACTIONS[number])))
+  )
 }
 
 function isRTKTag(value: unknown): boolean {
