@@ -57,6 +57,29 @@ describe('SSEInvalidatorClient', () => {
     vi.unstubAllGlobals()
   })
 
+  it('includes a supplied client-context revision in the request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new SSEInvalidatorClient('/sse')
+
+    await client.updateClientContext({ page: 2 }, { revision: 3 })
+
+    expect(fetchMock).toHaveBeenCalledWith('/sse', expect.objectContaining({
+      body: JSON.stringify({
+        purpose: 'CLIENT_CONTEXT',
+        connectionId: client.connectionId,
+        clientContext: { page: 2 },
+        revision: 3,
+      }),
+    }))
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects blank clientContextUrl values', () => {
+    expect(() => new SSEInvalidatorClient('/sse', { clientContextUrl: ' \u200B ' }))
+      .toThrow('clientContextUrl must be a non-empty, non-whitespace string')
+  })
+
   it('honors lifecycle and invalidation callbacks without letting callback errors break the client', async () => {
     const callback = vi.fn(() => {
       throw new Error('observer failure')

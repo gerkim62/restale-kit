@@ -53,7 +53,7 @@ useReStale(url: string, options: {
   withCredentials?: boolean     // default false — send cookies cross-origin
   disabled?: boolean            // default false — skip connection while true
   debug?: boolean               // default false — enable console logging
-  clientContext?: JSONValue     // optional query-shaping context registered after each successful open
+  clientContext?: unknown       // optional query-shaping context; runtime-validated as JSON before sending
   clientContextUrl?: string     // optional POST URL; defaults to url
   clientContextSync?: {
     maxAttempts?: number        // default 2, including the initial POST
@@ -89,7 +89,7 @@ type HttpStatusMatcher =
 
 ### Client context
 
-Use `clientContext` to tell the server which already-authorized slice of data this connection is displaying. Typical values include page, sort, and filter state. The hook posts it whenever its deep value changes while connected and after every transition to an open stream.
+Use `clientContext` to tell the server which already-authorized slice of data this connection is displaying. Typical values include page, sort, and filter state. Ordinary TypeScript interfaces are accepted; values are runtime-validated as JSON before sending. The hook posts it whenever its deep value changes while connected and after every transition to an open stream.
 
 ```tsx
 useReStale('/sse', {

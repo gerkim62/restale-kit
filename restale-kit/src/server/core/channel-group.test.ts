@@ -61,6 +61,31 @@ describe('channel-group', () => {
     await expect(group.updateClientContext('missing', { page: 3 })).resolves.toEqual({ updated: false })
   })
 
+  it('ignores client-context updates with a lower revision', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({ target: 'swr' })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'revision-connection' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('revision-connection', { page: 2 }, { revision: 2 }))
+      .resolves.toEqual({ updated: true })
+    await expect(group.updateClientContext('revision-connection', { page: 1 }, { revision: 1 }))
+      .resolves.toEqual({ updated: false })
+    expect(group.getClientContext('revision-connection')).toEqual({ page: 2 })
+  })
+
+  it('rejects non-JSON PubSub context before changing local state', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', unknown>({
+      target: 'swr',
+      pubsub: new MemoryPubSubAdapter(),
+    })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'non-json-context' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('non-json-context', () => {}))
+      .rejects.toThrow('clientContext must be a valid JSONValue when pubsub is configured')
+    expect(group.getClientContext('non-json-context')).toBeUndefined()
+  })
+
   it('does not store invalid client context and removes stored context on deregistration', async () => {
     const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
       target: 'swr',
@@ -105,7 +130,9 @@ describe('channel-group', () => {
     const invalidate = vi.spyOn(channel, 'invalidate')
     owner.register(channel, { userId: 9 }, { topics: ['todos'] })
 
-    await expect(origin.updateClientContext('remote-context', { page: 5 }, { scope: { userId: 9 } }))
+    await expect(origin.updateClientContext('remote-context', { page: 5 }, { scope: { userId: 9 }, revision: 2 }))
+      .resolves.toEqual({ updated: false })
+    await expect(origin.updateClientContext('remote-context', { page: 4 }, { scope: { userId: 9 }, revision: 1 }))
       .resolves.toEqual({ updated: false })
     await Promise.resolve()
     expect(owner.getClientContext('remote-context')).toEqual({ page: 5 })

@@ -21,7 +21,8 @@ This example sends each user the current page of their own todos without requiri
 ```ts
 import express from 'express'
 import { z } from 'zod'
-import { SSEChannelGroup, SchemaValidationError } from 'restale-kit/server'
+import { isJSONValue, SchemaValidationError } from 'restale-kit'
+import { SSEChannelGroup } from 'restale-kit/server'
 import type { SWRSignal } from 'restale-kit'
 
 type Meta = { userId: string }
@@ -83,8 +84,16 @@ app.get('/sse', (req, res) => {
 })
 
 app.post('/sse', async (req, res) => {
-  const { purpose, connectionId, clientContext } = req.body
+  const { purpose, connectionId, clientContext, revision } = req.body ?? {}
   if (purpose !== 'CLIENT_CONTEXT') {
+    res.status(400).end()
+    return
+  }
+  if (
+    typeof connectionId !== 'string' || connectionId.trim() === '' ||
+    !isJSONValue(clientContext) ||
+    (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0))
+  ) {
     res.status(400).end()
     return
   }
@@ -92,6 +101,7 @@ app.post('/sse', async (req, res) => {
   try {
     const result = await group.updateClientContext(connectionId, clientContext, {
       scope: { userId: req.user.id },
+      revision,
     })
     res.status(result.updated ? 204 : 404).end()
   } catch (error) {

@@ -281,7 +281,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   get attempt(): number          // current reconnect attempt (0 initially and after a successful open)
   get lastEventId(): string | null
   connect(): Promise<void>
-  updateClientContext(clientContext: JSONValue): Promise<{ updated: boolean }>
+  updateClientContext(clientContext: unknown): Promise<{ updated: boolean }>
   close(): void                  // closes with reason 'manual'
 
   addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
@@ -399,7 +399,7 @@ interface UseReStaleOptions<TTarget extends SignalTarget, TSignal extends Invali
   onRevoke?: (detail: RevokeEventDetail) => void
   onRejected?: (response: RejectedConnectionResponse) => void
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
-  clientContext?: JSONValue
+  clientContext?: unknown  // runtime-validated as JSON before sending; interfaces are accepted
   clientContextSync?: {
     maxAttempts?: number
     retryDelayMs?: number
@@ -484,7 +484,7 @@ function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignal
 ```ts
 import { swrAdapter, useSwrAdapter } from 'restale-kit/swr'
 import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
-import type { SWRSignal } from 'restale-kit'
+import type { JSONValue, SWRSignal } from 'restale-kit'
 import type { Arguments } from 'swr'
 
 function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
@@ -514,6 +514,7 @@ interface SWRMutator {
   (key: Arguments): Promise<unknown>
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
+  (key: Arguments, data: JSONValue, options: { revalidate: boolean }): Promise<unknown>
 }
 ```
 

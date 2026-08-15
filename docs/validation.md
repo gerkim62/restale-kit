@@ -117,6 +117,6 @@ const group = new SSEChannelGroup({
 })
 ```
 
-`group.updateClientContext(connectionId, value, { scope })` validates synchronously and throws `SchemaValidationError` without changing stored context when the value is invalid. An HTTP route should catch that error and return `400`. Scope-pin the connection ID with trusted metadata from the request before applying an update.
+`group.updateClientContext(connectionId, value, { scope })` returns a promise that rejects with `SchemaValidationError` when the value is invalid, without changing stored context. Await it in the HTTP route and catch that rejection to return `400`; scope-pin the connection ID with trusted metadata before applying an update.
 
 See [Client Context & Inline Data](./inline-data.md) for the complete route and resolver example.

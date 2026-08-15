@@ -1,5 +1,5 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
-import type { InvalidateSignal, JSONValue, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
+import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
 import type {
   ConnectionStatus,
@@ -83,8 +83,12 @@ export interface UseReStaleOptions<
    * Accompanies the final status transition to `{ status: 'error' }`.
    */
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
-  /** Client-supplied query-shaping context registered after each successful open. */
-  clientContext?: JSONValue
+  /**
+   * Client-supplied query-shaping context registered after each successful open.
+   * Ordinary interfaces are accepted; the client validates that the runtime
+   * value is JSON-serializable before sending it.
+   */
+  clientContext?: unknown
   /** Retry policy for automatic client-context registration. */
   clientContextSync?: {
     maxAttempts?: number
@@ -316,7 +320,12 @@ export function useReStale<
     }
   }, [client])
 
-  const contextSyncStateRef = useRef({ wasOpen: false, lastSerialized: undefined as string | undefined, disabled: false })
+  const contextSyncStateRef = useRef({
+    wasOpen: false,
+    lastSerialized: undefined as string | undefined,
+    disabled: false,
+    revision: 0,
+  })
   const clientContext = opts.clientContext
   const serializedClientContext = clientContext === undefined ? undefined : JSON.stringify(clientContext)
 
@@ -336,6 +345,7 @@ export function useReStale<
     if (openedNow) state.disabled = false
     if (state.disabled || (!openedNow && state.lastSerialized === serializedClientContext)) return
     state.lastSerialized = serializedClientContext
+    const revision = ++state.revision
 
     let active = true
     const maxAttempts = Math.max(1, Math.floor(opts.clientContextSync?.maxAttempts ?? 2))
@@ -344,7 +354,7 @@ export function useReStale<
     const sync = async (): Promise<void> => {
       for (let attempt = 0; attempt < maxAttempts && active; attempt++) {
         try {
-          const result = await client.updateClientContext(contextToSync)
+          const result = await client.updateClientContext(contextToSync, { revision })
           if (result.updated) return
         } catch {
           // The final warning below is intentionally the only observable error surface.

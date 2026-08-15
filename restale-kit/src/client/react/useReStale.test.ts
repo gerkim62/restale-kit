@@ -63,12 +63,12 @@ describe('useReStale', () => {
       MockEventSource.instances[0]?.emitOpen()
     })
     await waitFor(() => {
-      expect(sync).toHaveBeenCalledWith({ page: 1 })
+      expect(sync).toHaveBeenCalledWith({ page: 1 }, { revision: 1 })
     })
 
     rerender({ clientContext: { page: 2 } })
     await waitFor(() => {
-      expect(sync).toHaveBeenLastCalledWith({ page: 2 })
+      expect(sync).toHaveBeenLastCalledWith({ page: 2 }, { revision: 2 })
     })
   })
 

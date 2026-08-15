@@ -14,6 +14,22 @@ The server side has two concerns:
 
 All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
 
+### Manual SSE debugging
+
+The browser clients add a unique `__restale_cid__` connection ID automatically. When opening an SSE route with curl, Postman, or a custom client, include a non-empty value yourself:
+
+```sh
+curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
+```
+
+`__restale_target__` is optional. Add it to request a specific target from a multi-target group:
+
+```sh
+curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1&__restale_target__=tanstack-query"
+```
+
+The connection ID identifies an SSE connection; it is not authentication or authorization.
+
 ### Express
 
 ```ts
@@ -94,6 +110,26 @@ app.get('/sse', (c) => {
   return response
 })
 ```
+
+### Next.js App Router: reuse a process-local group
+
+In development, Next.js may re-evaluate modules during hot reload. Cache the group on `globalThis` so route modules in the same Node.js process reuse it instead of creating detached groups and extra pub/sub connections.
+
+```ts
+// app/lib/restale.ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __restaleGroup: SSEChannelGroup | undefined
+}
+
+export const restaleGroup = globalThis.__restaleGroup ??= new SSEChannelGroup({
+  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+})
+```
+
+Use that same export from both the SSE route and mutation handlers. This cache is **per Node.js process**, not shared between serverless instances; use a [pub/sub adapter](./pubsub.md) when a mutation and its connected client can land on different instances. This pattern is for the Node.js runtime, not Edge runtime isolates.
 
 ---
 

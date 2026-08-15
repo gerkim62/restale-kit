@@ -258,6 +258,7 @@ class SSEChannelGroupImplementation<
     connectionId: string
   }>()
   private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
+  private readonly clientContextRevisions = new Map<string, number>()
   private readonly topics = new Map<string, TopicManager<TSignal>>()
   private readonly instanceId = generateInstanceId()
   private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -442,10 +443,15 @@ class SSEChannelGroupImplementation<
       }
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Cross-instance messages were origin-validated.
       const clientContext = payload.clientContext as TClientContext
+      const connectionId = payload.connectionId
+      const scope = readControlScope(payload)
+      const revision = readClientContextRevision(payload)
+      if (revision === null) return true
       this.updateLocalClientContext(
-        payload.connectionId,
+        connectionId,
         clientContext,
-        readControlScope(payload)
+        scope,
+        revision
       )
       return true
     }
@@ -456,10 +462,13 @@ class SSEChannelGroupImplementation<
   private updateLocalClientContext(
     connectionId: string,
     clientContext: TClientContext,
-    scope?: Record<string, JSONValue>
+    scope?: Record<string, JSONValue>,
+    revision?: number
   ): boolean {
     const channels = this.connectionIndex.get(connectionId)
     if (!channels || channels.size === 0) return false
+    const latestRevision = this.clientContextRevisions.get(connectionId)
+    if (revision !== undefined && latestRevision !== undefined && revision < latestRevision) return false
 
     let updated = false
     for (const channel of channels) {
@@ -468,6 +477,7 @@ class SSEChannelGroupImplementation<
       entry.clientContext = clientContext
       updated = true
     }
+    if (updated && revision !== undefined) this.clientContextRevisions.set(connectionId, revision)
     return updated
   }
 
@@ -773,6 +783,7 @@ class SSEChannelGroupImplementation<
         set.delete(channel)
         if (set.size === 0) {
           this.connectionIndex.delete(entry.connectionId)
+          this.clientContextRevisions.delete(entry.connectionId)
         }
       }
     }
@@ -890,6 +901,7 @@ class SSEChannelGroupImplementation<
       scope?: TMeta extends object
         ? Partial<Record<keyof TMeta, JSONValue | undefined>>
         : Record<string, JSONValue | undefined>
+      revision?: number
     }
   ): Promise<{ updated: boolean }> {
     if (typeof connectionId !== 'string' || connectionId.trim() === '') {
@@ -899,10 +911,23 @@ class SSEChannelGroupImplementation<
       ? validateStandardSchema(clientContext, this.clientContextSchema)
       : clientContext
     const scope = normalizeConnectionScope(options?.scope, '[SSEChannelGroup.updateClientContext]')
-    const updated = this.updateLocalClientContext(connectionId, validatedClientContext, scope)
+    const revision = options?.revision
+    if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0)) {
+      throw new Error('[SSEChannelGroup.updateClientContext] revision must be a non-negative safe integer.')
+    }
 
+    let pubsubClientContext: JSONValue | undefined
     if (this.pubsub) {
       if (!isJSONValue(validatedClientContext)) {
+        throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
+      }
+      pubsubClientContext = validatedClientContext
+    }
+
+    const updated = this.updateLocalClientContext(connectionId, validatedClientContext, scope, revision)
+
+    if (this.pubsub) {
+      if (pubsubClientContext === undefined) {
         throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
       }
       await this.pubsub.publish(this.controlTopic, {
@@ -911,7 +936,8 @@ class SSEChannelGroupImplementation<
           type: 'updateClientContext',
           updateClientContext: {
             connectionId,
-            clientContext: validatedClientContext,
+            clientContext: pubsubClientContext,
+            ...(revision !== undefined ? { revision } : {}),
             ...(scope !== undefined ? { scope } : {}),
           },
         },
@@ -1365,6 +1391,14 @@ function entryMatchesScope(meta: unknown, scope: Record<string, JSONValue>): boo
   if (!isJSONValue(meta)) return false
   if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false
   return matchesJSONValue(meta, scope, false)
+}
+
+/** Reads an optional non-negative safe-integer revision from a control payload. */
+function readClientContextRevision(payload: object): number | undefined | null {
+  if (!Object.hasOwn(payload, 'revision')) return undefined
+  const revision: unknown = Reflect.get(payload, 'revision')
+  if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return null
+  return revision
 }
 
 /**

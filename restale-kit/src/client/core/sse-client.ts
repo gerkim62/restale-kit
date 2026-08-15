@@ -108,9 +108,17 @@ export class SSEInvalidatorClient<
       calculateBackoff(0, opts.reconnect)
     }
     
+    const clientContextUrl = opts?.clientContextUrl ?? url
+    if (isBlankUrl(clientContextUrl)) {
+      throw new Error(
+        '[SSEInvalidatorClient] clientContextUrl must be a non-empty, non-whitespace string. ' +
+        `Got: ${JSON.stringify(clientContextUrl)}`
+      )
+    }
+
     this.currentConnectionId = generateUUID()
     this.url = url
-    this.clientContextUrl = opts?.clientContextUrl ?? url
+    this.clientContextUrl = clientContextUrl
     let eventSourceUrl = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
@@ -201,9 +209,15 @@ export class SSEInvalidatorClient<
   }
 
   /** Sends client-supplied query-shaping context to the server for this connection. */
-  async updateClientContext(clientContext: JSONValue): Promise<{ updated: boolean }> {
+  async updateClientContext(
+    clientContext: unknown,
+    options?: { revision?: number }
+  ): Promise<{ updated: boolean }> {
     if (!isJSONValue(clientContext)) {
       throw new Error('[SSEInvalidatorClient.updateClientContext] clientContext must be a valid JSONValue.')
+    }
+    if (options?.revision !== undefined && (!Number.isSafeInteger(options.revision) || options.revision < 0)) {
+      throw new Error('[SSEInvalidatorClient.updateClientContext] revision must be a non-negative safe integer.')
     }
     const response = await fetch(this.clientContextUrl, {
       method: 'POST',
@@ -212,6 +226,7 @@ export class SSEInvalidatorClient<
         purpose: 'CLIENT_CONTEXT',
         connectionId: this.currentConnectionId,
         clientContext,
+        ...(options?.revision !== undefined ? { revision: options.revision } : {}),
       }),
       credentials: this.withCredentials ? 'include' : 'same-origin',
     })

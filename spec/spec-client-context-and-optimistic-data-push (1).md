@@ -67,12 +67,13 @@ Client context is submitted over `POST /sse`, the same path `GET /sse` uses for 
   purpose: 'CLIENT_CONTEXT'
   connectionId: string
   clientContext: unknown  // validated against clientContextSchema if configured
+  revision?: number       // monotonic client-context update revision
 }
 ```
 
 **Response:**
 - `204` — context accepted and stored.
-- `404` — `connectionId` not found anywhere in the cluster. Either it's stale, or the client posted before its SSE connection finished registering.
+- `404` — the current instance did not update a matching local connection. The client may have posted before the stream registered; in PubSub deployments, a remote instance may still receive and apply the control message.
 - `400` — malformed body, unrecognized `purpose`, **or `clientContextSchema` validation failure**.
 
 **Server route:**
@@ -104,7 +105,7 @@ app.post('/sse', async (req, res) => {
 })
 ```
 
-`updateClientContext` throws `SchemaValidationError` synchronously on a failing `clientContextSchema` check — same convention as `register()`/`attachNodeResponse()` for `metaSchema`. The library does not swallow or convert this to a return value; mapping it to `400` is the application's responsibility, as shown above.
+`updateClientContext` returns a promise that rejects with `SchemaValidationError` on a failing `clientContextSchema` check. Await it and map that rejection to `400`, as shown above; `register()`/`attachNodeResponse()` remain synchronous.
 
 ## 5. `updateClientContext` and `getClientContext`
 
@@ -112,7 +113,10 @@ app.post('/sse', async (req, res) => {
 async updateClientContext(
   connectionId: string,
   clientContext: TClientContext,
-  options?: { scope?: Partial<Record<keyof TMeta, JSONValue | undefined>> }
+  options?: {
+    scope?: Partial<Record<keyof TMeta, JSONValue | undefined>>
+    revision?: number
+  }
 ): Promise<{ updated: boolean }>
 
 getClientContext(connectionId: string): TClientContext | undefined

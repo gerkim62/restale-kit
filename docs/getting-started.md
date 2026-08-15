@@ -65,7 +65,13 @@ app.post('/api/todos', async (req, res) => {
 app.listen(3000)
 ```
 
-> **Note:** `group.attachNodeResponse` / `group.createFetchResponse` requires the `__restale_cid__` query parameter on the request URL. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends this automatically — you never set it manually. If you open the SSE endpoint directly in a browser or with curl, you'll get an error; always connect through the client library.
+> **Note:** `group.attachNodeResponse` / `group.createFetchResponse` requires a non-empty `__restale_cid__` query parameter. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends it automatically. For manual debugging, supply one yourself:
+>
+> ```sh
+> curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1&__restale_target__=tanstack-query"
+> ```
+>
+> `__restale_target__` is optional. Include it when the group supports multiple targets or you want to test target selection explicitly.
 
 ### 2. Client (React + TanStack Query)
 
