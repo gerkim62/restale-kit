@@ -20,8 +20,8 @@
 ## Quick orientation
 
 ```text
-restale-kit/server         → SSEChannelGroup, createEventStore
-restale-kit/testing        → createSSEChannel (test utility only)
+restale-kit/server         → SSEChannelGroup, createSSEChannel, createEventStore
+restale-kit/testing        → createSSEChannel (standalone direct channel helper)
 restale-kit/client         → SSEInvalidatorClient  (vanilla JS)
 restale-kit/react          → useReStale  (React hook)
 restale-kit/tanstack-query → tanstackQueryAdapter

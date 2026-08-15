@@ -134,11 +134,19 @@ const client = new SSEInvalidatorClient('/sse', { autoReconnect: true })
 
 // Listen for invalidation signals and dispatch to any store or refetch handler
 client.addEventListener('invalidate', (event) => {
-  const signal = event.detail // InvalidateSignal | InvalidateSignal[]
-  console.log('Received cache invalidation:', signal)
-  
-  // Example: Invalidate Zustand store, Vue refetch, or custom fetch logic
-  myAppStore.markStale(signal.key)
+  const signals = Array.isArray(event.detail) ? event.detail : [event.detail]
+  console.log('Received cache invalidations:', signals)
+
+  for (const signal of signals) {
+    // Route each target shape to the corresponding custom-store operation.
+    if ('key' in signal && signal.key) {
+      myAppStore.markStale(signal.key)
+    } else if ('queryKey' in signal && signal.queryKey) {
+      myAppStore.markStale(signal.queryKey)
+    } else if ('tags' in signal && signal.tags) {
+      myAppStore.invalidateTags(signal.tags)
+    }
+  }
 })
 
 await client.connect()

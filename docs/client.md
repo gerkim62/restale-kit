@@ -39,7 +39,9 @@ The hook opens the connection on mount and closes it on unmount. Reconnection wi
 ```ts
 useReStale(url: string, options: {
   // Required
-  onInvalidate: (signal: InvalidateSignal | InvalidateSignal[]) => void
+  // An AdaptedInvalidateCallback returned by useTanstackQueryAdapter,
+  // useSwrAdapter, useRtkQueryAdapter, or makeAdaptedCallback.
+  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal>
 
   // Revocation (optional)
   onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
@@ -280,8 +282,21 @@ client.addEventListener('renew', (event) => {
   // on success the session resumes, on exhaustion the connection closes with reason: 'revoked'.
 })
 
+// Handle rejected handshakes (configured terminal HTTP statuses such as 401/403)
+client.addEventListener('rejected', (event) => {
+  const response = event.detail // RejectedConnectionResponse: { status, headers }
+  console.warn('Connection rejected by HTTP status:', response.status)
+})
+
+// Handle retry exhaustion when automatic reconnect reaches maxRetries
+client.addEventListener('retriesexhausted', (event) => {
+  const { attempts, maxRetries } = event.detail
+  console.warn(`Reconnection exhausted after ${attempts}/${maxRetries} attempts`)
+})
+
 // Access client properties
 console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
+console.log('Reconnect attempt count:', client.attempt)     // 0 initially and after success
 console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
 console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 

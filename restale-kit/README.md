@@ -289,7 +289,7 @@ const server = http.createServer((req, res) => {
 ```ts
 // TanStack Query — uses queryKey + rich action set
 type TanStackQuerySignal = {
-  target: 'tanstack-query'
+  target?: 'tanstack-query'
   queryKey: JSONValue[]
   exact?: boolean
   type?: 'all' | 'active' | 'inactive'
@@ -299,7 +299,7 @@ type TanStackQuerySignal = {
 
 // SWR — uses key + SWR-native actions
 type SWRSignal = {
-  target: 'swr'
+  target?: 'swr'
   key: string | JSONValue[]
   action?: 'revalidate' | 'purge' | 'remove' | 'mutate'  // default 'revalidate'
   revalidate?: boolean
@@ -308,7 +308,7 @@ type SWRSignal = {
 
 // RTK Query — tag-based invalidation (handled by rtkQueryAdapter / useRtkQueryAdapter)
 type RTKQuerySignal = {
-  target: 'rtk-query'
+  target?: 'rtk-query'
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -436,7 +436,11 @@ client.addEventListener('invalidate', (event) => {
 client.addEventListener('statuschange', (event) => {
   const status = event.detail // ConnectionStatus — a discriminated union
   if (status.status === 'closed') {
-    console.log('closed, reason:', status.reason) // 'manual' | 'unmount' | 'revoked'
+    if (status.reason === 'rejected') {
+      console.log('rejected HTTP status:', status.response.status)
+    } else {
+      console.log('closed, reason:', status.reason) // 'manual' | 'unmount' | 'revoked'
+    }
   } else if (status.status === 'error') {
     console.log('error event:', status.error)     // Event
   } else {
@@ -458,22 +462,24 @@ Define custom signal types to enforce type safety at compile time, complemented 
 import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 type AppSignal =
-  | { key: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
-  | { key: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
+  | { target?: 'tanstack-query'; queryKey: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel' }
+  | { target?: 'tanstack-query'; queryKey: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel' }
 
-const group = new SSEChannelGroup<AppSignal>()
+const group = new SSEChannelGroup<AppSignal>({ target: SIGNAL_TARGETS.TANSTACK_QUERY })
 
 app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.TANSTACK_QUERY })
+  group.attachNodeResponse(req, res, {})
 })
 
-group.broadcastToAll({ key: ['todos'] })           // ✅ valid
+group.broadcastToAll({ queryKey: ['todos'] })      // ✅ valid
 ```
 
 **Client:**
 ```tsx
-useReStale<AppSignal>('/sse', {
-  onInvalidate: useTanstackQueryAdapter(queryClient),
+const onInvalidate = useTanstackQueryAdapter<AppSignal>(queryClient)
+
+useReStale<'tanstack-query', AppSignal>('/sse', {
+  onInvalidate,
 })
 ```
 
@@ -539,8 +545,10 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
+| `onInvalidate` | `AdaptedInvalidateCallback` | — | **Required.** A branded callback returned by an adapter hook or `makeAdaptedCallback`; called on each signal. |
 | `onRevoke` | `(detail: RevokeEventDetail) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. Branch on `detail.reason` to handle `'unsupported-target'` vs application-level revocations. |
+| `onRejected` | `(response: RejectedConnectionResponse) => void` | `undefined` | Called when a configured non-retryable HTTP handshake status closes the connection. |
+| `onRetriesExhausted` | `(detail: { attempts, maxRetries }) => void` | `undefined` | Called when automatic reconnection exhausts `maxRetries`. |
 | `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
 | `withCredentials` | `boolean` | `false` | Include cookies in cross-origin EventSource requests. Custom `Authorization` headers are not supported by this API. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
@@ -549,6 +557,8 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
+| `reconnect.nonRetryableStatuses` | `HttpStatusMatcher \| HttpStatusMatcher[]` | none | HTTP statuses that close the connection as rejected instead of retrying. |
+| `reconnect.retryAfter` | `'ignore' \| 'respect'` | `'ignore'` | Whether retryable HTTP responses may set the next delay using `Retry-After`. |
 | `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
 ### `group.attachNodeResponse(req, res, options?)` / `group.createFetchResponse(request, options?)`
@@ -560,9 +570,9 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
 | `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
-| `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
+| `idGenerator` | `() => string` | `undefined` | Custom event ID generator for assigned event frames. An `EventStore` supplies auto-incrementing IDs when no generator is configured; without either, invalidation frames have no ID (`''`) unless the caller supplies `customId`. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport methods (`group.attachNodeResponse`, `group.createFetchResponse`). You never need to set or manage this parameter manually. |
-| `target` | `SignalTarget \| SignalTarget[]` | **required** | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
+| `target` | `SignalTarget \| SignalTarget[]` | group default / required | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`). Optional if configured on the group or in `channelDefaults`; required for direct channels if not configured at the group level. |
 
 ### `SSEChannelGroup(options?)`
 

@@ -115,7 +115,7 @@ class ChannelClosedError extends Error {
 class SchemaValidationError extends Error {
   readonly name: 'SchemaValidationError'
   readonly issues: ReadonlyArray<StandardSchemaV1.Issue>
-  // Thrown when signal or metadata validation fails
+  // Thrown when Standard Schema metadata validation fails
 }
 ```
 
@@ -243,6 +243,7 @@ class SSEInvalidatorClient<TSignal extends InvalidateSignal = InvalidateSignal>
   get connectionId(): string
   get endpointUrl(): string      // the URL passed to the constructor (without __restale_cid__)
   get status(): ConnectionStatus
+  get attempt(): number          // current reconnect attempt (0 initially and after a successful open)
   get lastEventId(): string | null
   connect(): Promise<void>
   close(): void                  // closes with reason 'manual'
@@ -328,7 +329,15 @@ type RevokeEventDetail =
 
 ```ts
 import { useReStale } from 'restale-kit/react'
-import type { UseReStaleOptions, UseReStaleResult, ConnectionStatus, RevokeEventDetail } from 'restale-kit/react'
+import type {
+  UseReStaleOptions,
+  UseReStaleResult,
+  ConnectionStatus,
+  RevokeEventDetail,
+  RenewEventDetail,
+  RejectedConnectionResponse,
+  AdaptedInvalidateCallback,
+} from 'restale-kit/react'
 
 function useReStale<
   TTarget extends SignalTarget,
@@ -378,7 +387,7 @@ interface UseReStaleResult {
 
 ```ts
 import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
-import type { QueryClient } from '@tanstack/react-query'
+import type { TanStackQuerySignal } from 'restale-kit'
 
 interface QueryClientLike {
   invalidateQueries(filters?: unknown): unknown
@@ -388,7 +397,7 @@ interface QueryClientLike {
   cancelQueries(filters?: unknown): unknown
 }
 
-function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
@@ -396,7 +405,7 @@ function tanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSigna
  * Memoized hook variant of tanstackQueryAdapter.
  * Call at the component top level; returns a stable branded callback across renders.
  */
-function useTanstackQueryAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function useTanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClientLike
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal>
 
@@ -414,8 +423,8 @@ interface RTKQueryApiLike {
   util: { invalidateTags(tags: RTKQuerySignalInput['tags']): void }
 }
 
-function rtkQueryAdapter(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', RTKQuerySignalInput>
-function useRtkQueryAdapter(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', RTKQuerySignalInput>
+function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', TSignal>
+function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', TSignal>
 ```
 
 ---
@@ -423,24 +432,25 @@ function useRtkQueryAdapter(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rt
 ## `restale-kit/swr`
 
 ```ts
-import { swrAdapter } from 'restale-kit/swr'
+import { swrAdapter, useSwrAdapter } from 'restale-kit/swr'
 import type { SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
+import type { SWRSignal } from 'restale-kit'
 import type { Arguments } from 'swr'
 
-function swrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'swr', TSignal>
 
 /**
  * Memoized hook variant of swrAdapter.
  * Call at the component top level; stores options in a ref so they update on re-render
  * without breaking referential stability.
  */
-function useSwrAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): (signal: TSignal | TSignal[]) => void
+): AdaptedInvalidateCallback<'swr', TSignal>
 
 interface SWRAdapterOptions<TSignal> {
   // Convert a non-canonical SWR key to a JSONValue[] for matching.

@@ -37,3 +37,23 @@ describe('useReStale required vs optional options', () => {
     useReStale({ onInvalidate: swrCallback })
   })
 })
+
+describe('restale-kit/react re-exports', () => {
+  test('exports contract and lifecycle types', () => {
+    type ReactExports = typeof import('@/client/react/index.js')
+    expectTypeOf<ReactExports['useReStale']>().toBeFunction()
+
+    type ReactTypes = {
+      ConnectionStatus: import('@/client/react/index.js').ConnectionStatus
+      RevokeEventDetail: import('@/client/react/index.js').RevokeEventDetail
+      RenewEventDetail: import('@/client/react/index.js').RenewEventDetail
+      RejectedConnectionResponse: import('@/client/react/index.js').RejectedConnectionResponse
+      AdaptedInvalidateCallback: import('@/client/react/index.js').AdaptedInvalidateCallback
+    }
+
+    expectTypeOf<ReactTypes['ConnectionStatus']>().toBeObject()
+    expectTypeOf<ReactTypes['RevokeEventDetail']>().toBeObject()
+    expectTypeOf<ReactTypes['RenewEventDetail']>().toBeObject()
+    expectTypeOf<ReactTypes['RejectedConnectionResponse']>().toBeObject()
+  })
+})
