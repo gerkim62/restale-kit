@@ -60,6 +60,7 @@ app.use(authenticateUser) // Ensure req.user is populated by auth middleware
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
+    meta: { userId: req.user.id, sessionId: req.session.id },
     topics: [`user:${req.user.id}`, 'global'],
   })
 })
@@ -251,5 +252,5 @@ Topics are plain strings — design them to match your invalidation granularity:
 ## Delivery guarantees
 
 - **At most once per currently-subscribed instance.** If an instance loses its broker connection while a signal is published, that signal is dropped for that instance's clients.
-- **Event history replay:** Pass a shared `eventStore` (or `eventBufferCapacity`) to `SSEChannelGroup` or your transport method (`attachNodeResponse` / `createFetchResponse`) to enable `Last-Event-ID` event replay for reconnecting clients. Without an event store configured, clients that were disconnected when a signal fired do not receive missed events upon reconnect.
+- **Event history replay:** Pass a shared `eventStore`, or `eventBufferCapacity`, to `SSEChannelGroup` to enable `Last-Event-ID` event replay for reconnecting clients. A transport-level `eventBufferCapacity` belongs only to that channel and is not available after a replacement channel reconnects. Without a shared group/external event store, clients that were disconnected when a signal fired do not receive missed events upon reconnect.
 - Invalidation signals without replay configured are cheap to re-emit on subsequent mutations.

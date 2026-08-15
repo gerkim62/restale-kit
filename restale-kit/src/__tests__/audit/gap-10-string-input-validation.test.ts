@@ -8,19 +8,22 @@
  * - register(..., { topics })
  * - controlTopic
  * - revokeByConnectionId(connectionId, ...)
- * - encrypted pub/sub operations (blank topic values throw during AAD setup)
+ * - pub/sub operations (blank topic values are rejected before delivery)
  */
 
 import { describe, it, expect } from 'vitest'
 import { SSEChannelGroup } from '@/server/core/index.js'
 import { createSSEChannel } from '@/testing/index.js'
+import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
 import type { SWRSignal } from '@/types/index.js'
+
+const createMemoryPubSub = () => new MemoryPubSubAdapter<SWRSignal>()
 
 describe('Gap 10: String input validation for runtime invariants', () => {
   describe('SSEChannelGroup.publish topic validation', () => {
     it('should reject empty string topic', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -30,7 +33,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject whitespace-only topic', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -40,7 +43,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject topic with only tabs and newlines', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -50,7 +53,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept valid non-empty topic', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -60,7 +63,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept topic with leading/trailing spaces if not all whitespace', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       // Topic with spaces but contains non-whitespace content
@@ -71,7 +74,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should handle unicode whitespace characters', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       // Unicode non-breaking space and other whitespace
@@ -84,7 +87,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('ChannelSetupOptions.topics validation', () => {
     it('should reject empty string in topics array', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse')
       
@@ -98,7 +101,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject whitespace-only string in topics array', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse')
       
@@ -112,7 +115,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject topics array with mix of valid and invalid', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse')
       
@@ -126,7 +129,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept valid topics array', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       
@@ -165,7 +168,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('SSEChannelGroup.register topics validation', () => {
     it('should reject empty string in topics option', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
@@ -176,7 +179,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject whitespace-only string in topics option', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
@@ -187,7 +190,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept valid topics in register', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
       
@@ -297,14 +300,10 @@ describe('Gap 10: String input validation for runtime invariants', () => {
     })
   })
 
-  describe('Encrypted pub/sub topic validation', () => {
-    it('should reject empty topic for encrypted publish', async () => {
-      const encryptionKey = 'a'.repeat(64) // Valid hex key
+  describe('Pub/sub topic validation', () => {
+    it('should reject an empty topic before publish', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: {
-          type: 'memory',
-          encryptionKey
-        }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -312,13 +311,9 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       ).rejects.toThrow()
     })
 
-    it('should reject whitespace topic for encrypted publish', async () => {
-      const encryptionKey = 'a'.repeat(64) // Valid hex key
+    it('should reject a whitespace topic before publish', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: {
-          type: 'memory',
-          encryptionKey
-        }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -326,17 +321,13 @@ describe('Gap 10: String input validation for runtime invariants', () => {
       ).rejects.toThrow()
     })
 
-    it('should accept valid topic for encrypted publish', async () => {
-      const encryptionKey = 'a'.repeat(64) // Valid hex key
+    it('should accept a valid topic for publish', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: {
-          type: 'memory',
-          encryptionKey
-        }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
-        group.publish('encrypted-topic', { target: 'swr', key: ['test'] })
+        group.publish('valid-topic', { target: 'swr', key: ['test'] })
       ).resolves.not.toThrow()
     })
   })
@@ -344,7 +335,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('Edge cases with special characters', () => {
     it('should accept topic with hyphens and underscores', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -354,7 +345,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept topic with dots and slashes', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -364,7 +355,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept topic with numbers', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -374,7 +365,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should handle very long valid topics', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       const longTopic = 'a'.repeat(1000)
@@ -386,7 +377,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject topic that is only zero-width characters', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       // Zero-width space
@@ -399,7 +390,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('Topics in attachNodeResponse', () => {
     it('should reject empty string in topics', () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockReq = {} as any
       const mockRes = {} as any
@@ -429,7 +420,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('Validation consistency across APIs', () => {
     it('should use same validation for topics in all APIs', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
@@ -455,7 +446,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should accept same valid input across all APIs', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       const mockRequest = new Request('http://localhost/sse?__restale_cid__=conn-1')
       const channel = createSSEChannel<SWRSignal>({ target: 'swr' })
@@ -484,7 +475,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
   describe('Runtime type coercion edge cases', () => {
     it('should reject null coerced to string', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -494,7 +485,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject undefined coerced to string', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -504,7 +495,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject number coerced to string', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(
@@ -514,7 +505,7 @@ describe('Gap 10: String input validation for runtime invariants', () => {
 
     it('should reject object coerced to string', async () => {
       const group = new SSEChannelGroup<SWRSignal>({
-        pubsub: { type: 'memory' }
+        pubsub: createMemoryPubSub()
       })
       
       await expect(

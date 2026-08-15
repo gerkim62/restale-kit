@@ -1,5 +1,5 @@
 import type { InvalidateSignal } from '@/types/protocol.js'
-import type { SSEChannelOptions, SSEChannel } from '@/server/core/channel.js'
+import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
@@ -14,8 +14,8 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
  */
 export function internal_toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
   request: Request,
-  options: SSEChannelOptions<TSignal>,
-  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults'>
+  options: SSEChannelTransportOptions<TSignal>,
+  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults' | 'eventStore'>
 ): { response: Response; channel: SSEChannel<TSignal> } {
   const urlObj = new URL(request.url)
   const connectionId =
@@ -27,11 +27,12 @@ export function internal_toSSEResponse<TSignal extends InvalidateSignal = Invali
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
-  const baseOptions: SSEChannelOptions<TSignal> = {
+  const baseOptions: SSEChannelTransportOptions<TSignal> = {
     ...options,
     lastEventId,
     connectionId,
     requestedTarget: requestedTarget ?? options.requestedTarget,
+    eventStore: options.eventStore ?? group?.eventStore,
   }
 
   const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)

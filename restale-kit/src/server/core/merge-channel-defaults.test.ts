@@ -91,6 +91,13 @@ describe('mergeChannelDefaults', () => {
     expect((result.lifetime as any).ttlMs).toBeUndefined()
   })
 
+  it('rejects a channel lifetime that specifies both ttlMs and deadline', () => {
+    expect(() => mergeChannelDefaults(
+      opts({ lifetime: { ttlMs: 1000, deadline: Date.now() + 5000 } as any }),
+      { lifetime: { ttlMs: 9999 } }
+    )).toThrow('[mergeChannelDefaults] lifetime.ttlMs and lifetime.deadline are mutually exclusive.')
+  })
+
   it('default ttlMs fills in when channel has no time value', () => {
     // Channel only sets onDeadline — no ttlMs or deadline
     // This is an edge case: channel sets lifetime but only onDeadline,

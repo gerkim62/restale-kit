@@ -33,11 +33,11 @@ flowchart LR
 
 ## ✨ Features
 
-- **🚀 Universal & Framework Agnostic:** Zero runtime dependencies in core. Runs in Node.js, Bun, Deno, Cloudflare Workers, Next.js, and all modern browsers.
-- **🔄 Flexible Client Support:** Built-in adapters for **TanStack Query** and **SWR**, native wire protocol support for **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
+- **🚀 Universal & Framework Agnostic:** Optional ecosystem integrations are peer dependencies; the browser client uses `sse.js` as its runtime transport. Runs in Node.js, Bun, Deno, Cloudflare Workers, Next.js, and all modern browsers.
+- **🔄 Flexible Client Support:** First-class adapters for **TanStack Query**, **SWR**, and **RTK Query**, plus generic invalidation listeners for **Zustand**, **Pinia / Vue**, **Svelte**, **SolidJS**, **Redux**, or **Vanilla JS**. Not locked into any single cache library!
 - **🔌 Multi-Runtime Server Adapters:** Drop-in support for Express, Fastify, Hono, Node `http`, Bun, Deno, and standard Fetch API runtimes.
 - **🎯 Precision Invalidation:** Flexible key matching supports prefix keys, exact matches, hierarchical paths, and object-subset targeting.
-- **🛡️ Standard Schema Validation:** Validate invalidation payloads on server & client using Zod, Valibot, ArkType, or any Standard Schema validator.
+- **🛡️ Standard Schema Metadata Validation:** Validate server-side connection metadata with Zod, Valibot, ArkType, or any Standard Schema validator; invalidation payloads receive built-in structural validation.
 - **🌐 Horizontally Scalable:** Pub/Sub adapters for Redis, Ably, and Pusher enable multi-instance and serverless cluster invalidations.
 - **⚡️ Resilience Built-In:** Automatic client reconnects with exponential backoff, jitter, and history replay via `Last-Event-ID`.
 
@@ -51,7 +51,7 @@ flowchart LR
 |---|---|---|
 | **TanStack Query** (React / Solid / Vue) | ⚡️ First-class Adapter | `tanstackQueryAdapter`, `useTanstackQueryAdapter` |
 | **SWR** (React) | ⚡️ First-class Adapter | `swrAdapter`, `useSwrAdapter` |
-| **RTK Query** (Redux Toolkit) | 🔌 Wire Protocol | `target: 'rtk-query'` with tag-based invalidations |
+| **RTK Query** (Redux Toolkit) | ⚡️ First-class Adapter | `rtkQueryAdapter`, `useRtkQueryAdapter` |
 | **Zustand / Redux / Pinia** | 🎯 Generic Listener | `target: 'generic'` with custom `onInvalidate` callback |
 | **Vue / Nuxt** | 🟢 Framework Agnostic | `SSEInvalidatorClient` / custom handler |
 | **Svelte / SvelteKit** | 🟠 Framework Agnostic | `SSEInvalidatorClient` / custom handler |
@@ -89,7 +89,10 @@ app.get('/sse', (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   // ... database mutation ...
-  group.broadcastToAll({ key: ['todos'] })
+  group.broadcastToAll([
+    { target: SIGNAL_TARGETS.SWR, key: ['todos'] },
+    { target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] },
+  ])
   res.status(201).json({ success: true })
 })
 
@@ -131,11 +134,19 @@ const client = new SSEInvalidatorClient('/sse', { autoReconnect: true })
 
 // Listen for invalidation signals and dispatch to any store or refetch handler
 client.addEventListener('invalidate', (event) => {
-  const signal = event.detail // InvalidateSignal | InvalidateSignal[]
-  console.log('Received cache invalidation:', signal)
-  
-  // Example: Invalidate Zustand store, Vue refetch, or custom fetch logic
-  myAppStore.markStale(signal.key)
+  const signals = Array.isArray(event.detail) ? event.detail : [event.detail]
+  console.log('Received cache invalidations:', signals)
+
+  for (const signal of signals) {
+    // Route each target shape to the corresponding custom-store operation.
+    if ('key' in signal && signal.key) {
+      myAppStore.markStale(signal.key)
+    } else if ('queryKey' in signal && signal.queryKey) {
+      myAppStore.markStale(signal.queryKey)
+    } else if ('tags' in signal && signal.tags) {
+      myAppStore.invalidateTags(signal.tags)
+    }
+  }
 })
 
 await client.connect()
@@ -145,7 +156,7 @@ await client.connect()
 
 ## 📂 Repository & Workspace Layout
 
-This repository is a monorepo powered by `pnpm` containing the core library, documentation, design specifications, and runnable example apps:
+This repository is a monorepo powered by `pnpm` containing the core library, documentation, and runnable example apps:
 
 - **[restale-kit/](./restale-kit/)** — The published NPM library source code (server & client adapters, pub/sub drivers, standard schema support).
 - **[docs/](./docs/)** — Detailed user documentation and integration guides.
@@ -159,7 +170,6 @@ This repository is a monorepo powered by `pnpm` containing the core library, doc
   - Backend: [Express](./examples/backend/express/), [Hono](./examples/backend/hono/), [Fastify](./examples/backend/fastify/), [Node http](./examples/backend/node/)
   - Frontend: [React + TanStack Query](./examples/frontend/react-query/), [React + SWR](./examples/frontend/react-swr/)
   - Full-stack: [Vercel Serverless + Redis](./examples/vercel-redis/)
-- **[spec/](./spec/)** — Architectural decision records, frame guard specifications, and wire protocol definitions.
 
 ---
 
@@ -233,4 +243,4 @@ We warmly welcome contributions from everyone! Whether you are fixing a typo, im
 
 ## 📄 License
 
-Distributed under the MIT License. See [LICENSE](./restale-kit/README.md) for details.
+Distributed under the MIT License. See [LICENSE](./restale-kit/LICENSE) for details.

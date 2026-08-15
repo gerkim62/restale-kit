@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { internal_attachSSE } from '@/server/node/attach.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { createEventStore } from '@/server/core/event-store.js'
+import { SSEChannelGroup } from '@/server/core/channel-group.js'
 
 const decoder = new TextDecoder()
 
@@ -15,10 +16,10 @@ async function readStreamChunk(stream: ReadableStream<Uint8Array>): Promise<stri
   return value ? decoder.decode(value) : ''
 }
 
-function createMockNodeRequest(url: string): IncomingMessage {
+function createMockNodeRequest(url: string, headers: Record<string, string> = {}): IncomingMessage {
   return Object.assign(new EventEmitter(), {
     url,
-    headers: {},
+    headers,
   }) as unknown as IncomingMessage
 }
 
@@ -68,6 +69,73 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
 
     const text = await readStreamChunk(response.body!)
     expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"],"target":"swr"}\n\n')
+  })
+
+  it('Fetch: group event history is replayed to a transport-created reconnect', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    group.createFetchResponse(new Request('https://example.com/sse?__restale_cid__=first'), {})
+    group.broadcastToAll({ key: ['already-seen'] })
+    group.broadcastToAll({ key: ['todos'] })
+
+    const { response } = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=second', { headers: { 'Last-Event-ID': '1' } }),
+      {}
+    )
+    const text = await readStreamChunk(response.body!)
+
+    expect(text).toBe('id: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n')
+  })
+
+  it('Fetch: deadline renewal closes the stream and a shared store replays the reconnect gap', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    const first = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=deadline-first'),
+      { lifetime: { ttlMs: 100 } }
+    )
+
+    group.broadcastToAll({ key: ['already-seen'] })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(first.channel.state).toBe('closed')
+    expect(await readStreamChunk(first.response.body!)).toContain('id: 1\nevent: invalidate')
+    expect(await readStreamChunk(first.response.body!)).toContain('event: renew')
+
+    // The first channel is closed, but the group-owned store continues recording broadcasts.
+    group.broadcastToAll({ key: ['written-during-reconnect'] })
+
+    const resumed = group.createFetchResponse(
+      new Request('https://example.com/sse?__restale_cid__=deadline-second', {
+        headers: { 'Last-Event-ID': '1' },
+      }),
+      {}
+    )
+
+    expect(await readStreamChunk(resumed.response.body!)).toBe(
+      'id: 2\nevent: invalidate\ndata: {"key":["written-during-reconnect"],"target":"swr"}\n\n'
+    )
+  })
+
+  it('Node: group event history is replayed to a transport-created reconnect', async () => {
+    const eventStore = createEventStore({ capacity: 10 })
+    const group = new SSEChannelGroup({ target: 'swr', eventStore })
+    const first = createMockNodeRequest('/sse?__restale_cid__=first')
+    group.attachNodeResponse(first, createMockNodeResponse(), {})
+    group.broadcastToAll({ key: ['already-seen'] })
+    group.broadcastToAll({ key: ['todos'] })
+
+    const response = createMockNodeResponse()
+    group.attachNodeResponse(
+      createMockNodeRequest('/sse?__restale_cid__=second', { 'last-event-id': '1' }),
+      response,
+      {}
+    )
+    await vi.advanceTimersByTimeAsync(50)
+
+    expect((response as any).__chunks.join('')).toBe(
+      ':\n\nid: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n'
+    )
   })
 
   it('Node: internal_attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {

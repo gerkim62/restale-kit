@@ -121,10 +121,10 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
-| `eventBufferCapacity` | `number` | Enables Last-Event-ID history replay buffer up to `N` events (auto-allocates capacity `50` when `lifetime` is configured without an explicit `eventStore` or `eventBufferCapacity`). |
+| `eventBufferCapacity` | `number` | Creates a group-owned Last-Event-ID history buffer of up to `N` events. This is shared by channels created through the group and can replay on reconnect. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
+| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`, `eventBufferCapacity`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
 
 ---
 
@@ -169,11 +169,11 @@ group.broadcastToAll([
 ])
 ```
 
-### Target Signal Requirements & Wire Optimization
+### Target Signal Requirements & Wire Framing
 
 - **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` on signal objects (e.g. `{ key: ['todos'] }`). The channel automatically attaches `target: 'swr'` before recording to `EventStore` or passing to `pubsub`.
 - **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Every signal object MUST explicitly specify `target`, and invalidation batches must supply signals for all declared targets.
-- **Wire Optimization**: The outgoing SSE byte frame strips the `target` property from JSON data lines (`data: {"key":["todos"]}`), since the active target is specified in the connection header (`X-ReStale-Target`).
+- **Wire framing**: The outgoing SSE frame retains `target` (`data: {"target":"swr","key":["todos"]}`). `X-ReStale-Target` communicates the negotiated connection target; it does not replace the signal discriminator.
 
 `broadcastToAll` reaches **all** registered channels, including those registered without metadata.
 
@@ -199,18 +199,20 @@ The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i
 
 ### `broadcastByKey(signal)` — automatic key-based matching
 
-`broadcastByKey` automatically matches a signal's cache key against each channel's registered metadata (`meta`), eliminating the need to write manual predicate functions.
+`broadcastByKey` compares the signal key with each channel's registered metadata treated as a key. It uses the same positional prefix/exact and object-subset matching as cache-key matching; it does **not** search for metadata fields anywhere inside a longer signal key.
 
 ```ts
-// Instead of writing a manual predicate:
-// group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
+// Register metadata in the same key shape that broadcastByKey should match:
+group.attachNodeResponse(req, res, {
+  meta: ['todos', { userId: '42' }],
+})
 
-// Simply use broadcastByKey:
-group.broadcastByKey({ key: ['todos', { userId }] })
+// This matches the metadata above.
+group.broadcastByKey({ key: ['todos', { userId: '42' }] })
 ```
 
 #### How Key Matching Works
-The signal's `key` is compared against each channel's registered metadata (`meta`). A channel receives the signal when its registered metadata matches or extends the signal key. For example, if a client registered with `meta: { userId: '42' }`, a signal with `key: ['todos', { userId: '42' }]` will deliver to that client automatically.
+The signal's `key` is compared position-by-position with each channel's registered metadata. Plain-object metadata is treated as a one-element key (`[{ userId: '42' }]`); array metadata is used as-is. For example, metadata `['todos', { userId: '42' }]` receives a signal with `key: ['todos', { userId: '42' }]`. If your metadata is only `{ userId: '42' }`, use the matching signal key `[{ userId: '42' }]`, or use `broadcast(signal, predicate)` when cache-key and routing-key shapes differ.
 
 #### Target Restrictions: Single-Target Groups Only
 > [!NOTE]
@@ -260,7 +262,7 @@ const { channel } = group.attachNodeResponse(req, res, {
 When the deadline approaches (after applying jitter to prevent thundering herds), the channel sends a `renew` SSE event frame to the client. The client then makes confirmatory reconnect attempt(s) through your real authentication middleware, allowing the server to refresh the client's session or reject the renewal based on auth state. The number of attempts is controlled by `maxAttempts` (default: 1).
 
 The `renew` frame includes:
-- `maxAttempts` — how many times the client should retry if the reconnect fails (default: 1)
+- `maxAttempts` — how many times the client should retry if the reconnect fails (positive safe integer; default: `1`)
 - `retryDelayMs` — milliseconds to wait between retry attempts (default: 250ms)
 
 If the client's confirmatory reconnect succeeds, the connection is resumed from the new channel. If all attempts exhaust, the client closes.

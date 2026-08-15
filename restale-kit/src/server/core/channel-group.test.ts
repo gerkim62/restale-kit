@@ -44,6 +44,12 @@ describe('channel-group', () => {
     expect(spy).toHaveBeenCalled()
   })
 
+  it('rejects runtime pubsub values that are not adapters', () => {
+    expect(() => new SSEChannelGroup({ pubsub: {} as never })).toThrow(
+      'pubsub must implement publish() and subscribe()'
+    )
+  })
+
   it('broadcastToAll delivers to all channels even when meta is undefined', () => {
     // Regression: broadcast() previously had `if (entry.meta === undefined) continue`
     // which skipped channels registered without meta, breaking broadcastToAll.

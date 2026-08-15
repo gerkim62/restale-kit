@@ -10,8 +10,8 @@
 |---|---|
 | [Getting Started](./getting-started.md) | Install, minimal server + client wiring in 5 minutes |
 | [Server](./server.md) | All server adapters, `SSEChannelGroup`, broadcasting, topics |
-| [Client](./client.md) | `useReStale` hook, vanilla JS client, TanStack Query & SWR adapters |
-| [Validation](./validation.md) | Optional Zod / Standard Schema runtime validation |
+| [Client](./client.md) | `useReStale` hook, vanilla JS client, and TanStack Query, SWR & RTK Query adapters |
+| [Validation](./validation.md) | Built-in signal validation and optional Zod / Standard Schema metadata validation |
 | [Pub/Sub](./pubsub.md) | Scaling across multiple instances with Redis, Ably, or Pusher |
 | [API Reference](./api-reference.md) | Every export, every type signature, in one place |
 
@@ -20,15 +20,15 @@
 ## Quick orientation
 
 ```text
-restale-kit/server         → SSEChannelGroup, createEventStore
-restale-kit/testing        → createSSEChannel (test utility only)
+restale-kit/server         → SSEChannelGroup, createSSEChannel, createEventStore
+restale-kit/testing        → createSSEChannel (standalone direct channel helper)
 restale-kit/client         → SSEInvalidatorClient  (vanilla JS)
 restale-kit/react          → useReStale  (React hook)
 restale-kit/tanstack-query → tanstackQueryAdapter
 restale-kit/swr            → swrAdapter
+restale-kit/rtk-query      → rtkQueryAdapter
+restale-kit/pubsub         → PubSubAdapter
 restale-kit/redis          → redisPubSubAdapter
 restale-kit/ably           → ablyPubSubAdapter
 restale-kit/pusher         → pusherPubSubAdapter
 ```
-
-> **Spec / design documents** live in [`spec/`](../spec/README.md) — useful for understanding the wire protocol and architectural decisions, not required for day-to-day usage.

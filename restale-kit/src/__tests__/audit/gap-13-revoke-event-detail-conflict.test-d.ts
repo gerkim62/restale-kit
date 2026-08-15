@@ -300,7 +300,7 @@ describe('Gap 13: RevokeEventDetail type compatibility', () => {
   describe('Type guard patterns', () => {
     test('supports type guard for unsupported-target', () => {
       function isUnsupportedTarget(
-        detail: ClientRevokeEventDetail | ProtocolRevokeEventDetail
+        detail: ClientRevokeEventDetail
       ): detail is Extract<ClientRevokeEventDetail, { reason: 'unsupported-target' }> {
         return detail.reason === 'unsupported-target'
       }

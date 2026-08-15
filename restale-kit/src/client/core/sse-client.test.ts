@@ -34,6 +34,49 @@ describe('SSEInvalidatorClient', () => {
     })
   })
 
+  it('honors lifecycle and invalidation callbacks without letting callback errors break the client', async () => {
+    const callback = vi.fn(() => {
+      throw new Error('observer failure')
+    })
+    const onConnect = vi.fn()
+    const onDisconnect = vi.fn()
+    const onError = vi.fn()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const client = new SSEInvalidatorClient('/sse', { callback, onConnect, onDisconnect, onError })
+
+    const pending = client.connect()
+    const source = MockEventSource.instances[0]
+    if (source === undefined) throw new Error('Expected an EventSource instance')
+    source.emitOpen()
+    await pending
+    source.emitCustomEvent('invalidate', JSON.stringify({ key: ['todos'] }))
+    source.emitError(new Event('error'))
+
+    expect(onConnect).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledWith({ key: ['todos'] })
+    expect(onError).toHaveBeenCalled()
+    expect(onDisconnect).toHaveBeenCalledTimes(1)
+    expect(client.status.status).toBe('connecting')
+    errorSpy.mockRestore()
+  })
+
+  it('calls onConnect after a successful renew reconnect', async () => {
+    const onConnect = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { onConnect })
+
+    const pending = client.connect()
+    MockEventSource.instances[0]?.emitOpen()
+    await pending
+    MockEventSource.instances[0]?.emitCustomEvent(
+      'renew',
+      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
+    )
+    MockEventSource.instances[1]?.emitOpen()
+
+    expect(onConnect).toHaveBeenCalledTimes(2)
+    expect(client.status.status).toBe('open')
+  })
+
   describe('handshake validation', () => {
     it('rejects onopen if Content-Type is application/json', () => {
       const client = new SSEInvalidatorClient('/sse', {
@@ -572,7 +615,7 @@ describe('SSEInvalidatorClient', () => {
 
       expect(errorSpy).toHaveBeenCalled()
       const errorDetail = errorSpy.mock.calls[0][0].detail
-      expect(errorDetail).toBeInstanceOf(Error)
+      expect(errorDetail).toBeInstanceOf(Event)
     } finally {
       globalThis.ErrorEvent = originalErrorEvent
     }
@@ -1871,4 +1914,3 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
     expect(renewUrl).toBe(originalUrl)
   })
 })
-

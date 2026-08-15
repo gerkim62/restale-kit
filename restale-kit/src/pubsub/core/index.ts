@@ -19,4 +19,3 @@ export interface PubSubAdapter<TSignal extends InvalidateSignal = InvalidateSign
   ) => Promise<() => void | Promise<void>>
   readonly onError?: (handler: (error: unknown) => void) => void
 }
-

@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { createSSEChannel } from '../../server/core/channel.js';
 import { SSEChannelGroup } from '../../server/core/channel-group.js';
 import type { SWRSignal, TanStackQuerySignal, RTKQuerySignal } from '../../types/protocol.js';
+import { MemoryPubSubAdapter } from '../../test-fixtures/pubsub.js';
 
 type SWRAndTanStackTargets = readonly ['swr', 'tanstack-query'];
 
@@ -283,7 +284,7 @@ describe('Gap 2: Multi-target channels accept incomplete batches', () => {
         SWRAndTanStackTargets
       >({
         target: ['swr', 'tanstack-query'] as const,
-        pubsub: { type: 'memory' }
+        pubsub: new MemoryPubSubAdapter<SWRSignal | TanStackQuerySignal>()
       });
       
       group.register(createSSEChannel({ 

@@ -70,6 +70,10 @@ export class SSEInvalidatorClient<
   private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
   private reconnectOptions: ClientOptions<TSignal>['reconnect']
   private readonly withCredentials: boolean
+  private callback?: ClientOptions<TSignal>['callback']
+  private onConnect?: ClientOptions<TSignal>['onConnect']
+  private onDisconnect?: ClientOptions<TSignal>['onDisconnect']
+  private onError?: ClientOptions<TSignal>['onError']
   private debug = false
   private readonly currentConnectionId: string
 
@@ -119,6 +123,10 @@ export class SSEInvalidatorClient<
       )
     }
     this.eventSourceUrl = eventSourceUrl
+    this.callback = opts?.callback
+    this.onConnect = opts?.onConnect
+    this.onDisconnect = opts?.onDisconnect
+    this.onError = opts?.onError
     this.updateRuntimeOptions(opts)
     this.withCredentials = opts?.withCredentials ?? false
 
@@ -129,7 +137,13 @@ export class SSEInvalidatorClient<
     }
   }
 
-  updateRuntimeOptions(opts?: Pick<ClientOptions<TSignal>, 'autoReconnect' | 'reconnect' | 'debug'>): void {
+  /** @internal Used by the React binding to apply changed hook props. */
+  updateRuntimeOptions(
+    opts?: Pick<
+      ClientOptions<TSignal>,
+      'autoReconnect' | 'reconnect' | 'debug' | 'callback' | 'onConnect' | 'onDisconnect' | 'onError'
+    >
+  ): void {
     const autoReconnectOpt = opts?.autoReconnect
     if (typeof autoReconnectOpt === 'object') {
       this.nativeAutoReconnect = autoReconnectOpt.native ?? PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
@@ -142,6 +156,10 @@ export class SSEInvalidatorClient<
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.debug = opts?.debug ?? false
+    if (opts && Object.hasOwn(opts, 'callback')) this.callback = opts.callback
+    if (opts && Object.hasOwn(opts, 'onConnect')) this.onConnect = opts.onConnect
+    if (opts && Object.hasOwn(opts, 'onDisconnect')) this.onDisconnect = opts.onDisconnect
+    if (opts && Object.hasOwn(opts, 'onError')) this.onError = opts.onError
 
     if (this.retryTimer !== null) {
       const canRetry = this.jsBackoffAutoReconnect || (this.opened && this.nativeAutoReconnect)
@@ -263,6 +281,7 @@ export class SSEInvalidatorClient<
    * Behaves identically to `close()` but the resulting status reason is `'unmount'`
    * instead of `'manual'`, matching the documented contract.
    */
+  /** @internal Used by the React binding to distinguish unmount cleanup from `close()`. */
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
@@ -370,6 +389,7 @@ export class SSEInvalidatorClient<
 
     es.onopen = (event: SSEvent) => {
       if (!this.isValidHandshake(es, event)) {
+        this.emitError(event)
         this.handleReconnectError(es, event)
         return
       }
@@ -377,6 +397,7 @@ export class SSEInvalidatorClient<
       this.opened = true
       this.currentAttempt = 0
       this.setStatus({ status: 'open' })
+      this.invokeUserCallback('onConnect', this.onConnect, event)
       if (this.debug) {
         console.log(
           `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId}). Stream is live.`
@@ -389,7 +410,7 @@ export class SSEInvalidatorClient<
     }
 
     es.onerror = (event: SSEvent) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: event}))
+      this.emitError(event)
       this.handleReconnectError(es, event)
     }
 
@@ -404,6 +425,7 @@ export class SSEInvalidatorClient<
 
     const rejectedResponse = this.getRejectedResponse(es, event)
     if (rejectedResponse !== null) {
+      this.invokeUserCallback('onDisconnect', this.onDisconnect, event)
       this.teardown()
       this.setStatus({ status: 'closed', reason: 'rejected', response: rejectedResponse })
       this.dispatchEvent(new CustomEvent('rejected', { detail: rejectedResponse }))
@@ -420,6 +442,7 @@ export class SSEInvalidatorClient<
     const retryAfterDelay = this.reconnectOptions?.retryAfter === 'respect'
       ? this.getRetryAfterDelay(es, event)
       : undefined
+    this.invokeUserCallback('onDisconnect', this.onDisconnect, event)
     this.teardown()
 
     if (!this.revoked && !this.renewing && canRetry && this.currentAttempt < this.maxRetries) {
@@ -496,6 +519,9 @@ export class SSEInvalidatorClient<
         // Built-in structural validation
         validated = validatePayload(event.data)
         this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
+        // Payload validation proves the wire union; `TSignal` is the consumer's narrower view.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated wire payload is exposed through the caller's generic signal view.
+        this.invokeUserCallback('callback', this.callback, validated as TSignal | TSignal[])
 
         if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
           this.currentLastEventId = event.lastEventId
@@ -513,9 +539,7 @@ export class SSEInvalidatorClient<
         )
         const message = error.message
         const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
-        this.dispatchEvent(
-          new CustomEvent('error', { detail })
-        )
+        this.emitError(detail)
       }
     })
 
@@ -685,6 +709,7 @@ export class SSEInvalidatorClient<
 
         renewEs.onopen = (event: SSEvent) => {
           if (!this.isValidHandshake(renewEs, event)) {
+            this.emitError(event)
             renewEs.onopen = () => {}
             renewEs.onerror = () => {}
             onRenewError()
@@ -693,11 +718,12 @@ export class SSEInvalidatorClient<
           // Re-wire full listeners (invalidate, revoke, renew) and then notify open.
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
-          this.wireRenewSuccess(renewEs, onRenewOpen)
+          this.wireRenewSuccess(renewEs, event, onRenewOpen)
         }
 
         renewEs.onerror = () => {
           if (this.eventSource !== renewEs) return
+          this.emitError(new Event('error'))
           renewEs.onopen = () => {}
           renewEs.onerror = () => {}
           onRenewError()
@@ -713,10 +739,11 @@ export class SSEInvalidatorClient<
    * After a successful renew confirmatory reconnect, re-wires the full event listeners
    * (invalidate, revoke, renew) on the newly opened EventSource and transitions to `open`.
    */
-  private wireRenewSuccess(es: SSE, onOpenCallback: () => void): void {
+  private wireRenewSuccess(es: SSE, event: SSEvent, onOpenCallback: () => void): void {
     this.opened = true
     this.currentAttempt = 0
     this.setStatus({ status: 'open' })
+    this.invokeUserCallback('onConnect', this.onConnect, event)
     onOpenCallback()
 
     if (this.connectPromise) {
@@ -729,8 +756,33 @@ export class SSEInvalidatorClient<
 
     // Wire onerror for mid-stream drops on the new connection.
     es.onerror = (event: SSEvent) => {
-      this.dispatchEvent(new CustomEvent('error', { detail: event }))
+      this.emitError(event)
       this.handleReconnectError(es, event)
+    }
+  }
+
+  /** Dispatches an error and then invokes the configured error callback safely. */
+  private emitError(error: unknown): void {
+    const detail = error instanceof Event
+      ? error
+      : typeof ErrorEvent !== 'undefined'
+        ? new ErrorEvent('error', { message: error instanceof Error ? error.message : String(error) })
+        : new Event('error')
+    this.dispatchEvent(new CustomEvent('error', { detail }))
+    this.invokeUserCallback('onError', this.onError, error)
+  }
+
+  /**
+   * User callbacks are observers: an exception must not change connection state or
+   * prevent other lifecycle work. Reporting through the console avoids recursively
+   * invoking a failing `onError` callback.
+   */
+  private invokeUserCallback<T>(name: string, callback: ((value: T) => void) | undefined, value: T): void {
+    if (!callback) return
+    try {
+      callback(value)
+    } catch (error) {
+      console.error(`[restale-kit][SSEInvalidatorClient] ${name} callback threw`, error)
     }
   }
 

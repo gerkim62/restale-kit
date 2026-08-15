@@ -172,6 +172,10 @@ export function useReStale<
         reconnect: opts.reconnect,
         withCredentials: opts.withCredentials,
         debug: opts.debug,
+        callback: opts.callback,
+        onConnect: opts.onConnect,
+        onDisconnect: opts.onDisconnect,
+        onError: opts.onError,
         // Auto-infer target from the adapter's brand when not set explicitly.
         target,
       })
@@ -192,8 +196,21 @@ export function useReStale<
       autoReconnect: opts.autoReconnect,
       reconnect: opts.reconnect,
       debug: opts.debug,
+      callback: opts.callback,
+      onConnect: opts.onConnect,
+      onDisconnect: opts.onDisconnect,
+      onError: opts.onError,
     })
-  }, [client, opts.autoReconnect, opts.reconnect, opts.debug])
+  }, [
+    client,
+    opts.autoReconnect,
+    opts.reconnect,
+    opts.debug,
+    opts.callback,
+    opts.onConnect,
+    opts.onDisconnect,
+    opts.onError,
+  ])
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(

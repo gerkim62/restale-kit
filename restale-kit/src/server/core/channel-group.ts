@@ -199,7 +199,8 @@ export interface SSEChannelGroupOptions<
   /** Target discriminator or target array for automatic signal tagging across channels in this group. */
   target?: TTarget
   metaSchema?: StandardSchemaV1<unknown, TMeta>
-  pubsub?: PubSubAdapter<TSignal> | { type?: string; encryptionKey?: string }
+  /** Broker adapter used for cross-instance signal delivery and control messages. */
+  pubsub?: PubSubAdapter<TSignal>
   eventStore?: EventStore<TSignal>
   eventBufferCapacity?: number
   controlTopic?: string
@@ -214,12 +215,14 @@ export interface SSEChannelGroupOptions<
  *
  * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
  * @typeParam TMeta - The metadata type associated with each channel.
- * @typeParam TTarget - The target or targets handled by this group.
+ * @typeParam TTarget - The target or targets constrained by the group's top-level `target` option.
+ * @typeParam TBroadcastTarget - The target or targets that determine broadcast and publish signal requirements. This is inferred from `channelDefaults.target` when no top-level target is set.
  */
 class SSEChannelGroupImplementation<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
+  TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
 > {
   private readonly channels = new Map<RegisteredChannel<TSignal>, {
     meta: TMeta | undefined
@@ -242,7 +245,13 @@ class SSEChannelGroupImplementation<
   constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget> = {}) {
     this.target = options.target
     this.metaSchema = options.metaSchema
-    this.pubsub = hasPubSubMethods<TSignal>(options.pubsub) ? options.pubsub : undefined
+    if (options.pubsub !== undefined && !hasPubSubMethods<TSignal>(options.pubsub)) {
+      throw new TypeError(
+        '[SSEChannelGroup] pubsub must implement publish() and subscribe(). ' +
+        'Pass a PubSubAdapter (for example redisPubSubAdapter(redis)).'
+      )
+    }
+    this.pubsub = options.pubsub
 
     if (options.target !== undefined) {
       validateTargetConfiguration(options.target)
@@ -791,7 +800,7 @@ class SSEChannelGroupImplementation<
    * ```
    */
   broadcast(
-    signal: GroupSignalInput<TSignal, TTarget>,
+    signal: GroupSignalInput<TSignal, TBroadcastTarget>,
     predicate?: (meta: TMeta | undefined) => boolean
   ): void {
     this.broadcastRaw(signal, predicate ?? (() => true))
@@ -878,7 +887,7 @@ class SSEChannelGroupImplementation<
    * - If a channel throws ChannelClosedError, it is automatically deregistered.
    * - Any other errors are collected and thrown at the end of the broadcast.
    */
-  broadcastToAll(signal: GroupSignalInput<TSignal, TTarget>): void {
+  broadcastToAll(signal: GroupSignalInput<TSignal, TBroadcastTarget>): void {
     this.broadcastRaw(signal, () => true)
   }
 
@@ -899,7 +908,7 @@ class SSEChannelGroupImplementation<
    * // You can write:
    * group.broadcastByKey({ key: ['todos', { userId }] })
    */
-  broadcastByKey(signal: [TTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
+  broadcastByKey(signal: [TBroadcastTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
   broadcastByKey(signal: TSignal): void {
     const normalizedSignal = this.normalizeSignalForGroup(signal)
     if (Array.isArray(normalizedSignal)) return
@@ -922,7 +931,7 @@ class SSEChannelGroupImplementation<
    * await group.publish(`user:${userId}`, { key: ['todos', { userId }] })
    * ```
    */
-  async publish(topic: string, signal: GroupSignalInput<TSignal, TTarget>): Promise<void> {
+  async publish(topic: string, signal: GroupSignalInput<TSignal, TBroadcastTarget>): Promise<void> {
     await this.publishRaw(topic, signal)
   }
 
@@ -957,9 +966,52 @@ export type SSEChannelGroup<
   TSignal extends InvalidateSignal = InvalidateSignal,
   TMeta = unknown,
   TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget>
+  TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
+> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TBroadcastTarget>
 
 interface SSEChannelGroupConstructor {
+  new <
+    TTarget extends SignalTarget,
+    TMeta,
+    TSchema extends StandardSchemaV1<unknown, TMeta>,
+  >(
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+      metaSchema: TSchema
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, TMeta, TTarget>,
+      'channelDefaults' | 'metaSchema'
+  >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, TMeta, SignalTarget, TTarget>
+  new <
+    TTarget extends readonly SignalTarget[],
+    TMeta,
+    TSchema extends StandardSchemaV1<unknown, TMeta>,
+  >(
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+      metaSchema: TSchema
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, TMeta, TTarget>,
+      'channelDefaults' | 'metaSchema'
+  >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, TMeta, SignalTarget, TTarget>
+  new <TTarget extends SignalTarget>(
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget>,
+      'channelDefaults'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, SignalTarget, TTarget>
+  new <TTarget extends readonly SignalTarget[]>(
+    options: {
+      channelDefaults: ChannelDefaults & { target: TTarget }
+    } & Omit<
+      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget>,
+      'channelDefaults'
+    >
+  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, SignalTarget, TTarget>
   new <
     TTarget extends SignalTarget,
     TMeta,

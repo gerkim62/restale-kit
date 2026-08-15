@@ -961,6 +961,13 @@ describe('Frame Guard — lifetime', () => {
     expect(channel.state).toBe('closed')
   })
 
+  it('rejects zero maxAttempts instead of sending a renew frame the client must reject', () => {
+    expect(() => createSSEChannel({
+      target: 'swr',
+      lifetime: { ttlMs: 5000, onDeadline: { maxAttempts: 0 } },
+    })).toThrow('lifetime.onDeadline.maxAttempts must be a positive safe integer')
+  })
+
   it('lifetime timer is cleared when channel closes before deadline', async () => {
     const channel = createSSEChannel({ target: 'swr', lifetime: { ttlMs: 10000 } })
     channel.close()
@@ -1126,20 +1133,6 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     expect(capturedIsResume).toBe(true)
 
     channel.close()
-  })
-
-  it('throws RangeError for invalid status class in nonRetryableStatuses', () => {
-    expect(() => {
-      createSSEChannel({
-        target: 'swr',
-        lifetime: {
-          ttlMs: 1000,
-          reconnect: {
-            nonRetryableStatuses: ['6xx' as any],
-          },
-        },
-      })
-    }).toThrow(RangeError)
   })
 
   it('handles write error during stream write gracefully', async () => {

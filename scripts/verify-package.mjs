@@ -2,7 +2,7 @@
  * Pre-release Package Verification Script
  *
  * Verifies that the packed npm tarball (`npm pack`) installs cleanly into an isolated
- * consumer project and that all 15 public subpath entrypoints (`restale-kit`, `restale-kit/server`,
+ * consumer project and that all public subpath entrypoints (`restale-kit`, `restale-kit/server`,
  * `restale-kit/client`, `restale-kit/react`, `restale-kit/tanstack-query`, `restale-kit/swr`, etc.)
  * can be imported at runtime and typechecked with strict TypeScript settings (`Node16` resolution).
  */
@@ -92,8 +92,8 @@ console.log('All public entry points imported successfully.')
   SchemaValidationError,
 } from 'restale-kit'
 import type { SSEChannel } from 'restale-kit/server'
-import type { createSSEChannel } from 'restale-kit/testing'
-import type { SSEInvalidatorClient } from 'restale-kit/client'
+import type { createSSEChannel, DirectSSEChannelOptions } from 'restale-kit/testing'
+import type { SSEInvalidatorClient, AutoReconnectOptions } from 'restale-kit/client'
 import type { UseReStaleResult } from 'restale-kit/react'
 
 // Verify types are properly exported and resolved
@@ -101,6 +101,15 @@ const _testTypes: JSONValue = 'test'
 const _testSignal: InvalidateSignal = { key: ['test'] }
 const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
 const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
+const _testReconnect: AutoReconnectOptions = { native: true, jsBackoff: false }
+const _testDirectChannel: DirectSSEChannelOptions = { target: 'swr' }
+
+declare const _client: SSEInvalidatorClient
+declare const _channel: SSEChannel
+// @ts-expect-error React lifecycle cleanup is not part of the published client surface.
+_client.closeWithUnmount()
+// @ts-expect-error Transport disconnect handling is not part of the published channel surface.
+_channel.disconnect()
 `
   )
   writeFileSync(

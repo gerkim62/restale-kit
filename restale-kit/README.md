@@ -31,11 +31,11 @@ flowchart LR
 
 ## ✨ Features
 
-- **Framework agnostic:** Zero runtime dependencies in core. Works in any JS environment.
+- **Framework agnostic:** Optional ecosystem integrations are peer dependencies; the browser client uses `sse.js` as its runtime transport.
 - **First-class server adapters:** Express, Fastify, Hono, Node `http`, and any Fetch-API runtime (Bun, Deno, Cloudflare Workers, Vercel Edge).
-- **First-class client adapters:** TanStack Query, SWR, and a React hook (`useReStale`) for zero-boilerplate wiring.
+- **First-class client adapters:** TanStack Query, SWR, RTK Query, and a React hook (`useReStale`) for zero-boilerplate wiring.
 - **Precision invalidation:** Hierarchical key matching with prefix, exact, and object-subset semantics.
-- **Optional Standard Schema validation:** Zod, Valibot, ArkType, etc. — type-safe signals and metadata at compile and runtime.
+- **Optional Standard Schema metadata validation:** Use Zod, Valibot, ArkType, etc. to validate connection metadata at runtime; signals have compile-time types and built-in structural validation.
 - **Horizontally scalable:** Built-in pub/sub adapters for Redis, Ably, and Pusher.
 - **Robust reconnection:** Exponential backoff with jitter; configurable retries.
 
@@ -76,6 +76,7 @@ npm install pusher                        # Pusher pub/sub
 | `restale-kit/react` | `useReStale` | React hook for SSE stream management |
 | `restale-kit/tanstack-query` | `tanstackQueryAdapter`, `useTanstackQueryAdapter` | TanStack Query invalidation adapter |
 | `restale-kit/swr` | `swrAdapter`, `useSwrAdapter` | SWR invalidation adapter |
+| `restale-kit/rtk-query` | `rtkQueryAdapter`, `useRtkQueryAdapter` | RTK Query tag invalidation adapter |
 | `restale-kit/pubsub` | `PubSubAdapter` interface | Base PubSub interface |
 | `restale-kit/redis` | `redisPubSubAdapter` | Redis PubSub adapter |
 | `restale-kit/ably` | `ablyPubSubAdapter` | Ably PubSub adapter |
@@ -112,7 +113,10 @@ app.get('/sse', (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   // ... write todo to DB ...
-  group.broadcastToAll({ target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] })
+  group.broadcastToAll([
+    { target: SIGNAL_TARGETS.SWR, key: ['todos'] },
+    { target: SIGNAL_TARGETS.TANSTACK_QUERY, queryKey: ['todos'] },
+  ])
   res.status(201).json({ success: true })
 })
 
@@ -285,7 +289,7 @@ const server = http.createServer((req, res) => {
 ```ts
 // TanStack Query — uses queryKey + rich action set
 type TanStackQuerySignal = {
-  target: 'tanstack-query'
+  target?: 'tanstack-query'
   queryKey: JSONValue[]
   exact?: boolean
   type?: 'all' | 'active' | 'inactive'
@@ -295,16 +299,16 @@ type TanStackQuerySignal = {
 
 // SWR — uses key + SWR-native actions
 type SWRSignal = {
-  target: 'swr'
+  target?: 'swr'
   key: string | JSONValue[]
-  action?: 'revalidate' | 'purge' | 'remove'  // default 'revalidate'
+  action?: 'revalidate' | 'purge' | 'remove' | 'mutate'  // default 'revalidate'
   revalidate?: boolean
   match?: 'exact' | 'prefix'
 }
 
-// RTK Query — tag-based invalidation (wire protocol only; no shipped adapter)
+// RTK Query — tag-based invalidation (handled by rtkQueryAdapter / useRtkQueryAdapter)
 type RTKQuerySignal = {
-  target: 'rtk-query'
+  target?: 'rtk-query'
   tags: Array<string | { type: string; id?: string | number }>
 }
 
@@ -375,9 +379,9 @@ group.broadcast(
   (meta) => meta.userId === 42
 )
 
-// Broadcast using automatic key-based matching
-// Scalar or plain-object metadata is auto-wrapped into [meta] for key matching
-group.broadcastByKey({ key: ['todos', { userId: 42 }] })
+// Broadcast using automatic key-based matching. Metadata must use the same
+// positional key shape; a plain object is treated as a one-element key.
+group.broadcastByKey({ key: [{ userId: 42 }] })
 ```
 
 ---
@@ -432,7 +436,11 @@ client.addEventListener('invalidate', (event) => {
 client.addEventListener('statuschange', (event) => {
   const status = event.detail // ConnectionStatus — a discriminated union
   if (status.status === 'closed') {
-    console.log('closed, reason:', status.reason) // 'manual' | 'unmount' | 'revoked'
+    if (status.reason === 'rejected') {
+      console.log('rejected HTTP status:', status.response.status)
+    } else {
+      console.log('closed, reason:', status.reason) // 'manual' | 'unmount' | 'revoked'
+    }
   } else if (status.status === 'error') {
     console.log('error event:', status.error)     // Event
   } else {
@@ -454,22 +462,24 @@ Define custom signal types to enforce type safety at compile time, complemented 
 import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
 type AppSignal =
-  | { key: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
-  | { key: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'remove' }
+  | { target?: 'tanstack-query'; queryKey: ['todos']; exact?: boolean; action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel' }
+  | { target?: 'tanstack-query'; queryKey: ['todos', { userId: string }]; exact?: boolean; action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel' }
 
-const group = new SSEChannelGroup<AppSignal>()
+const group = new SSEChannelGroup<AppSignal>({ target: SIGNAL_TARGETS.TANSTACK_QUERY })
 
 app.get('/sse', (req, res) => {
-  group.attachNodeResponse(req, res, { target: SIGNAL_TARGETS.TANSTACK_QUERY })
+  group.attachNodeResponse(req, res, {})
 })
 
-group.broadcastToAll({ key: ['todos'] })           // ✅ valid
+group.broadcastToAll({ queryKey: ['todos'] })      // ✅ valid
 ```
 
 **Client:**
 ```tsx
-useReStale<AppSignal>('/sse', {
-  onInvalidate: useTanstackQueryAdapter(queryClient),
+const onInvalidate = useTanstackQueryAdapter<AppSignal>(queryClient)
+
+useReStale<'tanstack-query', AppSignal>('/sse', {
+  onInvalidate,
 })
 ```
 
@@ -535,19 +545,23 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `onInvalidate` | `(signal) => void` | — | **Required.** Called on each signal. |
+| `onInvalidate` | `AdaptedInvalidateCallback` | — | **Required.** A branded callback returned by an adapter hook or `makeAdaptedCallback`; called on each signal. |
 | `onRevoke` | `(detail: RevokeEventDetail) => void` | `undefined` | Called when the server sends a terminal revoke frame. The connection will NOT auto-reconnect. Branch on `detail.reason` to handle `'unsupported-target'` vs application-level revocations. |
+| `onRejected` | `(response: RejectedConnectionResponse) => void` | `undefined` | Called when a configured non-retryable HTTP handshake status closes the connection. |
+| `onRetriesExhausted` | `(detail: { attempts, maxRetries }) => void` | `undefined` | Called when automatic reconnection exhausts `maxRetries`. |
 | `autoReconnect` | `boolean \| AutoReconnectOptions` | `true` | Auto-reconnect on disconnect. Pass `boolean` or `{ native?: boolean, jsBackoff?: boolean }` for granular control. |
-| `withCredentials` | `boolean` | `false` | Pass cookies / auth headers to EventSource. |
+| `withCredentials` | `boolean` | `false` | Include cookies in cross-origin EventSource requests. Custom `Authorization` headers are not supported by this API. |
 | `disabled` | `boolean` | `false` | Prevent connection. |
 | `debug` | `boolean` | `false` | Enable verbose console debug logging for connection lifecycle events. |
 | `reconnect.baseDelayMs` | `number` | `1000` | Initial retry delay. |
 | `reconnect.maxDelayMs` | `number` | `30000` | Max retry delay. |
 | `reconnect.jitter` | `boolean` | `true` | Randomise delay. |
 | `reconnect.maxRetries` | `number` | `Infinity` | Give up after N retries. |
-| `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
+| `reconnect.nonRetryableStatuses` | `HttpStatusMatcher \| HttpStatusMatcher[]` | none | HTTP statuses that close the connection as rejected instead of retrying. |
+| `reconnect.retryAfter` | `'ignore' \| 'respect'` | `'ignore'` | Whether retryable HTTP responses may set the next delay using `Retry-After`. |
+| `target` | `SignalTarget` | inferred from adapter | Target discriminator sent as `__restale_target__` to the server. Automatically inferred from the adapter brand (`useSwrAdapter` → `'swr'`, `useTanstackQueryAdapter` → `'tanstack-query'`, `useRtkQueryAdapter` → `'rtk-query'`). Explicit `target` overrides can be passed only when type-compatible with the adapter brand. |
 
-### `group.attachNodeResponse(req, res, options?)` / `group.createFetchResponse(request, options?)`
+### Transport method comparison
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -555,10 +569,10 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 | `retryIntervalMs` | `number` | `undefined` | Retry delay in ms sent as a `retry: <ms>` frame on stream start. |
 | `lastEventId` | `string` | `undefined` | Last event ID received from client header (`Last-Event-ID`). |
 | `eventStore` | `EventStore` | `undefined` | Shared EventStore for history replay upon reconnect. |
-| `eventBufferCapacity` | `number` | `undefined` | Capacity of automatically instantiated EventStore ring buffer. |
-| `idGenerator` | `() => string` | auto-increment | Custom event ID generator for assigned event frames. Caller-supplied or generated IDs can be emitted without an event store, but cannot be replayed without history. |
+| `eventBufferCapacity` | `number` | `undefined` | Capacity of a channel-local EventStore ring buffer. Use a group-level or external shared store for replay after reconnect. |
+| `idGenerator` | `() => string` | `undefined` | Custom event ID generator for assigned event frames. An `EventStore` supplies auto-incrementing IDs when no generator is configured; without either, invalidation frames have no ID (`''`) unless the caller supplies `customId`. |
 | `connectionId` | `string` | `''` | Extracted automatically from `__restale_cid__` by transport methods (`group.attachNodeResponse`, `group.createFetchResponse`). You never need to set or manage this parameter manually. |
-| `target` | `SignalTarget \| SignalTarget[]` | **required** | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`) for signal type safety, HTTP header emission (`X-ReStale-Target`), and automatic multi-target fanout. |
+| `target` | `SignalTarget \| SignalTarget[]` | group default / required | Target discriminator (`'tanstack-query'`, `'swr'`, `'rtk-query'`, `'generic'`). Optional if configured on the group or in `channelDefaults`; required for direct channels if not configured at the group level. |
 
 ### `SSEChannelGroup(options?)`
 
@@ -566,20 +580,20 @@ Also available: `ablyPubSubAdapter` and `pusherPubSubAdapter`.
 |---|---|
 | `metaSchema` | Validates connection metadata on `register()`. |
 | `pubsub` | Pub/sub adapter for multi-instance scaling. |
-| `eventBufferCapacity` | Enables Last-Event-ID event history replay buffer. |
+| `eventBufferCapacity` | Creates a group-owned Last-Event-ID event history buffer shared by channels created through the group. |
 | `eventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | Control topic for cross-cluster revocations (default `'__restale_control__'`). |
 
-### `group.attachNodeResponse(req, res, options?)` / `group.createFetchResponse(request, options?)`
+### `group.attachNodeResponse(req, res, options)` / `group.createFetchResponse(request, options)`
 
 | Method | Returns | Target Frameworks | Description |
 |---|---|---|---|
-| `group.attachNodeResponse(req, res, options?)` | `{ channel: SSEChannel<TSignal> }` | Node.js, Express, Fastify | Attaches SSE stream to Node/Express/Fastify HTTP response and automatically registers the channel in the group in 1 step. For Fastify, pass `request`/`reply` directly (`reply.hijack()` is invoked automatically). |
-| `group.createFetchResponse(request, options?)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Hono, Next.js, Bun, Deno, Edge | Creates Web Standard Fetch API SSE `Response` object and automatically registers the channel in the group in 1 step. |
+| `group.attachNodeResponse(req, res, options)` | `{ channel: SSEChannel<TSignal> }` | Node.js, Express, Fastify | Attaches SSE stream to Node/Express/Fastify HTTP response and automatically registers the channel in the group in 1 step. Pass `{}` when no setup options are needed. For Fastify, pass `request`/`reply` directly (`reply.hijack()` is invoked automatically). |
+| `group.createFetchResponse(request, options)` | `{ response: Response, channel: SSEChannel<TSignal> }` | Hono, Next.js, Bun, Deno, Edge | Creates Web Standard Fetch API SSE `Response` object and automatically registers the channel in the group in 1 step. Pass `{}` when no setup options are needed. |
 
 ### `channel.invalidate(signal, customId?)`
 
-Returns a `string` — the SSE event ID assigned to the invalidation frame. This is only meaningful when `eventBufferCapacity` or a custom `eventStore` is configured: the client echoes the ID back as `Last-Event-ID` on reconnect and `restale-kit` replays any missed events. If neither `eventBufferCapacity` nor `eventStore` is configured, the return value is `''` and can be ignored.
+Returns a `string` — the SSE event ID assigned to the invalidation frame. A group-level `eventBufferCapacity` or shared custom `eventStore` lets a reconnecting client replay missed events after it echoes `Last-Event-ID`. A channel-local buffer does not survive replacement-channel reconnects. Without shared history, the return value is `''` unless you supplied `customId` or configured `idGenerator`; such IDs are emitted but cannot be replayed.
 
 
 ---

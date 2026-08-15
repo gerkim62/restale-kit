@@ -9,6 +9,11 @@ import type {
 } from '@/types/index.js'
 
 describe('SSEChannelGroup generic and metadata enforcement', () => {
+  test('pubsub configuration requires a concrete adapter', () => {
+    // @ts-expect-error Configuration objects are not pub/sub adapters.
+    new SSEChannelGroup({ pubsub: { type: 'redis', encryptionKey: 'secret' } })
+  })
+
   test('register requires metadata when TMeta is defined and non-optional', () => {
     interface UserMeta {
       userId: string
@@ -79,6 +84,20 @@ describe('SSEChannelGroup signal broadcasting type safety', () => {
 
     // @ts-expect-error key-based broadcasts cannot construct a complete multi-target batch
     multiGroup.broadcastByKey({ target: 'swr', key: ['users'] })
+  })
+
+  test('channelDefaults.target infers multi-target broadcast requirements', () => {
+    const multiGroup = new SSEChannelGroup({
+      channelDefaults: { target: ['swr', 'tanstack-query'] as const },
+    })
+
+    // @ts-expect-error channelDefaults target inference requires a complete multi-target batch
+    multiGroup.broadcastToAll({ key: ['users'] })
+
+    multiGroup.broadcastToAll([
+      { target: 'swr', key: ['users'] },
+      { target: 'tanstack-query', queryKey: ['users'] },
+    ])
   })
 
   test('single-target group injects an omitted target', () => {

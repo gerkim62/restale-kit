@@ -1,6 +1,6 @@
 # Audit Test Suite
 
-This directory contains comprehensive tests for 13 critical API contract gaps identified during the audit.
+This directory contains regression coverage for 13 API contract gaps identified during an earlier audit.
 
 ## Test Files Overview
 
@@ -100,22 +100,15 @@ npm run test:types -- src/__tests__/audit
 
 ## Expected Behavior
 
-**These tests are expected to fail** until the corresponding gaps are fixed. They document:
-1. The incorrect current behavior
-2. The expected correct behavior
-3. Type-level and runtime validation requirements
+**These tests are expected to pass.** They document the corrected behavior and guard against regressions in the associated runtime and type-level contracts.
 
 ## Test Organization
 
 - `.test.ts` files: Runtime behavior tests using vitest
 - `.test-d.ts` files: Type-only tests (where applicable) for compile-time validation
 
-## Fixing the Gaps
+## Maintaining the Regression Coverage
 
-Each test file contains detailed comments explaining:
-- What the gap is
-- Why it's problematic
-- What the correct behavior should be
-- Specific edge cases to consider
+Each test file contains detailed comments describing the original gap, the required behavior, and relevant edge cases.
 
 Use these tests as acceptance criteria when implementing fixes.
