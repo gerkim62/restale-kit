@@ -23,7 +23,6 @@ import express from 'express'
 import { z } from 'zod'
 import { isJSONValue, SchemaValidationError } from 'restale-kit'
 import { SSEChannelGroup } from 'restale-kit/server'
-import type { SWRSignal } from 'restale-kit'
 
 type Meta = { userId: string }
 type ClientContext = {
@@ -38,8 +37,7 @@ const clientContextSchema = z.object({
   sortBy: z.enum(['createdAt', 'title']),
 })
 
-const group = new SSEChannelGroup<SWRSignal, Meta, 'swr', 'swr', ClientContext>({
-  target: 'swr',
+const group = new SSEChannelGroup<Meta, ClientContext>({
   clientContextSchema,
   resolveInlineData: async (connections, payload) => {
     const change = payload as { teamId: string }
@@ -60,10 +58,10 @@ const group = new SSEChannelGroup<SWRSignal, Meta, 'swr', 'swr', ClientContext>(
 
       return [connection.connectionId, {
         signal: {
-          target: 'swr',
           key: ['todos', { page, pageSize, userId: connection.meta?.userId }],
         },
         inlineData: userTodos.slice(page * pageSize, (page + 1) * pageSize),
+        markStale: false,
       }]
     }))
   },
@@ -145,19 +143,21 @@ type InlineDataConnection<TMeta, TClientContext> = {
   readonly clientContext: TClientContext | undefined
 }
 
-type InlineDataResult<TSignal> = {
-  signal: TSignal
+type InlineDataResult = {
+  signal: RevalidateSignal
   inlineData?: JSONValue
+  markStale?: boolean
 }
 
-type ResolveInlineData<TMeta, TClientContext, TSignal> = (
+type ResolveInlineData<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
-) => Map<string, InlineDataResult<TSignal>> | Promise<Map<string, InlineDataResult<TSignal>>>
+) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
 ```
 
 - Return an entry for every supplied connection. `clientContext` may be `undefined`; handle that case deliberately.
 - Include `inlineData` to write data into that connection's cache. Omit it to send a normal invalidation for that connection.
+- Set `markStale: true` on the result if you want the client to mark the entry stale after writing inline data.
 - A missing map entry does not prevent delivery to valid entries. ReStale calls `onInlineDataResolverError` with the omitted connection IDs.
 - If the resolver throws, no local connection receives data for that invocation and `pushInlineData` rejects.
 - `pushInlineData(topic, payload)` validates both arguments, requires a configured resolver, delivers locally first, then publishes to other instances when a pub/sub adapter is configured.
@@ -171,7 +171,7 @@ type ResolveInlineData<TMeta, TClientContext, TSignal> = (
 With React, pass `clientContext` to `useReStale`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
 
 ```tsx
-const onInvalidate = useSwrAdapter(mutate, { markInlineDataStale: false })
+const onInvalidate = useSwrAdapter(mutate)
 
 useReStale('/sse', {
   onInvalidate,
@@ -246,16 +246,14 @@ This ensures zero cache corruption and seamless self-healing even over high-late
 
 ## Cache adapter behavior
 
-`inlineData` is supported by `SWRSignal`, `TanStackQuerySignal`, and `GenericInvalidateSignal`. Generic listeners receive it as raw signal data; RTK Query has no generic exact cache-write API, so `RTKQuerySignal` does not carry it.
+`inlineData` is carried by `InlineDataSignal`. SWR and TanStack Query write to the resolver-provided key exactly:
 
-SWR and TanStack Query always write to the resolver-provided key exactly. They do not apply normal prefix, hierarchical, or object-subset matching to an inline-data write. This prevents one connection's paginated or filtered slice from overwriting a sibling cache entry.
+| Adapter | Write | Stale marking when `markStale: true` |
+|---|---|---|
+| SWR | `mutate(key, inlineData, { revalidate: false })` | Bare `mutate(key)` marks the same exact key stale |
+| TanStack Query | `setQueryData(queryKey, inlineData)` | `invalidateQueries({ queryKey, exact: true })` |
 
-| Adapter | Write | Default follow-up | Ignored actions |
-|---|---|---|---|
-| SWR | `mutate(key, inlineData, { revalidate: false })` | Bare `mutate(key)` marks the same exact key stale | `remove`, `purge` |
-| TanStack Query | `setQueryData(queryKey, inlineData)` | `invalidateQueries({ queryKey, exact: true })` | `remove`, `reset`, `cancel` |
-
-Set `markInlineDataStale: false` on `swrAdapter`, `useSwrAdapter`, `tanstackQueryAdapter`, or `useTanstackQueryAdapter` to trust the pushed value and skip the follow-up stale marking. Signals without `inlineData` keep their existing invalidation and broad-match behavior.
+Inline-data writes never use prefix or hierarchical matching, so a connection-specific page cannot overwrite sibling cache entries.
 
 ---
 

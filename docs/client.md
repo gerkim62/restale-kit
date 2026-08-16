@@ -5,7 +5,7 @@ The client side connects to your SSE endpoint and translates incoming invalidati
 1. **`SSEInvalidatorClient`** — framework-agnostic core client (vanilla JS, EventTarget).
 2. **`useReStale`** — React hook wrapping the client in `useSyncExternalStore`.
 
-Plus three ready-made cache adapters: **TanStack Query**, **SWR**, and **RTK Query**.
+Plus two ready-made cache adapters: **TanStack Query** and **SWR**.
 
 ---
 
@@ -40,8 +40,8 @@ The hook opens the connection on mount and closes it on unmount. Reconnection wi
 useReStale(url: string, options: {
   // Required
   // An AdaptedCallback returned by useTanstackQueryAdapter,
-  // useSwrAdapter, useRtkQueryAdapter, or makeAdaptedCallback.
-  onInvalidate: AdaptedCallback<TTarget, TSignal>
+  // useSwrAdapter, or makeAdaptedCallback.
+  onInvalidate: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
 
   // Revocation (optional)
   onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
@@ -70,9 +70,6 @@ useReStale(url: string, options: {
     nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
     retryAfter?: 'respect' | 'ignore' // default 'ignore'
   }
-
-  // Target (optional)
-  target?: SignalTarget         // optional — overrides the target inferred from the adapter brand (must be type-compatible)
 })
 
 type HttpStatusMatcher =
@@ -82,10 +79,8 @@ type HttpStatusMatcher =
 ```
 
 > **Option reactivity note:** Options split into two categories when changed on re-render:
-> - **Connection identity options (`url`, `target`, `withCredentials`, `clientContextUrl`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
+> - **Connection identity options (`url`, `withCredentials`, `clientContextUrl`):** Changing any of these options recreates the underlying `SSEInvalidatorClient` and establishes a new SSE connection with the updated parameters.
 > - **Live runtime options (`autoReconnect`, `reconnect`, `debug`):** Updating these options applies immediately to the active connection without tearing down or reconnecting the stream.
->
-> **Target auto-inference:** When you pass `onInvalidate` from `useTanstackQueryAdapter` or `useSwrAdapter`, the `target` is inferred automatically — you do not need to set it explicitly. The adapter's brand (e.g. `'swr'`) is read at runtime and used to append `__restale_target__` to the SSE URL, enabling server-side signal filtering. You can still pass an explicit `target` to override it, provided it is type-compatible with the adapter's branded target.
 
 ### Client context
 
@@ -168,13 +163,8 @@ When the server calls `channel.revoke()` (e.g. on logout or session expiry), it 
 useReStale('/api/sse', {
   onInvalidate,
   onRevoke: (detail) => {
-    if (detail.reason === 'unsupported-target') {
-      // Server doesn't support the requested target
-      console.warn('Unsupported target. Server supports:', detail.supported)
-    } else {
-      // e.g. 'logout', 'banned', 'session-expired'
-      auth.logout()
-    }
+    // e.g. 'logout', 'banned', 'session-expired'
+    auth.logout()
   },
 })
 ```
@@ -370,21 +360,6 @@ client.close()
 
 ---
 
-## RTK Query adapter
-
-```tsx
-import { useReStale } from 'restale-kit/react'
-import { useRtkQueryAdapter } from 'restale-kit/rtk-query'
-
-function App({ api }: { api: { util: { invalidateTags(tags: unknown[]): void } } }) {
-  const onInvalidate = useRtkQueryAdapter(api)
-  useReStale('/sse', { onInvalidate })
-  return null
-}
-```
-
-`rtkQueryAdapter` delegates each matching signal to `api.util.invalidateTags(signal.tags)`.
-
 ## TanStack Query adapter
 
 ```ts
@@ -392,7 +367,7 @@ import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanst
 import { useQueryClient } from '@tanstack/react-query'
 ```
 
-`tanstackQueryAdapter(queryClient)` returns an `onInvalidate` callback that maps signals to `queryClient` operations:
+`tanstackQueryAdapter(queryClient, options?)` returns an `onInvalidate` callback (`AdaptedCallback`) that maps universal signals to `queryClient` operations:
 
 ```ts
 const queryClient = useQueryClient()
@@ -401,23 +376,23 @@ const onInvalidate = useTanstackQueryAdapter(queryClient)
 useReStale('/sse', { onInvalidate })
 ```
 
-**Action and filter mapping:**
+**Signal handling:**
 
-| Signal field | Type / Values | `queryClient` operation |
-|---|---|---|
-| `action: 'invalidate'` (default) | `'invalidate'` | `queryClient.invalidateQueries(filters)` (uses `stale` filter if provided) |
-| `action: 'refetch'` | `'refetch'` | `queryClient.refetchQueries(filters)` |
-| `action: 'reset'` | `'reset'` | `queryClient.resetQueries(filters)` |
-| `action: 'remove'` | `'remove'` | `queryClient.removeQueries(filters)` |
-| `action: 'cancel'` | `'cancel'` | `queryClient.cancelQueries(filters)` |
-| `type` | `'active' \| 'inactive' \| 'all'` | Passed as `filters.type` |
-| `stale` | `boolean` | Maps `refetchType` to `'none'` (when `stale: true`) or `'active'` |
+- **`RevalidateSignal` (`{ key, exact? }`):**
+  - Calls `queryClient.invalidateQueries({ queryKey, exact })`.
+  - When `exact` is omitted (`undefined`), TanStack Query defaults to prefix matching.
+  - When `exact: true`, only queries matching the exact key are invalidated.
+- **`InlineDataSignal` (`{ key, inlineData, markStale? }`):**
+  - Calls `queryClient.setQueryData(queryKey, inlineData)` for that exact key.
+  - If `markStale: true` is set on the signal, it also follows up with `queryClient.invalidateQueries({ queryKey, exact: true })`.
+- **Key transformation:**
+  - Pass `toQueryKey: (key: CacheKey) => QueryKey` in options if you need to prepend a namespace or transform the universal key array to TanStack Query's format.
 
-Batch signals (arrays) are processed one-by-one in order.
-
-### Inline data
-
-When a `TanStackQuerySignal` contains `inlineData`, the adapter calls `setQueryData(queryKey, inlineData)` for that exact key. It then calls `invalidateQueries({ queryKey, exact: true })` by default so TanStack Query can revalidate. Pass `{ markInlineDataStale: false }` to `tanstackQueryAdapter` or `useTanstackQueryAdapter` to trust the pushed value and skip revalidation. `remove`, `reset`, and `cancel` keep their existing action behavior and ignore `inlineData`.
+```ts
+const onInvalidate = useTanstackQueryAdapter(queryClient, {
+  toQueryKey: (key) => ['api', ...key],
+})
+```
 
 ### `useTanstackQueryAdapter` — memoized hook variant
 
@@ -425,7 +400,7 @@ When a `TanStackQuerySignal` contains `inlineData`, the adapter calls `setQueryD
 import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
 ```
 
-Equivalent to `tanstackQueryAdapter(queryClient)` but wrapped in `useCallback` for referential stability across renders. Call it at the top level of your component and pass the result to `useReStale`:
+Equivalent to `tanstackQueryAdapter(queryClient, options)` but wrapped in `useMemo` / `useCallback` for referential stability across renders. Call it at the top level of your component:
 
 ```tsx
 function App() {
@@ -435,67 +410,44 @@ function App() {
 }
 ```
 
-Note: `useTanstackQueryAdapter` is a React hook — call it unconditionally at the component's top level, not inside a conditional or nested function. If you do not need React hook memoization (e.g. outside React), use `tanstackQueryAdapter` directly instead.
-
 ---
 
 ## SWR adapter
 
 ```ts
-import { swrAdapter, type SWRAdapterOptions } from 'restale-kit/swr'
+import { swrAdapter, useSwrAdapter } from 'restale-kit/swr'
 import { useSWRConfig } from 'swr'
 ```
 
-`swrAdapter` takes SWR's global `mutate` function (from `useSWRConfig()`) and returns an `onInvalidate` callback:
+`swrAdapter(mutate, options?)` takes SWR's global `mutate` function (from `useSWRConfig()`) and returns an `onInvalidate` callback:
 
 ```tsx
 import { useSWRConfig } from 'swr'
 import { useReStale } from 'restale-kit/react'
-import { swrAdapter } from 'restale-kit/swr'
+import { useSwrAdapter } from 'restale-kit/swr'
 
 function App() {
   const { mutate } = useSWRConfig()
+  const onInvalidate = useSwrAdapter(mutate)
 
-  useReStale('/sse', {
-    onInvalidate: swrAdapter(mutate),
-  })
+  useReStale('/sse', { onInvalidate })
 }
 ```
 
-**Action and option mapping:**
+**Signal handling:**
 
-| Signal field | Values | SWR `mutate` operation |
-|---|---|---|
-| `action: 'revalidate'` / `'mutate'` | Default | `mutate(filter)` — revalidates matching keys |
-| `action: 'purge'` / `'remove'` | Purge / Remove | `mutate(filter, undefined, { revalidate: false })` — clears cache without revalidating |
-| `revalidate: false` | `boolean` | `mutate(filter, undefined, { revalidate: false })` — forces clear without revalidating |
-| `match` | `'exact' \| 'prefix'` | For string keys, controls exact vs prefix matching (`key.startsWith(...)`) |
-
-
-> **Note:** SWR has no separate "mark stale" operation. `'revalidate'` (the default) and `'mutate'` both trigger immediate revalidation; `'invalidate'` and `'refetch'` are not valid SWR signal actions.
-
-### Inline data
-
-When an `SWRSignal` contains `inlineData`, the adapter calls `mutate(key, inlineData, { revalidate: false })` for the exact key, then calls bare `mutate(key)` by default to mark that same key stale. Pass `{ markInlineDataStale: false }` to `swrAdapter` or `useSwrAdapter` to trust the pushed value. `purge` and `remove` keep their existing behavior and ignore `inlineData`.
-
-Inline-data writes never use the normal prefix or hierarchical matching path, so a connection-specific page cannot overwrite sibling cache entries.
-
-### SWR key format
-
-The adapter supports two key formats natively:
-
-- **Array keys** — JSON-safe arrays matching the signal's key format, e.g. `['todos', { userId: '42' }]`. This is the default for most setups.
-- **Scalar string keys** — plain strings like `'/api/user'`. When the signal's `key` is a string, the adapter matches against string cache keys using exact or prefix comparison (controlled by `match`), and also matches single-element array keys like `['/api/user']`.
-
-If your SWR keys use a different format, provide a `toInvalidateKey` mapping function:
+- **`RevalidateSignal` (`{ key, exact? }`):**
+  - When `exact: true`, matches exact SWR keys only.
+  - When `exact` is omitted or `false`, matches matching prefix keys.
+- **`InlineDataSignal` (`{ key, inlineData, markStale? }`):**
+  - Calls `mutate(swrKey, inlineData, { revalidate: false })` for the exact key.
+  - If `markStale: true` is set on the signal, it follows up with a bare `mutate(swrKey)` to mark that entry stale and revalidate.
+- **Key transformation:**
+  - Pass `toKey: (key: CacheKey) => SWRKey` to convert the universal array key to a native SWR key format (such as a URL string or formatted array).
 
 ```ts
-swrAdapter(mutate, {
-  toInvalidateKey: (swrKey, signal) => {
-    // Convert your SWR key format to a JSONValue[] for matching
-    if (typeof swrKey === 'string') return [swrKey]
-    return undefined // skip unrecognized keys
-  },
+const onInvalidate = useSwrAdapter(mutate, {
+  toKey: (key) => `/api/${key.join('/')}`,
 })
 ```
 
@@ -513,6 +465,29 @@ function App() {
   const onInvalidate = useSwrAdapter(mutate) // called as a hook, at top level
   useReStale('/sse', { onInvalidate })
 }
+```
+
+---
+
+## Custom Cache Adapters (`makeAdaptedCallback`)
+
+If you are using a custom cache or state management library, create an `AdaptedCallback` using `makeAdaptedCallback`:
+
+```ts
+import { makeAdaptedCallback, isInlineDataSignal, type UniversalSignal } from 'restale-kit/client'
+
+const onInvalidate = makeAdaptedCallback((signal: UniversalSignal | UniversalSignal[]) => {
+  for (const s of Array.isArray(signal) ? signal : [signal]) {
+    if (isInlineDataSignal(s)) {
+      myCustomCache.set(s.key, s.inlineData)
+      if (s.markStale) myCustomCache.invalidate(s.key)
+    } else {
+      myCustomCache.invalidate(s.key, { exact: s.exact })
+    }
+  }
+})
+
+useReStale('/sse', { onInvalidate })
 ```
 
 ---

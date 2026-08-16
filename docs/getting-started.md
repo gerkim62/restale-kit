@@ -48,14 +48,12 @@ All peers are optional — only install what you use.
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = express()
 app.use(express.json())
 
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
-})
+const group = new SSEChannelGroup()
 
 // SSE endpoint — clients connect here
 app.get('/sse', (req, res) => {
@@ -65,7 +63,7 @@ app.get('/sse', (req, res) => {
 // After any mutation, broadcast the invalidation
 app.post('/api/todos', async (req, res) => {
   // ... write to DB ...
-  group.broadcastToAll({ queryKey: ['todos'] })
+  group.broadcastToAll({ key: ['todos'] })
   res.status(201).json({ success: true })
 })
 
@@ -75,10 +73,8 @@ app.listen(3000)
 > **Note:** `group.attachNodeResponse` / `group.createFetchResponse` requires a non-empty `__restale_cid__` query parameter. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends it automatically. For manual debugging, supply one yourself:
 >
 > ```sh
-> curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1&__restale_target__=tanstack-query"
+> curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
 > ```
->
-> `__restale_target__` is optional. Include it when the group supports multiple targets or you want to test target selection explicitly.
 
 ### 2. Client (React + TanStack Query)
 
@@ -103,7 +99,7 @@ function App() {
 }
 ```
 
-That's it. When the server calls `group.broadcastToAll({ queryKey: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
+That's it. When the server calls `group.broadcastToAll({ key: ['todos'] })`, every connected client's active `['todos']` queries are marked stale and immediately refetched. Inactive queries (no active observers) are marked stale and will refetch the next time they are observed.
 
 > **Heads up — per-user invalidation and revocation:** The example above registers channels without metadata (`group.attachNodeResponse(req, res, {})`). This works for `broadcastToAll`, but it means you can't use `broadcast((meta) => ...)` to target specific users, and `revokeWhere({ userId })` won't match these channels. If you plan to send per-user signals or revoke connections on logout, register each channel with metadata up front:
 >

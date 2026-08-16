@@ -12,28 +12,15 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
 
 1. `JSON.parse` must succeed.
 2. Result must be a plain object or array of plain objects.
-3. Each object must be a valid `InvalidateSignal` shape for its detected target:
-
-   **`TanStackQuerySignal`** (`target: 'tanstack-query'`):
-   - `queryKey` must be present and be an `Array`.
-   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'`.
-   - `exact` (if present) must be `boolean`.
-   - `type` (if present) must be `'all' | 'active' | 'inactive'`.
-
-   **`SWRSignal`** (`target: 'swr'`):
-   - `key` must be present and be a `string` or `Array`.
-   - `action` (if present) must be one of `'revalidate' | 'purge' | 'remove' | 'mutate'`.
-   - `match` (if present) must be `'exact' | 'prefix'`.
-   - `revalidate` (if present) must be `boolean`.
-
-   **`RTKQuerySignal`** (`target: 'rtk-query'`):
-   - `tags` must be present and be an `Array`.
-
-   **`GenericInvalidateSignal`** (`target: 'generic'` or `target` absent):
-   - `key` must be present and be an `Array`.
-   - `exact` (if present) must be `boolean`.
-   - `action` (if present) must be one of `'invalidate' | 'refetch' | 'remove'`.
-
+3. Each object must be a valid `UniversalSignal` shape:
+   - `key` must be present and be a JSON-safe `Array` of JSON values.
+   - **`RevalidateSignal`**:
+     - `exact` (if present) must be a `boolean`.
+     - Cannot carry `inlineData` or `markStale`.
+   - **`InlineDataSignal`**:
+     - `inlineData` must be present and be a valid JSON value.
+     - `markStale` (if present) must be a `boolean`.
+     - Cannot specify `exact` (inline data writes are strictly exact).
 4. Unknown fields are ignored (forward-compatible).
 
 If any of these structural checks fail, the client emits an `error` event instead of `invalidate`.
@@ -46,7 +33,6 @@ When attaching channels to an `SSEChannelGroup`, you can pass a Standard Schema 
 
 ```ts
 import { z } from 'zod'
-import type { InvalidateSignal } from 'restale-kit'
 import { SSEChannelGroup } from 'restale-kit/server'
 
 const ClientMetaSchema = z.object({
@@ -55,8 +41,7 @@ const ClientMetaSchema = z.object({
 })
 type ClientMeta = z.infer<typeof ClientMetaSchema>
 
-const group = new SSEChannelGroup<InvalidateSignal, ClientMeta>({
-  target: 'tanstack-query',
+const group = new SSEChannelGroup<ClientMeta>({
   metaSchema: ClientMetaSchema,
 })
 
@@ -72,8 +57,8 @@ app.get('/sse', (req, res) => {
 
 // Predicate in broadcast is fully typed against ClientMeta:
 group.broadcast(
-  { queryKey: ['admin-data'] },
-  (meta) => meta.role === 'admin' // ✅ fully typed
+  { key: ['admin-data'] },
+  (meta) => meta?.role === 'admin' // ✅ fully typed
 )
 ```
 
@@ -107,7 +92,6 @@ const clientContextSchema = z.object({
 })
 
 const group = new SSEChannelGroup({
-  target: 'swr',
   clientContextSchema,
   resolveInlineData: async (connections, payload) => {
     // connections[i].meta decides authorization.

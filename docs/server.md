@@ -12,7 +12,7 @@ The server side has two concerns:
 - `group.createFetchResponse(request, options)` for **Fetch API runtimes** (Hono, Bun, Deno, Edge, Next.js).
 - `group.attachNodeResponse(req, res, options)` for **Node.js HTTP runtimes** (Express, Fastify, Node `http`).
 
-All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
+All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). Disconnect detection and auto-deregistration on stream close are wired automatically.
 
 ### Manual SSE debugging
 
@@ -22,24 +22,16 @@ The browser clients add a unique `__restale_cid__` connection ID automatically. 
 curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
 ```
 
-`__restale_target__` is optional. Add it to request a specific target from a multi-target group:
-
-```sh
-curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1&__restale_target__=tanstack-query"
-```
-
 The connection ID identifies an SSE connection; it is not authentication or authorization.
 
 ### Express
 
 ```ts
 import express from 'express'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = express()
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-})
+const group = new SSEChannelGroup()
 
 app.get('/sse', (req, res) => {
   group.attachNodeResponse(req, res, {
@@ -52,11 +44,9 @@ app.get('/sse', (req, res) => {
 
 ```ts
 import http from 'node:http'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-})
+const group = new SSEChannelGroup()
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
@@ -74,11 +64,9 @@ const server = http.createServer((req, res) => {
 
 ```ts
 import Fastify from 'fastify'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-})
+const group = new SSEChannelGroup()
 const app = Fastify()
 
 app.get('/sse', (request, reply) => {
@@ -94,12 +82,10 @@ Fetch-API runtimes return both the `Response` object and the `SSEChannel` refere
 
 ```ts
 import { Hono } from 'hono'
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
 const app = new Hono()
-const group = new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.SWR },
-})
+const group = new SSEChannelGroup()
 
 app.use('*', authMiddleware) // Auth middleware sets userId on context
 
@@ -117,7 +103,7 @@ In development, Next.js re-evaluates modules during hot reload (HMR). Cache the 
 
 ```ts
 // lib/restale.ts
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+import { SSEChannelGroup } from 'restale-kit/server'
 
 const globalForRestale = globalThis as unknown as {
   channelGroup?: SSEChannelGroup
@@ -125,9 +111,7 @@ const globalForRestale = globalThis as unknown as {
 
 export const channelGroup =
   globalForRestale.channelGroup ??
-  new SSEChannelGroup({
-    channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
-  })
+  new SSEChannelGroup()
 
 if (process.env.NODE_ENV !== 'production') {
   globalForRestale.channelGroup = channelGroup
@@ -154,14 +138,13 @@ interface ClientMeta {
   userId: string
   roles: string[]
 }
-const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
+const typedGroup = new SSEChannelGroup<ClientMeta>()
 ```
 
 **Constructor options:**
 
 | Option | Type | Description |
 |---|---|---|
-| `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `clientContextSchema` | `StandardSchemaV1` | Validates untrusted client query context submitted after the stream opens. Throws `SchemaValidationError` on failure. |
 | `resolveInlineData` | `ResolveInlineData` | Resolves one exact signal and optional cache payload per local connection for `pushInlineData()`. |
@@ -170,7 +153,7 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 | `eventBufferCapacity` | `number` | Creates a group-owned Last-Event-ID history buffer of up to `N` events. This is shared by channels created through the group and can replay on reconnect. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
-| `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`, `eventBufferCapacity`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
+| `channelDefaults` | `ChannelDefaults` | Default channel options (`lifetime`, `guardKeepalive`, `eventBufferCapacity`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
 
 > **Client context and pushed data:** For connection-specific cache values such as pages, filters, or sorts, use `updateClientContext()` and `pushInlineData()`. The complete HTTP route, resolver contract, authorization rules, and client setup are in [Client Context & Inline Data](./inline-data.md).
 
@@ -232,12 +215,6 @@ group.broadcastToAll([
 ])
 ```
 
-### Target Signal Requirements & Wire Framing
-
-- **Single-Target Channels (`target: 'swr'`)**: Callers can omit `target` on signal objects (e.g. `{ key: ['todos'] }`). The channel automatically attaches `target: 'swr'` before recording to `EventStore` or passing to `pubsub`.
-- **Multi-Target Channels (`target: ['swr', 'tanstack-query']`)**: Every signal object MUST explicitly specify `target`, and invalidation batches must supply signals for all declared targets.
-- **Wire framing**: The outgoing SSE frame retains `target` (`data: {"target":"swr","key":["todos"]}`). `X-ReStale-Target` communicates the negotiated connection target; it does not replace the signal discriminator.
-
 `broadcastToAll` reaches **all** registered channels, including those registered without metadata.
 
 ### `broadcast(signal, predicate)` — filtered broadcast (preferred)
@@ -277,23 +254,6 @@ group.broadcastByKey({ key: ['todos', { userId: '42' }] })
 #### How Key Matching Works
 The signal's `key` is compared position-by-position with each channel's registered metadata. Plain-object metadata is treated as a one-element key (`[{ userId: '42' }]`); array metadata is used as-is. For example, metadata `['todos', { userId: '42' }]` receives a signal with `key: ['todos', { userId: '42' }]`. If your metadata is only `{ userId: '42' }`, use the matching signal key `[{ userId: '42' }]`, or use `broadcast(signal, predicate)` when cache-key and routing-key shapes differ.
 
-#### Target Restrictions: Single-Target Groups Only
-> [!NOTE]
-> `broadcastByKey` is available on **single-target channel groups** (e.g. `new SSEChannelGroup({ channelDefaults: { target: 'swr' } })`).
-> 
-> On **multi-target channel groups** (e.g. `target: ['swr', 'tanstack-query']`), `broadcastByKey` is restricted at the type level (`never`). This is because multi-target broadcasts require passing a batch array containing distinct signals for each target framework (`[SWRSignal, TanStackQuerySignal]`), which cannot be unambiguously matched with a single key. On multi-target groups, use `group.broadcast(batch, predicate)` instead:
-> 
-> ```ts
-> // Multi-target group broadcast:
-> group.broadcast(
->   [
->     { target: 'swr', key: ['todos', { userId: '42' }] },
->     { target: 'tanstack-query', queryKey: ['todos', { userId: '42' }] },
->   ],
->   (meta) => meta.userId === '42'
-> )
-> ```
-
 ### Broadcasting without metadata
 
 Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
@@ -311,13 +271,11 @@ A channel can have an absolute or relative deadline after which it must be renew
 ```ts
 // Relative: expire after 5 minutes
 const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
   lifetime: { ttlMs: 5 * 60 * 1000 }
 })
 
 // Absolute: expire at the token's exp claim (epoch ms)
 const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
   lifetime: { deadline: tokenPayload.exp * 1000 }
 })
 ```
@@ -351,12 +309,10 @@ Before each outgoing signal frame (and optionally keepalive frames), you can run
 
 ```ts
 const { channel } = group.attachNodeResponse(req, res, {
-  target: 'swr',
   beforeFrame: (ctx) => {
     // ctx.signal: the signal about to be sent (undefined for keepalive)
     // ctx.frameType: 'signal' or 'keepalive'
     // ctx.connectionId: the connection ID
-    // ctx.requestedTarget: the client's requested target (if any)
     // ctx.isResume: true if this connection started from Last-Event-ID
 
     if (/* client no longer has permission */) {
@@ -388,7 +344,6 @@ In a multi-channel group, you can distribute Frame Guard settings to all channel
 ```ts
 const group = new SSEChannelGroup({
   channelDefaults: {
-    target: 'swr',
     lifetime: { ttlMs: 5 * 60 * 1000 },
     guardKeepalive: true,
   }
@@ -481,7 +436,6 @@ import { createEventStore, SSEChannelGroup } from 'restale-kit/server'
 // Shared event store (retains history for Last-Event-ID replay)
 const eventStore = createEventStore({ capacity: 100 })
 const group = new SSEChannelGroup({
-  channelDefaults: { target: 'swr' },
   eventStore,
 })
 
