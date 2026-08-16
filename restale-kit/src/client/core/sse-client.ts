@@ -844,7 +844,7 @@ export class SSEInvalidatorClient extends EventTarget {
   }
 
   private getRetryAfterDelay(es: SSE, event: SSEvent): number | undefined {
-    const headers = (event.headers ?? this.readResponseHeaders(es)) as Record<string, string | string[] | undefined>
+    const headers = (event.headers ?? this.readResponseHeaders(es))
     const retryAfter = this.getHeaderValue(headers, 'retry-after')
     if (retryAfter === undefined) return undefined
 
