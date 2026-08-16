@@ -17,7 +17,6 @@ import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyReplyLike, type FastifyRequestLike } from '@/server/node/attach.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
-import { computeSenderHash } from '@/utils/canonical-hash.js'
 
 export type ChannelSetupOptions<TMeta = unknown> = SSEChannelOptions & {
   topics?: string[]
@@ -162,16 +161,10 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     }
   }
 
-  async broadcast(
+  broadcast(
     signal: UniversalSignal | UniversalSignal[],
     predicate: (meta: TMeta | undefined) => boolean = () => true,
-    options?: { senderConnectionId?: string },
-  ): Promise<void> {
-    if (options?.senderConnectionId) {
-      const enriched = await this.attachSenderHash(signal, options.senderConnectionId)
-      this.broadcastRaw(enriched, predicate)
-      return
-    }
+  ): void {
     this.broadcastRaw(signal, predicate)
   }
 
@@ -186,24 +179,21 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   async publish(
     topic: string,
     signal: UniversalSignal | UniversalSignal[],
-    options?: { senderConnectionId?: string },
   ): Promise<void> {
     validateTopic(topic, 'topic')
-    const enrichedSignal = await this.attachSenderHash(signal, options?.senderConnectionId)
-    validateSignalPayload(enrichedSignal)
-    const eventId = this.eventStore?.add(enrichedSignal).id
+    validateSignalPayload(signal)
+    const eventId = this.eventStore?.add(signal).id
     for (const channel of this.topicChannels.get(topic) ?? []) {
       try {
-        this.deliver(channel, enrichedSignal, eventId)
+        this.deliver(channel, signal, eventId)
       } catch (error) {
         console.error('[SSEChannelGroup] Failed to deliver signal to local channel during publish:', error)
       }
     }
     await this.options.pubsub?.publish(topic, {
       kind: 'signal',
-      data: enrichedSignal,
+      data: signal,
       ...(eventId ? { id: eventId } : {}),
-      ...(options?.senderConnectionId ? { senderConnectionId: options.senderConnectionId } : {}),
     })
   }
 
@@ -531,18 +521,6 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       return !(result instanceof Promise) && !result.issues
     }
     return true
-  }
-
-  private async attachSenderHash(
-    signal: UniversalSignal | UniversalSignal[],
-    senderConnectionId?: string,
-  ): Promise<UniversalSignal | UniversalSignal[]> {
-    if (!senderConnectionId) return signal
-    const _sh = await computeSenderHash(senderConnectionId)
-    if (Array.isArray(signal)) {
-      return signal.map((s) => ({ ...s, _sh }))
-    }
-    return { ...signal, _sh }
   }
 }
 

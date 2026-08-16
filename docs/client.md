@@ -94,14 +94,14 @@ useReStale('/sse', {
 })
 ```
 
-Context registration retries on transient errors or stream opens (by default making up to 2 attempts). If context synchronization fails after all retry attempts are exhausted, `useReStale` logs `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')` and immediately invokes `onInvalidate` to trigger a background query refetch, ensuring the UI does not show stale or out-of-sync state. If an incoming inline data push was computed against an outdated context (detected via deterministic `contextHash`), the stale `inlineData` is stripped and converted to a fresh refetch while resynchronizing context. See [Client Context & Inline Data](./inline-data.md) for full race condition details and server setup.
+Context registration retries on transient errors or stream opens (by default making up to 2 attempts). If context synchronization fails after all retry attempts are exhausted, `useReStale` logs `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')` and immediately invokes `onInvalidate` to trigger a background query refetch, ensuring the UI does not remain stuck on stale data. Context updates carry monotonic revisions to prevent out-of-order application on the server. See [Client Context & Inline Data](./inline-data.md) for full details and server setup.
 
 ### Return value
 
 ```ts
 {
-  connectionId: string          // unique ID generated for this SSE connection instance
-  connection: ConnectionStatus  // current state
+  connectionId: string | undefined // unique ID assigned by server for this SSE connection (undefined until connected; undefined after close())
+  connection: ConnectionStatus    // current state
   attempt: number               // current reconnect attempt
   isConnecting: boolean         // connecting before a retry
   isConnected: boolean          // stream is open
@@ -310,12 +310,6 @@ client.addEventListener('retriesexhausted', (event) => {
   console.warn(`Reconnection exhausted after ${attempts}/${maxRetries} attempts`)
 })
 
-// Access client properties
-console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
-console.log('Reconnect attempt count:', client.attempt)     // 0 initially and after success
-console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
-console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
-
 // Track connection state changes
 client.addEventListener('statuschange', (event) => {
   const s = event.detail
@@ -331,7 +325,14 @@ client.addEventListener('error', (event) => {
   console.error('SSE error:', event.detail)
 })
 
+// Connect to the SSE endpoint
 await client.connect()
+
+// Access client properties (connectionId is available once connected)
+console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
+console.log('Reconnect attempt count:', client.attempt)     // 0 initially and after success
+console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
+console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 
 // Caller-controlled context synchronization in non-React environments.
 const context = await client.updateClientContext({ page: 2, pageSize: 20 })
@@ -491,6 +492,8 @@ useReStale('/sse', { onInvalidate })
 ```
 
 ---
+
+## Reconnection & Error Handling
 
 When the SSE connection drops, the `sse.js` transport emits an error internally. The client owns the retry schedule so it can inspect each HTTP handshake before deciding whether to retry.
 

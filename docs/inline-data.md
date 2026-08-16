@@ -205,42 +205,23 @@ if (!updated) {
 
 The method returns `{ updated: true }` for `204`, `{ updated: false }` for `404`, and throws for network failures and other response statuses.
 
----
+## Concurrency, revisions, and resilience
 
-## Slow clients, race conditions, and stale client context
+In real-world web applications, network latency and concurrency can create race conditions between client context updates and server mutations.
 
-In real-world web applications, network latency and concurrency can create race conditions between client context updates and server mutations:
+### How ReStale manages concurrent context updates
 
-```text
-Client (User changes page 1 -> 2)            Server (Mutation occurs)
-─────────────────────────────────            ────────────────────────
-1. Client updates local state to page 2.
-2. Client sends POST /sse (page 2 context).
-                                             3. Server receives a mutation and calls pushInlineData().
-                                             4. Server resolves data using OLD context (page 1) because
-                                                POST (step 2) is still in transit across the network.
-5. Client receives SSE signal for page 1.    5. Server transmits SSE signal with page 1 inlineData.
-6. Client discards page 1 inlineData,
-   refetches page 2, and resyncs context!
-7. POST /sse arrives at server; server updates connection context to page 2.
-```
+1. **Monotonic Revisions**:
+   - Each context update sent by `useReStale` increments an internal `revision` counter (`revision: 1`, `revision: 2`, ...).
+   - The server tracks the latest applied revision for each connection. If an older request arrives out of order after a newer one has already been applied, the server discards the stale update (`revision <= latest`).
 
-### How ReStale prevents cache corruption
+2. **Deterministic Canonical Serialization**:
+   - `useReStale` serializes context objects using canonical JSON with sorted keys.
+   - Object key ordering differences (e.g. `{ page: 1, sort: 'asc' }` vs `{ sort: 'asc', page: 1 }`) produce identical strings, preventing redundant network requests when context values haven't meaningfully changed.
 
-1. **Deterministic Canonical Hashing**:
-   - Whenever `pushInlineData` resolves data on the server, ReStale computes a whitespace-independent, key-sorted hash (`contextHash`) of the connection's `clientContext` (using `canonicalJsonSerialize` and `computeContextHash`).
-   - Object key ordering differences (e.g. `{ page: 1, sort: 'asc' }` vs `{ sort: 'asc', page: 1 }`) produce identical hashes.
-   - The computed `contextHash` is attached to the outgoing SSE signal.
-
-2. **Client-Side Verification**:
-   - When `useReStale` receives an incoming signal containing `inlineData` and a `contextHash`, it compares `signal.contextHash` against the canonical hash of the current active `clientContext`.
-   - **Matching Hash**: The pushed `inlineData` is guaranteed to match the exact view/parameters currently active on the client. It is written directly into the cache.
-   - **Mismatched Hash (Stale Push)**: The user navigated, filtered, or paged away before the pushed data arrived. `useReStale` automatically:
-     - **Discards `inlineData`**: Strips `inlineData` from the signal so stale data is never written into the query cache.
-     - **Triggers Immediate Refetch**: Forwards the stripped signal to `onInvalidate`, turning it into a regular invalidation/refetch for the active query.
-     - **Re-triggers Context Sync**: Initiates an immediate synchronization to ensure the server receives the client's latest context.
-
-This ensures zero cache corruption and seamless self-healing even over high-latency or fluctuating connections.
+3. **Fallback Invalidation on Exhaustion**:
+   - If context synchronization fails across all retry attempts (e.g. temporary network drop), `useReStale` logs an error and immediately triggers `onInvalidate({ key: [] })`.
+   - This invalidates active queries in the background and forces a refetch from the server, preventing the client from remaining stuck with stale data.
 
 ---
 

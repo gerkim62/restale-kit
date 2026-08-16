@@ -179,7 +179,7 @@ describe('SSEChannelGroup — review fixes', () => {
     expect(group.size).toBe(0)
   })
 
-  it('register() stores validated meta that broadcast predicate can match', async () => {
+  it('register() stores validated meta that broadcast predicate can match', () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<TestMeta>({
       channelDefaults: {},
@@ -193,7 +193,7 @@ describe('SSEChannelGroup — review fixes', () => {
 
     const spy = vi.fn()
     const seenMetas: TestMeta[] = []
-    await group.broadcast({ key: ['test'] }, (meta) => {
+    group.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       seenMetas.push(meta)
       spy()

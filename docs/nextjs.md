@@ -123,7 +123,7 @@ export async function POST(req: Request) {
   // ... perform database mutation ...
 
   // Broadcast invalidation signal to all connected clients
-  await channelGroup.broadcastToAll({
+  channelGroup.broadcastToAll({
     key: ['todos'],
   });
 

@@ -43,7 +43,7 @@ describe('channel-group', () => {
     expect(spy).toHaveBeenCalled()
   })
 
-  it('broadcasts only to channels selected by its predicate', async () => {
+  it('broadcasts only to channels selected by its predicate', () => {
     const group = new SSEChannelGroup<TestMeta>()
     const selected = createSSEChannel({})
     const skipped = createSSEChannel({})
@@ -52,7 +52,7 @@ describe('channel-group', () => {
     const selectedSpy = vi.spyOn(selected, 'invalidate')
     const skippedSpy = vi.spyOn(skipped, 'invalidate')
 
-    await group.broadcast({ key: ['todos'] }, (meta) => meta?.userId === 1)
+    group.broadcast({ key: ['todos'] }, (meta) => meta?.userId === 1)
 
     expect(selectedSpy).toHaveBeenCalledOnce()
     expect(skippedSpy).not.toHaveBeenCalled()
@@ -148,7 +148,7 @@ describe('channel-group', () => {
     expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
   })
 
-  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', async () => {
+  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
     // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
     // undefined, the predicate receives undefined (not skipped) and can act on it.
     const group = new SSEChannelGroup<{ userId: number } | undefined>()
@@ -162,7 +162,7 @@ describe('channel-group', () => {
     group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
 
     const seenMetas: ({ userId: number } | undefined)[] = []
-    await group.broadcast({ key: ['test'] }, (meta) => {
+    group.broadcast({ key: ['test'] }, (meta) => {
       seenMetas.push(meta)
       return true
     })
@@ -173,7 +173,7 @@ describe('channel-group', () => {
     expect(spyNo).toHaveBeenCalled()
   })
 
-  it('broadcast predicate can filter out channels with undefined meta', async () => {
+  it('broadcast predicate can filter out channels with undefined meta', () => {
     // Predicate returning false for undefined meta should skip that channel,
     // but NOT all channels — channels with defined meta should still be reached.
     const group = new SSEChannelGroup<{ userId: number } | undefined>()
@@ -186,7 +186,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 42 })
     group.register(chNoMeta)
 
-    await group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
+    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -323,13 +323,13 @@ describe('channel-group', () => {
     expect(checkOptional).toBe(true)
   })
 
-  it('broadcast predicate represents omitted metadata explicitly', async () => {
+  it('broadcast predicate represents omitted metadata explicitly', () => {
     const group = new SSEChannelGroup<TestMeta>()
     const channel = createSSEChannel({})
     group.register(channel, { userId: 1 })
 
     // Static check: callers handle omitted metadata before reading fields.
-    await group.broadcast({ key: ['test'] }, (meta) => {
+    group.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       const _userId: number = meta.userId
       return _userId > 0
@@ -348,7 +348,7 @@ describe('channel-group', () => {
     expect(group.size).toBe(1)
   })
 
-  it('broadcast filter selectively delivers signals to matching predicate', async () => {
+  it('broadcast filter selectively delivers signals to matching predicate', () => {
     const group = new SSEChannelGroup<TestMeta>()
     const ch1 = createSSEChannel({})
     const ch2 = createSSEChannel({})
@@ -359,7 +359,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    await group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
+    group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
@@ -471,7 +471,7 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
-    await group.broadcast({ key: ['broadcast-event'] }, () => true)
+    group.broadcast({ key: ['broadcast-event'] }, () => true)
     // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
     const r1 = store.add({ key: ['probe'] }) // id '2'
     expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
@@ -1065,14 +1065,14 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
     })
 
-    it('auto-infers TMeta from metaSchema in constructor', async () => {
+    it('auto-infers TMeta from metaSchema in constructor', () => {
       const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
       const group = new SSEChannelGroup({ metaSchema })
       const ch = createSSEChannel({})
       group.register(ch, { userId: 42 })
 
       let receivedMeta: unknown = null
-      await group.broadcast({ key: ['test'] }, (meta) => {
+      group.broadcast({ key: ['test'] }, (meta) => {
         receivedMeta = meta
         return true
       })
@@ -1278,58 +1278,6 @@ describe('SSEChannelGroup — channelDefaults', () => {
         expect.any(Error),
       )
       consoleSpy.mockRestore()
-    })
-
-    it('attaches SHA-256 _sh to signal when publish is called with senderConnectionId', async () => {
-      const pubsub = new MemoryPubSubAdapter()
-      const group = new SSEChannelGroup({ pubsub })
-      const ch = createSSEChannel({})
-      try {
-        group.register(ch, undefined, { topics: ['mutations'] })
-
-        const invalidateSpy = vi.spyOn(ch, 'invalidate')
-        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
-        const expectedHash = await computeSenderHash('sender-123')
-
-        await group.publish('mutations', { key: ['todos'] }, { senderConnectionId: 'sender-123' })
-
-        expect(invalidateSpy).toHaveBeenCalledWith(
-          expect.objectContaining({
-            key: ['todos'],
-            _sh: expectedHash,
-          }),
-          undefined,
-        )
-      } finally {
-        ch.close()
-      }
-    })
-
-    it('attaches SHA-256 _sh to signal when broadcast is called with senderConnectionId', async () => {
-      const group = new SSEChannelGroup()
-      const ch = createSSEChannel({})
-      try {
-        group.register(ch)
-
-        const invalidateSpy = vi.spyOn(ch, 'invalidate')
-        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
-        const expectedHash = await computeSenderHash('sender-456')
-
-        await group.broadcast({ key: ['items'] }, () => true, { senderConnectionId: 'sender-456' })
-
-        // Wait a tick for async hash to resolve and deliver
-        await vi.waitFor(() => {
-          expect(invalidateSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-              key: ['items'],
-              _sh: expectedHash,
-            }),
-            undefined,
-          )
-        })
-      } finally {
-        ch.close()
-      }
     })
   })
 })

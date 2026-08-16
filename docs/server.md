@@ -16,13 +16,16 @@ All channel methods set the required SSE response headers (`Content-Type: text/e
 
 ### Manual SSE debugging
 
-The browser clients add a unique `__restale_cid__` connection ID automatically. When opening an SSE route with curl, Postman, or a custom client, include a non-empty value yourself:
+When opening an SSE route with `curl`, Postman, or a custom client, the server automatically generates a unique UUID `connectionId` and immediately emits an initial `connected` event frame:
 
 ```sh
-curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
+curl -N "http://localhost:3000/sse"
+# Output:
+# event: connected
+# data: {"connectionId":"d290f1ee-6c54-4b01-90e6-d701748f0851"}
 ```
 
-The connection ID identifies an SSE connection; it is not authentication or authorization.
+The connection ID identifies an individual SSE connection for client context updates and revocation; it is not an authentication or authorization credential.
 
 ### Express
 
@@ -409,7 +412,7 @@ If you need criteria-based revocation, always register channels with explicit me
 
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
+`connectionId` is generated as a UUID by the server upon stream connection and sent to the client via the initial `connected` frame. It is useful for correlating a logout request or context update with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
 
 Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeByConnectionId(...)` or in the criteria of `revokeWhere(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization. Always pass `scope` with trusted server-side identity (e.g. `{ userId: req.user.id }`) so that a forged or leaked `connectionId` cannot close another user's connection.
 
