@@ -31,11 +31,8 @@ function validateSingleSignal(value: unknown): UniversalSignal {
 
   const hasInlineData = 'inlineData' in value
   if (hasInlineData) {
-    if (Object.keys(value).some((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')) {
-      throw new Error('Inline-data signals contain unsupported fields')
-    }
-    if (!isJSONValue(value.inlineData)) throw new Error('Signal "inlineData" field must be JSON-serialisable')
     if ('exact' in value) throw new Error('Inline-data signals must not include "exact"')
+    if (!isJSONValue(value.inlineData)) throw new Error('Signal "inlineData" field must be JSON-serialisable')
     if ('markStale' in value && typeof value.markStale !== 'boolean') {
       throw new Error('Signal "markStale" field must be a boolean')
     }
@@ -43,9 +40,7 @@ function validateSingleSignal(value: unknown): UniversalSignal {
       ...(typeof value.markStale === 'boolean' ? { markStale: value.markStale } : {}) }
   }
 
-  if (Object.keys(value).some((key) => key !== 'key' && key !== 'exact')) {
-    throw new Error('Revalidate signals contain unsupported fields')
-  }
+  if ('inlineData' in value) throw new Error('Revalidate signals must not include "inlineData"')
   if ('markStale' in value) throw new Error('Revalidate signals must not include "markStale"')
   if ('exact' in value && typeof value.exact !== 'boolean') {
     throw new Error('Signal "exact" field must be a boolean')

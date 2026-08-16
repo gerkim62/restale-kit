@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
 import { isInlineDataSignal, type CacheKey, type JSONValue, type UniversalSignal } from '@/types/protocol.js'
 
@@ -34,7 +34,7 @@ export function useSwrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {
   const callback = useCallback((signal: UniversalSignal | UniversalSignal[]) => {
     swrAdapter(mutate, optionsRef.current)(signal)
   }, [mutate])
-  return useMemo(() => makeAdaptedCallback(callback), [callback])
+  return makeAdaptedCallback(callback)
 }
 
 function matchesKey(
@@ -51,5 +51,20 @@ function matchesKey(
   }
   if (!Array.isArray(candidate)) return false
   if (exact ? candidate.length !== target.length : candidate.length < target.length) return false
-  return target.every((value, index) => JSON.stringify(candidate[index]) === JSON.stringify(value))
+  return target.every((value, index) => deepEqual(candidate[index], value))
 }
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || typeof a !== 'object' || b === null || typeof b !== 'object') return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    return a.every((val, index) => deepEqual(val, b[index]))
+  }
+  const keysA = Object.keys(a as Record<string, unknown>)
+  const keysB = Object.keys(b as Record<string, unknown>)
+  if (keysA.length !== keysB.length) return false
+  return keysA.every((key) => Object.hasOwn(b as Record<string, unknown>, key) && deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+}
+
