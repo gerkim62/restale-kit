@@ -278,8 +278,15 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     for (const [channel] of this.channels) {
       try { channel.close() } catch { /* best effort */ }
     }
-    await this.controlUnsubscribe?.()
-    this.controlUnsubscribe = undefined
+    if (this.controlUnsubscribe) {
+      try {
+        await this.controlUnsubscribe()
+      } catch (error) {
+        console.error('[SSEChannelGroup] Failed to unsubscribe control subscriber during dispose:', error)
+      } finally {
+        this.controlUnsubscribe = undefined
+      }
+    }
     if (this.pendingTopicSubscriptions.size > 0) {
       await Promise.allSettled(Array.from(this.pendingTopicSubscriptions.values()))
     }

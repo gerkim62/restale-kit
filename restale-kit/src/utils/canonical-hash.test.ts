@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { canonicalJsonSerialize, computeContextHash, computeSenderHash, sha256 } from '@/utils/canonical-hash.js'
 
 describe('canonicalJsonSerialize, sha256, computeContextHash, and computeSenderHash', () => {
@@ -82,5 +82,15 @@ describe('canonicalJsonSerialize, sha256, computeContextHash, and computeSenderH
       toJSON: () => ({ b: 2, a: 1 }),
     }
     expect(canonicalJsonSerialize(custom)).toBe('{"a":1,"b":2}')
+  })
+
+  it('uses Node.js fallback when crypto.subtle is unavailable', async () => {
+    vi.stubGlobal('crypto', { subtle: undefined })
+    try {
+      const hash = await sha256('abc')
+      expect(hash).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

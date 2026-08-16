@@ -1929,5 +1929,87 @@ describe('skipSelf and sender hash filtering', () => {
     instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['self-item'], _sh: myHash }))
     expect(callback).toHaveBeenCalledWith({ key: ['self-item'], _sh: myHash })
   })
+
+  it('queues invalidations received immediately after connected until sender hash initializes and drains with filtering', async () => {
+    const callback = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: true, callback })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    const myHash = await computeSenderHash('queued-conn')
+    const otherHash = await computeSenderHash('other-conn')
+
+    // emitOpen emits 'open' and 'connected' synchronously
+    instance.emitOpen(undefined, 'queued-conn')
+
+    // Immediately emit invalidations before computeSenderHash microtask finishes
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['self-item'], _sh: myHash }))
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['other-item'], _sh: otherHash }))
+
+    // Synchronously, invalidations should have been queued and not processed yet
+    expect(callback).not.toHaveBeenCalled()
+
+    // Wait for connect promise (which settles after computeSenderHash drains the queue)
+    await pending
+
+    // Self-originated signal was dropped, other signal was delivered
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledWith({ key: ['other-item'], _sh: otherHash })
+  })
+
+  it('enables skipSelf dynamically via updateRuntimeOptions after emitOpen and computes sender hash', async () => {
+    const callback = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: false, callback })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'dynamic-conn')
+    await pending
+
+    const myHash = await computeSenderHash('dynamic-conn')
+
+    // Dynamic enable
+    client.updateRuntimeOptions({ skipSelf: true })
+
+    // Wait for async hash computation
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+
+    // Invalidation from self should now be dropped
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['self-item'], _sh: myHash }))
+    expect(callback).not.toHaveBeenCalled()
+  })
+
+  it('guards dynamic skipSelf computation against connection ID change', async () => {
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: false })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'conn-initial')
+    await pending
+
+    // Enable skipSelf
+    client.updateRuntimeOptions({ skipSelf: true })
+    // Close immediately before hash resolves
+    client.close()
+
+    // Wait for microtasks
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+
+    // Closed client should have cleared hash and ID
+    expect(client.connectionId).toBeUndefined()
+  })
+
+  it('resets currentConnectionId and ignores closed stream event', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'first-conn')
+    await pending
+
+    expect(client.connectionId).toBe('first-conn')
+    client.close()
+    expect(client.connectionId).toBeUndefined()
+
+    // Closed instance receives event -> ignored
+    instance.emitCustomEvent('connected', JSON.stringify({ connectionId: 'stale-conn' }))
+    expect(client.connectionId).toBeUndefined()
+  })
 })
 

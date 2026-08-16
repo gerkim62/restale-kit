@@ -48,6 +48,35 @@ describe('Code review fixes verification', () => {
       expect(ch2.state).toBe('closed')
     })
 
+    it('dispose() continues cleanup if controlUnsubscribe throws', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const mockPubsub = {
+        publish: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn((topic: string) => {
+          if (topic === '__restale_control__') {
+            return Promise.resolve(() => Promise.reject(new Error('Control unsub failed')))
+          }
+          return Promise.resolve(vi.fn().mockResolvedValue(undefined))
+        }),
+      }
+
+      const group = new SSEChannelGroup({ pubsub: mockPubsub })
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['chat'] })
+
+      // Wait for subscriptions to resolve
+      for (let i = 0; i < 5; i++) await Promise.resolve()
+
+      await expect(group.dispose()).resolves.toBeUndefined()
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to unsubscribe control subscriber during dispose:'),
+        expect.any(Error),
+      )
+      expect(ch.state).toBe('closed')
+      consoleErrorSpy.mockRestore()
+    })
+
     it('serializes async unsubscription before re-subscribing to the same topic', async () => {
       const executionOrder: string[] = []
       let resolveUnsub!: () => void

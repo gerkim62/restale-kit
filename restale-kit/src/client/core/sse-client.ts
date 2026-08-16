@@ -68,6 +68,8 @@ export class SSEInvalidatorClient extends EventTarget {
   private debug = false
   private currentConnectionId: string | undefined = undefined
   private currentSenderHash: string | undefined = undefined
+  private isSenderHashInitializing = false
+  private queuedInvalidations: MessageEvent<string>[] = []
 
   private opened = false
   private eventSource: SSE | null = null
@@ -144,7 +146,26 @@ export class SSEInvalidatorClient extends EventTarget {
     this.maxRetries = opts?.reconnect?.maxRetries ?? PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
     this.reconnectOptions = opts?.reconnect
     this.debug = opts?.debug ?? false
-    if (opts && Object.hasOwn(opts, 'skipSelf')) this.skipSelf = opts.skipSelf ?? false
+    if (opts && Object.hasOwn(opts, 'skipSelf')) {
+      const nextSkipSelf = opts.skipSelf ?? false
+      this.skipSelf = nextSkipSelf
+      if (nextSkipSelf) {
+        if (this.currentConnectionId && !this.currentSenderHash) {
+          const connId = this.currentConnectionId
+          computeSenderHash(connId)
+            .then((hash) => {
+              if (this.skipSelf && this.currentConnectionId === connId) {
+                this.currentSenderHash = hash
+              }
+            })
+            .catch(() => {
+              // ignore hash computation failure
+            })
+        }
+      } else {
+        this.currentSenderHash = undefined
+      }
+    }
     if (opts && Object.hasOwn(opts, 'callback')) this.callback = opts.callback
     if (opts && Object.hasOwn(opts, 'onConnect')) this.onConnect = opts.onConnect
     if (opts && Object.hasOwn(opts, 'onDisconnect')) this.onDisconnect = opts.onDisconnect
@@ -390,6 +411,10 @@ export class SSEInvalidatorClient extends EventTarget {
    */
   private establishConnection(): void {
     this.opened = false
+    this.currentConnectionId = undefined
+    this.currentSenderHash = undefined
+    this.isSenderHashInitializing = false
+    this.queuedInvalidations = []
 
     this.setStatus({ status: 'connecting' })
 
@@ -413,6 +438,7 @@ export class SSEInvalidatorClient extends EventTarget {
     this.eventSource = es
 
     es.onopen = (event: SSEvent) => {
+      if (this.eventSource !== es) return
       if (!this.isValidHandshake(es, event)) {
         this.emitError(event)
         this.handleReconnectError(es, event)
@@ -435,6 +461,7 @@ export class SSEInvalidatorClient extends EventTarget {
     }
 
     es.onerror = (event: SSEvent) => {
+      if (this.eventSource !== es) return
       this.emitError(event)
       this.handleReconnectError(es, event)
     }
@@ -444,7 +471,9 @@ export class SSEInvalidatorClient extends EventTarget {
   }
 
   private wireConnectedListener(es: SSE): void {
+    const currentEs = es
     es.addEventListener(SSE_EVENTS.CONNECTED, (event: MessageEvent<string>) => {
+      if (this.eventSource !== currentEs) return
       let parsedId: string | undefined
       try {
         const parsed: unknown = JSON.parse(event.data)
@@ -457,8 +486,10 @@ export class SSEInvalidatorClient extends EventTarget {
       }
 
       if (parsedId !== undefined) {
+        if (this.eventSource !== currentEs) return
         this.currentConnectionId = parsedId
         const notifyConnected = () => {
+          if (this.eventSource !== currentEs || this.currentConnectionId !== parsedId) return
           this.dispatchEvent(new CustomEvent(SSE_EVENTS.CONNECTED, { detail: { connectionId: parsedId } }))
           if (this.connectPromise && this.opened) {
             this.connectPromise.resolve()
@@ -466,15 +497,23 @@ export class SSEInvalidatorClient extends EventTarget {
           }
         }
         if (this.skipSelf) {
+          this.isSenderHashInitializing = true
           computeSenderHash(parsedId)
             .then((hash) => {
+              if (this.eventSource !== currentEs || this.currentConnectionId !== parsedId) return
               this.currentSenderHash = hash
+              this.isSenderHashInitializing = false
+              this.drainQueuedInvalidations()
               notifyConnected()
             })
             .catch(() => {
+              if (this.eventSource !== currentEs || this.currentConnectionId !== parsedId) return
+              this.isSenderHashInitializing = false
+              this.drainQueuedInvalidations()
               notifyConnected()
             })
         } else {
+          this.isSenderHashInitializing = false
           notifyConnected()
         }
       }
@@ -582,51 +621,68 @@ export class SSEInvalidatorClient extends EventTarget {
    * Runs the validation pipeline (steps 1–7) and emits either `invalidate` or `error`.
    * On `revoke`, suppresses auto-reconnect and transitions to `{ status: 'closed', reason: 'revoked' }`.
    */
-  private wireInvalidateListener(es: SSE): void {
-    es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
-      let validated: UniversalSignal | UniversalSignal[] | undefined = undefined
-      try {
-        // Built-in structural validation
-        validated = validatePayload(event.data)
-        if (this.skipSelf && this.currentSenderHash) {
-          const myHash = this.currentSenderHash
-          if (Array.isArray(validated)) {
-            const filtered = validated.filter((s) => s._sh !== myHash)
-            if (filtered.length === 0) {
-              if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
-                this.currentLastEventId = event.lastEventId
-              }
-              return
-            }
-            validated = filtered
-          } else if (validated._sh === myHash) {
+  private drainQueuedInvalidations(): void {
+    const queue = this.queuedInvalidations
+    this.queuedInvalidations = []
+    for (const event of queue) {
+      this.processInvalidateEvent(event)
+    }
+  }
+
+  private processInvalidateEvent(event: MessageEvent<string>): void {
+    let validated: UniversalSignal | UniversalSignal[] | undefined = undefined
+    try {
+      // Built-in structural validation
+      validated = validatePayload(event.data)
+      if (this.skipSelf && this.currentSenderHash) {
+        const myHash = this.currentSenderHash
+        if (Array.isArray(validated)) {
+          const filtered = validated.filter((s) => s._sh !== myHash)
+          if (filtered.length === 0) {
             if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
               this.currentLastEventId = event.lastEventId
             }
             return
           }
+          validated = filtered
+        } else if (validated._sh === myHash) {
+          if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
+            this.currentLastEventId = event.lastEventId
+          }
+          return
         }
-        this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
-        this.invokeUserCallback('callback', this.callback, validated)
-
-        if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
-          this.currentLastEventId = event.lastEventId
-        }
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err))
-        // The raw incoming event payload that failed validation or processing
-        console.error(
-          "[ERROR][wireInvalidateListener] Failed to process invalidate event",
-          "\n  url:", this.url,
-          "\n  attempt:", this.attempt,
-          "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
-          "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
-          "\n  error:", error.stack || error.message
-        )
-        const message = error.message
-        const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
-        this.emitError(detail)
       }
+      this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
+      this.invokeUserCallback('callback', this.callback, validated)
+
+      if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
+        this.currentLastEventId = event.lastEventId
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      // The raw incoming event payload that failed validation or processing
+      console.error(
+        "[ERROR][wireInvalidateListener] Failed to process invalidate event",
+        "\n  url:", this.url,
+        "\n  attempt:", this.attempt,
+        "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
+        "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
+        "\n  error:", error.stack || error.message
+      )
+      const message = error.message
+      const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
+      this.emitError(detail)
+    }
+  }
+
+  private wireInvalidateListener(es: SSE): void {
+    es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
+      if (this.eventSource !== es) return
+      if (this.skipSelf && this.isSenderHashInitializing) {
+        this.queuedInvalidations.push(event)
+        return
+      }
+      this.processInvalidateEvent(event)
     })
 
     es.addEventListener(SSE_EVENTS.REVOKE, (event: MessageEvent<string>) => {
@@ -766,6 +822,10 @@ export class SSEInvalidatorClient extends EventTarget {
         }
 
         // Use the same EventSource URL — the browser will attach Last-Event-ID automatically.
+        this.currentConnectionId = undefined
+        this.currentSenderHash = undefined
+        this.isSenderHashInitializing = false
+        this.queuedInvalidations = []
         const renewEs = new SSE(this.eventSourceUrl, {
           withCredentials: this.withCredentials,
           headers: this.getReconnectHeaders(),
@@ -950,6 +1010,10 @@ export class SSEInvalidatorClient extends EventTarget {
 
   private teardown(): void {
     this.opened = false
+    this.isSenderHashInitializing = false
+    this.queuedInvalidations = []
+    this.currentConnectionId = undefined
+    this.currentSenderHash = undefined
     if (this.eventSource) {
       this.eventSource.onopen = () => {}
       this.eventSource.onerror = () => {}
