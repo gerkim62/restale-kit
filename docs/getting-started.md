@@ -33,6 +33,13 @@ npm install pusher     # Pusher
 
 All peers are optional — only install what you use.
 
+> [!IMPORTANT]
+> **Deploying to Next.js or Serverless?**
+> - [ ] Instance created once in a shared module (`lib/restale.ts`)
+> - [ ] Cached via `globalThis` in development mode to prevent leaks during HMR
+> - [ ] Never instantiated inside a route handler or component body
+> - 👉 Check the [Next.js & Serverless Guide](./nextjs.md) for full patterns.
+
 ---
 
 ## 5-minute setup: Express + TanStack Query
@@ -117,6 +124,7 @@ That's it. When the server calls `group.broadcastToAll({ queryKey: ['todos'] })`
 ## Next steps
 
 - **Other server frameworks (Hono, Fastify, Node)** → [Server guide](./server.md)
+- **Next.js & Serverless patterns (App Router, HMR singleton)** → [Next.js & Serverless guide](./nextjs.md)
 - **SWR, vanilla JS client** → [Client guide](./client.md)
 - **Per-user invalidation, metadata filtering** → [Server guide → Broadcasting](./server.md#broadcasting)
 - **Zod / Standard Schema validation** → [Validation guide](./validation.md)

@@ -113,23 +113,30 @@ app.get('/sse', (c) => {
 
 ### Next.js App Router: reuse a process-local group
 
-In development, Next.js may re-evaluate modules during hot reload. Cache the group on `globalThis` so route modules in the same Node.js process reuse it instead of creating detached groups and extra pub/sub connections.
+In development, Next.js re-evaluates modules during hot reload (HMR). Cache the group (and any Redis clients) on `globalThis` so route modules in the same Node.js process reuse it instead of creating detached groups and leaking connections.
 
 ```ts
-// app/lib/restale.ts
+// lib/restale.ts
 import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __restaleGroup: SSEChannelGroup | undefined
+const globalForRestale = globalThis as unknown as {
+  channelGroup?: SSEChannelGroup
 }
 
-export const restaleGroup = globalThis.__restaleGroup ??= new SSEChannelGroup({
-  channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
-})
+export const channelGroup =
+  globalForRestale.channelGroup ??
+  new SSEChannelGroup({
+    channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  })
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForRestale.channelGroup = channelGroup
+}
 ```
 
-Use that same export from both the SSE route and mutation handlers. This cache is **per Node.js process**, not shared between serverless instances; use a [pub/sub adapter](./pubsub.md) when a mutation and its connected client can land on different instances. This pattern is for the Node.js runtime, not Edge runtime isolates.
+Use that same export from both the SSE route and mutation handlers. This cache is **per Node.js process**, not shared between separate serverless instances; use a [pub/sub adapter](./pubsub.md) when a mutation and its connected client can land on different instances.
+
+👉 See the comprehensive [Next.js & Serverless Guide](./nextjs.md) for full App Router route handler examples, Redis pub/sub singleton setups, and troubleshooting duplicate events.
 
 ---
 

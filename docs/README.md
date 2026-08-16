@@ -10,6 +10,7 @@
 |---|---|
 | [Getting Started](./getting-started.md) | Install, minimal server + client wiring in 5 minutes |
 | [Server](./server.md) | All server adapters, `SSEChannelGroup`, broadcasting, topics |
+| [Next.js & Serverless](./nextjs.md) | Singleton lifecycle patterns, HMR safety, App Router setup, and troubleshooting |
 | [Client](./client.md) | `useReStale` hook, vanilla JS client, and TanStack Query, SWR & RTK Query adapters |
 | [Client Context & Inline Data](./inline-data.md) | Per-connection query context and direct cache writes without an intermediate refetch |
 | [Validation](./validation.md) | Built-in signal validation and optional Zod / Standard Schema metadata validation |
