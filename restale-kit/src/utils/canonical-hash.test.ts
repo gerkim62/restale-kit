@@ -54,4 +54,17 @@ describe('canonicalJsonSerialize and computeContextHash', () => {
     expect(computeContextHash(cyclic)).toBeUndefined()
     expect(canonicalJsonSerialize({ first: shared, second: shared })).toBe('{"first":{"page":1},"second":{"page":1}}')
   })
+
+  it('serializes Date and objects with toJSON deterministically', () => {
+    const date1 = new Date('2026-01-01T00:00:00.000Z')
+    const date2 = new Date('2026-01-02T00:00:00.000Z')
+    expect(canonicalJsonSerialize(date1)).toBe('"2026-01-01T00:00:00.000Z"')
+    expect(canonicalJsonSerialize(date2)).toBe('"2026-01-02T00:00:00.000Z"')
+    expect(computeContextHash(date1)).not.toBe(computeContextHash(date2))
+
+    const custom = {
+      toJSON: () => ({ b: 2, a: 1 }),
+    }
+    expect(canonicalJsonSerialize(custom)).toBe('{"a":1,"b":2}')
+  })
 })

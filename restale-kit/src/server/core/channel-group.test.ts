@@ -1120,5 +1120,66 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
       await expect(group.revokeByConnectionId('conn-scope-invalid', 123 as any)).rejects.toThrow(/scope/i)
     })
+
+    it('continues delivery to other channels on publish even when one channel throws', async () => {
+      const group = new SSEChannelGroup()
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      group.register(ch1, undefined, { topics: ['shared-topic'] })
+      group.register(ch2, undefined, { topics: ['shared-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await expect(group.publish('shared-topic', { key: ['test'] })).rejects.toThrow(AggregateError)
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['test'] }, undefined)
+    })
+
+    it('continues delivery to other channels on pubsub signal even when one channel throws', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      group.register(ch1, undefined, { topics: ['pubsub-topic'] })
+      group.register(ch2, undefined, { topics: ['pubsub-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 pubsub failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await pubsub.publish('pubsub-topic', { kind: 'signal', data: { key: ['pubsub-item'] } })
+
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['pubsub-item'] }, undefined)
+    })
+
+    it('continues delivery to other channels on pushInlineData even when one channel throws', async () => {
+      const group = new SSEChannelGroup({
+        resolveInlineData: (connections) => {
+          const map = new Map()
+          for (const conn of connections) {
+            map.set(conn.connectionId, { signal: { key: ['item'] }, inlineData: { value: 123 } })
+          }
+          return map
+        },
+      })
+      const ch1 = createSSEChannel({ connectionId: 'c1' })
+      const ch2 = createSSEChannel({ connectionId: 'c2' })
+
+      group.register(ch1, undefined, { topics: ['inline-topic'] })
+      group.register(ch2, undefined, { topics: ['inline-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 inline failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await expect(group.pushInlineData('inline-topic', { data: 'test' })).rejects.toThrow(AggregateError)
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['item'], inlineData: { value: 123 } }, undefined)
+    })
   })
 })

@@ -15,14 +15,23 @@ export function createEventStore(options?: EventStoreOptions): EventStore {
   let nextSequence = 1
 
   function add(signal: UniversalSignal | UniversalSignal[], customId?: string): EventRecord {
-    const record = { id: customId ?? idGenerator?.() ?? String(nextSequence++), signal }
+    const generated = customId ?? idGenerator?.()
+    const id = (typeof generated === 'string' && generated.length > 0) ? generated : String(nextSequence++)
+    const record = { id, signal }
     events.push(record)
     if (events.length > capacity) events.splice(0, events.length - capacity)
     return record
   }
 
   function getEventsAfter(lastEventId: string): EventStoreResult {
-    const index = events.findIndex((event) => event.id === lastEventId)
+    let index = -1
+    for (let i = events.length - 1; i >= 0; i--) {
+      const item = events[i]
+      if (item !== undefined && item.id === lastEventId) {
+        index = i
+        break
+      }
+    }
     if (index < 0) return { events: [], stale: true }
     return { events: events.slice(index + 1), stale: false }
   }

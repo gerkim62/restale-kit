@@ -102,11 +102,11 @@ const _testSignal: RevalidateSignal = { key: ['test'] }
 const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
 const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
 const _testReconnect: AutoReconnectOptions = { native: true, jsBackoff: false }
-const _testDirectChannel: SSEChannelOptions = { lifetime: { maxAgeSec: 60 } }
+const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000 } }
 
 declare const _client: SSEInvalidatorClient
 declare const _channel: SSEChannel
-_client.closeWithUnmount()
+_client.close()
 _channel.disconnect()
 `
   )
