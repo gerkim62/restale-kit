@@ -167,8 +167,16 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
     const eventId = this.eventStore?.add(signal).id
-    for (const channel of this.topicChannels.get(topic) ?? []) this.deliver(channel, signal, eventId)
+    const errors: unknown[] = []
+    for (const channel of this.topicChannels.get(topic) ?? []) {
+      try {
+        this.deliver(channel, signal, eventId)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
     await this.options.pubsub?.publish(topic, { kind: 'signal', data: signal, ...(eventId ? { id: eventId } : {}) })
+    if (errors.length) throw new AggregateError(errors, 'Publish encountered runtime errors during local channel delivery')
   }
 
   async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
@@ -279,7 +287,13 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       void this.options.pubsub.subscribe(topic, (message) => {
         if (message.kind !== 'signal') return
         const eventId = this.eventStore?.add(message.data, message.id).id ?? message.id
-        for (const subscribed of this.topicChannels.get(topic) ?? []) this.deliver(subscribed, message.data, eventId)
+        for (const subscribed of this.topicChannels.get(topic) ?? []) {
+          try {
+            this.deliver(subscribed, message.data, eventId)
+          } catch (error) {
+            console.error('[SSEChannelGroup] Failed to deliver pubsub signal to channel:', error)
+          }
+        }
       }).then((unsubscribe) => this.topicUnsubscribers.set(topic, unsubscribe))
     }
   }
@@ -360,14 +374,20 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     const resolved = await resolver(connections, payload)
     const missingConnectionIds = connections.filter((connection) => !resolved.has(connection.connectionId)).map((connection) => connection.connectionId)
     if (missingConnectionIds.length) this.options.onInlineDataResolverError?.({ topic, missingConnectionIds })
+    const errors: unknown[] = []
     for (const channel of channels) {
       const result = resolved.get(channel.connectionId)
       if (!result) continue
       const signal: UniversalSignal = result.inlineData === undefined
         ? result.signal
         : { key: result.signal.key, inlineData: result.inlineData, ...(result.markStale ? { markStale: true } : {}) }
-      this.deliver(channel, signal)
+      try {
+        this.deliver(channel, signal)
+      } catch (error) {
+        errors.push(error)
+      }
     }
+    if (errors.length) throw new AggregateError(errors, 'Inline data delivery encountered runtime errors')
   }
 
   private isClientContext(value: unknown): value is TClientContext {
