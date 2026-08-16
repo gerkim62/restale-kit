@@ -276,7 +276,7 @@ const client = new SSEInvalidatorClient('/sse', {
 
 // Listen to invalidation signals
 client.addEventListener('invalidate', (event) => {
-  const signal = event.detail // InvalidateSignal | InvalidateSignal[]
+  const signal = event.detail // UniversalSignal | UniversalSignal[]
   // call your own cache library here
 })
 

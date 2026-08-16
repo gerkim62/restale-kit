@@ -218,9 +218,9 @@ Test utility entrypoint for unit testing server-side channel behaviors directly.
 
 ```ts
 import { createSSEChannel } from 'restale-kit/testing'
-import type { SSEChannel, DirectSSEChannelOptions } from 'restale-kit/testing'
+import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 
-function createSSEChannel(options: DirectSSEChannelOptions): SSEChannel
+function createSSEChannel(options?: SSEChannelOptions): SSEChannel
 ```
 
 ---
