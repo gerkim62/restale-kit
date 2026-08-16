@@ -16,13 +16,16 @@ All channel methods set the required SSE response headers (`Content-Type: text/e
 
 ### Manual SSE debugging
 
-The browser clients add a unique `__restale_cid__` connection ID automatically. When opening an SSE route with curl, Postman, or a custom client, include a non-empty value yourself:
+When opening an SSE route with `curl`, Postman, or a custom client, the server automatically generates a unique UUID `connectionId` and immediately emits an initial `connected` event frame:
 
 ```sh
-curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
+curl -N "http://localhost:3000/sse"
+# Output:
+# event: connected
+# data: {"connectionId":"d290f1ee-6c54-4b01-90e6-d701748f0851"}
 ```
 
-The connection ID identifies an SSE connection; it is not authentication or authorization.
+The connection ID identifies an individual SSE connection for client context updates, revocation, and self-mutation exclusion; it is not an authentication or authorization credential.
 
 ### Express
 
@@ -258,6 +261,31 @@ The signal's `key` is compared position-by-position with each channel's register
 
 Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
 
+### Excluding the Mutating Client (`senderConnectionId`)
+
+When a client initiates a mutation (e.g. `POST /api/todos`), it usually updates its local cache or UI immediately. Broadcasting an invalidation back to that same client can cause an unnecessary duplicate network refetch.
+
+To suppress self-invalidation, pass `senderConnectionId` in the options object of `broadcast()`, `broadcastToAll()`, or `publish()`. The server automatically computes a SHA-256 sender hash (`_sh`) and attaches it to the signal:
+
+```ts
+app.post('/api/todos', async (req, res) => {
+  const todo = await db.todos.create({ data: req.body })
+
+  // Read the connection ID sent in a request header by the client
+  const senderConnectionId = req.headers['x-connection-id'] as string | undefined
+
+  // Broadcast to all clients, tagging the originator
+  await group.broadcastToAll(
+    { key: ['todos'] },
+    { senderConnectionId }
+  )
+
+  res.status(201).json(todo)
+})
+```
+
+When receiving this signal, any client with `skipSelf: true` enabled will compare the signal's `_sh` hash with its own connection's SHA-256 hash and skip invalidation.
+
 ---
 
 ## Connection Lifecycle: Lifetime & Reconnection Guards
@@ -409,7 +437,7 @@ If you need criteria-based revocation, always register channels with explicit me
 
 ### Security: always scope client-supplied connection IDs
 
-`connectionId` is generated as a UUID by the client package and is useful for correlating a logout request with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
+`connectionId` is generated as a UUID by the server upon stream connection and sent to the client via the initial `connected` frame. It is useful for correlating a logout request or context update with one SSE connection. It is **not** an authentication credential: a client can submit any value to an HTTP endpoint. Do not use a bare `revokeByConnectionId(connectionId)` call in a request handler.
 
 Register trusted identity metadata from your authentication layer (at least `userId`; use a server-authenticated `sessionId` when available), then include that metadata in the `scope` of `revokeByConnectionId(...)` or in the criteria of `revokeWhere(...)`. This ensures that an arbitrary or leaked connection ID cannot revoke a connection outside the authenticated user's/session's scope. UUID unguessability reduces accidental discovery, but is not authorization. Always pass `scope` with trusted server-side identity (e.g. `{ userId: req.user.id }`) so that a forged or leaked `connectionId` cannot close another user's connection.
 

@@ -1838,8 +1838,7 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
   // in the header automatically)"
   // The implementation always uses this.eventSourceUrl for the renew ES — which
   // is the same URL. Native EventSource handles Last-Event-ID automatically.
-  // What we CAN test: the renew confirmatory ES uses the SAME URL as the original,
-  // including __restale_cid__ (so the server can correlate it with the same connection).
+  // What we CAN test: the renew confirmatory ES uses the SAME URL as the original.
   it('confirmatory renew EventSource is created with the same URL as the original connection', async () => {
     const client = new SSEInvalidatorClient('/sse')
 

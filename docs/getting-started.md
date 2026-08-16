@@ -70,10 +70,14 @@ app.post('/api/todos', async (req, res) => {
 app.listen(3000)
 ```
 
-> **Note:** `group.attachNodeResponse` / `group.createFetchResponse` requires a non-empty `__restale_cid__` query parameter. The `restale-kit` client SDK (`useReStale`, `SSEInvalidatorClient`) appends it automatically. For manual debugging, supply one yourself:
+> **Manual debugging with curl:**
+> When connecting manually, you will receive an initial `connected` frame carrying your auto-generated connection ID, followed by any broadcast events:
 >
 > ```sh
-> curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
+> curl -N "http://localhost:3000/sse"
+> # Output:
+> # event: connected
+> # data: {"connectionId":"d290f1ee-6c54-4b01-90e6-d701748f0851"}
 > ```
 
 ### 2. Client (React + TanStack Query)

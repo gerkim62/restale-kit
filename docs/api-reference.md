@@ -38,6 +38,8 @@ import {
   validateStandardSchema,
   canonicalJsonSerialize,
   computeContextHash,
+  computeSenderHash,
+  sha256,
 } from 'restale-kit'
 ```
 
@@ -60,6 +62,7 @@ interface RevalidateSignal {
   readonly inlineData?: never
   readonly markStale?: never
   readonly contextHash?: string
+  readonly _sh?: string
 }
 
 interface InlineDataSignal {
@@ -68,6 +71,7 @@ interface InlineDataSignal {
   readonly markStale?: boolean
   readonly exact?: never
   readonly contextHash?: string
+  readonly _sh?: string
 }
 
 type UniversalSignal = RevalidateSignal | InlineDataSignal
@@ -82,8 +86,10 @@ type ChannelState = 'open' | 'closed'
 - `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
 - `isJSONValueArray(value: unknown): value is JSONValue[]`: Checks if a value is a JSON-safe array.
 - `validateStandardSchema<T>(value: unknown, schema: StandardSchemaV1<unknown, T>): T`: Synchronously validates input against a Standard Schema v1 object.
-- `canonicalJsonSerialize(value: unknown): string`: Serializes a value into canonical JSON with sorted keys.
-- `computeContextHash(serialized: string): string`: Computes a deterministic SHA-256 hash for client context tracking.
+- `canonicalJsonSerialize(value: unknown): string | undefined`: Serializes a value into canonical JSON with sorted keys, returning `undefined` for `undefined` or cyclic references.
+- `computeContextHash(context: unknown): Promise<string | undefined>`: Computes a deterministic SHA-256 hash for client context tracking.
+- `computeSenderHash(connectionId: string): Promise<string>`: Computes a deterministic SHA-256 sender hash from a connection ID for self-exclusion.
+- `sha256(message: string): Promise<string>`: Computes a SHA-256 hex digest using Web Crypto or Node crypto.
 
 ### Errors
 
@@ -155,13 +161,24 @@ class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   broadcast(
     signal: UniversalSignal | UniversalSignal[],
     predicate?: (meta: TMeta | undefined) => boolean,
+    options?: { senderConnectionId?: string },
   ): void
 
-  broadcastToAll(signal: UniversalSignal | UniversalSignal[]): void
+  broadcastToAll(
+    signal: UniversalSignal | UniversalSignal[],
+    options?: { senderConnectionId?: string },
+  ): void
 
-  broadcastByKey(signal: UniversalSignal): void
+  broadcastByKey(
+    signal: UniversalSignal,
+    options?: { senderConnectionId?: string },
+  ): void
 
-  publish(topic: string, signal: UniversalSignal | UniversalSignal[]): Promise<void>
+  publish(
+    topic: string,
+    signal: UniversalSignal | UniversalSignal[],
+    options?: { senderConnectionId?: string },
+  ): Promise<void>
   pushInlineData(topic: string, payload: JSONValue): Promise<void>
 
   updateClientContext(
@@ -251,7 +268,7 @@ import type {
 ```ts
 class SSEInvalidatorClient extends EventTarget {
   constructor(url: string, options?: ClientOptions)
-  get connectionId(): string
+  get connectionId(): string | undefined
   get endpointUrl(): string
   get status(): ConnectionStatus
   get attempt(): number
@@ -272,6 +289,7 @@ interface ClientOptions {
   withCredentials?: boolean
   reconnect?: ReconnectOptions
   clientContextUrl?: string
+  skipSelf?: boolean
   debug?: boolean
   callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
   onConnect?: (event: Event) => void

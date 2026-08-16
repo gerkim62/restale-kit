@@ -100,7 +100,7 @@ Context registration retries on transient errors or stream opens (by default mak
 
 ```ts
 {
-  connectionId: string          // unique ID generated for this SSE connection instance
+  connectionId: string          // unique ID assigned by server for this SSE connection (empty string until connected)
   connection: ConnectionStatus  // current state
   attempt: number               // current reconnect attempt
   isConnecting: boolean         // connecting before a retry
@@ -254,6 +254,33 @@ useReStale('https://api.example.com/sse', {
 })
 ```
 
+### Self-Mutation Invalidation Suppression (`skipSelf`)
+
+When a user mutates data from the active tab, your client application often updates local state optimistically or populates cache directly from the mutation response. By default, a broadcasted invalidation from the server would cause the current tab to refetch that same data unnecessarily.
+
+Enable `skipSelf: true` on `useReStale` (or `SSEInvalidatorClient`) to suppress invalidations originating from the active connection:
+
+```tsx
+const { connectionId } = useReStale('/sse', {
+  onInvalidate,
+  skipSelf: true,
+})
+
+async function handleAddTodo(title: string) {
+  // Pass connectionId in a custom header or request body
+  await fetch('/api/todos', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-connection-id': connectionId,
+    },
+    body: JSON.stringify({ title }),
+  })
+}
+```
+
+When `skipSelf` is enabled, the client computes a SHA-256 hash of its connection ID. Any incoming invalidations carrying a matching `_sh` sender hash are automatically ignored by this client while other connected tabs and clients are invalidated normally.
+
 ---
 
 ## Vanilla JS / Non-React: `SSEInvalidatorClient`
@@ -266,6 +293,7 @@ import { SSEInvalidatorClient } from 'restale-kit/client'
 const client = new SSEInvalidatorClient('/sse', {
   autoReconnect: true,
   withCredentials: false,
+  skipSelf: true,
   reconnect: {
     baseDelayMs: 1000,
     maxDelayMs: 30000,
@@ -310,12 +338,6 @@ client.addEventListener('retriesexhausted', (event) => {
   console.warn(`Reconnection exhausted after ${attempts}/${maxRetries} attempts`)
 })
 
-// Access client properties
-console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
-console.log('Reconnect attempt count:', client.attempt)     // 0 initially and after success
-console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
-console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
-
 // Track connection state changes
 client.addEventListener('statuschange', (event) => {
   const s = event.detail
@@ -331,7 +353,14 @@ client.addEventListener('error', (event) => {
   console.error('SSE error:', event.detail)
 })
 
+// Connect to the SSE endpoint
 await client.connect()
+
+// Access client properties (connectionId is available once connected)
+console.log('Unique connection ID:', client.connectionId) // e.g. "a1b2c3d4-..."
+console.log('Reconnect attempt count:', client.attempt)     // 0 initially and after success
+console.log('Endpoint URL:', client.endpointUrl)          // the URL passed to the constructor
+console.log('Last received event ID:', client.lastEventId) // e.g. "100" or null
 
 // Caller-controlled context synchronization in non-React environments.
 const context = await client.updateClientContext({ page: 2, pageSize: 20 })

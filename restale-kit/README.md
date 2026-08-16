@@ -53,4 +53,6 @@ For SWR, use `swrAdapter` or `useSwrAdapter`. Its optional `toKey` maps a univer
 
 ## SSE connection
 
-Only `__restale_cid__` is added to the EventSource URL. It identifies a connection for replay, client context, and revocation. `Last-Event-ID` replay, keepalives, renew frames, and revocation remain supported.
+Clients connect directly to the SSE endpoint without requiring custom connection ID query parameters. Upon connection, the server automatically assigns a unique connection ID and delivers it via an initial `connected` SSE event frame (`{"connectionId":"..."}`).
+
+`Last-Event-ID` replay, keepalives, renew frames, and server-side revocation remain supported. For self-mutation suppression, clients can enable `skipSelf: true` and the server can pass `senderConnectionId` during broadcasts to omit invalidating the originating connection.
