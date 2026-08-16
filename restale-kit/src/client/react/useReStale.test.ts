@@ -193,6 +193,32 @@ describe('useReStale', () => {
     )
   })
 
+  it('strips inlineData when the current client context has no hash', () => {
+    const onInvalidate = asAdapter<'tanstack-query'>(vi.fn())
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        target: 'tanstack-query',
+      })
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitCustomEvent(
+        'invalidate',
+        JSON.stringify({
+          target: 'tanstack-query',
+          queryKey: ['todos'],
+          inlineData: [{ id: 1 }],
+          contextHash: 'server-context-hash',
+        })
+      )
+    })
+
+    const lastCallArg = (onInvalidate as unknown as { mock: { lastCall: unknown[] } }).mock.lastCall[0]
+    expect((lastCallArg as { inlineData?: unknown }).inlineData).toBeUndefined()
+  })
+
   it('does not open connection when disabled is true', () => {
     const onInvalidate = asAdapter<'swr'>(vi.fn())
     renderHook(() =>

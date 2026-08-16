@@ -175,6 +175,56 @@ describe('channel-group', () => {
     expect(resolverError).toHaveBeenCalledWith({ topic: 'todos', missingConnectionIds: ['inline-second'] })
   })
 
+  it('delivers inline data only to the channel selected for its topic', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      resolveInlineData: (connections) => new Map(connections.map((connection) => [
+        connection.connectionId,
+        { signal: { target: 'swr', key: ['todos'] }, inlineData: ['fresh'] },
+      ])),
+    })
+    const selected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
+    const unselected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
+    const selectedInvalidate = vi.spyOn(selected, 'invalidate')
+    const unselectedInvalidate = vi.spyOn(unselected, 'invalidate')
+    group.register(selected, { userId: 1 }, { topics: ['todos'] })
+    group.register(unselected, { userId: 1 }, { topics: ['other'] })
+
+    await group.pushInlineData('todos', { source: 'test' })
+
+    expect(selectedInvalidate).toHaveBeenCalledOnce()
+    expect(unselectedInvalidate).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate active connection IDs for inline data resolution', async () => {
+    const resolver = vi.fn()
+    const group = new SSEChannelGroup<SWRSignal, TestMeta>({ target: 'swr', resolveInlineData: resolver })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 1 }, { topics: ['todos'] })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 2 }, { topics: ['todos'] })
+
+    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow('Duplicate active connection ID')
+    expect(resolver).not.toHaveBeenCalled()
+  })
+
+  it('publishes inline data to PubSub before rethrowing a local resolver error', async () => {
+    const pubsub = new MemoryPubSubAdapter<SWRSignal>()
+    const publish = vi.spyOn(pubsub, 'publish').mockResolvedValue()
+    const localError = new Error('resolver failed')
+    const group = new SSEChannelGroup<SWRSignal, TestMeta>({
+      target: 'swr',
+      pubsub,
+      resolveInlineData: () => { throw localError },
+    })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'resolver-error' }), { userId: 1 }, { topics: ['todos'] })
+
+    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow(localError)
+    expect(publish).toHaveBeenCalledWith(group.controlTopic, {
+      kind: 'inlineData',
+      topic: 'todos',
+      payload: { source: 'test' },
+    })
+  })
+
   it('rejects runtime pubsub values that are not adapters', () => {
     expect(() => new SSEChannelGroup({ pubsub: {} as never })).toThrow(
       'pubsub must implement publish() and subscribe()'

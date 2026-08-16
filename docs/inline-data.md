@@ -211,7 +211,7 @@ The method returns `{ updated: true }` for `204`, `{ updated: false }` for `404`
 
 In real-world web applications, network latency and concurrency can create race conditions between client context updates and server mutations:
 
-```
+```text
 Client (User changes page 1 -> 2)            Server (Mutation occurs)
 ─────────────────────────────────            ────────────────────────
 1. Client updates local state to page 2.

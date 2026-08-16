@@ -103,10 +103,11 @@ export async function GET(req: Request) {
   // Optional: read auth / user info from session headers
   const userId = req.headers.get('x-user-id') ?? undefined;
 
-  return channelGroup.createFetchResponse(req, {
+  const { response } = channelGroup.createFetchResponse(req, {
     meta: userId ? { userId } : undefined,
     topics: userId ? [`user:${userId}`] : undefined,
   });
+  return response;
 }
 ```
 

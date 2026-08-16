@@ -8,35 +8,52 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Whitespace and key-ordering differences are eliminated.
  */
 export function canonicalJsonSerialize(value: unknown): string | undefined {
-  if (value === undefined) return undefined
-  if (value === null) return 'null'
+  const activePath = new Set<object>()
+  let encounteredCycle = false
 
-  const type = typeof value
-  if (type === 'number' || type === 'boolean' || type === 'string') {
-    return JSON.stringify(value)
-  }
+  const serialize = (current: unknown): string | undefined => {
+    if (current === undefined) return undefined
+    if (current === null) return 'null'
 
-  if (Array.isArray(value)) {
-    const items = value.map((item) => canonicalJsonSerialize(item) ?? 'null')
-    return `[${items.join(',')}]`
-  }
+    const type = typeof current
+    if (type === 'number' || type === 'boolean' || type === 'string') {
+      return JSON.stringify(current)
+    }
 
-  if (isPlainObject(value)) {
-    const keys = Object.keys(value).sort()
-    const entries: string[] = []
-    for (const key of keys) {
-      const val = value[key]
-      if (val !== undefined) {
-        const serializedVal = canonicalJsonSerialize(val)
-        if (serializedVal !== undefined) {
-          entries.push(`${JSON.stringify(key)}:${serializedVal}`)
+    if (Array.isArray(current) || isPlainObject(current)) {
+      if (activePath.has(current)) {
+        encounteredCycle = true
+        return undefined
+      }
+
+      activePath.add(current)
+      try {
+        if (Array.isArray(current)) {
+          const items = current.map((item) => serialize(item) ?? 'null')
+          return encounteredCycle ? undefined : `[${items.join(',')}]`
         }
+
+        const keys = Object.keys(current).sort()
+        const entries: string[] = []
+        for (const key of keys) {
+          const val = current[key]
+          if (val !== undefined) {
+            const serializedVal = serialize(val)
+            if (serializedVal !== undefined) {
+              entries.push(`${JSON.stringify(key)}:${serializedVal}`)
+            }
+          }
+        }
+        return encounteredCycle ? undefined : `{${entries.join(',')}}`
+      } finally {
+        activePath.delete(current)
       }
     }
-    return `{${entries.join(',')}}`
+
+    return undefined
   }
 
-  return undefined
+  return serialize(value)
 }
 
 /**

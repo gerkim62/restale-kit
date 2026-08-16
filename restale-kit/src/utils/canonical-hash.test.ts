@@ -44,4 +44,14 @@ describe('canonicalJsonSerialize and computeContextHash', () => {
   it('returns undefined for undefined context', () => {
     expect(computeContextHash(undefined)).toBeUndefined()
   })
+
+  it('returns undefined for cyclic contexts while allowing shared non-cyclic references', () => {
+    const cyclic: { self?: unknown } = {}
+    cyclic.self = cyclic
+    const shared = { page: 1 }
+
+    expect(canonicalJsonSerialize(cyclic)).toBeUndefined()
+    expect(computeContextHash(cyclic)).toBeUndefined()
+    expect(canonicalJsonSerialize({ first: shared, second: shared })).toBe('{"first":{"page":1},"second":{"page":1}}')
+  })
 })

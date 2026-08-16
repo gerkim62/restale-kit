@@ -37,6 +37,9 @@ describe('channel', () => {
     { target: 'swr', key: ['todos'], revalidate: 'false' },
     { key: ['todos'], action: 'unknown' },
     { key: ['todos'], exact: 'true' },
+    { target: 'tanstack-query', queryKey: ['todos'], contextHash: 1 },
+    { target: 'swr', key: ['todos'], contextHash: false },
+    { key: ['todos'], contextHash: {} },
   ])('rejects a malformed protocol field before it can be framed: %o', (signal) => {
     expect(() => {
       validateSignalPayload(signal)

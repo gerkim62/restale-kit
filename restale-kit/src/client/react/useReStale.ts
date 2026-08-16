@@ -279,12 +279,12 @@ export function useReStale<
       const processSignal = (sig: TSignal): TSignal => {
         if (typeof sig !== 'object' || sig === null || Array.isArray(sig)) return sig
         if ('inlineData' in sig && 'contextHash' in sig && typeof sig.contextHash === 'string') {
-          if (currentHash !== undefined && sig.contextHash !== currentHash) {
+          if (sig.contextHash !== currentHash) {
             const copy = { ...sig }
             delete copy.inlineData
             triggerSyncRef.current()
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- inlineData is stripped to convert to refetch
-            return copy as unknown as TSignal
+      
+            return copy
           }
         }
         return sig

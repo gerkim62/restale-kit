@@ -496,9 +496,14 @@ class SSEChannelGroupImplementation<
 
     const localChannels = Array.from(topicManager.channels)
     const connections: InlineDataConnection<TMeta, TClientContext>[] = []
+    const channelsByConnectionId = new Map<string, RegisteredChannel<TSignal>>()
     for (const channel of localChannels) {
       const entry = this.channels.get(channel)
       if (entry) {
+        if (channelsByConnectionId.has(entry.connectionId)) {
+          throw new Error(`[SSEChannelGroup.pushInlineData] Duplicate active connection ID: ${entry.connectionId}`)
+        }
+        channelsByConnectionId.set(entry.connectionId, channel)
         connections.push({
           connectionId: entry.connectionId,
           meta: entry.meta,
@@ -523,16 +528,14 @@ class SSEChannelGroupImplementation<
     for (const connection of connections) {
       const result = resolved.get(connection.connectionId)
       if (!result) continue
-      const channels = this.connectionIndex.get(connection.connectionId)
-      if (!channels) continue
+      const channel = channelsByConnectionId.get(connection.connectionId)
+      if (!channel) continue
       const existingHash = 'contextHash' in result.signal && typeof result.signal.contextHash === 'string'
         ? result.signal.contextHash
         : undefined
       const contextHash = existingHash ?? computeContextHash(connection.clientContext)
       if (result.inlineData === undefined) {
-        for (const channel of channels) {
-          this.deliverToChannel(channel, result.signal, 'publish', topic)
-        }
+        this.deliverToChannel(channel, result.signal, 'publish', topic)
         continue
       }
       const signal = {
@@ -540,9 +543,7 @@ class SSEChannelGroupImplementation<
         inlineData: result.inlineData,
         ...(contextHash ? { contextHash } : {}),
       } as TSignal
-      for (const channel of channels) {
-        this.deliverToChannel(channel, signal, 'publish', topic)
-      }
+      this.deliverToChannel(channel, signal, 'publish', topic)
     }
   }
 
@@ -1148,10 +1149,16 @@ class SSEChannelGroupImplementation<
       throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
     }
 
-    await this.deliverInlineData(topic, payload)
+    let localError: unknown
+    try {
+      await this.deliverInlineData(topic, payload)
+    } catch (error) {
+      localError = error
+    }
     if (this.pubsub) {
       await this.pubsub.publish(this.controlTopic, { kind: 'inlineData', topic, payload })
     }
+    if (localError !== undefined) throw localError
   }
 
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
