@@ -100,8 +100,8 @@ Context registration retries on transient errors or stream opens (by default mak
 
 ```ts
 {
-  connectionId: string          // unique ID assigned by server for this SSE connection (empty string until connected)
-  connection: ConnectionStatus  // current state
+  connectionId: string | undefined // unique ID assigned by server for this SSE connection (undefined until connected; undefined after close())
+  connection: ConnectionStatus    // current state
   attempt: number               // current reconnect attempt
   isConnecting: boolean         // connecting before a retry
   isConnected: boolean          // stream is open

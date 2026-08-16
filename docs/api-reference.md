@@ -331,7 +331,7 @@ interface UseReStaleOptions extends ClientOptions {
 }
 
 interface UseReStaleResult {
-  connectionId: string
+  connectionId: string | undefined
   connection: ConnectionStatus
   isConnected: boolean
   reconnect(): Promise<void>

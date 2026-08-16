@@ -579,15 +579,23 @@ export class SSEInvalidatorClient extends EventTarget {
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))
-        // The raw incoming event payload that failed validation or processing
-        console.error(
-          "[ERROR][wireInvalidateListener] Failed to process invalidate event",
-          "\n  url:", this.url,
-          "\n  attempt:", this.attempt,
-          "\n  rawData:", (typeof event.data === "string" ? event.data : JSON.stringify(event.data)).slice(0, 500),
-          "\n  parsed:", validated ? JSON.stringify(validated, null, 2).slice(0, 500) : "n/a",
-          "\n  error:", error.stack || error.message
-        )
+        if (this.debug) {
+          console.error(
+            '[ERROR][wireInvalidateListener] Failed to process invalidate event',
+            '\n  url:',
+            this.url,
+            '\n  attempt:',
+            this.attempt,
+            '\n  rawData:',
+            (typeof event.data === 'string' ? event.data : JSON.stringify(event.data)).slice(0, 500),
+            '\n  parsed:',
+            validated ? JSON.stringify(validated, null, 2).slice(0, 500) : 'n/a',
+            '\n  error:',
+            error.stack || error.message
+          )
+        } else {
+          console.error('[ERROR][wireInvalidateListener] Failed to process invalidate event:', error.message)
+        }
         const message = error.message
         const detail = typeof ErrorEvent !== 'undefined' ? new ErrorEvent('error', { message }) : error
         this.emitError(detail)
