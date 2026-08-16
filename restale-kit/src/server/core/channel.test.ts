@@ -43,15 +43,23 @@ describe('channel', () => {
 
   it('starts in open state', () => {
     const channel = createSSEChannel({})
-    expect(channel.state).toBe('open')
+    try {
+      expect(channel.state).toBe('open')
+    } finally {
+      channel.close()
+    }
   })
 
   it('emits connected frame as first event in stream', async () => {
     const channel = createSSEChannel()
-    const reader = channel.stream.getReader()
-    const { value } = await reader.read()
-    reader.releaseLock()
-    expect(decoder.decode(value)).toBe(`event: connected\ndata: {"connectionId":"${channel.connectionId}"}\n\n`)
+    try {
+      const reader = channel.stream.getReader()
+      const { value } = await reader.read()
+      reader.releaseLock()
+      expect(decoder.decode(value)).toBe(`event: connected\ndata: {"connectionId":"${channel.connectionId}"}\n\n`)
+    } finally {
+      channel.close()
+    }
   })
 
   it.each([

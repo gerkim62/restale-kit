@@ -1284,44 +1284,52 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const pubsub = new MemoryPubSubAdapter()
       const group = new SSEChannelGroup({ pubsub })
       const ch = createSSEChannel({})
-      group.register(ch, undefined, { topics: ['mutations'] })
+      try {
+        group.register(ch, undefined, { topics: ['mutations'] })
 
-      const invalidateSpy = vi.spyOn(ch, 'invalidate')
-      const { computeSenderHash } = await import('@/utils/canonical-hash.js')
-      const expectedHash = await computeSenderHash('sender-123')
+        const invalidateSpy = vi.spyOn(ch, 'invalidate')
+        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
+        const expectedHash = await computeSenderHash('sender-123')
 
-      await group.publish('mutations', { key: ['todos'] }, { senderConnectionId: 'sender-123' })
+        await group.publish('mutations', { key: ['todos'] }, { senderConnectionId: 'sender-123' })
 
-      expect(invalidateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: ['todos'],
-          _sh: expectedHash,
-        }),
-        undefined,
-      )
+        expect(invalidateSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            key: ['todos'],
+            _sh: expectedHash,
+          }),
+          undefined,
+        )
+      } finally {
+        ch.close()
+      }
     })
 
     it('attaches SHA-256 _sh to signal when broadcast is called with senderConnectionId', async () => {
       const group = new SSEChannelGroup()
       const ch = createSSEChannel({})
-      group.register(ch)
+      try {
+        group.register(ch)
 
-      const invalidateSpy = vi.spyOn(ch, 'invalidate')
-      const { computeSenderHash } = await import('@/utils/canonical-hash.js')
-      const expectedHash = await computeSenderHash('sender-456')
+        const invalidateSpy = vi.spyOn(ch, 'invalidate')
+        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
+        const expectedHash = await computeSenderHash('sender-456')
 
-      await group.broadcast({ key: ['items'] }, () => true, { senderConnectionId: 'sender-456' })
+        await group.broadcast({ key: ['items'] }, () => true, { senderConnectionId: 'sender-456' })
 
-      // Wait a tick for async hash to resolve and deliver
-      await vi.waitFor(() => {
-        expect(invalidateSpy).toHaveBeenCalledWith(
-          expect.objectContaining({
-            key: ['items'],
-            _sh: expectedHash,
-          }),
-          undefined,
-        )
-      })
+        // Wait a tick for async hash to resolve and deliver
+        await vi.waitFor(() => {
+          expect(invalidateSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+              key: ['items'],
+              _sh: expectedHash,
+            }),
+            undefined,
+          )
+        })
+      } finally {
+        ch.close()
+      }
     })
   })
 })

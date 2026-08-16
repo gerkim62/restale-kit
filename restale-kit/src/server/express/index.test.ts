@@ -29,10 +29,14 @@ describe('server/express integration via attachNodeResponse', () => {
     const res = createMockExpressResponse()
 
     const { channel } = group.attachNodeResponse(req, res, {})
-    expect(channel.connectionId).toBeDefined()
-    expect(typeof channel.connectionId).toBe('string')
-    expect(channel.connectionId.length).toBeGreaterThan(0)
-    expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
-    expect(group.size).toBe(1)
+    try {
+      expect(channel.connectionId).toBeDefined()
+      expect(typeof channel.connectionId).toBe('string')
+      expect(channel.connectionId.length).toBeGreaterThan(0)
+      expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
+      expect(group.size).toBe(1)
+    } finally {
+      channel.close()
+    }
   })
 })

@@ -72,6 +72,10 @@ export interface UseReStaleOptions extends ClientOptions {
   }
 }
 
+export type ConnectionSnapshot = ConnectionStatus & {
+  readonly connectionId?: string
+}
+
 /**
  * Return value of `useReStale`.
  */
@@ -79,7 +83,7 @@ export interface UseReStaleResult {
   /** Unique ID generated for this SSE connection instance. */
   connectionId: string
   /** Current connection status. */
-  connection: ConnectionStatus
+  connection: ConnectionSnapshot
   /** Current reconnect attempt count (0 during initial connection or after success). */
   attempt: number
   /** Helper boolean: true if status is 'connecting' and attempt === 0 */
@@ -208,20 +212,23 @@ export function useReStale(
     [client]
   )
 
-  const snapshotRef = useRef<ConnectionStatus>(CLOSED_UNMOUNT)
+  const snapshotRef = useRef<ConnectionSnapshot>(CLOSED_UNMOUNT)
   const lastStatusRef = useRef<ConnectionStatus | null>(null)
   const lastCidRef = useRef<string | undefined>(undefined)
 
-  const getSnapshot = useCallback(() => {
+  const getSnapshot = useCallback((): ConnectionSnapshot => {
     if (!client) return CLOSED_UNMOUNT
     if (client.status !== lastStatusRef.current || client.connectionId !== lastCidRef.current) {
       lastStatusRef.current = client.status
       lastCidRef.current = client.connectionId
-      snapshotRef.current = { ...client.status }
+      snapshotRef.current = {
+        ...client.status,
+        ...(client.connectionId !== undefined ? { connectionId: client.connectionId } : {}),
+      }
     }
     return snapshotRef.current
   }, [client])
-  const getServerSnapshot = useCallback(() => CLOSED_UNMOUNT, [])
+  const getServerSnapshot = useCallback((): ConnectionSnapshot => CLOSED_UNMOUNT, [])
 
   const connection = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
@@ -325,6 +332,10 @@ export function useReStale(
       return
     }
 
+    if (!connection.connectionId) {
+      return
+    }
+
     const openedNow = !state.wasOpen
     state.wasOpen = true
     if (serializedClientContext === undefined) return
@@ -362,7 +373,7 @@ export function useReStale(
     }
     void sync()
     return () => { active = false }
-  }, [client, connection.status, serializedClientContext, clientContext, opts.clientContextSync, syncNonce])
+  }, [client, connection.status, connection.connectionId, serializedClientContext, clientContext, opts.clientContextSync, syncNonce])
 
   // Open on mount / close on unmount
   useEffect(() => {

@@ -101,6 +101,35 @@ describe('useReStale', () => {
     consoleErrorSpy.mockRestore()
   })
 
+  it('waits for connected event providing connectionId before synchronizing client context', async () => {
+    const sync = vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockResolvedValue({ updated: true })
+    const onInvalidate = asAdapter(vi.fn())
+    renderHook(() =>
+      useReStale('/sse', { onInvalidate, clientContext: { filter: 'active' } })
+    )
+
+    const instance = MockEventSource.instances[0]
+    expect(instance).toBeDefined()
+
+    // Emit only 'open' without connected event
+    act(() => {
+      instance?.emitOpen(new Event('open'), '')
+    })
+
+    // At this point, status is open but connectionId is undefined; sync must NOT have been called
+    expect(sync).not.toHaveBeenCalled()
+
+    // Now emit connected with the connection ID
+    act(() => {
+      instance?.emitConnected('assigned-conn-id')
+    })
+
+    await waitFor(() => {
+      expect(sync).toHaveBeenCalledWith({ filter: 'active' }, { revision: 1 })
+    })
+  })
+
   it('does not open connection when disabled is true', () => {
     const onInvalidate = asAdapter(vi.fn())
     renderHook(() =>
