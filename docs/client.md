@@ -99,7 +99,7 @@ useReStale('/sse', {
 })
 ```
 
-Context registration is fire-and-forget. A `404` can occur while a newly-opened stream is still registering; by default the hook retries once and then tries again on the next context change or stream open. Set `onExhausted: 'disableUntilReconnect'` to pause registration attempts after a failed sync. Context failures do not disable normal invalidation handling. See [Client Context & Inline Data](./inline-data.md) for the required server route and security rules.
+Context registration retries on transient errors or stream opens (by default making up to 2 attempts). If context synchronization fails after all retry attempts are exhausted, `useReStale` logs `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')` and immediately invokes `onInvalidate` to trigger a background query refetch, ensuring the UI does not show stale or out-of-sync state. If an incoming inline data push was computed against an outdated context (detected via deterministic `contextHash`), the stale `inlineData` is stripped and converted to a fresh refetch while resynchronizing context. See [Client Context & Inline Data](./inline-data.md) for full race condition details and server setup.
 
 ### Return value
 

@@ -1,6 +1,7 @@
-import { useRef, useCallback, useSyncExternalStore, useEffect } from 'react'
+import { useRef, useCallback, useSyncExternalStore, useEffect, useState } from 'react'
 import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
+import { canonicalJsonSerialize, computeContextHash } from '@/utils/canonical-hash.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -272,7 +273,30 @@ export function useReStale<
   useEffect(() => {
     if (!client) return
     const handler = (event: SSEInvalidatorClientEventMap<TSignal>['invalidate']) => {
-      onInvalidateRef.current(event.detail)
+      const detail = event.detail
+      const currentHash = computeContextHash(clientContextRef.current)
+
+      const processSignal = (sig: TSignal): TSignal => {
+        if (typeof sig !== 'object' || sig === null || Array.isArray(sig)) return sig
+        if ('inlineData' in sig && 'contextHash' in sig && typeof sig.contextHash === 'string') {
+          if (currentHash !== undefined && sig.contextHash !== currentHash) {
+            const copy = { ...sig }
+            delete copy.inlineData
+            triggerSyncRef.current()
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- inlineData is stripped to convert to refetch
+            return copy as unknown as TSignal
+          }
+        }
+        return sig
+      }
+
+      if (Array.isArray(detail)) {
+        const processed = detail.map(processSignal)
+        onInvalidateRef.current(processed)
+      } else {
+        const processed = processSignal(detail)
+        onInvalidateRef.current(processed)
+      }
     }
 
     client.addEventListener('invalidate', handler)
@@ -327,7 +351,18 @@ export function useReStale<
     revision: 0,
   })
   const clientContext = opts.clientContext
-  const serializedClientContext = clientContext === undefined ? undefined : JSON.stringify(clientContext)
+  const clientContextRef = useRef(clientContext)
+  clientContextRef.current = clientContext
+  const serializedClientContext = canonicalJsonSerialize(clientContext)
+
+  const [syncNonce, setSyncNonce] = useState(0)
+  const triggerSync = useCallback(() => {
+    const state = contextSyncStateRef.current
+    state.lastSerialized = undefined
+    setSyncNonce((n) => n + 1)
+  }, [])
+  const triggerSyncRef = useRef(triggerSync)
+  triggerSyncRef.current = triggerSync
 
   // Context belongs to the server-side channel, so re-register it after every open.
   useEffect(() => {
@@ -357,7 +392,7 @@ export function useReStale<
           const result = await client.updateClientContext(contextToSync, { revision })
           if (result.updated) return
         } catch {
-          // The final warning below is intentionally the only observable error surface.
+          // The final error below is intentionally the only observable error surface.
         }
         if (attempt + 1 < maxAttempts && active) {
           await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs))
@@ -365,11 +400,22 @@ export function useReStale<
       }
       if (!active) return
       if (onExhausted === 'disableUntilReconnect') state.disabled = true
-      console.warn('[restale-kit][useReStale] Failed to synchronize clientContext.')
+      console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')
+      try {
+        const fallbackSignal = target === 'tanstack-query'
+          ? { target: 'tanstack-query', queryKey: [] }
+          : target === 'swr'
+            ? { target: 'swr', key: '' }
+            : { key: [] }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Fallback invalidation payload for active target
+        onInvalidateRef.current(fallbackSignal as unknown as TSignal)
+      } catch {
+        // onInvalidate error surface handled by caller
+      }
     }
     void sync()
     return () => { active = false }
-  }, [client, connection.status, serializedClientContext, clientContext, opts.clientContextSync])
+  }, [client, connection.status, serializedClientContext, clientContext, opts.clientContextSync, syncNonce])
 
   // Open on mount / close on unmount
   useEffect(() => {

@@ -96,6 +96,14 @@ function validateInlineData(value: Record<string, unknown>): JSONValue | undefin
   return value.inlineData
 }
 
+function validateContextHash(value: Record<string, unknown>): string | undefined {
+  if (!('contextHash' in value)) return undefined
+  if (typeof value.contextHash !== 'string') {
+    throw new Error('Signal "contextHash" field must be a string')
+  }
+  return value.contextHash
+}
+
 function validateSingleSignal(value: unknown): ReStaleSignal {
   if (!isObject(value)) {
     throw new Error('Each signal must be a plain object')
@@ -120,6 +128,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       throw new Error(`TanStack Query signal "action" field must be one of 'invalidate', 'refetch', 'reset', 'remove', 'cancel'`)
     }
     const inlineData = validateInlineData(value)
+    const contextHash = validateContextHash(value)
     const signal: TanStackQuerySignal = {
       target: SIGNAL_TARGETS.TANSTACK_QUERY,
       queryKey: value.queryKey,
@@ -133,6 +142,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     }
     if (typeof value.stale === 'boolean') signal.stale = value.stale
     if (inlineData !== undefined) signal.inlineData = inlineData
+    if (contextHash !== undefined) signal.contextHash = contextHash
     return signal
   }
 
@@ -150,6 +160,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
       throw new Error('SWR signal "revalidate" field must be a boolean')
     }
     const inlineData = validateInlineData(value)
+    const contextHash = validateContextHash(value)
     const signal: SWRSignal = {
       target: SIGNAL_TARGETS.SWR,
       key: value.key,
@@ -160,6 +171,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     if (typeof value.revalidate === 'boolean') signal.revalidate = value.revalidate
     if (value.match === 'exact' || value.match === 'prefix') signal.match = value.match
     if (inlineData !== undefined) signal.inlineData = inlineData
+    if (contextHash !== undefined) signal.contextHash = contextHash
     return signal
   }
 
@@ -194,6 +206,7 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
   }
 
   const inlineData = validateInlineData(value)
+  const contextHash = validateContextHash(value)
 
   const signal: GenericInvalidateSignal = { key: value.key }
   if (target === SIGNAL_TARGETS.GENERIC) signal.target = SIGNAL_TARGETS.GENERIC
@@ -202,5 +215,6 @@ function validateSingleSignal(value: unknown): ReStaleSignal {
     signal.action = value.action
   }
   if (inlineData !== undefined) signal.inlineData = inlineData
+  if (contextHash !== undefined) signal.contextHash = contextHash
   return signal
 }

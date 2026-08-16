@@ -10,6 +10,7 @@ import { generateInstanceId } from '@/utils/id.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
+import { computeContextHash } from '@/utils/canonical-hash.js'
 
 /**
  * Internal channel wrapper that redeclares `invalidate` as a method signature rather than a function property.
@@ -524,9 +525,21 @@ class SSEChannelGroupImplementation<
       if (!result) continue
       const channels = this.connectionIndex.get(connection.connectionId)
       if (!channels) continue
-      const signal = result.inlineData === undefined
-        ? result.signal
-        : { ...result.signal, inlineData: result.inlineData } as TSignal
+      const existingHash = 'contextHash' in result.signal && typeof result.signal.contextHash === 'string'
+        ? result.signal.contextHash
+        : undefined
+      const contextHash = existingHash ?? computeContextHash(connection.clientContext)
+      if (result.inlineData === undefined) {
+        for (const channel of channels) {
+          this.deliverToChannel(channel, result.signal, 'publish', topic)
+        }
+        continue
+      }
+      const signal = {
+        ...result.signal,
+        inlineData: result.inlineData,
+        ...(contextHash ? { contextHash } : {}),
+      } as TSignal
       for (const channel of channels) {
         this.deliverToChannel(channel, signal, 'publish', topic)
       }

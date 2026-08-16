@@ -168,7 +168,7 @@ type ResolveInlineData<TMeta, TClientContext, TSignal> = (
 
 ## Client context registration
 
-With React, pass `clientContext` to `useReStale`. It is deep-compared, sent whenever it changes while the stream is open, and resent after every successful open.
+With React, pass `clientContext` to `useReStale`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
 
 ```tsx
 const onInvalidate = useSwrAdapter(mutate, { markInlineDataStale: false })
@@ -184,7 +184,12 @@ useReStale('/sse', {
 })
 ```
 
-`clientContextUrl` optionally points at a separate POST endpoint; otherwise it uses the SSE URL. The default retry policy makes two attempts per sync, retrying a `404` or network error after 200 ms. With `onExhausted: 'disableUntilReconnect'`, context sync pauses after failures until the stream opens again. The SSE invalidation callback continues to work regardless of context sync failures.
+`clientContextUrl` optionally points at a separate POST endpoint; otherwise it uses the SSE URL. The default retry policy makes two attempts per sync, retrying a `404` or network error after 200 ms. 
+
+When context synchronization fails after all retry attempts are exhausted:
+- `useReStale` logs an error via `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')`.
+- It triggers a background query invalidation/refetch via `onInvalidate` so the client does not remain stuck on stale data.
+- With `onExhausted: 'disableUntilReconnect'`, context sync pauses after failures until the stream opens again. The SSE invalidation callback continues to work regardless of context sync failures.
 
 For non-React clients, decide retry policy yourself:
 
@@ -199,6 +204,43 @@ if (!updated) {
 ```
 
 The method returns `{ updated: true }` for `204`, `{ updated: false }` for `404`, and throws for network failures and other response statuses.
+
+---
+
+## Slow clients, race conditions, and stale client context
+
+In real-world web applications, network latency and concurrency can create race conditions between client context updates and server mutations:
+
+```
+Client (User changes page 1 -> 2)            Server (Mutation occurs)
+─────────────────────────────────            ────────────────────────
+1. Client updates local state to page 2.
+2. Client sends POST /sse (page 2 context).
+                                             3. Server receives a mutation and calls pushInlineData().
+                                             4. Server resolves data using OLD context (page 1) because
+                                                POST (step 2) is still in transit across the network.
+5. Client receives SSE signal for page 1.    5. Server transmits SSE signal with page 1 inlineData.
+6. Client discards page 1 inlineData,
+   refetches page 2, and resyncs context!
+7. POST /sse arrives at server; server updates connection context to page 2.
+```
+
+### How ReStale prevents cache corruption
+
+1. **Deterministic Canonical Hashing**:
+   - Whenever `pushInlineData` resolves data on the server, ReStale computes a whitespace-independent, key-sorted hash (`contextHash`) of the connection's `clientContext` (using `canonicalJsonSerialize` and `computeContextHash`).
+   - Object key ordering differences (e.g. `{ page: 1, sort: 'asc' }` vs `{ sort: 'asc', page: 1 }`) produce identical hashes.
+   - The computed `contextHash` is attached to the outgoing SSE signal.
+
+2. **Client-Side Verification**:
+   - When `useReStale` receives an incoming signal containing `inlineData` and a `contextHash`, it compares `signal.contextHash` against the canonical hash of the current active `clientContext`.
+   - **Matching Hash**: The pushed `inlineData` is guaranteed to match the exact view/parameters currently active on the client. It is written directly into the cache.
+   - **Mismatched Hash (Stale Push)**: The user navigated, filtered, or paged away before the pushed data arrived. `useReStale` automatically:
+     - **Discards `inlineData`**: Strips `inlineData` from the signal so stale data is never written into the query cache.
+     - **Triggers Immediate Refetch**: Forwards the stripped signal to `onInvalidate`, turning it into a regular invalidation/refetch for the active query.
+     - **Re-triggers Context Sync**: Initiates an immediate synchronization to ensure the server receives the client's latest context.
+
+This ensures zero cache corruption and seamless self-healing even over high-latency or fluctuating connections.
 
 ---
 

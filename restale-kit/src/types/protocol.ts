@@ -32,6 +32,7 @@ export interface TanStackQuerySignal extends BaseInvalidateSignal {
   action?: TanStackQueryAction
   stale?: boolean
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 export const SWR_ACTIONS = ['revalidate', 'purge', 'remove', 'mutate'] as const
@@ -45,6 +46,7 @@ export interface SWRSignal extends BaseInvalidateSignal {
   revalidate?: boolean
   match?: 'exact' | 'prefix'
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 /** Native RTK Query invalidation signal payload */
@@ -63,6 +65,7 @@ export interface GenericInvalidateSignal extends BaseInvalidateSignal {
   exact?: boolean
   action?: GenericAction
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]

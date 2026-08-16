@@ -140,7 +140,7 @@ describe('channel-group', () => {
     await origin.pushInlineData('todos', { source: 'remote' })
     await Promise.resolve()
     expect(invalidate).toHaveBeenCalledWith(
-      { target: 'swr', key: ['todos', 5], inlineData: ['from-owner'] },
+      { target: 'swr', key: ['todos', 5], inlineData: ['from-owner'], contextHash: '37c8de55' },
       undefined
     )
   })
@@ -168,7 +168,7 @@ describe('channel-group', () => {
     await expect(group.pushInlineData('todos', { source: 'test' })).resolves.toBeUndefined()
 
     expect(firstInvalidate).toHaveBeenCalledWith(
-      { target: 'swr', key: ['todos', 1], inlineData: ['fresh'] },
+      { target: 'swr', key: ['todos', 1], inlineData: ['fresh'], contextHash: '37be50f9' },
       undefined
     )
     expect(secondInvalidate).not.toHaveBeenCalled()

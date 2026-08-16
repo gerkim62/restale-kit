@@ -50,6 +50,7 @@ describe('Gap 1: target-specific wire frames client round-trip', () => {
         action: 'cancel',
         stale: false,
         inlineData: [{ id: 1, completed: false }],
+        contextHash: 'a1b2c3d4',
       },
       {
         target: 'swr',
@@ -58,6 +59,7 @@ describe('Gap 1: target-specific wire frames client round-trip', () => {
         revalidate: false,
         match: 'exact',
         inlineData: { todos: [{ id: 1 }] },
+        contextHash: 'e5f6a7b8',
       },
       {
         target: 'rtk-query',
@@ -69,6 +71,7 @@ describe('Gap 1: target-specific wire frames client round-trip', () => {
         exact: true,
         action: 'remove',
         inlineData: null,
+        contextHash: 'c9d0e1f2',
       },
     ] satisfies readonly [
       Required<TanStackQuerySignal>,

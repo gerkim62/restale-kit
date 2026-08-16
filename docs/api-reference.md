@@ -29,6 +29,8 @@ import {
   isJSONValueArray,
   matchesInvalidateSignalKey,
   validateStandardSchema,
+  canonicalJsonSerialize,
+  computeContextHash,
 } from 'restale-kit'
 ```
 
@@ -55,6 +57,7 @@ interface TanStackQuerySignal {
   action?: 'invalidate' | 'refetch' | 'reset' | 'remove' | 'cancel'
   stale?: boolean
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 interface SWRSignal {
@@ -64,6 +67,7 @@ interface SWRSignal {
   revalidate?: boolean
   match?: 'exact' | 'prefix'
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 interface RTKQuerySignal {
@@ -77,6 +81,7 @@ interface GenericInvalidateSignal {
   exact?: boolean
   action?: 'invalidate' | 'refetch' | 'remove'
   inlineData?: JSONValue
+  contextHash?: string
 }
 
 type ReStaleSignal =
