@@ -18,8 +18,8 @@ import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
 
 /** Cast a plain function to AdaptedInvalidateCallback for test use. */
-function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback<'swr'> {
-  return fn as unknown as AdaptedInvalidateCallback<'swr'>
+function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback {
+  return fn as unknown as AdaptedInvalidateCallback
 }
 
 describe('Issue 9 — useReStale does not orphan clients on repeated renders', () => {

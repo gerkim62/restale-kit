@@ -1,9 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
-import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
+import { buildSSEHeaders, extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -23,12 +22,12 @@ export interface FastifyRequestLike {
  *
  * Attaches an SSE channel to a Node.js HTTP response (or Fastify reply).
  */
-export function internal_attachSSE<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function internal_attachSSE(
   req: IncomingMessage | FastifyRequestLike,
   res: ServerResponse | FastifyReplyLike,
-  options: SSEChannelTransportOptions<TSignal>,
-  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults' | 'eventStore'>
-): SSEChannel<TSignal> {
+  options: SSEChannelTransportOptions,
+  group?: Pick<SSEChannelGroup, 'channelDefaults' | 'eventStore'>
+): SSEChannel {
   if ('hijack' in res && typeof res.hijack === 'function') {
     res.hijack()
   }
@@ -43,26 +42,21 @@ export function internal_attachSSE<TSignal extends InvalidateSignal = Invalidate
     options.connectionId !== undefined
       ? options.connectionId
       : extractConnectionId(searchParams)
-  const requestedTarget = extractRequestedTarget(searchParams)
-
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
-  const baseOptions: SSEChannelTransportOptions<TSignal> = {
-    ...options,
-    lastEventId,
+  const { eventStore: optionEventStore, ...restOptions } = options
+  const effectiveEventStore = optionEventStore ?? group?.eventStore
+  const baseOptions: SSEChannelTransportOptions = {
+    ...restOptions,
     connectionId,
-    requestedTarget: requestedTarget ?? options.requestedTarget,
-    eventStore: options.eventStore ?? group?.eventStore,
+    ...(lastEventId !== undefined ? { lastEventId } : {}),
+    ...(effectiveEventStore !== undefined ? { eventStore: effectiveEventStore } : {}),
   }
 
-  const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)
-  const target = channelOptions.target
-  if (target === undefined) {
-    throw new Error('[attachNodeResponse] target option is required.')
-  }
-  const channel = createSSEChannel({ ...channelOptions, target })
+  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
+  const channel = createSSEChannel(channelOptions)
 
-  const headers = buildSSETargetHeaders(channelOptions)
+  const headers = buildSSEHeaders()
 
   actualRes.writeHead(200, headers)
   actualRes.write(':\n\n')

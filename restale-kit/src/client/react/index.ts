@@ -7,5 +7,5 @@ export type {
   RevokeEventDetail,
   RenewEventDetail,
   RejectedConnectionResponse,
-  AdaptedInvalidateCallback,
+  AdaptedCallback,
 } from '../core/client-contracts.js'

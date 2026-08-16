@@ -1,73 +1,31 @@
-import type { InvalidateSignal, EventRecord, EventStore, EventStoreResult } from '@/types/protocol.js'
-
-/**
- * Options for configuring an in-memory `EventStore`.
- */
+import type { EventRecord, EventStore, EventStoreResult, UniversalSignal } from '@/types/protocol.js'
 export interface EventStoreOptions {
-  /** Maximum number of historical events to keep in the ring buffer. Default: 100. */
   capacity?: number
-  /** Custom generator function for event IDs. If omitted, uses auto-incrementing integer strings. */
   idGenerator?: () => string
 }
 
-const DEFAULT_CAPACITY = 100
-
-/**
- * Creates an in-memory bounded ring-buffer store for historical invalidation events.
- */
-export function createEventStore<TSignal extends InvalidateSignal = InvalidateSignal>(
-  options?: EventStoreOptions
-): EventStore<TSignal> {
-  const suppliedCapacity = options?.capacity
-  if (suppliedCapacity !== undefined && (!Number.isSafeInteger(suppliedCapacity) || suppliedCapacity < 1)) {
+/** Creates an in-memory, bounded event store for Last-Event-ID replay. */
+export function createEventStore(options?: EventStoreOptions): EventStore {
+  const capacity = options?.capacity ?? 100
+  if (!Number.isSafeInteger(capacity) || capacity <= 0) {
     throw new RangeError('[createEventStore] capacity must be a positive safe integer.')
   }
-  const capacity = suppliedCapacity ?? DEFAULT_CAPACITY
-  const customIdGenerator = options?.idGenerator
-
-  const records: EventRecord<TSignal>[] = []
+  const idGenerator = options?.idGenerator
+  const events: EventRecord[] = []
   let nextSequence = 1
 
-  function generateId(): string {
-    if (customIdGenerator) {
-      return customIdGenerator()
-    }
-    const current = nextSequence
-    nextSequence += 1
-    return String(current)
-  }
-
-  function add(signal: TSignal | TSignal[], customId?: string): EventRecord<TSignal> {
-    const id = customId ?? generateId()
-    const record: EventRecord<TSignal> = { id, signal }
-
-    records.push(record)
-
-    if (records.length > capacity) {
-      records.shift()
-    }
-
+  function add(signal: UniversalSignal | UniversalSignal[], customId?: string): EventRecord {
+    const record = { id: customId ?? idGenerator?.() ?? String(nextSequence++), signal }
+    events.push(record)
+    if (events.length > capacity) events.splice(0, events.length - capacity)
     return record
   }
 
-  function getEventsAfter(lastEventId: string): EventStoreResult<TSignal> {
-    const index = records.findIndex((rec) => rec.id === lastEventId)
-    if (index === -1) {
-      // lastEventId not found — it either never existed or fell off the ring buffer.
-      // Return stale: true so callers can distinguish "cursor missed" from "nothing new".
-      // The channel uses this to send a full-invalidate signal, prompting the client to refetch.
-      return { events: [], stale: true }
-    }
-    return { events: records.slice(index + 1), stale: false }
+  function getEventsAfter(lastEventId: string): EventStoreResult {
+    const index = events.findIndex((event) => event.id === lastEventId)
+    if (index < 0) return { events: [], stale: true }
+    return { events: events.slice(index + 1), stale: false }
   }
 
-  function clear(): void {
-    records.length = 0
-  }
-
-  return {
-    add,
-    getEventsAfter,
-    clear,
-  }
+  return { add, getEventsAfter, clear: () => { events.length = 0 } }
 }

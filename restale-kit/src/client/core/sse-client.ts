@@ -1,4 +1,4 @@
-import { isJSONValue, type InvalidateSignal } from '@/types/protocol.js'
+import { isJSONValue, type UniversalSignal } from '@/types/protocol.js'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -28,13 +28,6 @@ function getStringProp(obj: object, key: string): string | undefined {
   return typeof val === 'string' ? val : undefined
 }
 
-/** Reads an array property from an unknown object without any cast. */
-function getArrayProp(obj: object, key: string): unknown[] | undefined {
-  if (!Object.hasOwn(obj, key)) return undefined
-  const val: unknown = Reflect.get(obj, key)
-  return Array.isArray(val) ? val : undefined
-}
-
 /** Reads a number property from an unknown object without any cast. */
 function getNumberProp(obj: object, key: string): number | undefined {
   if (!Object.hasOwn(obj, key)) return undefined
@@ -59,22 +52,19 @@ function isStatusMatcherList(
  * Supports automatic reconnection with exponential backoff, and optional
  * Standard Schema validation of incoming payloads.
  */
-export class SSEInvalidatorClient<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-> extends EventTarget {
-  declare readonly _signalType?: (signal: TSignal) => void
+export class SSEInvalidatorClient extends EventTarget {
   private readonly url: string
   private readonly eventSourceUrl: string
   private readonly clientContextUrl: string
   private nativeAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
   private jsBackoffAutoReconnect: boolean = PROTOCOL_CONSTANTS.DEFAULT_AUTO_RECONNECT
   private maxRetries = PROTOCOL_CONSTANTS.DEFAULT_MAX_RETRIES
-  private reconnectOptions: ClientOptions<TSignal>['reconnect']
+  private reconnectOptions: ClientOptions['reconnect']
   private readonly withCredentials: boolean
-  private callback?: ClientOptions<TSignal>['callback']
-  private onConnect?: ClientOptions<TSignal>['onConnect']
-  private onDisconnect?: ClientOptions<TSignal>['onDisconnect']
-  private onError?: ClientOptions<TSignal>['onError']
+  private callback?: ClientOptions['callback']
+  private onConnect?: ClientOptions['onConnect']
+  private onDisconnect?: ClientOptions['onDisconnect']
+  private onError?: ClientOptions['onError']
   private debug = false
   private readonly currentConnectionId: string
 
@@ -93,7 +83,7 @@ export class SSEInvalidatorClient<
   } | null = null
   private currentLastEventId: string | null = null
 
-  constructor(url: string, opts?: ClientOptions<TSignal>) {
+  constructor(url: string, opts?: ClientOptions) {
     super()
     
     // Gap 10: Validate URL - reject blank/whitespace strings
@@ -124,14 +114,6 @@ export class SSEInvalidatorClient<
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
       this.currentConnectionId
     )
-    if (opts?.target !== undefined) {
-      const targetParam: string = typeof opts.target === 'string' ? opts.target : String(opts.target)
-      eventSourceUrl = appendQueryParam(
-        eventSourceUrl,
-        PROTOCOL_CONSTANTS.RESTALE_TARGET_PARAM,
-        targetParam
-      )
-    }
     this.eventSourceUrl = eventSourceUrl
     this.callback = opts?.callback
     this.onConnect = opts?.onConnect
@@ -150,7 +132,7 @@ export class SSEInvalidatorClient<
   /** @internal Used by the React binding to apply changed hook props. */
   updateRuntimeOptions(
     opts?: Pick<
-      ClientOptions<TSignal>,
+      ClientOptions,
       'autoReconnect' | 'reconnect' | 'debug' | 'callback' | 'onConnect' | 'onDisconnect' | 'onError'
     >
   ): void {
@@ -335,11 +317,11 @@ export class SSEInvalidatorClient<
 
   // --- Typed addEventListener / removeEventListener overloads ---
 
-  addEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
+  addEventListener<K extends keyof SSEInvalidatorClientEventMap>(
     type: K,
     listener: (
-      this: SSEInvalidatorClient<TSignal>,
-      ev: SSEInvalidatorClientEventMap<TSignal>[K]
+      this: SSEInvalidatorClient,
+      ev: SSEInvalidatorClientEventMap[K]
     ) => void,
     options?: boolean | AddEventListenerOptions
   ): void
@@ -356,11 +338,11 @@ export class SSEInvalidatorClient<
     super.addEventListener(type, listener, options)
   }
 
-  removeEventListener<K extends keyof SSEInvalidatorClientEventMap<TSignal>>(
+  removeEventListener<K extends keyof SSEInvalidatorClientEventMap>(
     type: K,
     listener: (
-      this: SSEInvalidatorClient<TSignal>,
-      ev: SSEInvalidatorClientEventMap<TSignal>[K]
+      this: SSEInvalidatorClient,
+      ev: SSEInvalidatorClientEventMap[K]
     ) => void,
     options?: boolean | EventListenerOptions
   ): void
@@ -551,14 +533,12 @@ export class SSEInvalidatorClient<
    */
   private wireInvalidateListener(es: SSE): void {
     es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
-      let validated: InvalidateSignal | InvalidateSignal[] | undefined = undefined
+      let validated: UniversalSignal | UniversalSignal[] | undefined = undefined
       try {
         // Built-in structural validation
         validated = validatePayload(event.data)
         this.dispatchEvent(new CustomEvent(SSE_EVENTS.INVALIDATE, { detail: validated }))
-        // Payload validation proves the wire union; `TSignal` is the consumer's narrower view.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated wire payload is exposed through the caller's generic signal view.
-        this.invokeUserCallback('callback', this.callback, validated as TSignal | TSignal[])
+        this.invokeUserCallback('callback', this.callback, validated)
 
         if (typeof event.lastEventId === 'string' && event.lastEventId !== '') {
           this.currentLastEventId = event.lastEventId
@@ -582,20 +562,11 @@ export class SSEInvalidatorClient<
 
     es.addEventListener(SSE_EVENTS.REVOKE, (event: MessageEvent<string>) => {
       let parsedReason: string | undefined
-      let parsedRequested: string | undefined
-      let parsedSupported: string[] | undefined
       try {
         const parsed: unknown = JSON.parse(event.data)
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
           const reason = getStringProp(parsed, 'reason')
-          const requested = getStringProp(parsed, 'requested')
-          const supportedRaw = getArrayProp(parsed, 'supported')
           if (reason !== undefined) parsedReason = reason
-          if (requested !== undefined) parsedRequested = requested
-          if (supportedRaw !== undefined) {
-            const strings = supportedRaw.filter((s): s is string => typeof s === 'string')
-            if (strings.length === supportedRaw.length) parsedSupported = strings
-          }
         }
       } catch {
         // malformed revoke payload — leave fields as undefined
@@ -603,15 +574,9 @@ export class SSEInvalidatorClient<
 
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
-        if (parsedReason === 'unsupported-target' && parsedRequested !== undefined) {
-          console.warn(
-            `[WARN][SSEInvalidatorClient] Connection revoked: requested "${parsedRequested}", supported [${parsedSupported?.join(', ') ?? ''}]. Auto-reconnect suppressed. connectionId: ${this.currentConnectionId}.`
-          )
-        } else {
-          console.log(
-            `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
-          )
-        }
+        console.log(
+          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
+        )
       }
       this.revoked = true
       this.teardown()
@@ -622,13 +587,7 @@ export class SSEInvalidatorClient<
         this.connectPromise = null
       }
 
-      // Build a properly-typed discriminated RevokeEventDetail
-      const detail: RevokeEventDetail =
-        parsedReason === 'unsupported-target' &&
-        parsedRequested !== undefined &&
-        parsedSupported !== undefined
-          ? { reason: 'unsupported-target', requested: parsedRequested, supported: parsedSupported }
-          : { reason: parsedReason }
+      const detail: RevokeEventDetail = { ...(parsedReason !== undefined ? { reason: parsedReason } : {}) }
 
       this.dispatchEvent(new CustomEvent(SSE_EVENTS.REVOKE, { detail }))
     })

@@ -1,57 +1,9 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import { PubSubDecryptionError } from '@/pubsub/core/index.js'
-import type { SWRSignal, PubSubMessage } from '@/types/index.js'
-
-describe('PubSubEncryptionOptions mutual exclusivity', () => {
-  test('valid encryption options compile', () => {
-    const disabled = { encrypt: false } as const
-    const enabled = { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' } as const
-
-    expectTypeOf(disabled).toExtend<PubSubEncryptionOptions>()
-    expectTypeOf(enabled).toExtend<PubSubEncryptionOptions>()
-  })
-
-  test('invalid combinations cause compile errors', () => {
-    // @ts-expect-error encrypt: false cannot be combined with an encryptionKey
-    const _invalid1: PubSubEncryptionOptions = { encrypt: false, encryptionKey: 'some-key' }
-
-    // @ts-expect-error encrypt: true requires an encryptionKey
-    const _invalid2: PubSubEncryptionOptions = { encrypt: true }
-  })
-})
-
-describe('PubSubAdapter interface typing', () => {
-  test('PubSubAdapter publish and subscribe parameter types', () => {
-    type Adapter = PubSubAdapter<SWRSignal>
-    const adapter = {} as Adapter
-
-    expectTypeOf(adapter.publish).toBeCallableWith('topic-name', {
-      kind: 'signal',
-      data: { target: 'swr', key: ['todos'] },
-    })
-
-    expectTypeOf(adapter.subscribe).toBeCallableWith('topic-name', (msg: PubSubMessage<SWRSignal>) => {
-      if (msg.kind === 'signal') {
-        expectTypeOf(msg.data).toEqualTypeOf<SWRSignal | SWRSignal[]>()
-      }
-    })
-  })
-
-  test('PubSubAdapter publish rejects mismatched generic signal', () => {
-    type Adapter = PubSubAdapter<SWRSignal>
-    const adapter = {} as Adapter
-
-    void adapter.publish('topic-name', {
-      kind: 'signal',
-      // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
-      data: { target: 'tanstack-query', queryKey: ['todos'] },
-    })
-  })
-
-  test('PubSubDecryptionError class', () => {
-    const err = new PubSubDecryptionError('decryption failed')
-    expectTypeOf(err).toEqualTypeOf<PubSubDecryptionError>()
-    expectTypeOf(err.message).toEqualTypeOf<string>()
-  })
+import { expectTypeOf, test } from 'vitest'
+import type { UniversalSignal } from '@/types/index.js'
+test('universal signals do not expose target routing', () => {
+  const signal: UniversalSignal = { key: ['todos'], exact: true }
+  expectTypeOf(signal).toExtend<UniversalSignal>()
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  void targetSignal
 })

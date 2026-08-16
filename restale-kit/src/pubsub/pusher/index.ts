@@ -1,5 +1,5 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol.js'
 import { generateInstanceId } from '@/utils/id.js'
 import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
 import { PUBSUB_EVENTS } from '@/utils/constants.js'
@@ -30,10 +30,10 @@ export interface PusherClient {
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
  * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
-export function pusherPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function pusherPubSubAdapter(
   pusherServerClient: PusherClient,
   options: PubSubEncryptionOptions = {}
-): PubSubAdapter<TSignal> & {
+): PubSubAdapter & {
   handleWebhook(body: string, headers: Record<string, string>): boolean
 } {
   const { encryptionKey } = validateEncryptionOptions(options)
@@ -44,12 +44,12 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
   }
 
   // Map of topic (channel) to the active callback
-  const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
+  const callbacks = new Map<string, (message: PubSubMessage) => void>()
 
   const handleDecryptionError = createDecryptionErrorHandler('pusherPubSubAdapter')
 
   return {
-    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+    async publish(topic: string, message: PubSubMessage): Promise<void> {
       const eventName = message.kind === 'signal' ? PUBSUB_EVENTS.INVALIDATE : PUBSUB_EVENTS.CONTROL
       const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
       await pusherServerClient.trigger(topic, eventName, envelope)
@@ -57,7 +57,7 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
 
     subscribe(
       topic: string,
-      onMessage: (message: PubSubMessage<TSignal>) => void
+      onMessage: (message: PubSubMessage) => void
     ): Promise<() => void> {
       callbacks.set(topic, onMessage)
       return Promise.resolve(() => {
@@ -91,7 +91,7 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
             const onMessage = callbacks.get(event.channel)
             if (onMessage) {
               try {
-                const unwrapped = unwrapEnvelope<TSignal>(event.data, instanceId, encryptionKey, event.channel)
+                const unwrapped = unwrapEnvelope(event.data, instanceId, encryptionKey, event.channel)
                 if (unwrapped) {
                   onMessage(unwrapped)
                 }
@@ -112,4 +112,3 @@ export function pusherPubSubAdapter<TSignal extends InvalidateSignal = Invalidat
     },
   }
 }
-

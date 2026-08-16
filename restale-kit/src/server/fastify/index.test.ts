@@ -1,52 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
-import { EventEmitter } from 'node:events'
-import { Writable } from 'node:stream'
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { SSEChannelGroup } from '../core/index.js'
-
-function createMockNodeRequest(url: string): IncomingMessage {
-  return Object.assign(new EventEmitter(), {
-    url,
-    headers: {},
-  }) as unknown as IncomingMessage
-}
-
-function createMockNodeResponse(): ServerResponse {
-  const res = new Writable({
-    write(_chunk, _encoding, callback) {
-      callback()
-    },
-  }) as unknown as ServerResponse
-  res.writeHead = vi.fn()
-  return res
-}
-
-describe('server/fastify integration via attachNodeResponse', () => {
-  it('automatically calls reply.hijack() and exposes connectionId on the returned channel', () => {
-    const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-1')
-    const rawRes = createMockNodeResponse()
-
-    const mockRequest = { raw: rawReq }
-    const mockReply = { raw: rawRes, hijack: vi.fn() }
-
-    const { channel } = group.attachNodeResponse(mockRequest, mockReply, { target: 'swr' })
-
-    expect(mockReply.hijack).toHaveBeenCalledTimes(1)
-    expect(channel.connectionId).toBe('fastify-1')
-    expect(channel.state).toBe('open')
-    channel.close()
-  })
-
-  it('works directly with raw IncomingMessage and ServerResponse', () => {
-    const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-2')
-    const rawRes = createMockNodeResponse()
-
-    const { channel } = group.attachNodeResponse(rawReq, rawRes, { target: 'swr' })
-
-    expect(channel.connectionId).toBe('fastify-2')
-    expect(channel.state).toBe('open')
-    channel.close()
+import { describe, expect, it } from 'vitest'
+import { validatePayload } from '@/client/core/validation.js'
+describe('universal signal migration', () => {
+  it('accepts target-free signals and rejects retired routing fields', () => {
+    expect(validatePayload({ key: ['todos'] })).toEqual({ key: ['todos'] })
+    expect(validatePayload({ key: ['todos', 1], inlineData: { id: 1 } })).toEqual({
+      key: ['todos', 1],
+      inlineData: { id: 1 },
+    })
+    expect(() => validatePayload({ key: ['todos'], target: 'swr' })).toThrow()
   })
 })

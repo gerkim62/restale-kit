@@ -3,9 +3,7 @@
  */
 export const PROTOCOL_CONSTANTS = {
   RESTALE_REQUEST_ID_PARAM: '__restale_cid__',
-  RESTALE_TARGET_PARAM: '__restale_target__',
   LAST_EVENT_ID_HEADER: 'last-event-id',
-  TARGET_HEADER: 'x-restale-target',
   DEFAULT_CONTROL_TOPIC: '__restale_control__',
   DEFAULT_KEEPALIVE_INTERVAL_MS: 0,
   DEFAULT_AUTO_RECONNECT: true,
@@ -19,14 +17,6 @@ export const SSE_HEADERS = {
   'Content-Type': 'text/event-stream',
   'Cache-Control': 'no-cache',
   Connection: 'keep-alive',
-} as const
-
-/**
- * Additional response headers used by restale-kit transport adapters.
- */
-export const SSE_RESPONSE_HEADERS = {
-  RESTALE_TARGET: 'X-ReStale-Target',
-  RESTALE_SUPPORTED: 'X-ReStale-Supported',
 } as const
 
 /**
@@ -84,15 +74,5 @@ export const FRAME_GUARD_DEFAULTS = {
    * above this entry are all server-side scheduling values.
    */
   RENEW_JITTER_FACTOR: 0.2,
-} as const
-
-/**
- * Standard signal target discriminators.
- */
-export const SIGNAL_TARGETS = {
-  TANSTACK_QUERY: 'tanstack-query',
-  SWR: 'swr',
-  RTK: 'rtk-query',
-  GENERIC: 'generic',
 } as const
 

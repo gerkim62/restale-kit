@@ -64,10 +64,6 @@
       "types": "./dist/client/tanstack-query/index.d.ts",
       "import": "./dist/client/tanstack-query/index.js"
     },
-    "./rtk-query": {
-      "types": "./dist/client/rtk-query/index.d.ts",
-      "import": "./dist/client/rtk-query/index.js"
-    },
     "./pubsub": {
       "types": "./dist/pubsub/core/index.d.ts",
       "import": "./dist/pubsub/core/index.js"

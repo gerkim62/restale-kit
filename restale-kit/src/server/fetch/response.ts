@@ -1,7 +1,6 @@
-import type { InvalidateSignal } from '@/types/protocol.js'
 import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSETargetHeaders, extractConnectionId, extractLastEventId, extractRequestedTarget } from '@/server/transport-utils.js'
+import { buildSSEHeaders, extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -12,37 +11,32 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
  *
  * Creates an SSE `Response` for Fetch API runtimes (Hono, Bun, Deno, edge).
  */
-export function internal_toSSEResponse<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function internal_toSSEResponse(
   request: Request,
-  options: SSEChannelTransportOptions<TSignal>,
-  group?: Pick<SSEChannelGroup<TSignal>, 'channelDefaults' | 'eventStore'>
-): { response: Response; channel: SSEChannel<TSignal> } {
+  options: SSEChannelTransportOptions,
+  group?: Pick<SSEChannelGroup, 'channelDefaults' | 'eventStore'>
+): { response: Response; channel: SSEChannel } {
   const urlObj = new URL(request.url)
   const connectionId =
     options.connectionId !== undefined
       ? options.connectionId
       : extractConnectionId(urlObj.searchParams)
-  const requestedTarget = extractRequestedTarget(urlObj.searchParams)
-
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
-  const baseOptions: SSEChannelTransportOptions<TSignal> = {
-    ...options,
-    lastEventId,
+  const { eventStore: optionEventStore, ...restOptions } = options
+  const effectiveEventStore = optionEventStore ?? group?.eventStore
+  const baseOptions: SSEChannelTransportOptions = {
+    ...restOptions,
     connectionId,
-    requestedTarget: requestedTarget ?? options.requestedTarget,
-    eventStore: options.eventStore ?? group?.eventStore,
+    ...(lastEventId !== undefined ? { lastEventId } : {}),
+    ...(effectiveEventStore !== undefined ? { eventStore: effectiveEventStore } : {}),
   }
 
-  const channelOptions = mergeChannelDefaults<TSignal>(baseOptions, group?.channelDefaults)
-  const target = channelOptions.target
-  if (target === undefined) {
-    throw new Error('[createSSEChannel] target is required.')
-  }
-  const channel = createSSEChannel({ ...channelOptions, target })
+  const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
+  const channel = createSSEChannel(channelOptions)
 
-  const headers = buildSSETargetHeaders(channelOptions)
+  const headers = buildSSEHeaders()
 
   const response = new Response(channel.stream, {
     headers,

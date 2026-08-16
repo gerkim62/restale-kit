@@ -3,16 +3,16 @@ export { validateStandardSchema } from './standard-schema.js'
 export type { StandardSchemaV1 } from './standard-schema.js'
 export type {
   JSONValue,
-  InvalidateSignal,
-  TanStackQuerySignal,
-  TanStackQueryAction,
-  SWRSignal,
-  SWRAction,
-  RTKQuerySignal,
-  GenericInvalidateSignal,
+  CacheKey,
+  RevalidateSignal,
+  InlineDataSignal,
+  UniversalSignal,
   ReStaleSignal,
   PubSubMessage,
   SSEInvalidateEvent,
+  EventRecord,
+  EventStore,
+  EventStoreResult,
   ChannelState,
   LifetimeOptions,
   OnDeadline,
@@ -22,5 +22,5 @@ export type {
   RevokeEventDetail,
   RenewEventDetail,
 } from './protocol.js'
-export { isJSONValue, isJSONValueArray, matchesInvalidateSignalKey, SIGNAL_TARGETS } from './protocol.js'
+export { isInlineDataSignal, isJSONValue, isJSONValueArray } from './protocol.js'
 export { canonicalJsonSerialize, computeContextHash } from '../utils/canonical-hash.js'

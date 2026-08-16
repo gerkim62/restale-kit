@@ -30,8 +30,6 @@ const encoder = new TextEncoder()
  * the frame is never broken by embedded newline characters.
  */
 export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
-  // `target` is the discriminator that lets the client validate and route
-  // target-specific payloads.  It is protocol data, not server-only metadata.
   const json = JSON.stringify(signal)
   const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
   const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
@@ -59,7 +57,7 @@ export function formatKeepalive(): Uint8Array {
 }
 
 /**
- * Formats a terminal revocation event frame (Gap 13: aligned with unified RevokeEventDetail).
+ * Formats a terminal revocation event frame.
  *
  * Produces exactly:
  * ```
@@ -68,32 +66,13 @@ export function formatKeepalive(): Uint8Array {
  * \n
  * ```
  *
- * When `reason` is `'unsupported-target'`, the detail parameter provides structured fields:
- * ```
- * event: revoke\n
- * data: {"reason":"unsupported-target","requested":"rtk-query","supported":["swr","tanstack-query"]}\n
- * \n
- * ```
- *
  * Sent by the server immediately before closing a connection intentionally
- * (e.g. logout, session expiry, ban, unsupported target). The client uses this to distinguish
+ * (e.g. logout, session expiry, ban). The client uses this to distinguish
  * an intentional server-initiated close from a transient network error,
  * suppressing automatic reconnection.
  */
-export function formatRevokeFrame(
-  reason: 'unsupported-target',
-  detail: { requested: string; supported: string[] }
-): Uint8Array
-export function formatRevokeFrame(
-  reason: string | undefined
-): Uint8Array
-export function formatRevokeFrame(
-  reason: string | undefined,
-  detail?: { requested: string; supported: string[] }
-): Uint8Array {
-  const payload = detail !== undefined
-    ? JSON.stringify({ reason, requested: detail.requested, supported: detail.supported })
-    : JSON.stringify({ reason })
+export function formatRevokeFrame(reason?: string): Uint8Array {
+  const payload = JSON.stringify({ reason })
   return encoder.encode(`event: ${SSE_EVENTS.REVOKE}\ndata: ${payload}\n\n`)
 }
 

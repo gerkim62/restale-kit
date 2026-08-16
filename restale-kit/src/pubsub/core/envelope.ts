@@ -1,4 +1,4 @@
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol.js'
 import { isEnvelope, isPubSubMessage, isSignalPayload, isObject } from './pubsub-utils.js'
 import crypto from 'node:crypto'
 
@@ -10,9 +10,9 @@ export class PubSubDecryptionError extends Error {
 }
 
 /** Standard envelope structure wrapping a PubSubMessage with origin metadata. */
-export interface PubSubEnvelope<T extends InvalidateSignal = InvalidateSignal> {
+export interface PubSubEnvelope {
   origin: string
-  payload: PubSubMessage<T> | string
+  payload: PubSubMessage | string
 }
 
 /**
@@ -131,12 +131,12 @@ export function decryptPayload(encryptedString: string, encryptionKey: string, a
 /**
  * Wraps a message into a serializable envelope payload.
  */
-export function wrapEnvelope<T extends InvalidateSignal>(
+export function wrapEnvelope(
   originId: string,
-  message: PubSubMessage<T>,
+  message: PubSubMessage,
   encryptionKey?: string,
   topic?: string
-): PubSubEnvelope<T> {
+): PubSubEnvelope {
   if (encryptionKey) {
     if (!topic || typeof topic !== 'string' || topic.trim() === '') {
       throw new Error('Topic is required for encryption AAD binding.')
@@ -153,12 +153,12 @@ export function wrapEnvelope<T extends InvalidateSignal>(
  * - Returns `null` if the message is malformed or self-echoed from `localOriginId`.
  * - Unwraps and normalizes legacy signal payloads into a `PubSubMessage<T>`.
  */
-export function unwrapEnvelope<T extends InvalidateSignal>(
+export function unwrapEnvelope(
   rawData: unknown,
   localOriginId: string,
   encryptionKey?: string,
   topic?: string
-): PubSubMessage<T> | null {
+): PubSubMessage | null {
   let parsed: unknown = rawData
   if (typeof rawData === 'string') {
     try {
@@ -181,10 +181,10 @@ export function unwrapEnvelope<T extends InvalidateSignal>(
     payload = decryptPayload(payload, encryptionKey, topic)
   }
 
-  if (isPubSubMessage<T>(payload)) {
+  if (isPubSubMessage(payload)) {
     return payload
   }
-  if (isSignalPayload<T>(payload)) {
+  if (isSignalPayload(payload)) {
     return { kind: 'signal', data: payload }
   }
   return null

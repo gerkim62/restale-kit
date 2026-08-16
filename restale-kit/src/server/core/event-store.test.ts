@@ -96,3 +96,4 @@ describe('event-store', () => {
     expect(events).toEqual([])
   })
 })
+

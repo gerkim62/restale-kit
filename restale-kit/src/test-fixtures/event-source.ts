@@ -50,3 +50,4 @@ export class MockEventSource extends EventTarget {
     MockEventSource.instances = []
   }
 }
+
