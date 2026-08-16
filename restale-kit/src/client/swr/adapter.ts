@@ -54,17 +54,22 @@ function matchesKey(
   return target.every((value, index) => deepEqual(candidate[index], value))
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
-  if (a === null || typeof a !== 'object' || b === null || typeof b !== 'object') return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false
     return a.every((val, index) => deepEqual(val, b[index]))
   }
-  const keysA = Object.keys(a as Record<string, unknown>)
-  const keysB = Object.keys(b as Record<string, unknown>)
-  if (keysA.length !== keysB.length) return false
-  return keysA.every((key) => Object.hasOwn(b as Record<string, unknown>, key) && deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+  if (isRecord(a) && isRecord(b)) {
+    const keysA = Object.keys(a)
+    const keysB = Object.keys(b)
+    if (keysA.length !== keysB.length) return false
+    return keysA.every((key) => Object.hasOwn(b, key) && deepEqual(a[key], b[key]))
+  }
+  return false
 }
 

@@ -375,7 +375,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     const missingConnectionIds = connections.filter((connection) => !resolved.has(connection.connectionId)).map((connection) => connection.connectionId)
     if (missingConnectionIds.length) {
       console.warn(
-        `[SSEChannelGroup] resolveInlineData returned no result for ${missingConnectionIds.length} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
+        `[SSEChannelGroup] resolveInlineData returned no result for ${String(missingConnectionIds.length)} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
       )
       this.options.onInlineDataResolverError?.({ topic, missingConnectionIds })
     }
