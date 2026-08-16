@@ -35,6 +35,10 @@ export interface InlineDataConnection<TMeta, TClientContext> {
  * InlineDataSignal immediately before delivery.
  */
 export interface InlineDataResult {
+  /**
+   * The target cache key signal. If `inlineData` is omitted, the entire signal is delivered as a universal signal.
+   * If `inlineData` is provided, the key (and optional markStale) is combined with inlineData into an InlineDataSignal.
+   */
   signal: RevalidateSignal
   inlineData?: JSONValue
   markStale?: boolean
@@ -67,6 +71,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   private readonly channels = new Map<SSEChannel, Entry<TMeta, TClientContext>>()
   private readonly topicChannels = new Map<string, Set<SSEChannel>>()
   private readonly topicUnsubscribers = new Map<string, () => void | Promise<void>>()
+  private readonly pendingTopicSubscriptions = new Map<string, Promise<(() => void | Promise<void>) | undefined>>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel>>()
   private readonly clientContextRevisions = new Map<string, number>()
   private controlUnsubscribe: (() => void | Promise<void>) | undefined
@@ -167,16 +172,14 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
     const eventId = this.eventStore?.add(signal).id
-    const errors: unknown[] = []
     for (const channel of this.topicChannels.get(topic) ?? []) {
       try {
         this.deliver(channel, signal, eventId)
       } catch (error) {
-        errors.push(error)
+        console.error('[SSEChannelGroup] Failed to deliver signal to local channel during publish:', error)
       }
     }
     await this.options.pubsub?.publish(topic, { kind: 'signal', data: signal, ...(eventId ? { id: eventId } : {}) })
-    if (errors.length) throw new AggregateError(errors, 'Publish encountered runtime errors during local channel delivery')
   }
 
   async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
@@ -248,8 +251,12 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   async dispose(): Promise<void> {
     await this.controlUnsubscribe?.()
     this.controlUnsubscribe = undefined
+    if (this.pendingTopicSubscriptions.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingTopicSubscriptions.values()))
+    }
     for (const unsubscribe of this.topicUnsubscribers.values()) await unsubscribe()
     this.topicUnsubscribers.clear()
+    this.pendingTopicSubscriptions.clear()
   }
 
   private broadcastRaw(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
@@ -283,8 +290,8 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     let channels = this.topicChannels.get(topic)
     if (!channels) this.topicChannels.set(topic, channels = new Set())
     channels.add(channel)
-    if (this.options.pubsub && !this.topicUnsubscribers.has(topic)) {
-      void this.options.pubsub.subscribe(topic, (message) => {
+    if (this.options.pubsub && !this.topicUnsubscribers.has(topic) && !this.pendingTopicSubscriptions.has(topic)) {
+      const subscriptionPromise = this.options.pubsub.subscribe(topic, (message) => {
         if (message.kind !== 'signal') return
         const eventId = this.eventStore?.add(message.data, message.id).id ?? message.id
         for (const subscribed of this.topicChannels.get(topic) ?? []) {
@@ -294,7 +301,24 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
             console.error('[SSEChannelGroup] Failed to deliver pubsub signal to channel:', error)
           }
         }
-      }).then((unsubscribe) => this.topicUnsubscribers.set(topic, unsubscribe))
+      })
+      this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
+      subscriptionPromise
+        .then((unsubscribe) => {
+          if (!this.topicChannels.has(topic)) {
+            void unsubscribe()
+          } else {
+            this.topicUnsubscribers.set(topic, unsubscribe)
+          }
+          return unsubscribe
+        })
+        .catch((error) => {
+          console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
+          return undefined
+        })
+        .finally(() => {
+          this.pendingTopicSubscriptions.delete(topic)
+        })
     }
   }
 
@@ -313,29 +337,42 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   private async subscribeControl(): Promise<void> {
     if (!this.options.pubsub) return
-    this.controlUnsubscribe = await this.options.pubsub.subscribe(this.controlTopic, (message) => {
-      if (message.kind === 'inlineData') { void this.deliverInlineData(message.topic, message.payload); return }
-      if (message.kind !== 'control' || !isRecord(message.data) || typeof message.data.type !== 'string') return
-      if (message.data.type === 'revokeWhere' && 'criteria' in message.data && isJSONValue(message.data.criteria)) {
-        for (const [channel, entry] of this.channels) {
-          if (matchesCriteria(channel.connectionId, entry.meta, message.data.criteria)) channel.revoke()
+    try {
+      this.controlUnsubscribe = await this.options.pubsub.subscribe(this.controlTopic, (message) => {
+        try {
+          if (message.kind === 'inlineData') {
+            void this.deliverInlineData(message.topic, message.payload).catch((error) => {
+              console.error('[SSEChannelGroup] Failed to deliver inline data from pubsub:', error)
+            })
+            return
+          }
+          if (message.kind !== 'control' || !isRecord(message.data) || typeof message.data.type !== 'string') return
+          if (message.data.type === 'revokeWhere' && 'criteria' in message.data && isJSONValue(message.data.criteria)) {
+            for (const [channel, entry] of this.channels) {
+              if (matchesCriteria(channel.connectionId, entry.meta, message.data.criteria)) channel.revoke()
+            }
+          }
+          if (message.data.type === 'revokeByConnectionId' && typeof message.data.connectionId === 'string') {
+            this.closeConnection(message.data.connectionId, readScope(message.data))
+          }
+          if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
+            const raw = message.data.clientContext
+            const scope = readScope(message.data)
+            const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
+            if (this.options.clientContextSchema) {
+              const context = validateStandardSchema(raw, this.options.clientContextSchema)
+              this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
+            } else if (this.isClientContext(raw)) {
+              this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
+            }
+          }
+        } catch (error) {
+          console.error('[SSEChannelGroup] Error processing pubsub control message:', error)
         }
-      }
-      if (message.data.type === 'revokeByConnectionId' && typeof message.data.connectionId === 'string') {
-        this.closeConnection(message.data.connectionId, readScope(message.data))
-      }
-      if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
-        const raw = message.data.clientContext
-        const scope = readScope(message.data)
-        const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
-        if (this.options.clientContextSchema) {
-          const context = validateStandardSchema(raw, this.options.clientContextSchema)
-          this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
-        } else if (this.isClientContext(raw)) {
-          this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
-        }
-      }
-    })
+      })
+    } catch (error) {
+      console.error(`[SSEChannelGroup] Failed to subscribe to pubsub control topic "${this.controlTopic}":`, error)
+    }
   }
 
   private closeConnection(connectionId: string, scope?: Record<string, JSONValue>): boolean {
@@ -353,7 +390,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     connectionId: string, context: TClientContext, scope?: Record<string, JSONValue>, revision?: number,
   ): boolean {
     const latest = this.clientContextRevisions.get(connectionId)
-    if (revision !== undefined && latest !== undefined && revision < latest) return false
+    if (revision !== undefined && latest !== undefined && revision <= latest) return false
     let updated = false
     for (const channel of this.connectionIndex.get(connectionId) ?? []) {
       const entry = this.channels.get(channel)
@@ -385,7 +422,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       if (!result) continue
       const signal: UniversalSignal = result.inlineData === undefined
         ? result.signal
-        : { key: result.signal.key, inlineData: result.inlineData, ...(result.markStale ? { markStale: true } : {}) }
+        : {
+            key: result.signal.key,
+            inlineData: result.inlineData,
+            ...(result.markStale ?? result.signal.markStale ? { markStale: true } : {}),
+          }
       try {
         this.deliver(channel, signal)
       } catch (error) {

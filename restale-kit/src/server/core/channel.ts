@@ -202,16 +202,22 @@ export function validateSignalPayload(signal: unknown): asserts signal is Univer
     const signalValue = value
     if (!isJSONValueArray(signalValue.key)) throw new Error('[invalidate] Signal key must be a JSONValue array.')
     if (isInlineDataSignalLike(signalValue)) {
-      if (Object.keys(signalValue).some((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')) {
-        throw new Error('[invalidate] Inline-data signals contain unsupported fields.')
+      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')
+      if (unsupported.length > 0) {
+        throw new Error(`[invalidate] Invalid inline-data signal: unsupported fields (${unsupported.join(', ')}).`)
       }
       if (!isJSONValue(signalValue.inlineData) || 'exact' in signalValue ||
           ('markStale' in signalValue && typeof signalValue.markStale !== 'boolean')) {
         throw new Error('[invalidate] Invalid inline-data signal.')
       }
-    } else if (Object.keys(signalValue).some((key) => key !== 'key' && key !== 'exact') ||
-      'markStale' in signalValue || ('exact' in signalValue && typeof signalValue.exact !== 'boolean')) {
-      throw new Error('[invalidate] Invalid revalidate signal.')
+    } else {
+      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'exact')
+      if (unsupported.length > 0) {
+        throw new Error(`[invalidate] Invalid revalidate signal: unsupported fields (${unsupported.join(', ')}).`)
+      }
+      if ('markStale' in signalValue || ('exact' in signalValue && typeof signalValue.exact !== 'boolean')) {
+        throw new Error('[invalidate] Invalid revalidate signal.')
+      }
     }
   }
 }

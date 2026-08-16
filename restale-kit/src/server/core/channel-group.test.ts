@@ -74,7 +74,7 @@ describe('channel-group', () => {
     await expect(group.updateClientContext('missing', { page: 3 })).resolves.toEqual({ updated: false })
   })
 
-  it('ignores client-context updates with a lower revision', async () => {
+  it('ignores client-context updates with a lower or equal revision', async () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({})
     const channel = createSSEChannel({ connectionId: 'revision-connection' })
     group.register(channel, { userId: 7 })
@@ -82,6 +82,8 @@ describe('channel-group', () => {
     await expect(group.updateClientContext('revision-connection', { page: 2 }, { revision: 2 }))
       .resolves.toEqual({ updated: true })
     await expect(group.updateClientContext('revision-connection', { page: 1 }, { revision: 1 }))
+      .resolves.toEqual({ updated: false })
+    await expect(group.updateClientContext('revision-connection', { page: 99 }, { revision: 2 }))
       .resolves.toEqual({ updated: false })
     expect(group.getClientContext('revision-connection')).toEqual({ page: 2 })
   })
@@ -1121,7 +1123,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       await expect(group.revokeByConnectionId('conn-scope-invalid', 123 as any)).rejects.toThrow(/scope/i)
     })
 
-    it('continues delivery to other channels on publish even when one channel throws', async () => {
+    it('continues delivery to other channels on publish even when one channel throws and does not throw AggregateError', async () => {
       const group = new SSEChannelGroup()
       const ch1 = createSSEChannel({})
       const ch2 = createSSEChannel({})
@@ -1133,9 +1135,15 @@ describe('SSEChannelGroup — channelDefaults', () => {
         throw new Error('Simulated channel 1 failure')
       })
       const ch2Spy = vi.spyOn(ch2, 'invalidate')
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      await expect(group.publish('shared-topic', { key: ['test'] })).rejects.toThrow(AggregateError)
+      await expect(group.publish('shared-topic', { key: ['test'] })).resolves.toBeUndefined()
       expect(ch2Spy).toHaveBeenCalledWith({ key: ['test'] }, undefined)
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to deliver signal to local channel during publish:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
     })
 
     it('continues delivery to other channels on pubsub signal even when one channel throws', async () => {
@@ -1180,6 +1188,96 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
       await expect(group.pushInlineData('inline-topic', { data: 'test' })).rejects.toThrow(AggregateError)
       expect(ch2Spy).toHaveBeenCalledWith({ key: ['item'], inlineData: { value: 123 } }, undefined)
+    })
+
+    it('handles subscribeControl schema validation failure gracefully without throwing uncaught', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const invalidSchema = createInvalidSchema('Invalid schema payload')
+      const group = new SSEChannelGroup({
+        pubsub,
+        clientContextSchema: invalidSchema,
+      })
+      const ch = createSSEChannel({ connectionId: 'c-schema' })
+      group.register(ch)
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Publish a malformed updateClientContext control message
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: 'c-schema',
+          clientContext: { invalid: true },
+        },
+      })
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Error processing pubsub control message:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('catches and logs errors during pubsub inlineData delivery', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({
+        pubsub,
+        // No resolveInlineData configured -> will throw when inlineData is delivered
+      })
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await pubsub.publish(group.controlTopic, {
+        kind: 'inlineData',
+        topic: 'any-topic',
+        payload: { test: 1 },
+      })
+
+      // Wait a tick for promise rejection to be caught
+      await Promise.resolve()
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to deliver inline data from pubsub:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('deduplicates concurrent attachTopic subscriptions to prevent race conditions', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const subscribeSpy = vi.spyOn(pubsub, 'subscribe')
+      const group = new SSEChannelGroup({ pubsub })
+
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      // Register concurrently to the same topic
+      group.register(ch1, undefined, { topics: ['concurrent-topic'] })
+      group.register(ch2, undefined, { topics: ['concurrent-topic'] })
+
+      // pubsub.subscribe should only have been called once for 'concurrent-topic'
+      const topicSubscribes = subscribeSpy.mock.calls.filter(([t]) => t === 'concurrent-topic')
+      expect(topicSubscribes).toHaveLength(1)
+    })
+
+    it('handles pubsub.subscribe failure in attachTopic cleanly', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Mock rejection specifically for subsequent topic subscribe
+      vi.spyOn(pubsub, 'subscribe').mockRejectedValueOnce(new Error('Pubsub connection lost'))
+
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['failing-topic'] })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to subscribe to pubsub topic "failing-topic":'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
     })
   })
 })
