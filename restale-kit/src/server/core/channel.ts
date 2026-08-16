@@ -1,5 +1,4 @@
 import {
-  isInlineDataSignal,
   isJSONValue,
   isJSONValueArray,
   type BeforeFrameFn,
@@ -117,7 +116,10 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
     lifetimeTimer = setTimeout(() => {
       if (state !== 'open') return
       const onDeadline = options.lifetime?.onDeadline ?? 'reconnect'
-      if (onDeadline === 'revoke') return revoke('deadline')
+      if (onDeadline === 'revoke') {
+        revoke('deadline')
+        return
+      }
       const maxAttempts = typeof onDeadline === 'object'
         ? onDeadline.maxAttempts ?? FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS
         : FRAME_GUARD_DEFAULTS.RENEW_MAX_ATTEMPTS
@@ -138,7 +140,10 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
           if (state !== 'open') return
           const result = runGuard({ frameType: 'keepalive', signal: undefined, connectionId, isResume })
           if (result.action === 'skip') return
-          if (result.action === 'close') return revoke(result.reason)
+          if (result.action === 'close') {
+            revoke(result.reason)
+            return
+          }
           try { streamController.enqueue(formatKeepalive()) } catch { closeInternal() }
         }, keepaliveIntervalMs)
       }
@@ -191,10 +196,10 @@ export function validateSignalPayload(signal: unknown): asserts signal is Univer
   const signals = Array.isArray(signal) ? signal : [signal]
   if (signals.length === 0) throw new Error('[invalidate] Signals must be a non-empty array or object.')
   for (const value of signals) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    if (!isRecord(value)) {
       throw new Error('[invalidate] Every signal must be an object.')
     }
-    const signalValue = value as Record<string, unknown>
+    const signalValue = value
     if (!isJSONValueArray(signalValue.key)) throw new Error('[invalidate] Signal key must be a JSONValue array.')
     if (isInlineDataSignalLike(signalValue)) {
       if (Object.keys(signalValue).some((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')) {
@@ -213,6 +218,10 @@ export function validateSignalPayload(signal: unknown): asserts signal is Univer
 
 function isInlineDataSignalLike(signal: Record<string, unknown>): boolean {
   return Object.hasOwn(signal, 'inlineData')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function validateChannelOptions(options: SSEChannelOptions): void {

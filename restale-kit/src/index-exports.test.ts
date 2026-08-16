@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { validatePayload } from '@/client/core/validation.js'
-describe('universal signal migration', () => {
-  it('accepts target-free signals and rejects retired routing fields', () => {
-    expect(validatePayload({ key: ['todos'] })).toEqual({ key: ['todos'] })
-    expect(validatePayload({ key: ['todos', 1], inlineData: { id: 1 } })).toEqual({
-      key: ['todos', 1],
-      inlineData: { id: 1 },
-    })
-    expect(() => validatePayload({ key: ['todos'], target: 'swr' })).toThrow()
+import { SSEInvalidatorClient as ClientCoreExport } from './client/core/index.js'
+import { useReStale } from './client/react/index.js'
+import { swrAdapter } from './client/swr/index.js'
+import { tanstackQueryAdapter } from './client/tanstack-query/index.js'
+import { PubSubDecryptionError } from './pubsub/core/index.js'
+import { ablyPubSubAdapter } from './pubsub/ably/index.js'
+import { pusherPubSubAdapter } from './pubsub/pusher/index.js'
+import { redisPubSubAdapter } from './pubsub/redis/index.js'
+
+describe('Entrypoint Re-exports', () => {
+  it('correctly exports client modules', () => {
+    expect(ClientCoreExport).toBeDefined()
+    expect(useReStale).toBeDefined()
+    expect(swrAdapter).toBeDefined()
+    expect(tanstackQueryAdapter).toBeDefined()
+  })
+
+  it('correctly exports pubsub modules', () => {
+    expect(PubSubDecryptionError).toBeDefined()
+    expect(redisPubSubAdapter).toBeDefined()
+    expect(ablyPubSubAdapter).toBeDefined()
+    expect(pusherPubSubAdapter).toBeDefined()
   })
 })

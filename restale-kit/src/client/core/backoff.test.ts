@@ -29,4 +29,10 @@ describe('calculateBackoff', () => {
     vi.spyOn(Math, 'random').mockReturnValue(1)
     expect(calculateBackoff(0, { jitter: true })).toBe(1500)
   })
+
+  it('rejects invalid delay and attempt values', () => {
+    expect(() => calculateBackoff(0, { baseDelayMs: -1 })).toThrow(RangeError)
+    expect(() => calculateBackoff(0, { maxDelayMs: Number.NaN })).toThrow(RangeError)
+    expect(() => calculateBackoff(-1)).toThrow(RangeError)
+  })
 })

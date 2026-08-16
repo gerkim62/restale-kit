@@ -1,8 +1,6 @@
 import {
   isJSONValue,
   isJSONValueArray,
-  type InlineDataSignal,
-  type RevalidateSignal,
   type UniversalSignal,
 } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'

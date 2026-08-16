@@ -93,9 +93,9 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     request: Request,
     options: ChannelSetupOptions<TMeta> = {},
   ): { response: Response; channel: SSEChannel } {
-    this.validateTopics(options.topics)
-    const meta = this.validateMeta(options.meta)
-    const { meta: _meta, topics, ...channelOptions } = options
+    const { meta: rawMeta, topics, ...channelOptions } = options
+    this.validateTopics(topics)
+    const meta = this.validateMeta(rawMeta)
     const result = internal_toSSEResponse(request, channelOptions, this)
     this.register(result.channel, meta, topics === undefined ? undefined : { topics })
     return result
@@ -106,9 +106,9 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     res: ServerResponse | FastifyReplyLike,
     options: ChannelSetupOptions<TMeta> = {},
   ): { channel: SSEChannel } {
-    this.validateTopics(options.topics)
-    const meta = this.validateMeta(options.meta)
-    const { meta: _meta, topics, ...channelOptions } = options
+    const { meta: rawMeta, topics, ...channelOptions } = options
+    this.validateTopics(topics)
+    const meta = this.validateMeta(rawMeta)
     const channel = internal_attachSSE(req, res, channelOptions, this)
     this.register(channel, meta, topics === undefined ? undefined : { topics })
     return { channel }
@@ -130,7 +130,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       set.add(channel)
     }
     for (const topic of entry.topics) this.attachTopic(channel, topic)
-    if (!existing) channel.onClose(() => this.deregister(channel))
+    if (!existing) {
+      channel.onClose(() => {
+        this.deregister(channel)
+      })
+    }
   }
 
   deregister(channel: SSEChannel): void {
