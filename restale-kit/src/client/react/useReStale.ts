@@ -238,7 +238,7 @@ export function useReStale(
     if (previous !== null && previous !== pending) {
       if (opts.debug) {
         console.log(
-          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId} because connection identity changed for "${url}". Closing previous client connectionId=${previous.connectionId}.`
+          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId ?? 'none'} because connection identity changed for "${url}". Closing previous client connectionId=${previous.connectionId ?? 'none'}.`
         )
       }
       previous.close()
@@ -369,7 +369,7 @@ export function useReStale(
     if (!client || disabled) {
       if (opts.debug && client) {
         console.log(
-          `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId} because disabled=true.`
+          `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId ?? 'none'} because disabled=true.`
         )
       }
       return
@@ -377,7 +377,7 @@ export function useReStale(
 
     if (opts.debug) {
       console.log(
-        `[restale-kit][useReStale] Effect mounted for connectionId=${client.connectionId} (URL: "${client.endpointUrl}"). Reason: Component mounted or client instance changed. Calling connect().`
+        `[restale-kit][useReStale] Effect mounted for connectionId=${client.connectionId ?? 'none'} (URL: "${client.endpointUrl}"). Reason: Component mounted or client instance changed. Calling connect().`
       )
     }
 
@@ -388,7 +388,7 @@ export function useReStale(
       ) {
         if (opts.debug) {
           console.log(
-            `[restale-kit][useReStale] connect() promise rejected for connectionId=${client.connectionId} due to component unmount/close.`
+            `[restale-kit][useReStale] connect() promise rejected for connectionId=${client.connectionId ?? 'none'} due to component unmount/close.`
           )
         }
         return
@@ -399,7 +399,7 @@ export function useReStale(
     return () => {
       if (opts.debug) {
         console.log(
-          `[restale-kit][useReStale] Effect unmounting for connectionId=${client.connectionId}. Reason: Component unmounting or client instance changing. Calling closeWithUnmount().`
+          `[restale-kit][useReStale] Effect unmounting for connectionId=${client.connectionId ?? 'none'}. Reason: Component unmounting or client instance changing. Calling closeWithUnmount().`
         )
       }
       client.closeWithUnmount()

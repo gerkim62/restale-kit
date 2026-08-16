@@ -329,7 +329,8 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     let channels = this.topicChannels.get(topic)
     if (!channels) this.topicChannels.set(topic, channels = new Set())
     channels.add(channel)
-    if (!this.options.pubsub) return
+    const pubsub = this.options.pubsub
+    if (!pubsub) return
 
     if (this.topicUnsubscribers.has(topic) || this.pendingTopicSubscriptions.has(topic)) {
       return
@@ -345,7 +346,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
         return undefined
       }
 
-      return this.options.pubsub!.subscribe(topic, (message) => {
+      return pubsub.subscribe(topic, (message) => {
         if (message.kind !== 'signal') return
         const eventId = this.eventStore?.add(message.data, message.id).id ?? message.id
         for (const subscribed of this.topicChannels.get(topic) ?? []) {
@@ -360,11 +361,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
     const subscriptionPromise = startSubscription()
     this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
-    subscriptionPromise
+    void subscriptionPromise
       .then((unsubscribe) => {
         if (!unsubscribe) return undefined
         if (!this.topicChannels.has(topic)) {
-          this.executeTopicUnsubscribe(topic, unsubscribe)
+          void this.executeTopicUnsubscribe(topic, unsubscribe)
         } else {
           this.topicUnsubscribers.set(topic, unsubscribe)
         }
@@ -390,7 +391,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
         const unsubscribe = this.topicUnsubscribers.get(topic)
         this.topicUnsubscribers.delete(topic)
         if (unsubscribe) {
-          this.executeTopicUnsubscribe(topic, unsubscribe)
+          void this.executeTopicUnsubscribe(topic, unsubscribe)
         }
       }
     }

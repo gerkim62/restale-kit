@@ -230,7 +230,7 @@ export class SSEInvalidatorClient extends EventTarget {
   connect(): Promise<void> {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${this.currentConnectionId}, currentStatus: ${this.currentStatus.status})`
+        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${this.currentConnectionId ?? 'none'}, currentStatus: ${this.currentStatus.status})`
       )
     }
 
@@ -281,7 +281,7 @@ export class SSEInvalidatorClient extends EventTarget {
   close(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${this.currentConnectionId})`
+        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${this.currentConnectionId ?? 'none'})`
       )
     }
     this.teardown()
@@ -307,7 +307,7 @@ export class SSEInvalidatorClient extends EventTarget {
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId})`
+        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId ?? 'none'})`
       )
     }
     this.teardown()
@@ -398,7 +398,7 @@ export class SSEInvalidatorClient extends EventTarget {
         ? 'First connection attempt for this client instance'
         : `Automatic reconnection attempt ${String(this.currentAttempt)} after connection drop/error`
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
+        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
       )
     }
 
@@ -515,7 +515,7 @@ export class SSEInvalidatorClient extends EventTarget {
       const delay = retryAfterDelay ?? calculateBackoff(this.currentAttempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId}). ` +
+          `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
           `Retrying in ${String(delay)}ms (attempt ${String(this.currentAttempt + 1)} of ${String(this.maxRetries)}).`
         )
       }
@@ -536,7 +536,7 @@ export class SSEInvalidatorClient extends EventTarget {
           ? 'autoReconnect is disabled for this failure'
           : `Exhausted maxRetries (${String(this.maxRetries)})`
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId}). Reason: ${reason}.`
+          `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
         )
       }
 
@@ -644,7 +644,7 @@ export class SSEInvalidatorClient extends EventTarget {
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
+          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
         )
       }
       this.revoked = true
@@ -696,7 +696,7 @@ export class SSEInvalidatorClient extends EventTarget {
         if (this.debug) {
           console.warn(
             `[restale-kit][SSEInvalidatorClient] Renew frame missing valid maxAttempts ` +
-            `(connectionId: ${this.currentConnectionId}). Treating as revoke.`
+            `(connectionId: ${this.currentConnectionId ?? 'none'}). Treating as revoke.`
           )
         }
         this.renewing = true
@@ -707,7 +707,7 @@ export class SSEInvalidatorClient extends EventTarget {
 
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Renew frame received (connectionId: ${this.currentConnectionId}). ` +
+          `[restale-kit][SSEInvalidatorClient] Renew frame received (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
           `Deadline reached — making up to ${String(maxAttempts)} confirmatory reconnect attempt(s).`
         )
       }
@@ -739,7 +739,7 @@ export class SSEInvalidatorClient extends EventTarget {
           if (this.debug) {
             console.log(
               `[restale-kit][SSEInvalidatorClient] Renew confirmatory reconnect succeeded ` +
-              `(connectionId: ${this.currentConnectionId}).`
+              `(connectionId: ${this.currentConnectionId ?? 'none'}).`
             )
           }
         }

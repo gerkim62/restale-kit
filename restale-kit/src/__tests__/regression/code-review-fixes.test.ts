@@ -54,14 +54,14 @@ describe('Code review fixes verification', () => {
       const unsubPromise = new Promise<void>((r) => { resolveUnsub = r })
 
       const mockPubsub = {
-        publish: vi.fn(async () => {}),
-        subscribe: vi.fn(async (topic: string) => {
+        publish: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn((topic: string) => {
           if (topic === 'chat') executionOrder.push(`subscribe:${topic}`)
-          return async () => {
+          return Promise.resolve(async () => {
             if (topic === 'chat') executionOrder.push(`start-unsubscribe:${topic}`)
             await unsubPromise
             if (topic === 'chat') executionOrder.push(`finish-unsubscribe:${topic}`)
-          }
+          })
         }),
       }
 
