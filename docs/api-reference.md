@@ -269,7 +269,7 @@ function createSSEChannel<TSignal extends InvalidateSignal = InvalidateSignal>(
 
 ```ts
 import { SSEInvalidatorClient } from 'restale-kit/client'
-import type { ClientOptions, ReconnectOptions, AutoReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RejectedConnectionResponse, RevokeEventDetail, RenewEventDetail, AdaptedInvalidateCallback } from 'restale-kit/client'
+import type { ClientOptions, ReconnectOptions, AutoReconnectOptions, ConnectionStatus, SSEInvalidatorClientEventMap, RejectedConnectionResponse, RevokeEventDetail, RenewEventDetail, AdaptedCallback } from 'restale-kit/client'
 import type { InvalidateSignal } from 'restale-kit/client' // re-exported for convenience
 ```
 
@@ -304,7 +304,7 @@ interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
   target?: SignalTarget             // optional target discriminator ('tanstack-query' | 'swr' | 'rtk-query' | 'generic') expected by the client
   clientContextUrl?: string         // POST endpoint for updateClientContext; defaults to the stream URL
   debug?: boolean
-  callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
+  callback?: AdaptedCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void
@@ -378,7 +378,7 @@ import type {
   RevokeEventDetail,
   RenewEventDetail,
   RejectedConnectionResponse,
-  AdaptedInvalidateCallback,
+  AdaptedCallback,
 } from 'restale-kit/react'
 
 function useReStale<
@@ -392,7 +392,7 @@ function useReStale<
 interface UseReStaleOptions<TTarget extends SignalTarget, TSignal extends InvalidateSignal>
   extends Omit<ClientOptions<TSignal>, 'target'> {
   disabled?: boolean                // default false
-  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal> // required; adapter-branded
+  onInvalidate: AdaptedCallback<TTarget, TSignal> // required; adapter-branded
   target?: NoInfer<TTarget>         // optional explicit target; must match the adapter brand
   /**
    * Called when the server sends a terminal `revoke` frame.
@@ -449,7 +449,7 @@ interface QueryClientLike {
 function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClientLike,
   options?: TanstackQueryAdapterOptions,
-): AdaptedInvalidateCallback<'tanstack-query', TSignal>
+): AdaptedCallback<'tanstack-query', TSignal>
 
 /**
  * Memoized hook variant of tanstackQueryAdapter.
@@ -458,7 +458,7 @@ function tanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuer
 function useTanstackQueryAdapter<TSignal extends TanStackQuerySignal = TanStackQuerySignal>(
   queryClient: QueryClientLike,
   options?: TanstackQueryAdapterOptions,
-): AdaptedInvalidateCallback<'tanstack-query', TSignal>
+): AdaptedCallback<'tanstack-query', TSignal>
 
 interface TanstackQueryAdapterOptions {
   markInlineDataStale?: boolean // default true
@@ -478,8 +478,8 @@ interface RTKQueryApiLike {
   util: { invalidateTags(tags: RTKQuerySignalInput['tags']): void }
 }
 
-function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', TSignal>
-function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedInvalidateCallback<'rtk-query', TSignal>
+function rtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedCallback<'rtk-query', TSignal>
+function useRtkQueryAdapter<TSignal extends RTKQuerySignalInput = RTKQuerySignalInput>(api: RTKQueryApiLike): AdaptedCallback<'rtk-query', TSignal>
 ```
 
 ---
@@ -495,7 +495,7 @@ import type { Arguments } from 'swr'
 function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): AdaptedInvalidateCallback<'swr', TSignal>
+): AdaptedCallback<'swr', TSignal>
 
 /**
  * Memoized hook variant of swrAdapter.
@@ -505,7 +505,7 @@ function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
 function useSwrAdapter<TSignal extends SWRSignal = SWRSignal>(
   mutate: SWRMutator,
   options?: SWRAdapterOptions<TSignal>
-): AdaptedInvalidateCallback<'swr', TSignal>
+): AdaptedCallback<'swr', TSignal>
 
 interface SWRAdapterOptions<TSignal> {
   // Convert a non-canonical SWR key to a JSONValue[] for matching.

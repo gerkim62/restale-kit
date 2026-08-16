@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+import type { AdaptedCallback } from '@/client/core/client-contracts.js'
 import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
 
 vi.mock('sse.js', async () => {
@@ -15,11 +15,11 @@ import { useReStale } from './useReStale.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 /**
- * Test helper: cast a plain function to a branded AdaptedInvalidateCallback so
+ * Test helper: cast a plain function to a branded AdaptedCallback so
  * unit tests can pass bare vi.fn() mocks without involving real adapters.
  */
-function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback {
-  return fn as unknown as AdaptedInvalidateCallback
+function asAdapter(fn: (...args: any[]) => any): AdaptedCallback {
+  return fn as unknown as AdaptedCallback
 }
 
 describe('useReStale', () => {

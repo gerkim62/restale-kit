@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   isJSONValue,
+  isJSONValueArray,
   type EventStore,
   type JSONValue,
   type RevalidateSignal,
@@ -310,8 +311,15 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
         this.closeConnection(message.data.connectionId, readScope(message.data))
       }
       if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
-        this.updateLocalClientContext(message.data.connectionId, message.data.clientContext as TClientContext,
-          readScope(message.data), typeof message.data.revision === 'number' ? message.data.revision : undefined)
+        const raw = message.data.clientContext
+        const scope = readScope(message.data)
+        const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
+        if (this.options.clientContextSchema) {
+          const context = validateStandardSchema(raw, this.options.clientContextSchema)
+          this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
+        } else if (this.isClientContext(raw)) {
+          this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
+        }
       }
     })
   }
@@ -361,10 +369,18 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       this.deliver(channel, signal)
     }
   }
+
+  private isClientContext(value: unknown): value is TClientContext {
+    if (this.options.clientContextSchema) {
+      const result = this.options.clientContextSchema['~standard'].validate(value)
+      return !(result instanceof Promise) && !result.issues
+    }
+    return true
+  }
 }
 
 function validateTopic(topic: string, label: string): void {
-  if (typeof topic !== 'string' || topic.replace(/[\s\u200B\u200C\u200D\uFEFF]/gu, '') === '') {
+  if (typeof topic !== 'string' || topic.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
     throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
   }
 }
@@ -400,7 +416,7 @@ function matchesCriteria(connectionId: string, meta: unknown, criteria: JSONValu
 }
 
 function isMetaMatchedByKey(meta: unknown, key: JSONValue[], exact: boolean): boolean {
-  const metaKey: JSONValue[] = Array.isArray(meta) ? meta : isJSONValue(meta) ? [meta] : []
+  const metaKey: JSONValue[] = isJSONValueArray(meta) ? meta : isJSONValue(meta) ? [meta] : []
   if (exact ? metaKey.length !== key.length : metaKey.length < key.length) return false
   return key.every((part, index) => matchesJson(metaKey[index], part, exact))
 }
@@ -420,3 +436,4 @@ function matchesJson(actual: unknown, expected: JSONValue, exact: boolean): bool
   return Object.entries(expectedRecord).every(([key, value]) =>
     Object.hasOwn(actualRecord, key) && matchesJson(actualRecord[key], value, exact))
 }
+

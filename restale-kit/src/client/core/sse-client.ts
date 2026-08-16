@@ -109,7 +109,7 @@ export class SSEInvalidatorClient extends EventTarget {
     this.currentConnectionId = generateUUID()
     this.url = url
     this.clientContextUrl = clientContextUrl
-    let eventSourceUrl = appendQueryParam(
+    const eventSourceUrl = appendQueryParam(
       url,
       PROTOCOL_CONSTANTS.RESTALE_REQUEST_ID_PARAM,
       this.currentConnectionId

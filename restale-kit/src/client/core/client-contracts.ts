@@ -6,10 +6,6 @@ export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
 export type AdaptedCallback = ((signal: UniversalSignal | UniversalSignal[]) => void) & {
   readonly __restaleAdapter: true
 }
-
-/** @deprecated Use AdaptedCallback. */
-export type AdaptedInvalidateCallback = AdaptedCallback
-
 /** Brands a callback without attaching target-specific metadata. */
 export function makeAdaptedCallback(
   fn: (signal: UniversalSignal | UniversalSignal[]) => void,

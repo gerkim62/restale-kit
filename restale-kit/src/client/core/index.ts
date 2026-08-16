@@ -10,7 +10,6 @@ export type {
   RejectedConnectionResponse,
   SSEInvalidatorClientEventMap,
   AdaptedCallback,
-  AdaptedInvalidateCallback,
 } from './client-contracts.js'
 export type { RevokeEventDetail, RenewEventDetail } from '../../types/protocol.js'
 

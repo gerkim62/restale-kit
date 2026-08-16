@@ -39,9 +39,9 @@ The hook opens the connection on mount and closes it on unmount. Reconnection wi
 ```ts
 useReStale(url: string, options: {
   // Required
-  // An AdaptedInvalidateCallback returned by useTanstackQueryAdapter,
+  // An AdaptedCallback returned by useTanstackQueryAdapter,
   // useSwrAdapter, useRtkQueryAdapter, or makeAdaptedCallback.
-  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal>
+  onInvalidate: AdaptedCallback<TTarget, TSignal>
 
   // Revocation (optional)
   onRevoke?: (detail: RevokeEventDetail) => void  // called when server sends a terminal revoke frame
