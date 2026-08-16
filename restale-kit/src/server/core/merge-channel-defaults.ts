@@ -32,11 +32,10 @@ export interface ChannelDefaults {
  */
 export function mergeChannelDefaults<
   TSignal extends InvalidateSignal = InvalidateSignal,
-  TOptions extends SSEChannelOptions<TSignal> = SSEChannelOptions<TSignal>,
 >(
-  channelOptions: TOptions,
+  channelOptions: SSEChannelOptions<TSignal>,
   defaults: ChannelDefaults | undefined
-): TOptions & SSEChannelOptions<TSignal> {
+): SSEChannelOptions<TSignal> {
   if (channelOptions.target !== undefined) validateTargetConfiguration(channelOptions.target)
   if (defaults?.target !== undefined) validateTargetConfiguration(defaults.target)
 
@@ -87,10 +86,7 @@ export function mergeChannelDefaults<
     throw new Error('[mergeChannelDefaults] target is required.')
   }
 
-  // Defaults can add fields that were absent from the input, so the intersection
-  // describes the merged object more accurately than `TOptions` alone.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- defaults may add optional fields absent from the generic input.
-  return merged as TOptions & SSEChannelOptions<TSignal>
+  return merged
 }
 
 type TimeValueShape =
