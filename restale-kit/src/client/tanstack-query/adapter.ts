@@ -3,7 +3,7 @@ import { makeAdaptedCallback } from '@/client/core/client-contracts.js';
 import { isObject } from '@/pubsub/core/pubsub-utils.js';
 import type { TanStackQuerySignal } from '@/types/protocol.js';
 import { SIGNAL_TARGETS } from '@/utils/constants.js';
-import type { InvalidateQueryFilters, QueryFilters } from '@tanstack/react-query';
+import type { InvalidateQueryFilters, QueryFilters, QueryKey } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
@@ -16,11 +16,17 @@ function isQueryTypeFilter(val: unknown): val is QueryFilters['type'] {
  * projects use different patch/minor versions of `@tanstack/react-query`.
  */
 export interface QueryClientLike {
+  setQueryData(queryKey: QueryKey, data: unknown): void
   invalidateQueries(filters?: InvalidateQueryFilters, options?: unknown): Promise<void>
   removeQueries(filters?: QueryFilters, options?: unknown): void
   resetQueries(filters?: QueryFilters, options?: unknown): Promise<void>
   cancelQueries(filters?: QueryFilters, options?: unknown): Promise<void>
   refetchQueries(filters?: QueryFilters, options?: unknown): Promise<void>
+}
+
+export interface TanstackQueryAdapterOptions {
+  /** Mark pushed data stale after the exact-key cache write. Default: true. */
+  markInlineDataStale?: boolean
 }
 
 export type TanStackQuerySignalInput = TanStackQuerySignal
@@ -31,6 +37,7 @@ export type TanStackQuerySignalInput = TanStackQuerySignal
  */
 export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClientLike,
+  options?: TanstackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
@@ -51,6 +58,14 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
         const type = isQueryTypeFilter(s.type) ? s.type : undefined
         const stale = typeof s.stale === 'boolean' ? s.stale : undefined
         const action = typeof s.action === 'string' ? s.action : 'invalidate'
+
+        if (s.inlineData !== undefined && action !== 'remove' && action !== 'reset' && action !== 'cancel') {
+          queryClient.setQueryData(queryKey, s.inlineData)
+          if (options?.markInlineDataStale ?? true) {
+            void queryClient.invalidateQueries({ queryKey, exact: true })
+          }
+          continue
+        }
 
         const filters: QueryFilters = { queryKey }
         if (exact !== undefined) filters.exact = exact
@@ -99,14 +114,15 @@ export function tanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = 
  */
 export function useTanstackQueryAdapter<TSignal extends TanStackQuerySignalInput = TanStackQuerySignalInput>(
   queryClient: QueryClientLike,
+  options?: TanstackQueryAdapterOptions,
 ): AdaptedInvalidateCallback<'tanstack-query', TSignal> {
   return makeAdaptedCallback(
     SIGNAL_TARGETS.TANSTACK_QUERY,
     useCallback(
       (signal: TSignal | TSignal[]) => {
-        tanstackQueryAdapter<TSignal>(queryClient)(signal)
+        tanstackQueryAdapter<TSignal>(queryClient, options)(signal)
       },
-      [queryClient]
+      [queryClient, options]
     )
   )
 }

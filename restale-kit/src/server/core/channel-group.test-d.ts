@@ -269,3 +269,23 @@ describe('SSEChannelGroup constructor metaSchema auto-inference', () => {
     })
   })
 })
+
+describe('SSEChannelGroup client context typing', () => {
+  test('infers client context alongside target and metadata schemas', () => {
+    type Meta = { userId: string }
+    type ClientContext = { page: number; sort: 'created' | 'updated' }
+    const metaSchema = {} as import('@/types/index.js').StandardSchemaV1<unknown, Meta>
+    const clientContextSchema = {} as import('@/types/index.js').StandardSchemaV1<unknown, ClientContext>
+    const group = new SSEChannelGroup({ target: 'swr', metaSchema, clientContextSchema })
+
+    expectTypeOf(group.updateClientContext('connection', { page: 1, sort: 'created' }))
+      .toEqualTypeOf<Promise<{ updated: boolean }>>()
+    // @ts-expect-error unknown client-context fields are rejected.
+    void group.updateClientContext('connection', { page: 1, sort: 'created', extra: true })
+    // @ts-expect-error wrong known client-context field types are rejected.
+    void group.updateClientContext('connection', { page: '1', sort: 'created' })
+    void group.updateClientContext('connection', { page: 1, sort: 'updated' }, { scope: { userId: 'u1' } })
+    // @ts-expect-error scope is constrained to metadata keys.
+    void group.updateClientContext('connection', { page: 1, sort: 'updated' }, { scope: { tenantId: 't1' } })
+  })
+})

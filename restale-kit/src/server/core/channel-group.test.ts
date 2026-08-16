@@ -44,6 +44,187 @@ describe('channel-group', () => {
     expect(spy).toHaveBeenCalled()
   })
 
+  it('stores validated client context and enforces connection scope-pinning', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+    })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'context-connection' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('context-connection', { page: 2 }, { scope: { userId: 8 } }))
+      .resolves.toEqual({ updated: false })
+    expect(group.getClientContext('context-connection')).toBeUndefined()
+
+    await expect(group.updateClientContext('context-connection', { page: 2 }, { scope: { userId: 7 } }))
+      .resolves.toEqual({ updated: true })
+    expect(group.getClientContext('context-connection')).toEqual({ page: 2 })
+    await expect(group.updateClientContext('missing', { page: 3 })).resolves.toEqual({ updated: false })
+  })
+
+  it('ignores client-context updates with a lower revision', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({ target: 'swr' })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'revision-connection' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('revision-connection', { page: 2 }, { revision: 2 }))
+      .resolves.toEqual({ updated: true })
+    await expect(group.updateClientContext('revision-connection', { page: 1 }, { revision: 1 }))
+      .resolves.toEqual({ updated: false })
+    expect(group.getClientContext('revision-connection')).toEqual({ page: 2 })
+  })
+
+  it('rejects non-JSON PubSub context before changing local state', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', unknown>({
+      target: 'swr',
+      pubsub: new MemoryPubSubAdapter(),
+    })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'non-json-context' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('non-json-context', () => {}))
+      .rejects.toThrow('clientContext must be a valid JSONValue when pubsub is configured')
+    expect(group.getClientContext('non-json-context')).toBeUndefined()
+  })
+
+  it('does not store invalid client context and removes stored context on deregistration', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      clientContextSchema: createInvalidSchema<{ page: number }>('Invalid client context'),
+    })
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'invalid-context' })
+    group.register(channel, { userId: 7 })
+
+    await expect(group.updateClientContext('invalid-context', { page: 1 })).rejects.toThrow(SchemaValidationError)
+    expect(group.getClientContext('invalid-context')).toBeUndefined()
+
+    const unvalidated = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({ target: 'swr' })
+    const secondChannel = createSSEChannel({ target: 'swr', connectionId: 'removed-context' })
+    unvalidated.register(secondChannel, { userId: 8 })
+    await unvalidated.updateClientContext('removed-context', { page: 4 })
+    unvalidated.deregister(secondChannel)
+    expect(unvalidated.getClientContext('removed-context')).toBeUndefined()
+  })
+
+  it('applies context and delivers inline data on the connection-owning pubsub instance', async () => {
+    const pubsub = new MemoryPubSubAdapter<SWRSignal>()
+    const origin = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      pubsub,
+      resolveInlineData: () => new Map(),
+    })
+    const owner = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      pubsub,
+      resolveInlineData: (connections) => new Map(connections.map((connection) => [
+        connection.connectionId,
+        {
+          signal: { target: 'swr', key: ['todos', connection.clientContext?.page ?? 0] },
+          inlineData: ['from-owner'],
+        },
+      ])),
+    })
+    await (origin as unknown as { controlPendingOp: Promise<void> }).controlPendingOp
+    await (owner as unknown as { controlPendingOp: Promise<void> }).controlPendingOp
+
+    const channel = createSSEChannel({ target: 'swr', connectionId: 'remote-context' })
+    const invalidate = vi.spyOn(channel, 'invalidate')
+    owner.register(channel, { userId: 9 }, { topics: ['todos'] })
+
+    await expect(origin.updateClientContext('remote-context', { page: 5 }, { scope: { userId: 9 }, revision: 2 }))
+      .resolves.toEqual({ updated: false })
+    await expect(origin.updateClientContext('remote-context', { page: 4 }, { scope: { userId: 9 }, revision: 1 }))
+      .resolves.toEqual({ updated: false })
+    await Promise.resolve()
+    expect(owner.getClientContext('remote-context')).toEqual({ page: 5 })
+
+    await origin.pushInlineData('todos', { source: 'remote' })
+    await Promise.resolve()
+    expect(invalidate).toHaveBeenCalledWith(
+      { target: 'swr', key: ['todos', 5], inlineData: ['from-owner'], contextHash: '37c8de55' },
+      undefined
+    )
+  })
+
+  it('progressively delivers resolved inline data and reports missing connections', async () => {
+    const resolverError = vi.fn()
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      onInlineDataResolverError: resolverError,
+      resolveInlineData: (connections) => new Map(
+        connections.slice(0, 1).map((connection) => [
+          connection.connectionId,
+          { signal: { target: 'swr', key: ['todos', connection.clientContext?.page ?? 0] }, inlineData: ['fresh'] },
+        ])
+      ),
+    })
+    const first = createSSEChannel({ target: 'swr', connectionId: 'inline-first' })
+    const second = createSSEChannel({ target: 'swr', connectionId: 'inline-second' })
+    const firstInvalidate = vi.spyOn(first, 'invalidate')
+    const secondInvalidate = vi.spyOn(second, 'invalidate')
+    group.register(first, { userId: 1 }, { topics: ['todos'] })
+    group.register(second, { userId: 2 }, { topics: ['todos'] })
+    await group.updateClientContext('inline-first', { page: 1 })
+
+    await expect(group.pushInlineData('todos', { source: 'test' })).resolves.toBeUndefined()
+
+    expect(firstInvalidate).toHaveBeenCalledWith(
+      { target: 'swr', key: ['todos', 1], inlineData: ['fresh'], contextHash: '37be50f9' },
+      undefined
+    )
+    expect(secondInvalidate).not.toHaveBeenCalled()
+    expect(resolverError).toHaveBeenCalledWith({ topic: 'todos', missingConnectionIds: ['inline-second'] })
+  })
+
+  it('delivers inline data only to the channel selected for its topic', async () => {
+    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
+      target: 'swr',
+      resolveInlineData: (connections) => new Map(connections.map((connection) => [
+        connection.connectionId,
+        { signal: { target: 'swr', key: ['todos'] }, inlineData: ['fresh'] },
+      ])),
+    })
+    const selected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
+    const unselected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
+    const selectedInvalidate = vi.spyOn(selected, 'invalidate')
+    const unselectedInvalidate = vi.spyOn(unselected, 'invalidate')
+    group.register(selected, { userId: 1 }, { topics: ['todos'] })
+    group.register(unselected, { userId: 1 }, { topics: ['other'] })
+
+    await group.pushInlineData('todos', { source: 'test' })
+
+    expect(selectedInvalidate).toHaveBeenCalledOnce()
+    expect(unselectedInvalidate).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate active connection IDs for inline data resolution', async () => {
+    const resolver = vi.fn()
+    const group = new SSEChannelGroup<SWRSignal, TestMeta>({ target: 'swr', resolveInlineData: resolver })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 1 }, { topics: ['todos'] })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 2 }, { topics: ['todos'] })
+
+    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow('Duplicate active connection ID')
+    expect(resolver).not.toHaveBeenCalled()
+  })
+
+  it('publishes inline data to PubSub before rethrowing a local resolver error', async () => {
+    const pubsub = new MemoryPubSubAdapter<SWRSignal>()
+    const publish = vi.spyOn(pubsub, 'publish').mockResolvedValue()
+    const localError = new Error('resolver failed')
+    const group = new SSEChannelGroup<SWRSignal, TestMeta>({
+      target: 'swr',
+      pubsub,
+      resolveInlineData: () => { throw localError },
+    })
+    group.register(createSSEChannel({ target: 'swr', connectionId: 'resolver-error' }), { userId: 1 }, { topics: ['todos'] })
+
+    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow(localError)
+    expect(publish).toHaveBeenCalledWith(group.controlTopic, {
+      kind: 'inlineData',
+      topic: 'todos',
+      payload: { source: 'test' },
+    })
+  })
+
   it('rejects runtime pubsub values that are not adapters', () => {
     expect(() => new SSEChannelGroup({ pubsub: {} as never })).toThrow(
       'pubsub must implement publish() and subscribe()'

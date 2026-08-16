@@ -146,6 +146,8 @@ export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSign
   /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
   target?: TargetForSignal<TSignal>
+  /** URL used for client-context POSTs. Defaults to the SSE stream URL. */
+  clientContextUrl?: string
   callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void

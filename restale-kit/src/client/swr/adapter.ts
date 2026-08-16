@@ -19,12 +19,18 @@ export interface SWRAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInp
    * represents. Omit this when SWR keys are themselves ReStale keys.
    */
   toInvalidateKey?: (key: Arguments, signal: TSignal) => JSONValue[] | undefined
+  /** Mark pushed data stale after the exact-key cache write. Default: true. */
+  markInlineDataStale?: boolean
 }
+
+/** Options accepted by the React SWR adapter hook. */
+export type UseSwrAdapterOptions<TSignal extends SWRSignalInput = SWRSignalInput> = SWRAdapterOptions<TSignal>
 
 /**
  * The subset of SWR's global `mutate` API required by this adapter.
  */
 export interface SWRMutator {
+  (key: Arguments): Promise<unknown>
   (matcher: (key?: Arguments) => boolean): Promise<unknown[]>
   (matcher: (key?: Arguments) => boolean, data: undefined, revalidate: false): Promise<undefined[]>
   (key: Arguments, data: JSONValue, options: { revalidate: boolean }): Promise<unknown>
@@ -56,6 +62,14 @@ export function swrAdapter<TSignal extends SWRSignal = SWRSignal>(
         const action = item.action
         const isPurge = action === 'purge' || action === 'remove'
         const isRevalidateFalse = item.revalidate === false
+
+        if (item.inlineData !== undefined && !isPurge) {
+          void mutate(item.key, item.inlineData, { revalidate: false })
+          if (options?.markInlineDataStale ?? true) {
+            void mutate(item.key)
+          }
+          continue
+        }
 
         const filter = (key?: Arguments) => {
           if (key === undefined || key === null) return false

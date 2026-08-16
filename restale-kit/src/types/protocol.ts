@@ -31,6 +31,8 @@ export interface TanStackQuerySignal extends BaseInvalidateSignal {
   type?: QueryFilters['type']
   action?: TanStackQueryAction
   stale?: boolean
+  inlineData?: JSONValue
+  contextHash?: string
 }
 
 export const SWR_ACTIONS = ['revalidate', 'purge', 'remove', 'mutate'] as const
@@ -43,6 +45,8 @@ export interface SWRSignal extends BaseInvalidateSignal {
   action?: SWRAction
   revalidate?: boolean
   match?: 'exact' | 'prefix'
+  inlineData?: JSONValue
+  contextHash?: string
 }
 
 /** Native RTK Query invalidation signal payload */
@@ -60,6 +64,8 @@ export interface GenericInvalidateSignal extends BaseInvalidateSignal {
   key: JSONValue[]
   exact?: boolean
   action?: GenericAction
+  inlineData?: JSONValue
+  contextHash?: string
 }
 
 export type SignalTarget = (typeof SIGNAL_TARGETS)[keyof typeof SIGNAL_TARGETS]
@@ -242,6 +248,7 @@ export function matchesJSONValue(actual: JSONValue, expected: JSONValue, exact: 
 export type PubSubMessage<TSignal extends InvalidateSignal = InvalidateSignal> =
   | { kind: 'signal'; data: TSignal | TSignal[]; id?: string }
   | { kind: 'control'; data: JSONValue }
+  | { kind: 'inlineData'; topic: string; payload: JSONValue }
 
 /**
  * The payload of a single SSE `invalidate` event — one signal or a batch.

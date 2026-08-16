@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel, validateSignalTargets, validateTargetConfiguration } from './channel.js'
+import { createSSEChannel, validateSignalPayload, validateSignalTargets, validateTargetConfiguration } from './channel.js'
 import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
 import { createEventStore } from './event-store.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
@@ -26,6 +26,26 @@ describe('channel', () => {
   it('starts in open state', () => {
     const channel = createSSEChannel({ target: 'swr' })
     expect(channel.state).toBe('open')
+  })
+
+  it.each([
+    { target: 'tanstack-query', queryKey: ['todos'], action: 'unknown' },
+    { target: 'tanstack-query', queryKey: ['todos'], type: 'paused' },
+    { target: 'tanstack-query', queryKey: ['todos'], stale: 'true' },
+    { target: 'swr', key: ['todos'], action: 'unknown' },
+    { target: 'swr', key: ['todos'], match: 'contains' },
+    { target: 'swr', key: ['todos'], revalidate: 'false' },
+    { key: ['todos'], action: 'unknown' },
+    { key: ['todos'], exact: 'true' },
+    { target: 'tanstack-query', queryKey: ['todos'], contextHash: 1 },
+    { target: 'swr', key: ['todos'], contextHash: false },
+    { key: ['todos'], contextHash: {} },
+  ])('rejects a malformed protocol field before it can be framed: %o', (signal) => {
+    expect(() => {
+      validateSignalPayload(signal)
+    }).toThrow(
+      '[invalidate] Signals must be non-empty JSON-safe invalidation objects.'
+    )
   })
 
   it('closes idempotently and sets state to closed', () => {

@@ -61,6 +61,13 @@ flowchart LR
 
 ## 🚀 Quick Start
 
+> [!IMPORTANT]
+> **Serverless & Next.js Checklist:**
+> - [ ] Instance created once in a shared module (`lib/restale.ts`)
+> - [ ] Cached via `globalThis` in development mode to prevent leaks during HMR
+> - [ ] Never instantiated inside a route handler or component body
+> - [ ] Check out our [Next.js & Serverless Guide](./docs/nextjs.md) for full setup instructions.
+
 ### 1. Install
 
 ```sh
@@ -154,6 +161,43 @@ await client.connect()
 
 ---
 
+## ⚡️ Next.js & Serverless Best Practices
+
+In Next.js and serverless environments, modules are frequently re-evaluated during Hot Module Replacement (HMR) in development, and requests may execute across isolated lambdas.
+
+### ❌ Don't: Re-instantiate across HMR or in Route Handlers
+
+```ts
+// ❌ Don't do this in Next.js App Router / serverless
+// Re-evaluated on every hot reload and can spawn duplicate
+// channel groups / unmanaged Redis connections
+const channelGroup = new SSEChannelGroup();
+```
+
+### ✅ Do: Cache Singleton on `globalThis`
+
+Place your initialization in a shared file like `lib/restale.ts` and import it everywhere (mirrors [Prisma's Next.js singleton pattern](https://www.prisma.io/docs/guides/other/troubleshooting-orm/help-articles/nextjs-prisma-client-dev-practices)):
+
+```ts
+// lib/restale.ts
+import { SSEChannelGroup } from 'restale-kit/server';
+
+const globalForRestale = globalThis as unknown as {
+  channelGroup?: SSEChannelGroup;
+};
+
+export const channelGroup =
+  globalForRestale.channelGroup ?? new SSEChannelGroup();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForRestale.channelGroup = channelGroup;
+}
+```
+
+👉 See the complete [Next.js & Serverless Guide](./docs/nextjs.md) for full App Router route handler examples, Redis pub/sub wiring, and troubleshooting duplicate events.
+
+---
+
 ## 📂 Repository & Workspace Layout
 
 This repository is a monorepo powered by `pnpm` containing the core library, documentation, and runnable example apps:
@@ -162,6 +206,7 @@ This repository is a monorepo powered by `pnpm` containing the core library, doc
 - **[docs/](./docs/)** — Detailed user documentation and integration guides.
   - 📖 [Getting Started](./docs/getting-started.md)
   - 🖥️ [Server Adapters](./docs/server.md)
+  - ⚡️ [Next.js & Serverless](./docs/nextjs.md)
   - 💻 [Client Adapters](./docs/client.md)
   - 🛡️ [Payload Validation](./docs/validation.md)
   - 🌐 [Distributed Pub/Sub](./docs/pubsub.md)

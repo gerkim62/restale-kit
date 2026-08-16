@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
 import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
@@ -48,6 +48,175 @@ describe('useReStale', () => {
     unmount()
     expect(instance.readyState).toBe(MockEventSource.CLOSED)
     expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('synchronizes client context when opened and when its deep value changes', async () => {
+    const sync = vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockResolvedValue({ updated: true })
+    const onInvalidate = asAdapter<'swr'>(vi.fn())
+    const { rerender } = renderHook(
+      ({ clientContext }) => useReStale('/sse', { onInvalidate, clientContext }),
+      { initialProps: { clientContext: { page: 1 } } }
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitOpen()
+    })
+    await waitFor(() => {
+      expect(sync).toHaveBeenCalledWith({ page: 1 }, { revision: 1 })
+    })
+
+    rerender({ clientContext: { page: 2 } })
+    await waitFor(() => {
+      expect(sync).toHaveBeenLastCalledWith({ page: 2 }, { revision: 2 })
+    })
+  })
+
+  it('logs console.error and triggers refetch on onInvalidate when client context sync fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockRejectedValue(new Error('Network error'))
+    const onInvalidate = asAdapter<'tanstack-query'>(vi.fn())
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        target: 'tanstack-query',
+        clientContext: { page: 1 },
+        clientContextSync: { maxAttempts: 1, retryDelayMs: 0 },
+      })
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitOpen()
+    })
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[restale-kit][useReStale] Failed to synchronize clientContext.')
+      )
+      expect(onInvalidate).toHaveBeenCalledWith({
+        target: 'tanstack-query',
+        queryKey: [],
+      })
+    })
+
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('strips inlineData and triggers resync when signal contextHash mismatches active client context', async () => {
+    const sync = vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockResolvedValue({ updated: true })
+    const onInvalidate = asAdapter<'tanstack-query'>(vi.fn())
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        target: 'tanstack-query',
+        clientContext: { page: 2 },
+      })
+    )
+
+    const instance = MockEventSource.instances[0]
+    act(() => {
+      instance?.emitOpen()
+    })
+
+    await waitFor(() => {
+      expect(sync).toHaveBeenCalledWith({ page: 2 }, { revision: 1 })
+    })
+
+    // Server emits inlineData computed against stale page: 1 (different hash)
+    act(() => {
+      instance?.emitCustomEvent(
+        'invalidate',
+        JSON.stringify({
+          target: 'tanstack-query',
+          queryKey: ['todos'],
+          inlineData: [{ id: 1 }],
+          contextHash: 'stale_hash_1234',
+        })
+      )
+    })
+
+    // Signal received by onInvalidate should NOT have inlineData
+    expect(onInvalidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'tanstack-query',
+        queryKey: ['todos'],
+      })
+    )
+    const lastCallArg = (onInvalidate as unknown as { mock: { lastCall: unknown[] } }).mock.lastCall[0]
+    expect((lastCallArg as { inlineData?: unknown }).inlineData).toBeUndefined()
+  })
+
+  it('preserves inlineData when signal contextHash matches active client context', async () => {
+    const { computeContextHash } = await import('@/utils/canonical-hash.js')
+    vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+      .mockResolvedValue({ updated: true })
+    const onInvalidate = asAdapter<'tanstack-query'>(vi.fn())
+    const context = { page: 2 }
+    const validHash = computeContextHash(context)
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        target: 'tanstack-query',
+        clientContext: context,
+      })
+    )
+
+    const instance = MockEventSource.instances[0]
+    act(() => {
+      instance?.emitOpen()
+    })
+
+    act(() => {
+      instance?.emitCustomEvent(
+        'invalidate',
+        JSON.stringify({
+          target: 'tanstack-query',
+          queryKey: ['todos'],
+          inlineData: [{ id: 1 }],
+          contextHash: validHash,
+        })
+      )
+    })
+
+    expect(onInvalidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'tanstack-query',
+        queryKey: ['todos'],
+        inlineData: [{ id: 1 }],
+        contextHash: validHash,
+      })
+    )
+  })
+
+  it('strips inlineData when the current client context has no hash', () => {
+    const onInvalidate = asAdapter<'tanstack-query'>(vi.fn())
+
+    renderHook(() =>
+      useReStale('/sse', {
+        onInvalidate,
+        target: 'tanstack-query',
+      })
+    )
+
+    act(() => {
+      MockEventSource.instances[0]?.emitCustomEvent(
+        'invalidate',
+        JSON.stringify({
+          target: 'tanstack-query',
+          queryKey: ['todos'],
+          inlineData: [{ id: 1 }],
+          contextHash: 'server-context-hash',
+        })
+      )
+    })
+
+    const lastCallArg = (onInvalidate as unknown as { mock: { lastCall: unknown[] } }).mock.lastCall[0]
+    expect((lastCallArg as { inlineData?: unknown }).inlineData).toBeUndefined()
   })
 
   it('does not open connection when disabled is true', () => {

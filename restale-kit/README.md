@@ -35,6 +35,7 @@ flowchart LR
 - **First-class server adapters:** Express, Fastify, Hono, Node `http`, and any Fetch-API runtime (Bun, Deno, Cloudflare Workers, Vercel Edge).
 - **First-class client adapters:** TanStack Query, SWR, RTK Query, and a React hook (`useReStale`) for zero-boilerplate wiring.
 - **Precision invalidation:** Hierarchical key matching with prefix, exact, and object-subset semantics.
+- **Per-connection data push:** Resolve an authorized, context-specific cache value on the server and write it directly into SWR or TanStack Query.
 - **Optional Standard Schema metadata validation:** Use Zod, Valibot, ArkType, etc. to validate connection metadata at runtime; signals have compile-time types and built-in structural validation.
 - **Horizontally scalable:** Built-in pub/sub adapters for Redis, Ably, and Pusher.
 - **Robust reconnection:** Exponential backoff with jitter; configurable retries.
@@ -603,6 +604,7 @@ Returns a `string` — the SSE event ID assigned to the invalidation frame. A gr
 - [Getting Started](https://github.com/gerkim62/restale-kit/blob/main/docs/getting-started.md)
 - [Server Guide](https://github.com/gerkim62/restale-kit/blob/main/docs/server.md)
 - [Client Guide](https://github.com/gerkim62/restale-kit/blob/main/docs/client.md)
+- [Client Context & Inline Data](https://github.com/gerkim62/restale-kit/blob/main/docs/inline-data.md)
 - [Validation Guide](https://github.com/gerkim62/restale-kit/blob/main/docs/validation.md)
 - [Pub/Sub Guide](https://github.com/gerkim62/restale-kit/blob/main/docs/pubsub.md)
 - [API Reference](https://github.com/gerkim62/restale-kit/blob/main/docs/api-reference.md)

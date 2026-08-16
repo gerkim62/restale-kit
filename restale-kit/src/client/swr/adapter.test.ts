@@ -90,6 +90,26 @@ describe('swrAdapter', () => {
     expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
   })
 
+  it('writes inlineData to exactly the supplied key before marking that key stale', () => {
+    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ key: ['todos'], inlineData: [{ id: 1 }] })
+
+    expect(mutate).toHaveBeenNthCalledWith(1, ['todos'], [{ id: 1 }], { revalidate: false })
+    expect(mutate).toHaveBeenNthCalledWith(2, ['todos'])
+  })
+
+  it('can trust pushed inlineData without marking it stale', () => {
+    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
+    const adapter = swrAdapter(mutate, { markInlineDataStale: false })
+
+    adapter({ key: ['todos'], inlineData: [{ id: 1 }] })
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate).toHaveBeenCalledWith(['todos'], [{ id: 1 }], { revalidate: false })
+  })
+
   it('handles signal batches, undefined key, and non-array default key fallback', () => {
     const mutate = vi.fn() as unknown as SWRMutator
     const adapter = swrAdapter(mutate)

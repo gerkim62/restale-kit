@@ -14,6 +14,22 @@ The server side has two concerns:
 
 All channel methods set the required SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-ReStale-Target: <target>`). They also emit `X-ReStale-Supported: <comma-separated-targets>` listing supported targets. Disconnect detection and auto-deregistration on stream close are wired automatically.
 
+### Manual SSE debugging
+
+The browser clients add a unique `__restale_cid__` connection ID automatically. When opening an SSE route with curl, Postman, or a custom client, include a non-empty value yourself:
+
+```sh
+curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1"
+```
+
+`__restale_target__` is optional. Add it to request a specific target from a multi-target group:
+
+```sh
+curl -N "http://localhost:3000/sse?__restale_cid__=debug-client-1&__restale_target__=tanstack-query"
+```
+
+The connection ID identifies an SSE connection; it is not authentication or authorization.
+
 ### Express
 
 ```ts
@@ -95,6 +111,33 @@ app.get('/sse', (c) => {
 })
 ```
 
+### Next.js App Router: reuse a process-local group
+
+In development, Next.js re-evaluates modules during hot reload (HMR). Cache the group (and any Redis clients) on `globalThis` so route modules in the same Node.js process reuse it instead of creating detached groups and leaking connections.
+
+```ts
+// lib/restale.ts
+import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server'
+
+const globalForRestale = globalThis as unknown as {
+  channelGroup?: SSEChannelGroup
+}
+
+export const channelGroup =
+  globalForRestale.channelGroup ??
+  new SSEChannelGroup({
+    channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
+  })
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForRestale.channelGroup = channelGroup
+}
+```
+
+Use that same export from both the SSE route and mutation handlers. This cache is **per Node.js process**, not shared between separate serverless instances; use a [pub/sub adapter](./pubsub.md) when a mutation and its connected client can land on different instances.
+
+👉 See the comprehensive [Next.js & Serverless Guide](./nextjs.md) for full App Router route handler examples, Redis pub/sub singleton setups, and troubleshooting duplicate events.
+
 ---
 
 ## `SSEChannelGroup`
@@ -120,11 +163,31 @@ const typedGroup = new SSEChannelGroup<InvalidateSignal, ClientMeta>()
 |---|---|---|
 | `target` | `SignalTarget \| SignalTarget[]` | Default target discriminator or target array for channels created by this group. |
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
+| `clientContextSchema` | `StandardSchemaV1` | Validates untrusted client query context submitted after the stream opens. Throws `SchemaValidationError` on failure. |
+| `resolveInlineData` | `ResolveInlineData` | Resolves one exact signal and optional cache payload per local connection for `pushInlineData()`. |
+| `onInlineDataResolverError` | `(info) => void` | Observes connections omitted from a resolver result; valid entries are still delivered. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
 | `eventBufferCapacity` | `number` | Creates a group-owned Last-Event-ID history buffer of up to `N` events. This is shared by channels created through the group and can replay on reconnect. |
 | `eventStore` | `EventStore` | Custom event store for persistent or externally managed replay storage. |
 | `controlTopic` | `string` | Custom control topic name for cross-cluster revocations (default: `'__restale_control__'`). |
 | `channelDefaults` | `ChannelDefaults` | Default channel options (`target`, `lifetime`, `guardKeepalive`, `eventBufferCapacity`) applied to channels that don't set them directly. `beforeFrame` is not supported here — it is per-connection by nature. |
+
+> **Client context and pushed data:** For connection-specific cache values such as pages, filters, or sorts, use `updateClientContext()` and `pushInlineData()`. The complete HTTP route, resolver contract, authorization rules, and client setup are in [Client Context & Inline Data](./inline-data.md).
+
+### Per-connection context and direct cache writes
+
+```ts
+const result = await group.updateClientContext(connectionId, clientContext, {
+  scope: { userId: req.user.id },
+})
+// result.updated is false when this instance does not own a matching connection.
+
+await group.pushInlineData(`user:${req.user.id}`, { changedTodoId })
+```
+
+`updateClientContext()` validates against `clientContextSchema` when configured, stores the result only for the matching connection, and propagates it across the control topic in a pub/sub deployment. Always provide `scope` from authenticated server state: connection IDs are not credentials.
+
+`pushInlineData()` requires `resolveInlineData`. It invokes that resolver once for all local connections on the topic, delivers each returned signal to its connection, then asks remote instances to resolve their own local connections. It does not add data to event replay history; use ordinary invalidation plus an event store when missed-event replay is required.
 
 ---
 

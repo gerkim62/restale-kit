@@ -2,7 +2,7 @@
 
 In `restale-kit`, invalidation signals rely on **built-in wire-format structural validation** and **TypeScript compile-time type safety**. You do not need to supply or configure any schemas for invalidation signals.
 
-For connection metadata registered with `SSEChannelGroup`, optional runtime schema validation is available via `metaSchema` using standard schema libraries (Zod, Valibot, ArkType).
+For connection metadata registered with `SSEChannelGroup`, optional runtime schema validation is available via `metaSchema` using standard schema libraries (Zod, Valibot, ArkType). The same Standard Schema mechanism validates untrusted client query context through `clientContextSchema`.
 
 ---
 
@@ -93,3 +93,30 @@ try {
   }
 }
 ```
+
+---
+
+## Client context validation with `clientContextSchema`
+
+`clientContext` is supplied by the browser after the SSE stream opens. It is useful for page, sort, and filter state, but it is not an authorization input. Validate its shape with `clientContextSchema`, and use `meta` or the authenticated request to determine what data the resolver may return.
+
+```ts
+const clientContextSchema = z.object({
+  page: z.number().int().min(0),
+  pageSize: z.number().int().min(1).max(100),
+})
+
+const group = new SSEChannelGroup({
+  target: 'swr',
+  clientContextSchema,
+  resolveInlineData: async (connections, payload) => {
+    // connections[i].meta decides authorization.
+    // connections[i].clientContext decides the authorized result's page/shape.
+    return new Map()
+  },
+})
+```
+
+`group.updateClientContext(connectionId, value, { scope })` returns a promise that rejects with `SchemaValidationError` when the value is invalid, without changing stored context. Await it in the HTTP route and catch that rejection to return `400`; scope-pin the connection ID with trusted metadata before applying an update.
+
+See [Client Context & Inline Data](./inline-data.md) for the complete route and resolver example.
