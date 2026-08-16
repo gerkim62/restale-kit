@@ -38,7 +38,9 @@ describe('channel', () => {
     { key: ['todos'], action: 'unknown' },
     { key: ['todos'], exact: 'true' },
   ])('rejects a malformed protocol field before it can be framed: %o', (signal) => {
-    expect(() => validateSignalPayload(signal)).toThrow(
+    expect(() => {
+      validateSignalPayload(signal)
+    }).toThrow(
       '[invalidate] Signals must be non-empty JSON-safe invalidation objects.'
     )
   })

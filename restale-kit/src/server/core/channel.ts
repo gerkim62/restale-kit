@@ -670,7 +670,7 @@ function isTanStackQuerySignal(value: Record<string, unknown>): boolean {
     isJSONValueArray(value.queryKey) &&
     (value.exact === undefined || typeof value.exact === 'boolean') &&
     (value.type === undefined || value.type === 'active' || value.type === 'inactive' || value.type === 'all') &&
-    (value.action === undefined || (typeof value.action === 'string' && TANSTACK_QUERY_ACTIONS.includes(value.action as typeof TANSTACK_QUERY_ACTIONS[number]))) &&
+    (value.action === undefined || (typeof value.action === 'string' && TANSTACK_QUERY_ACTIONS.some((a) => a === value.action))) &&
     (value.stale === undefined || typeof value.stale === 'boolean')
   )
 }
@@ -678,7 +678,7 @@ function isTanStackQuerySignal(value: Record<string, unknown>): boolean {
 function isSWRSignal(value: Record<string, unknown>): boolean {
   return (
     (typeof value.key === 'string' || isJSONValueArray(value.key)) &&
-    (value.action === undefined || (typeof value.action === 'string' && SWR_ACTIONS.includes(value.action as typeof SWR_ACTIONS[number]))) &&
+    (value.action === undefined || (typeof value.action === 'string' && SWR_ACTIONS.some((a) => a === value.action))) &&
     (value.revalidate === undefined || typeof value.revalidate === 'boolean') &&
     (value.match === undefined || value.match === 'exact' || value.match === 'prefix')
   )
@@ -688,7 +688,7 @@ function isGenericSignal(value: Record<string, unknown>): boolean {
   return (
     isJSONValueArray(value.key) &&
     (value.exact === undefined || typeof value.exact === 'boolean') &&
-    (value.action === undefined || (typeof value.action === 'string' && GENERIC_ACTIONS.includes(value.action as typeof GENERIC_ACTIONS[number])))
+    (value.action === undefined || (typeof value.action === 'string' && GENERIC_ACTIONS.some((a) => a === value.action)))
   )
 }
 
