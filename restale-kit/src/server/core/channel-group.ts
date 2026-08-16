@@ -1149,16 +1149,16 @@ class SSEChannelGroupImplementation<
       throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
     }
 
-    let localError: unknown
+    let localError: Error | undefined
     try {
       await this.deliverInlineData(topic, payload)
     } catch (error) {
-      localError = error
+      localError = error instanceof Error ? error : new Error(String(error))
     }
     if (this.pubsub) {
       await this.pubsub.publish(this.controlTopic, { kind: 'inlineData', topic, payload })
     }
-    if (localError !== undefined) throw localError
+    if (localError) throw localError
   }
 
   private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
