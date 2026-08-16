@@ -94,7 +94,7 @@ useReStale('/sse', {
 })
 ```
 
-Context registration retries on transient errors or stream opens (by default making up to 2 attempts). If context synchronization fails after all retry attempts are exhausted, `useReStale` logs `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')` and immediately invokes `onInvalidate` to trigger a background query refetch, ensuring the UI does not show stale or out-of-sync state. If an incoming inline data push was computed against an outdated context (detected via deterministic `contextHash`), the stale `inlineData` is stripped and converted to a fresh refetch while resynchronizing context. See [Client Context & Inline Data](./inline-data.md) for full race condition details and server setup.
+Context registration retries on transient errors or stream opens (by default making up to 2 attempts). If context synchronization fails after all retry attempts are exhausted, `useReStale` logs `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')` and immediately invokes `onInvalidate` to trigger a background query refetch, ensuring the UI does not remain stuck on stale data. Context updates carry monotonic revisions to prevent out-of-order application on the server. See [Client Context & Inline Data](./inline-data.md) for full details and server setup.
 
 ### Return value
 
@@ -492,6 +492,8 @@ useReStale('/sse', { onInvalidate })
 ```
 
 ---
+
+## Reconnection & Error Handling
 
 When the SSE connection drops, the `sse.js` transport emits an error internally. The client owns the retry schedule so it can inspect each HTTP handshake before deciding whether to retry.
 

@@ -25,7 +25,7 @@ curl -N "http://localhost:3000/sse"
 # data: {"connectionId":"d290f1ee-6c54-4b01-90e6-d701748f0851"}
 ```
 
-The connection ID identifies an individual SSE connection for client context updates, revocation, and self-mutation exclusion; it is not an authentication or authorization credential.
+The connection ID identifies an individual SSE connection for client context updates and revocation; it is not an authentication or authorization credential.
 
 ### Express
 

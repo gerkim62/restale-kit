@@ -60,7 +60,6 @@ interface RevalidateSignal {
   readonly exact?: boolean
   readonly inlineData?: never
   readonly markStale?: never
-  readonly contextHash?: string
 }
 
 interface InlineDataSignal {
@@ -68,7 +67,6 @@ interface InlineDataSignal {
   readonly inlineData: JSONValue
   readonly markStale?: boolean
   readonly exact?: never
-  readonly contextHash?: string
 }
 
 type UniversalSignal = RevalidateSignal | InlineDataSignal
@@ -412,7 +410,8 @@ function useSwrAdapter(
 ## `restale-kit/pubsub`
 
 ```ts
-import type { PubSubAdapter, PubSubEncryptionOptions, PubSubDecryptionError } from 'restale-kit/pubsub'
+import { PubSubDecryptionError } from 'restale-kit/pubsub'
+import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
 import type { PubSubMessage, JSONValue } from 'restale-kit'
 
 interface PubSubAdapter {
