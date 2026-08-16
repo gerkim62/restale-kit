@@ -53,7 +53,6 @@ export interface ClientOptions {
   reconnect?: ReconnectOptions
   withCredentials?: boolean
   debug?: boolean
-  skipSelf?: boolean
   clientContextUrl?: string
   callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
   onConnect?: (event: Event) => void

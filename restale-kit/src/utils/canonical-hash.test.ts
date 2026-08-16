@@ -1,21 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import { canonicalJsonSerialize, computeContextHash, computeSenderHash, sha256 } from '@/utils/canonical-hash.js'
+import { canonicalJsonSerialize, computeContextHash, sha256 } from '@/utils/canonical-hash.js'
 
-describe('canonicalJsonSerialize, sha256, computeContextHash, and computeSenderHash', () => {
+describe('canonicalJsonSerialize, sha256, and computeContextHash', () => {
   it('computes valid SHA-256 for standard test vectors', async () => {
     // NIST test vectors
     expect(await sha256('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
     expect(await sha256('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
     expect(await sha256('message digest')).toBe('f7846f55cf23e14eebeab5b4e1550cad5b509e3348fbc4efa3a1413d393cb650')
-  })
-
-  it('computes deterministic sender hash from connection ID', async () => {
-    const connId = '123e4567-e89b-12d3-a456-426614174000'
-    const hash1 = await computeSenderHash(connId)
-    const hash2 = await computeSenderHash(connId)
-    expect(hash1).toHaveLength(64)
-    expect(hash1).toBe(hash2)
-    expect(hash1).toBe(await sha256(connId))
   })
 
   it('serializes primitives deterministically', () => {

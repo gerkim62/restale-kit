@@ -99,13 +99,6 @@ export function canonicalJsonSerialize(value: unknown): string | undefined {
 }
 
 /**
- * Computes a secure deterministic sender hash for connection self-exclusion.
- */
-export async function computeSenderHash(connectionId: string): Promise<string> {
-  return sha256(connectionId)
-}
-
-/**
  * Computes a deterministic canonical hash string for a client context value.
  * Returns undefined if context is undefined or not serializable.
  */

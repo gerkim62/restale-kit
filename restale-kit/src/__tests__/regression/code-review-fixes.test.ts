@@ -5,30 +5,6 @@ import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 describe('Code review fixes verification', () => {
   describe('SSEChannelGroup fixes', () => {
-    it('broadcast() with senderConnectionId returns a Promise and enriches signals with _sh', async () => {
-      const group = new SSEChannelGroup()
-      const ch = createSSEChannel({})
-      const invalidateSpy = vi.spyOn(ch, 'invalidate')
-      group.register(ch)
-
-      const promise = group.broadcast(
-        { key: ['users'] },
-        () => true,
-        { senderConnectionId: 'test-sender-id' }
-      )
-
-      expect(promise).toBeInstanceOf(Promise)
-      await promise
-
-      expect(invalidateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: ['users'],
-          _sh: expect.any(String),
-        }),
-        undefined
-      )
-    })
-
     it('dispose() closes all open channels registered in the group', async () => {
       const group = new SSEChannelGroup()
       const ch1 = createSSEChannel({})
@@ -157,20 +133,6 @@ describe('Code review fixes verification', () => {
       expect(client.lastEventId).toBeNull()
       expect(client.connectionId).toBeUndefined()
       expect(client.status).toEqual({ status: 'closed', reason: 'unmount' })
-    })
-
-    it('updateRuntimeOptions updates skipSelf correctly', () => {
-      const client = new SSEInvalidatorClient('/api/sse', { skipSelf: false })
-      // @ts-expect-error accessing private property for test verification
-      expect(client.skipSelf).toBe(false)
-
-      client.updateRuntimeOptions({ skipSelf: true })
-      // @ts-expect-error accessing private property for test verification
-      expect(client.skipSelf).toBe(true)
-
-      client.updateRuntimeOptions({ skipSelf: false })
-      // @ts-expect-error accessing private property for test verification
-      expect(client.skipSelf).toBe(false)
     })
   })
 })

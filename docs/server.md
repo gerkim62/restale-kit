@@ -261,31 +261,6 @@ The signal's `key` is compared position-by-position with each channel's register
 
 Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
 
-### Excluding the Mutating Client (`senderConnectionId`)
-
-When a client initiates a mutation (e.g. `POST /api/todos`), it usually updates its local cache or UI immediately. Broadcasting an invalidation back to that same client can cause an unnecessary duplicate network refetch.
-
-To suppress self-invalidation, pass `senderConnectionId` in the options object of `broadcast()`, `broadcastToAll()`, or `publish()`. The server automatically computes a SHA-256 sender hash (`_sh`) and attaches it to the signal:
-
-```ts
-app.post('/api/todos', async (req, res) => {
-  const todo = await db.todos.create({ data: req.body })
-
-  // Read the connection ID sent in a request header by the client
-  const senderConnectionId = req.headers['x-connection-id'] as string | undefined
-
-  // Broadcast to all clients, tagging the originator
-  await group.broadcastToAll(
-    { key: ['todos'] },
-    { senderConnectionId }
-  )
-
-  res.status(201).json(todo)
-})
-```
-
-When receiving this signal, any client with `skipSelf: true` enabled will compare the signal's `_sh` hash with its own connection's SHA-256 hash and skip invalidation.
-
 ---
 
 ## Connection Lifecycle: Lifetime & Reconnection Guards

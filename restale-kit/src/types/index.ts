@@ -23,4 +23,4 @@ export type {
   RenewEventDetail,
 } from './protocol.js'
 export { isInlineDataSignal, isJSONValue, isJSONValueArray } from './protocol.js'
-export { canonicalJsonSerialize, computeContextHash, computeSenderHash, sha256 } from '../utils/canonical-hash.js'
+export { canonicalJsonSerialize, computeContextHash, sha256 } from '../utils/canonical-hash.js'

@@ -254,33 +254,6 @@ useReStale('https://api.example.com/sse', {
 })
 ```
 
-### Self-Mutation Invalidation Suppression (`skipSelf`)
-
-When a user mutates data from the active tab, your client application often updates local state optimistically or populates cache directly from the mutation response. By default, a broadcasted invalidation from the server would cause the current tab to refetch that same data unnecessarily.
-
-Enable `skipSelf: true` on `useReStale` (or `SSEInvalidatorClient`) to suppress invalidations originating from the active connection:
-
-```tsx
-const { connectionId } = useReStale('/sse', {
-  onInvalidate,
-  skipSelf: true,
-})
-
-async function handleAddTodo(title: string) {
-  // Pass connectionId in a custom header or request body
-  await fetch('/api/todos', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-connection-id': connectionId,
-    },
-    body: JSON.stringify({ title }),
-  })
-}
-```
-
-When `skipSelf` is enabled, the client computes a SHA-256 hash of its connection ID. Any incoming invalidations carrying a matching `_sh` sender hash are automatically ignored by this client while other connected tabs and clients are invalidated normally.
-
 ---
 
 ## Vanilla JS / Non-React: `SSEInvalidatorClient`
@@ -293,7 +266,6 @@ import { SSEInvalidatorClient } from 'restale-kit/client'
 const client = new SSEInvalidatorClient('/sse', {
   autoReconnect: true,
   withCredentials: false,
-  skipSelf: true,
   reconnect: {
     baseDelayMs: 1000,
     maxDelayMs: 30000,
