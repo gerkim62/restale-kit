@@ -53,6 +53,7 @@ export interface ClientOptions {
   reconnect?: ReconnectOptions
   withCredentials?: boolean
   debug?: boolean
+  skipSelf?: boolean
   clientContextUrl?: string
   callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
   onConnect?: (event: Event) => void
@@ -61,6 +62,7 @@ export interface ClientOptions {
 }
 
 export interface SSEInvalidatorClientEventMap {
+  connected: CustomEvent<{ connectionId: string }>
   invalidate: CustomEvent<UniversalSignal | UniversalSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>

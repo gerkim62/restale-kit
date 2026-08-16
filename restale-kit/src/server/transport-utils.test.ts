@@ -1,21 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { extractConnectionId, extractLastEventId } from './transport-utils.js'
+import { extractLastEventId, buildSSEHeaders } from './transport-utils.js'
 
 describe('transport-utils', () => {
-  describe('extractConnectionId', () => {
-    it('extracts __restale_cid__ successfully', () => {
-      const searchParams = new URLSearchParams('__restale_cid__=conn-12345')
-      expect(extractConnectionId(searchParams)).toBe('conn-12345')
-    })
-
-    it('throws error when __restale_cid__ query param is missing', () => {
-      const searchParams = new URLSearchParams('other=value')
-      expect(() => extractConnectionId(searchParams)).toThrow(
-        'Missing or invalid __restale_cid__'
-      )
-    })
-  })
-
   describe('extractLastEventId', () => {
     it('extracts string header matching lowercase last-event-id', () => {
       const getHeader = (name: string) => (name.toLowerCase() === 'last-event-id' ? 'evt-10' : null)
@@ -36,6 +22,15 @@ describe('transport-utils', () => {
       expect(extractLastEventId(() => undefined)).toBeUndefined()
       expect(extractLastEventId(() => '')).toBeUndefined()
       expect(extractLastEventId(() => [])).toBeUndefined()
+    })
+  })
+
+  describe('buildSSEHeaders', () => {
+    it('returns SSE headers', () => {
+      const headers = buildSSEHeaders()
+      expect(headers['Content-Type']).toBe('text/event-stream')
+      expect(headers['Cache-Control']).toBe('no-cache')
+      expect(headers.Connection).toBe('keep-alive')
     })
   })
 })

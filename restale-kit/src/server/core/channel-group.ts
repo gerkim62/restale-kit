@@ -17,6 +17,7 @@ import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import { internal_attachSSE, type FastifyReplyLike, type FastifyRequestLike } from '@/server/node/attach.js'
 import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { computeSenderHash } from '@/utils/canonical-hash.js'
 
 export type ChannelSetupOptions<TMeta = unknown> = SSEChannelOptions & {
   topics?: string[]
@@ -72,6 +73,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   private readonly topicChannels = new Map<string, Set<SSEChannel>>()
   private readonly topicUnsubscribers = new Map<string, () => void | Promise<void>>()
   private readonly pendingTopicSubscriptions = new Map<string, Promise<(() => void | Promise<void>) | undefined>>()
+  private readonly pendingTopicUnsubscriptions = new Map<string, Promise<void>>()
   private readonly connectionIndex = new Map<string, Set<SSEChannel>>()
   private readonly clientContextRevisions = new Map<string, number>()
   private controlUnsubscribe: (() => void | Promise<void>) | undefined
@@ -90,7 +92,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)) {
       throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
     }
-    if (options.pubsub) void this.subscribeControl()
+    if (options.pubsub) {
+      void this.subscribeControl().catch((error: unknown) => {
+        console.error('[SSEChannelGroup] Failed to subscribe to control topic:', error)
+      })
+    }
   }
 
   get size(): number { return this.channels.size }
@@ -156,7 +162,16 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     }
   }
 
-  broadcast(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean = () => true): void {
+  async broadcast(
+    signal: UniversalSignal | UniversalSignal[],
+    predicate: (meta: TMeta | undefined) => boolean = () => true,
+    options?: { senderConnectionId?: string },
+  ): Promise<void> {
+    if (options?.senderConnectionId) {
+      const enriched = await this.attachSenderHash(signal, options.senderConnectionId)
+      this.broadcastRaw(enriched, predicate)
+      return
+    }
     this.broadcastRaw(signal, predicate)
   }
 
@@ -168,18 +183,28 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     this.broadcastRaw(signal, (meta) => isMetaMatchedByKey(meta, signal.key, signal.exact === true))
   }
 
-  async publish(topic: string, signal: UniversalSignal | UniversalSignal[]): Promise<void> {
+  async publish(
+    topic: string,
+    signal: UniversalSignal | UniversalSignal[],
+    options?: { senderConnectionId?: string },
+  ): Promise<void> {
     validateTopic(topic, 'topic')
-    validateSignalPayload(signal)
-    const eventId = this.eventStore?.add(signal).id
+    const enrichedSignal = await this.attachSenderHash(signal, options?.senderConnectionId)
+    validateSignalPayload(enrichedSignal)
+    const eventId = this.eventStore?.add(enrichedSignal).id
     for (const channel of this.topicChannels.get(topic) ?? []) {
       try {
-        this.deliver(channel, signal, eventId)
+        this.deliver(channel, enrichedSignal, eventId)
       } catch (error) {
         console.error('[SSEChannelGroup] Failed to deliver signal to local channel during publish:', error)
       }
     }
-    await this.options.pubsub?.publish(topic, { kind: 'signal', data: signal, ...(eventId ? { id: eventId } : {}) })
+    await this.options.pubsub?.publish(topic, {
+      kind: 'signal',
+      data: enrichedSignal,
+      ...(eventId ? { id: eventId } : {}),
+      ...(options?.senderConnectionId ? { senderConnectionId: options.senderConnectionId } : {}),
+    })
   }
 
   async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
@@ -241,22 +266,43 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   }
 
   getClientContext(connectionId: string): TClientContext | undefined {
+    let result: TClientContext | undefined
     for (const channel of this.connectionIndex.get(connectionId) ?? []) {
       const value = this.channels.get(channel)?.clientContext
-      if (value !== undefined) return value
+      if (value !== undefined) result = value
     }
-    return undefined
+    return result
   }
 
   async dispose(): Promise<void> {
-    await this.controlUnsubscribe?.()
-    this.controlUnsubscribe = undefined
+    for (const [channel] of this.channels) {
+      try { channel.close() } catch { /* best effort */ }
+    }
+    if (this.controlUnsubscribe) {
+      try {
+        await this.controlUnsubscribe()
+      } catch (error) {
+        console.error('[SSEChannelGroup] Failed to unsubscribe control subscriber during dispose:', error)
+      } finally {
+        this.controlUnsubscribe = undefined
+      }
+    }
     if (this.pendingTopicSubscriptions.size > 0) {
       await Promise.allSettled(Array.from(this.pendingTopicSubscriptions.values()))
     }
-    for (const unsubscribe of this.topicUnsubscribers.values()) await unsubscribe()
+    if (this.pendingTopicUnsubscriptions.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingTopicUnsubscriptions.values()))
+    }
+    for (const unsubscribe of this.topicUnsubscribers.values()) {
+      try {
+        await unsubscribe()
+      } catch (error) {
+        console.error('[SSEChannelGroup] Failed to unsubscribe during dispose:', error)
+      }
+    }
     this.topicUnsubscribers.clear()
     this.pendingTopicSubscriptions.clear()
+    this.pendingTopicUnsubscriptions.clear()
   }
 
   private broadcastRaw(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
@@ -290,8 +336,24 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     let channels = this.topicChannels.get(topic)
     if (!channels) this.topicChannels.set(topic, channels = new Set())
     channels.add(channel)
-    if (this.options.pubsub && !this.topicUnsubscribers.has(topic) && !this.pendingTopicSubscriptions.has(topic)) {
-      const subscriptionPromise = this.options.pubsub.subscribe(topic, (message) => {
+    const pubsub = this.options.pubsub
+    if (!pubsub) return
+
+    if (this.topicUnsubscribers.has(topic) || this.pendingTopicSubscriptions.has(topic)) {
+      return
+    }
+
+    const startSubscription = async () => {
+      const pendingUnsub = this.pendingTopicUnsubscriptions.get(topic)
+      if (pendingUnsub) {
+        await pendingUnsub
+      }
+
+      if (!this.topicChannels.has(topic)) {
+        return undefined
+      }
+
+      return pubsub.subscribe(topic, (message) => {
         if (message.kind !== 'signal') return
         const eventId = this.eventStore?.add(message.data, message.id).id ?? message.id
         for (const subscribed of this.topicChannels.get(topic) ?? []) {
@@ -302,24 +364,29 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
           }
         }
       })
-      this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
-      subscriptionPromise
-        .then((unsubscribe) => {
-          if (!this.topicChannels.has(topic)) {
-            void unsubscribe()
-          } else {
-            this.topicUnsubscribers.set(topic, unsubscribe)
-          }
-          return unsubscribe
-        })
-        .catch((error: unknown) => {
-          console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
-          return undefined
-        })
-        .finally(() => {
-          this.pendingTopicSubscriptions.delete(topic)
-        })
     }
+
+    const subscriptionPromise = startSubscription()
+    this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
+    void subscriptionPromise
+      .then((unsubscribe) => {
+        if (!unsubscribe) return undefined
+        if (!this.topicChannels.has(topic)) {
+          void this.executeTopicUnsubscribe(topic, unsubscribe)
+        } else {
+          this.topicUnsubscribers.set(topic, unsubscribe)
+        }
+        return unsubscribe
+      })
+      .catch((error: unknown) => {
+        console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
+        return undefined
+      })
+      .finally(() => {
+        if (this.pendingTopicSubscriptions.get(topic) === subscriptionPromise) {
+          this.pendingTopicSubscriptions.delete(topic)
+        }
+      })
   }
 
   private detachTopics(channel: SSEChannel, topics: Iterable<string>): void {
@@ -330,9 +397,31 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
         this.topicChannels.delete(topic)
         const unsubscribe = this.topicUnsubscribers.get(topic)
         this.topicUnsubscribers.delete(topic)
-        if (unsubscribe) void unsubscribe()
+        if (unsubscribe) {
+          void this.executeTopicUnsubscribe(topic, unsubscribe)
+        }
       }
     }
+  }
+
+  private executeTopicUnsubscribe(topic: string, unsubscribe: () => void | Promise<void>): Promise<void> {
+    const unsubscriptionPromise = (async () => {
+      try {
+        await unsubscribe()
+      } catch (error: unknown) {
+        console.error(`[SSEChannelGroup] Error unsubscribing from topic "${topic}":`, error)
+      }
+    })()
+
+    this.pendingTopicUnsubscriptions.set(topic, unsubscriptionPromise)
+
+    void unsubscriptionPromise.finally(() => {
+      if (this.pendingTopicUnsubscriptions.get(topic) === unsubscriptionPromise) {
+        this.pendingTopicUnsubscriptions.delete(topic)
+      }
+    })
+
+    return unsubscriptionPromise
   }
 
   private async subscribeControl(): Promise<void> {
@@ -442,6 +531,18 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       return !(result instanceof Promise) && !result.issues
     }
     return true
+  }
+
+  private async attachSenderHash(
+    signal: UniversalSignal | UniversalSignal[],
+    senderConnectionId?: string,
+  ): Promise<UniversalSignal | UniversalSignal[]> {
+    if (!senderConnectionId) return signal
+    const _sh = await computeSenderHash(senderConnectionId)
+    if (Array.isArray(signal)) {
+      return signal.map((s) => ({ ...s, _sh }))
+    }
+    return { ...signal, _sh }
   }
 }
 

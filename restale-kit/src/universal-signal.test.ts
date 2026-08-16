@@ -10,6 +10,11 @@ describe('universal signal protocol', () => {
   it('serialises universal signals without targets and validates both arms', async () => {
     const channel = createSSEChannel()
     const reader = channel.stream.getReader()
+    // First event is the connected frame
+    const connectedFrame = new TextDecoder().decode((await reader.read()).value)
+    expect(connectedFrame).toContain('event: connected')
+    expect(connectedFrame).toContain('connectionId')
+
     channel.invalidate([{ key: ['todos'] }, { key: ['todos', 1], inlineData: { id: 1 } }])
     const frame = new TextDecoder().decode((await reader.read()).value)
     expect(frame).toContain('event: invalidate')
@@ -26,6 +31,10 @@ describe('universal signal protocol', () => {
     const second = createSSEChannel()
     const firstReader = first.stream.getReader()
     const secondReader = second.stream.getReader()
+    // Consume connected frames
+    await firstReader.read()
+    await secondReader.read()
+
     group.register(first)
     group.register(second)
     group.broadcastToAll({ key: ['todos'] })
@@ -34,10 +43,10 @@ describe('universal signal protocol', () => {
     expect(decoder.decode((await secondReader.read()).value)).toContain('"key":["todos"]')
   })
 
-  it('adds only the connection identity parameter to the client URL', () => {
+  it('does not add query parameters to the client URL', () => {
     const client = new SSEInvalidatorClient('https://example.test/events')
     const eventSourceUrl = Reflect.get(client, 'eventSourceUrl') as string
-    expect(eventSourceUrl).toContain('__restale_cid__=')
+    expect(eventSourceUrl).toBe('https://example.test/events')
   })
 })
 

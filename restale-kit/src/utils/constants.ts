@@ -2,7 +2,6 @@
  * Central protocol string constants, header names, and default configuration values.
  */
 export const PROTOCOL_CONSTANTS = {
-  RESTALE_REQUEST_ID_PARAM: '__restale_cid__',
   LAST_EVENT_ID_HEADER: 'last-event-id',
   DEFAULT_CONTROL_TOPIC: '__restale_control__',
   DEFAULT_KEEPALIVE_INTERVAL_MS: 0,
@@ -31,6 +30,7 @@ export const PUBSUB_EVENTS = {
  * Event names emitted over SSE streams.
  */
 export const SSE_EVENTS = {
+  CONNECTED: 'connected',
   INVALIDATE: 'invalidate',
   REVOKE: 'revoke',
   KEEPALIVE: 'keepalive',

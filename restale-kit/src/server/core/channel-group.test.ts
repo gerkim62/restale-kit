@@ -43,7 +43,7 @@ describe('channel-group', () => {
     expect(spy).toHaveBeenCalled()
   })
 
-  it('broadcasts only to channels selected by its predicate', () => {
+  it('broadcasts only to channels selected by its predicate', async () => {
     const group = new SSEChannelGroup<TestMeta>()
     const selected = createSSEChannel({})
     const skipped = createSSEChannel({})
@@ -52,58 +52,57 @@ describe('channel-group', () => {
     const selectedSpy = vi.spyOn(selected, 'invalidate')
     const skippedSpy = vi.spyOn(skipped, 'invalidate')
 
-    group.broadcast({ key: ['todos'] }, (meta) => meta?.userId === 1)
+    await group.broadcast({ key: ['todos'] }, (meta) => meta?.userId === 1)
 
     expect(selectedSpy).toHaveBeenCalledOnce()
     expect(skippedSpy).not.toHaveBeenCalled()
   })
 
   it('stores validated client context and enforces connection scope-pinning', async () => {
-    const group = new SSEChannelGroup<TestMeta, { page: number }>({
-    })
-    const channel = createSSEChannel({ connectionId: 'context-connection' })
+    const group = new SSEChannelGroup<TestMeta, { page: number }>({})
+    const channel = createSSEChannel()
     group.register(channel, { userId: 7 })
 
-    await expect(group.updateClientContext('context-connection', { page: 2 }, { scope: { userId: 8 } }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 2 }, { scope: { userId: 8 } }))
       .resolves.toEqual({ updated: false })
-    expect(group.getClientContext('context-connection')).toBeUndefined()
+    expect(group.getClientContext(channel.connectionId)).toBeUndefined()
 
-    await expect(group.updateClientContext('context-connection', { page: 2 }, { scope: { userId: 7 } }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 2 }, { scope: { userId: 7 } }))
       .resolves.toEqual({ updated: true })
-    expect(group.getClientContext('context-connection')).toEqual({ page: 2 })
+    expect(group.getClientContext(channel.connectionId)).toEqual({ page: 2 })
     await expect(group.updateClientContext('missing', { page: 3 })).resolves.toEqual({ updated: false })
   })
 
   it('ignores client-context updates with a lower or equal revision', async () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({})
-    const channel = createSSEChannel({ connectionId: 'revision-connection' })
+    const channel = createSSEChannel()
     group.register(channel, { userId: 7 })
 
-    await expect(group.updateClientContext('revision-connection', { page: 2 }, { revision: 2 }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 2 }, { revision: 2 }))
       .resolves.toEqual({ updated: true })
-    await expect(group.updateClientContext('revision-connection', { page: 1 }, { revision: 1 }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 1 }, { revision: 1 }))
       .resolves.toEqual({ updated: false })
-    await expect(group.updateClientContext('revision-connection', { page: 99 }, { revision: 2 }))
+    await expect(group.updateClientContext(channel.connectionId, { page: 99 }, { revision: 2 }))
       .resolves.toEqual({ updated: false })
-    expect(group.getClientContext('revision-connection')).toEqual({ page: 2 })
+    expect(group.getClientContext(channel.connectionId)).toEqual({ page: 2 })
   })
 
   it('does not store invalid client context and removes stored context on deregistration', async () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({
       clientContextSchema: createInvalidSchema<{ page: number }>('Invalid client context'),
     })
-    const channel = createSSEChannel({ connectionId: 'invalid-context' })
+    const channel = createSSEChannel()
     group.register(channel, { userId: 7 })
 
-    await expect(group.updateClientContext('invalid-context', { page: 1 })).rejects.toThrow(SchemaValidationError)
-    expect(group.getClientContext('invalid-context')).toBeUndefined()
+    await expect(group.updateClientContext(channel.connectionId, { page: 1 })).rejects.toThrow(SchemaValidationError)
+    expect(group.getClientContext(channel.connectionId)).toBeUndefined()
 
     const unvalidated = new SSEChannelGroup<TestMeta, { page: number }>({})
-    const secondChannel = createSSEChannel({ connectionId: 'removed-context' })
+    const secondChannel = createSSEChannel()
     unvalidated.register(secondChannel, { userId: 8 })
-    await unvalidated.updateClientContext('removed-context', { page: 4 })
+    await unvalidated.updateClientContext(secondChannel.connectionId, { page: 4 })
     unvalidated.deregister(secondChannel)
-    expect(unvalidated.getClientContext('removed-context')).toBeUndefined()
+    expect(unvalidated.getClientContext(secondChannel.connectionId)).toBeUndefined()
   })
 
   it('delivers inline data only to the channel selected for its topic', async () => {
@@ -113,8 +112,8 @@ describe('channel-group', () => {
         { signal: { key: ['todos'] }, inlineData: ['fresh'] },
       ])),
     })
-    const selected = createSSEChannel({ connectionId: 'shared-connection' })
-    const unselected = createSSEChannel({ connectionId: 'shared-connection' })
+    const selected = createSSEChannel()
+    const unselected = createSSEChannel()
     const selectedInvalidate = vi.spyOn(selected, 'invalidate')
     const unselectedInvalidate = vi.spyOn(unselected, 'invalidate')
     group.register(selected, { userId: 1 }, { topics: ['todos'] })
@@ -149,7 +148,7 @@ describe('channel-group', () => {
     expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
   })
 
-  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
+  it('broadcast predicate is called with undefined meta when TMeta accepts undefined', async () => {
     // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
     // undefined, the predicate receives undefined (not skipped) and can act on it.
     const group = new SSEChannelGroup<{ userId: number } | undefined>()
@@ -163,7 +162,7 @@ describe('channel-group', () => {
     group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
 
     const seenMetas: ({ userId: number } | undefined)[] = []
-    group.broadcast({ key: ['test'] }, (meta) => {
+    await group.broadcast({ key: ['test'] }, (meta) => {
       seenMetas.push(meta)
       return true
     })
@@ -174,7 +173,7 @@ describe('channel-group', () => {
     expect(spyNo).toHaveBeenCalled()
   })
 
-  it('broadcast predicate can filter out channels with undefined meta', () => {
+  it('broadcast predicate can filter out channels with undefined meta', async () => {
     // Predicate returning false for undefined meta should skip that channel,
     // but NOT all channels — channels with defined meta should still be reached.
     const group = new SSEChannelGroup<{ userId: number } | undefined>()
@@ -187,7 +186,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 42 })
     group.register(chNoMeta)
 
-    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
+    await group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -232,7 +231,7 @@ describe('channel-group', () => {
     // revokeByConnectionId looks up by connectionId directly, bypassing metadata matching,
     // so it works regardless of whether meta was provided.
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ connectionId: 'no-meta-conn' })
+    const ch = createSSEChannel()
 
     group.register(ch)
     expect(group.size).toBe(1)
@@ -324,13 +323,13 @@ describe('channel-group', () => {
     expect(checkOptional).toBe(true)
   })
 
-  it('broadcast predicate represents omitted metadata explicitly', () => {
+  it('broadcast predicate represents omitted metadata explicitly', async () => {
     const group = new SSEChannelGroup<TestMeta>()
     const channel = createSSEChannel({})
     group.register(channel, { userId: 1 })
 
     // Static check: callers handle omitted metadata before reading fields.
-    group.broadcast({ key: ['test'] }, (meta) => {
+    await group.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       const _userId: number = meta.userId
       return _userId > 0
@@ -349,7 +348,7 @@ describe('channel-group', () => {
     expect(group.size).toBe(1)
   })
 
-  it('broadcast filter selectively delivers signals to matching predicate', () => {
+  it('broadcast filter selectively delivers signals to matching predicate', async () => {
     const group = new SSEChannelGroup<TestMeta>()
     const ch1 = createSSEChannel({})
     const ch2 = createSSEChannel({})
@@ -360,7 +359,7 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
+    await group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
     expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
@@ -472,7 +471,7 @@ describe('channel-group', () => {
 
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
-    group.broadcast({ key: ['broadcast-event'] }, () => true)
+    await group.broadcast({ key: ['broadcast-event'] }, () => true)
     // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
     const r1 = store.add({ key: ['probe'] }) // id '2'
     expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
@@ -768,7 +767,7 @@ describe('channel-group', () => {
 
   it('revokeByConnectionId enforces scope checks', async () => {
     const group = new SSEChannelGroup<TestMeta>()
-    const ch = createSSEChannel({ connectionId: 'conn-2' })
+    const ch = createSSEChannel()
 
     group.register(ch, { userId: 100, role: 'admin' })
 
@@ -790,7 +789,7 @@ describe('channel-group', () => {
     // nested objects/arrays in scope would never match — even locally.
     interface NestedMeta { userId: number; address: { city: string } }
     const group = new SSEChannelGroup<NestedMeta>()
-    const ch = createSSEChannel({ connectionId: 'conn-nested' })
+    const ch = createSSEChannel()
 
     group.register(ch, { userId: 1, address: { city: 'London' } })
 
@@ -803,23 +802,22 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('manages connectionIndex collision-safely', async () => {
+  it('manages connectionIndex collision-safely across distinct channels', async () => {
     const group = new SSEChannelGroup<TestMeta>()
 
-    // Create two channels with the same connection ID
-    const ch1 = createSSEChannel({ connectionId: 'shared-id' })
-    const ch2 = createSSEChannel({ connectionId: 'shared-id' })
+    const ch1 = createSSEChannel()
+    const ch2 = createSSEChannel()
 
     group.register(ch1, { userId: 100 })
     group.register(ch2, { userId: 100 })
     expect(group.size).toBe(2)
 
-    // Deregistering ch1 should not delete 'shared-id' from connectionIndex
+    // Deregistering ch1 should not delete ch2
     group.deregister(ch1)
     expect(group.size).toBe(1)
 
-    // revokeByConnectionId for 'shared-id' should still be able to find and revoke ch2
-    const result = await group.revokeByConnectionId('shared-id')
+    // revokeByConnectionId for ch2 should still find and revoke ch2
+    const result = await group.revokeByConnectionId(ch2.connectionId)
     expect(result.closed).toBe(true)
     expect(ch2.state).toBe('closed')
     expect(group.size).toBe(0)
@@ -840,6 +838,14 @@ describe('channel-group', () => {
 // ─── channelDefaults tests ────────────────────────────────────────────────────
 
 describe('SSEChannelGroup — channelDefaults', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('exposes channelDefaults from constructor options', () => {
     const group = new SSEChannelGroup({
       channelDefaults: { guardKeepalive: true, lifetime: { ttlMs: 5000 } },
@@ -893,6 +899,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
     group.register(ch)
 
     const reader = ch.stream.getReader()
+    // Read initial connected frame
+    await reader.read()
 
     // Advance past the TTL + jitter window
     await vi.advanceTimersByTimeAsync(3000)
@@ -903,14 +911,12 @@ describe('SSEChannelGroup — channelDefaults', () => {
     // Should receive a revoke frame (onDeadline: 'revoke')
     expect(decoder.decode(value)).toContain('event: revoke')
     expect(ch.state).toBe('closed')
-
-    vi.useRealTimers()
   })
 
   describe('createFetchResponse (Fetch API)', () => {
     it('creates a channel, registers it with the group, and returns response and channel reference', () => {
       const group = new SSEChannelGroup<{ userId: number }>({})
-      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-1')
+      const req = new Request('http://localhost/sse')
       const { response, channel } = group.createFetchResponse(req, {
         meta: { userId: 42 },
         topics: ['user-42'],
@@ -918,6 +924,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
       expect(response).toBeInstanceOf(Response)
       expect(channel).toBeDefined()
+      expect(typeof channel.connectionId).toBe('string')
+      expect(channel.connectionId.length).toBeGreaterThan(0)
       expect(group.size).toBe(1)
 
       const invalidateSpy = vi.spyOn(channel, 'invalidate')
@@ -927,7 +935,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('automatically deregisters channel from group when channel closes', () => {
       const group = new SSEChannelGroup<{ userId: number }>({})
-      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-2')
+      const req = new Request('http://localhost/sse')
       const { channel } = group.createFetchResponse(req, {
         meta: { userId: 10 },
       })
@@ -935,14 +943,6 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
       channel.close()
       expect(group.size).toBe(0)
-    })
-
-    it('throws synchronously when __restale_cid__ is missing', () => {
-      const group = new SSEChannelGroup({})
-      const req = new Request('http://localhost/sse')
-      expect(() => {
-        group.createFetchResponse(req, {})
-      }).toThrow('__restale_cid__')
     })
   })
 
@@ -957,7 +957,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('supports Fastify reply object and calls hijack() if present', () => {
       const group = new SSEChannelGroup<{ userId: number }>({})
-      const rawReq = Object.assign(new EventEmitter(), { url: '/sse?__restale_cid__=conn-fastify-1', headers: {} })
+      const rawReq = Object.assign(new EventEmitter(), { url: '/sse', headers: {} })
       const req = { raw: rawReq } as any
       const rawRes = createMockNodeRes()
       const hijackSpy = vi.fn()
@@ -975,7 +975,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
     it('automatically deregisters channel on close', () => {
       const group = new SSEChannelGroup<{ userId: number }>({})
       const req = new EventEmitter() as any
-      req.url = '/sse?__restale_cid__=conn-node-2'
+      req.url = '/sse'
       req.headers = {}
       const res = createMockNodeRes()
 
@@ -1010,7 +1010,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('prunes undefined properties in scope when calling revokeByConnectionId', async () => {
       const group = new SSEChannelGroup<{ userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-100'})
+      const ch = createSSEChannel()
       group.register(ch, { userId: 100 })
 
       // Passing scope with undefined role property
@@ -1021,7 +1021,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('throws rather than revoking everyone when scope prunes down to an empty object', async () => {
       const group = new SSEChannelGroup<{ userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-empty-scope'})
+      const ch = createSSEChannel()
       group.register(ch, { userId: 100, role: 'member' })
 
       // Caller passed a scope object, but every key resolved to `undefined`
@@ -1037,7 +1037,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('throws when scope is a non-plain object with no enumerable own properties', async () => {
       const group = new SSEChannelGroup<{ userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-date-scope'})
+      const ch = createSSEChannel()
       group.register(ch, { userId: 100, role: 'member' })
 
       // `new Date()` passes the `typeof scope === 'object'` / `!Array.isArray` guard,
@@ -1051,7 +1051,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('throws when an explicitly empty object is passed as scope', async () => {
       const group = new SSEChannelGroup<{ userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-literal-empty-scope'})
+      const ch = createSSEChannel()
       group.register(ch, { userId: 100, role: 'member' })
 
       // Passing `{}` directly should be treated the same as a scope that pruned to
@@ -1065,14 +1065,14 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
     })
 
-    it('auto-infers TMeta from metaSchema in constructor', () => {
+    it('auto-infers TMeta from metaSchema in constructor', async () => {
       const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
       const group = new SSEChannelGroup({ metaSchema })
       const ch = createSSEChannel({})
       group.register(ch, { userId: 42 })
 
       let receivedMeta: unknown = null
-      group.broadcast({ key: ['test'] }, (meta) => {
+      await group.broadcast({ key: ['test'] }, (meta) => {
         receivedMeta = meta
         return true
       })
@@ -1099,28 +1099,28 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('handles scalar non-object metadata during revokeWhere and connectionId matching', async () => {
       const group = new SSEChannelGroup<string>()
-      const ch1 = createSSEChannel({ connectionId: 'scalar-conn-1'})
-      const ch2 = createSSEChannel({ connectionId: 'scalar-conn-2'})
+      const ch1 = createSSEChannel()
+      const ch2 = createSSEChannel()
 
       group.register(ch1, 'admin-user')
       group.register(ch2, 'normal-user')
 
       // Revoke by connectionId on scalar metadata channel
-      const res = await group.revokeByConnectionId('scalar-conn-1', { userId: 'admin-user' })
+      const res = await group.revokeByConnectionId(ch1.connectionId, { userId: 'admin-user' })
       expect(res.closed).toBe(false) // scalar string meta does not match scope object
       expect(group.size).toBe(2)
 
-      const res2 = await group.revokeByConnectionId('scalar-conn-1')
+      const res2 = await group.revokeByConnectionId(ch1.connectionId)
       expect(res2.closed).toBe(true)
       expect(group.size).toBe(1)
     })
 
     it('rejects non-object scope in revokeByConnectionId', async () => {
       const group = new SSEChannelGroup()
-      const ch = createSSEChannel({ connectionId: 'conn-scope-invalid'})
+      const ch = createSSEChannel()
       group.register(ch)
 
-      await expect(group.revokeByConnectionId('conn-scope-invalid', 123 as any)).rejects.toThrow(/scope/i)
+      await expect(group.revokeByConnectionId(ch.connectionId, 123 as any)).rejects.toThrow(/scope/i)
     })
 
     it('continues delivery to other channels on publish even when one channel throws and does not throw AggregateError', async () => {
@@ -1175,8 +1175,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
           return map
         },
       })
-      const ch1 = createSSEChannel({ connectionId: 'c1' })
-      const ch2 = createSSEChannel({ connectionId: 'c2' })
+      const ch1 = createSSEChannel()
+      const ch2 = createSSEChannel()
 
       group.register(ch1, undefined, { topics: ['inline-topic'] })
       group.register(ch2, undefined, { topics: ['inline-topic'] })
@@ -1197,7 +1197,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         pubsub,
         clientContextSchema: invalidSchema,
       })
-      const ch = createSSEChannel({ connectionId: 'c-schema' })
+      const ch = createSSEChannel()
       group.register(ch)
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1207,7 +1207,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         kind: 'control',
         data: {
           type: 'updateClientContext',
-          connectionId: 'c-schema',
+          connectionId: ch.connectionId,
           clientContext: { invalid: true },
         },
       })
@@ -1271,13 +1271,65 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const ch = createSSEChannel({})
       group.register(ch, undefined, { topics: ['failing-topic'] })
 
-      await new Promise((resolve) => setTimeout(resolve, 10))
+      await vi.advanceTimersByTimeAsync(50)
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('[SSEChannelGroup] Failed to subscribe to pubsub topic "failing-topic":'),
         expect.any(Error),
       )
       consoleSpy.mockRestore()
+    })
+
+    it('attaches SHA-256 _sh to signal when publish is called with senderConnectionId', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel({})
+      try {
+        group.register(ch, undefined, { topics: ['mutations'] })
+
+        const invalidateSpy = vi.spyOn(ch, 'invalidate')
+        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
+        const expectedHash = await computeSenderHash('sender-123')
+
+        await group.publish('mutations', { key: ['todos'] }, { senderConnectionId: 'sender-123' })
+
+        expect(invalidateSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            key: ['todos'],
+            _sh: expectedHash,
+          }),
+          undefined,
+        )
+      } finally {
+        ch.close()
+      }
+    })
+
+    it('attaches SHA-256 _sh to signal when broadcast is called with senderConnectionId', async () => {
+      const group = new SSEChannelGroup()
+      const ch = createSSEChannel({})
+      try {
+        group.register(ch)
+
+        const invalidateSpy = vi.spyOn(ch, 'invalidate')
+        const { computeSenderHash } = await import('@/utils/canonical-hash.js')
+        const expectedHash = await computeSenderHash('sender-456')
+
+        await group.broadcast({ key: ['items'] }, () => true, { senderConnectionId: 'sender-456' })
+
+        // Wait a tick for async hash to resolve and deliver
+        await vi.waitFor(() => {
+          expect(invalidateSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+              key: ['items'],
+              _sh: expectedHash,
+            }),
+            undefined,
+          )
+        })
+      } finally {
+        ch.close()
+      }
     })
   })
 })

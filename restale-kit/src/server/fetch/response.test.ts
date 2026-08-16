@@ -2,17 +2,18 @@ import { describe, it, expect } from 'vitest'
 import { internal_toSSEResponse } from './response.js'
 
 describe('fetch internal_toSSEResponse', () => {
+  it('creates an SSE response with auto-generated connection ID', () => {
+    const request = new Request('https://example.com/sse')
+    const { channel, response } = internal_toSSEResponse(request, {})
 
-  it('uses explicit options.connectionId over URL searchParams if provided', () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=url-cid')
-    const { channel } = internal_toSSEResponse(request, { connectionId: 'explicit-cid' })
-
-    expect(channel.connectionId).toBe('explicit-cid')
+    expect(response.headers.get('Content-Type')).toBe('text/event-stream')
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
   })
 
   it('disconnects channel on request AbortSignal abort', () => {
     const controller = new AbortController()
-    const request = new Request('https://example.com/sse?__restale_cid__=conn-fetch-2', {
+    const request = new Request('https://example.com/sse', {
       signal: controller.signal,
     })
 

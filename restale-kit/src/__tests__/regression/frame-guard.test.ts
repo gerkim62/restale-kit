@@ -16,7 +16,6 @@ describe('Frame guard (beforeFrame) regression tests', () => {
   it('receives real signals with frameType "signal" and deep-equal signal payloads', () => {
     const captured: FrameGuardCtx[] = []
     const channel = createSSEChannel({
-      connectionId: 'conn-123',
       beforeFrame: (ctx) => {
         captured.push(ctx)
         return { action: 'send' }
@@ -34,7 +33,7 @@ describe('Frame guard (beforeFrame) regression tests', () => {
     expect(captured).toHaveLength(1)
     const ctx = captured[0]
     expect(ctx.frameType).toBe('signal')
-    expect(ctx.connectionId).toBe('conn-123')
+    expect(ctx.connectionId).toBe(channel.connectionId)
     expect(ctx.isResume).toBe(false)
     if (ctx.frameType === 'signal') {
       expect(ctx.signal).toEqual(signal)
@@ -46,7 +45,6 @@ describe('Frame guard (beforeFrame) regression tests', () => {
   it('triggers keepalive tick with guardKeepalive: true, frameType "keepalive", and signal undefined', () => {
     const captured: FrameGuardCtx[] = []
     const channel = createSSEChannel({
-      connectionId: 'conn-keepalive',
       keepaliveIntervalMs: 500,
       guardKeepalive: true,
       beforeFrame: (ctx) => {
@@ -63,7 +61,7 @@ describe('Frame guard (beforeFrame) regression tests', () => {
     const ctx = captured[0]
     expect(ctx.frameType).toBe('keepalive')
     expect(ctx.signal).toBeUndefined()
-    expect(ctx.connectionId).toBe('conn-keepalive')
+    expect(ctx.connectionId).toBe(channel.connectionId)
 
     channel.close()
   })
@@ -106,13 +104,17 @@ describe('Frame guard (beforeFrame) regression tests', () => {
 
     expect(channel.state).toBe('closed')
 
-    const chunk = await reader.read()
-    expect(chunk.done).toBe(false)
-    expect(chunk.value).toBeDefined()
-
     const decoder = new TextDecoder()
-    const frameText = decoder.decode(chunk.value)
+    // First chunk is connected frame
+    const chunk1 = await reader.read()
+    expect(decoder.decode(chunk1.value)).toContain('event: connected')
 
+    // Second chunk is revoke frame
+    const chunk2 = await reader.read()
+    expect(chunk2.done).toBe(false)
+    expect(chunk2.value).toBeDefined()
+
+    const frameText = decoder.decode(chunk2.value)
     expect(frameText).toContain('event: revoke')
     expect(frameText).toContain('"reason":"unauthorized-access"')
   })

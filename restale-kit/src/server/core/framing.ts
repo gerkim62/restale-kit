@@ -14,6 +14,21 @@ export interface RenewFramePayload {
 const encoder = new TextEncoder()
 
 /**
+ * Formats a `connected` SSE frame informing the client of its server-assigned connection ID.
+ *
+ * Produces:
+ * ```
+ * event: connected\n
+ * data: {"connectionId":"<id>"}\n
+ * \n
+ * ```
+ */
+export function formatConnectedFrame(connectionId: string): Uint8Array {
+  const payload = JSON.stringify({ connectionId })
+  return encoder.encode(`event: ${SSE_EVENTS.CONNECTED}\ndata: ${payload}\n\n`)
+}
+
+/**
  * Formats an invalidation signal (or batch) as an SSE event frame.
  *
  * Produces exactly:

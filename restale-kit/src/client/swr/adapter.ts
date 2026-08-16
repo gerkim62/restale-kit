@@ -14,16 +14,24 @@ export interface SWRMutator {
   (key: SWRKey, data: JSONValue, options: { revalidate: false }): Promise<unknown>
 }
 
+function applySwrSignal(
+  mutate: SWRMutator,
+  signal: UniversalSignal,
+  options: SWRAdapterOptions,
+): void {
+  const swrKey = options.toKey?.(signal.key) ?? signal.key
+  if (isInlineDataSignal(signal)) {
+    void mutate(swrKey, signal.inlineData, { revalidate: false })
+    if (signal.markStale === true) void mutate(swrKey)
+    return
+  }
+  void mutate((candidate: SWRKey | undefined) => matchesKey(candidate, signal.key, signal.exact === true, options.toKey))
+}
+
 export function swrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}): AdaptedCallback {
   return makeAdaptedCallback((input: UniversalSignal | UniversalSignal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {
-      const swrKey = options.toKey?.(signal.key) ?? signal.key
-      if (isInlineDataSignal(signal)) {
-        void mutate(swrKey, signal.inlineData, { revalidate: false })
-        if (signal.markStale === true) void mutate(swrKey)
-        continue
-      }
-      void mutate((candidate: SWRKey | undefined) => matchesKey(candidate, signal.key, signal.exact === true, options.toKey))
+      applySwrSignal(mutate, signal, options)
     }
   })
 }
@@ -32,7 +40,9 @@ export function useSwrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {
   const optionsRef = useRef(options)
   optionsRef.current = options
   const callback = useCallback((signal: UniversalSignal | UniversalSignal[]) => {
-    swrAdapter(mutate, optionsRef.current)(signal)
+    for (const s of Array.isArray(signal) ? signal : [signal]) {
+      applySwrSignal(mutate, s, optionsRef.current)
+    }
   }, [mutate])
   return makeAdaptedCallback(callback)
 }
@@ -47,6 +57,8 @@ function matchesKey(
   const target = toKey?.(signalKey) ?? signalKey
   if (typeof target === 'string') {
     if (typeof candidate !== 'string') return false
+    // Prefix matching: "/api/user" matches "/api/user/123" but also "/api/users".
+    // Use exact: true for precise matching, or provide a toKey mapper that ensures delimiter boundaries.
     return exact ? candidate === target : candidate.startsWith(target)
   }
   if (!Array.isArray(candidate)) return false

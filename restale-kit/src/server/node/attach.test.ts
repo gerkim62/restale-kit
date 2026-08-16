@@ -15,10 +15,9 @@ function createMockResponse(): ServerResponse {
 }
 
 describe('node internal_attachSSE', () => {
-
   it('triggers disconnect on request close event', () => {
     const req = Object.assign(new EventEmitter(), {
-      url: '/sse?__restale_cid__=req-888',
+      url: '/sse',
       headers: {},
     }) as unknown as IncomingMessage
 
@@ -26,13 +25,16 @@ describe('node internal_attachSSE', () => {
 
     const channel = internal_attachSSE(req, res, {})
 
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
+
     req.emit('close')
     expect(channel.state).toBe('closed')
   })
 
   it('flushes response headers when the runtime supports it', () => {
     const req = Object.assign(new EventEmitter(), {
-      url: '/sse?__restale_cid__=req-flush',
+      url: '/sse',
       headers: {},
     }) as unknown as IncomingMessage
     const res = createMockResponse()
@@ -43,7 +45,7 @@ describe('node internal_attachSSE', () => {
     expect(res.flushHeaders).toHaveBeenCalledOnce()
   })
 
-  it('handles fallback when req.url has no query string or is undefined', () => {
+  it('handles fallback when req.url is undefined', () => {
     const reqWithoutUrl = Object.assign(new EventEmitter(), {
       url: undefined,
       headers: {},
@@ -51,8 +53,8 @@ describe('node internal_attachSSE', () => {
 
     const res = createMockResponse()
 
-    expect(() => internal_attachSSE(reqWithoutUrl, res, {})).toThrow(
-      'Missing or invalid __restale_cid__ query parameter in request URL'
-    )
+    const channel = internal_attachSSE(reqWithoutUrl, res, {})
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
   })
 })

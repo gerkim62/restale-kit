@@ -72,6 +72,10 @@ export interface UseReStaleOptions extends ClientOptions {
   }
 }
 
+export type ConnectionSnapshot = ConnectionStatus & {
+  readonly connectionId?: string
+}
+
 /**
  * Return value of `useReStale`.
  */
@@ -79,7 +83,7 @@ export interface UseReStaleResult {
   /** Unique ID generated for this SSE connection instance. */
   connectionId: string
   /** Current connection status. */
-  connection: ConnectionStatus
+  connection: ConnectionSnapshot
   /** Current reconnect attempt count (0 during initial connection or after success). */
   attempt: number
   /** Helper boolean: true if status is 'connecting' and attempt === 0 */
@@ -114,6 +118,7 @@ function toClientOptions(opts: ClientOptions): ClientOptions {
     ...(opts.reconnect !== undefined ? { reconnect: opts.reconnect } : {}),
     ...(opts.withCredentials !== undefined ? { withCredentials: opts.withCredentials } : {}),
     ...(opts.debug !== undefined ? { debug: opts.debug } : {}),
+    ...(opts.skipSelf !== undefined ? { skipSelf: opts.skipSelf } : {}),
     ...(opts.callback !== undefined ? { callback: opts.callback } : {}),
     ...(opts.onConnect !== undefined ? { onConnect: opts.onConnect } : {}),
     ...(opts.onDisconnect !== undefined ? { onDisconnect: opts.onDisconnect } : {}),
@@ -185,6 +190,7 @@ export function useReStale(
     opts.autoReconnect,
     opts.reconnect,
     opts.debug,
+    opts.skipSelf,
     opts.callback,
     opts.onConnect,
     opts.onDisconnect,
@@ -193,19 +199,36 @@ export function useReStale(
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(
-    (callback: () => void) => {
+    (onStoreChange: () => void) => {
       if (!client) return () => {}
-      const handler = () => { callback() }
+      const handler = () => { onStoreChange() }
       client.addEventListener('statuschange', handler)
+      client.addEventListener('connected', handler)
       return () => {
         client.removeEventListener('statuschange', handler)
+        client.removeEventListener('connected', handler)
       }
     },
     [client]
   )
 
-  const getSnapshot = useCallback(() => (client ? client.status : CLOSED_UNMOUNT), [client])
-  const getServerSnapshot = useCallback(() => CLOSED_UNMOUNT, [])
+  const snapshotRef = useRef<ConnectionSnapshot>(CLOSED_UNMOUNT)
+  const lastStatusRef = useRef<ConnectionStatus | null>(null)
+  const lastCidRef = useRef<string | undefined>(undefined)
+
+  const getSnapshot = useCallback((): ConnectionSnapshot => {
+    if (!client) return CLOSED_UNMOUNT
+    if (client.status !== lastStatusRef.current || client.connectionId !== lastCidRef.current) {
+      lastStatusRef.current = client.status
+      lastCidRef.current = client.connectionId
+      snapshotRef.current = {
+        ...client.status,
+        ...(client.connectionId !== undefined ? { connectionId: client.connectionId } : {}),
+      }
+    }
+    return snapshotRef.current
+  }, [client])
+  const getServerSnapshot = useCallback((): ConnectionSnapshot => CLOSED_UNMOUNT, [])
 
   const connection = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
@@ -222,7 +245,7 @@ export function useReStale(
     if (previous !== null && previous !== pending) {
       if (opts.debug) {
         console.log(
-          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId} because connection identity changed for "${url}". Closing previous client connectionId=${previous.connectionId}.`
+          `[restale-kit][useReStale] Swapping active client to connectionId=${pending.connectionId ?? 'none'} because connection identity changed for "${url}". Closing previous client connectionId=${previous.connectionId ?? 'none'}.`
         )
       }
       previous.close()
@@ -309,6 +332,10 @@ export function useReStale(
       return
     }
 
+    if (!connection.connectionId) {
+      return
+    }
+
     const openedNow = !state.wasOpen
     state.wasOpen = true
     if (serializedClientContext === undefined) return
@@ -346,14 +373,14 @@ export function useReStale(
     }
     void sync()
     return () => { active = false }
-  }, [client, connection.status, serializedClientContext, clientContext, opts.clientContextSync, syncNonce])
+  }, [client, connection.status, connection.connectionId, serializedClientContext, clientContext, opts.clientContextSync, syncNonce])
 
   // Open on mount / close on unmount
   useEffect(() => {
     if (!client || disabled) {
       if (opts.debug && client) {
         console.log(
-          `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId} because disabled=true.`
+          `[restale-kit][useReStale] Skipping connect() for connectionId=${client.connectionId ?? 'none'} because disabled=true.`
         )
       }
       return
@@ -361,7 +388,7 @@ export function useReStale(
 
     if (opts.debug) {
       console.log(
-        `[restale-kit][useReStale] Effect mounted for connectionId=${client.connectionId} (URL: "${client.endpointUrl}"). Reason: Component mounted or client instance changed. Calling connect().`
+        `[restale-kit][useReStale] Effect mounted for connectionId=${client.connectionId ?? 'none'} (URL: "${client.endpointUrl}"). Reason: Component mounted or client instance changed. Calling connect().`
       )
     }
 
@@ -372,7 +399,7 @@ export function useReStale(
       ) {
         if (opts.debug) {
           console.log(
-            `[restale-kit][useReStale] connect() promise rejected for connectionId=${client.connectionId} due to component unmount/close.`
+            `[restale-kit][useReStale] connect() promise rejected for connectionId=${client.connectionId ?? 'none'} due to component unmount/close.`
           )
         }
         return
@@ -383,7 +410,7 @@ export function useReStale(
     return () => {
       if (opts.debug) {
         console.log(
-          `[restale-kit][useReStale] Effect unmounting for connectionId=${client.connectionId}. Reason: Component unmounting or client instance changing. Calling closeWithUnmount().`
+          `[restale-kit][useReStale] Effect unmounting for connectionId=${client.connectionId ?? 'none'}. Reason: Component unmounting or client instance changing. Calling closeWithUnmount().`
         )
       }
       client.closeWithUnmount()
@@ -401,7 +428,7 @@ export function useReStale(
   const isError = connection.status === 'error'
 
   return {
-    connectionId: client ? client.connectionId : '',
+    connectionId: client?.connectionId ?? '',
     connection,
     attempt,
     isConnecting,

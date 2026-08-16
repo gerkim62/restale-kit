@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSEHeaders, extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
+import { buildSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -35,20 +35,12 @@ export function internal_attachSSE(
   const actualReq = 'raw' in req ? req.raw : req
   const actualRes = 'raw' in res ? res.raw : res
 
-  const rawUrl = actualReq.url || '/'
-  const searchIndex = rawUrl.indexOf('?')
-  const searchParams = new URLSearchParams(searchIndex !== -1 ? rawUrl.slice(searchIndex) : '')
-  const connectionId =
-    options.connectionId !== undefined
-      ? options.connectionId
-      : extractConnectionId(searchParams)
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
   const { eventStore: optionEventStore, ...restOptions } = options
   const effectiveEventStore = optionEventStore ?? group?.eventStore
   const baseOptions: SSEChannelTransportOptions = {
     ...restOptions,
-    connectionId,
     ...(lastEventId !== undefined ? { lastEventId } : {}),
     ...(effectiveEventStore !== undefined ? { eventStore: effectiveEventStore } : {}),
   }

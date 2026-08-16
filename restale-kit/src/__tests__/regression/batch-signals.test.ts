@@ -68,11 +68,16 @@ describe('Batch signal semantics', () => {
       const eventId = channel.invalidate(batch, 'evt-batch-42')
       expect(eventId).toBe('evt-batch-42')
 
+      const decoder = new TextDecoder()
+      // Initial chunk is connected frame
+      const chunk1 = await reader.read()
+      expect(decoder.decode(chunk1.value)).toContain('event: connected')
+
+      // Second chunk is batch invalidate frame
       const chunk = await reader.read()
       expect(chunk.done).toBe(false)
       expect(chunk.value).toBeDefined()
 
-      const decoder = new TextDecoder()
       const frameText = decoder.decode(chunk.value)
 
       // Must have exactly one "event: invalidate" and one "id: evt-batch-42"

@@ -59,25 +59,23 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Issue 1 — revokeWhere connectionId security contract', () => {
-  it('revokeWhere with connectionId as sole criteria still closes the matching channel (unsafe but functional)', async () => {
+  it('revokeWhere with connectionId as sole criteria closes the matching channel', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel()
     group.register(ch, { userId: 1 })
 
-    // This works — but is unsafe in production without scope because connectionId
-    // is client-controlled. The fix ensures this behaviour is explicitly documented.
-    const result = await group.revokeWhere({ connectionId: 'conn-abc' })
+    const result = await group.revokeWhere({ connectionId: ch.connectionId })
     expect(result.localClosed).toBe(1)
     expect(ch.state).toBe('closed')
   })
 
   it('revokeByConnectionId with scope rejects a mismatched userId (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel()
     group.register(ch, { userId: 1 })
 
     // Scope doesn't match — should not close
-    const result = await group.revokeByConnectionId('conn-abc', { userId: 999 })
+    const result = await group.revokeByConnectionId(ch.connectionId, { userId: 999 })
     expect(result.closed).toBe(false)
     expect(ch.state).toBe('open')
     ch.close()
@@ -85,10 +83,10 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 
   it('revokeByConnectionId with correct scope closes the channel (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ connectionId: 'conn-abc' })
+    const ch = createSSEChannel()
     group.register(ch, { userId: 1 })
 
-    const result = await group.revokeByConnectionId('conn-abc', { userId: 1 })
+    const result = await group.revokeByConnectionId(ch.connectionId, { userId: 1 })
     expect(result.closed).toBe(true)
     expect(ch.state).toBe('closed')
   })

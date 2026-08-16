@@ -31,7 +31,7 @@ function validateSingleSignal(value: unknown): UniversalSignal {
 
   const hasInlineData = 'inlineData' in value
   if (hasInlineData) {
-    const unsupported = Object.keys(value).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')
+    const unsupported = Object.keys(value).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale' && key !== '_sh')
     if (unsupported.length > 0) {
       throw new Error(`Inline-data signals contain unsupported fields: ${unsupported.join(', ')}`)
     }
@@ -39,16 +39,30 @@ function validateSingleSignal(value: unknown): UniversalSignal {
     if ('markStale' in value && typeof value.markStale !== 'boolean') {
       throw new Error('Signal "markStale" field must be a boolean')
     }
-    return { key: value.key, inlineData: value.inlineData,
-      ...(typeof value.markStale === 'boolean' ? { markStale: value.markStale } : {}) }
+    if ('_sh' in value && typeof value._sh !== 'string') {
+      throw new Error('Signal "_sh" field must be a string')
+    }
+    return {
+      key: value.key,
+      inlineData: value.inlineData,
+      ...(typeof value.markStale === 'boolean' ? { markStale: value.markStale } : {}),
+      ...(typeof value._sh === 'string' ? { _sh: value._sh } : {}),
+    }
   }
 
-  const unsupported = Object.keys(value).filter((key) => key !== 'key' && key !== 'exact')
+  const unsupported = Object.keys(value).filter((key) => key !== 'key' && key !== 'exact' && key !== '_sh')
   if (unsupported.length > 0) {
     throw new Error(`Revalidate signals contain unsupported fields: ${unsupported.join(', ')}`)
   }
   if ('exact' in value && typeof value.exact !== 'boolean') {
     throw new Error('Signal "exact" field must be a boolean')
   }
-  return { key: value.key, ...(typeof value.exact === 'boolean' ? { exact: value.exact } : {}) }
+  if ('_sh' in value && typeof value._sh !== 'string') {
+    throw new Error('Signal "_sh" field must be a string')
+  }
+  return {
+    key: value.key,
+    ...(typeof value.exact === 'boolean' ? { exact: value.exact } : {}),
+    ...(typeof value._sh === 'string' ? { _sh: value._sh } : {}),
+  }
 }

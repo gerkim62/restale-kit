@@ -1,25 +1,13 @@
-/**
- * Tests for the changes introduced by the review-findings fix:
- *
- * 1. Meta validation before transport side-effects (createFetchResponse / attachNodeResponse)
- * 2. buildSSETargetHeaders shared helper
- * 3. Regression: existing behavior preserved after refactor
- */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SSEChannelGroup } from './channel-group.js'
 import { createSSEChannel } from './channel.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 
-interface TestMeta {
-  userId: string
-  role?: string
-}
-
-function createMockRequest(url: string): IncomingMessage {
+function createMockRequest(url: string = '/sse'): IncomingMessage {
   return Object.assign(new EventEmitter(), {
     url,
     headers: {},
@@ -33,10 +21,16 @@ function createMockResponse(): ServerResponse {
     },
   }) as unknown as ServerResponse
   res.writeHead = vi.fn()
+  res.write = vi.fn()
   return res
 }
 
-describe('review-findings: meta validation before transport', () => {
+interface TestMeta {
+  userId: string
+  role?: string
+}
+
+describe('SSEChannelGroup — review fixes', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
@@ -47,7 +41,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c1')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     expect(() => {
@@ -66,7 +60,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c2')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     expect(() => {
@@ -83,7 +77,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const request = new Request('http://localhost/sse?__restale_cid__=c3')
+    const request = new Request('http://localhost/sse')
 
     expect(() => {
       group.createFetchResponse(request, { meta: { userId: 'u1' } })
@@ -100,7 +94,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c4')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     const result = group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
@@ -120,7 +114,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const request = new Request('http://localhost/sse?__restale_cid__=c5')
+    const request = new Request('http://localhost/sse')
     const result = group.createFetchResponse(request, { meta: { userId: 'u1' } })
 
     expect(result.response).toBeInstanceOf(Response)
@@ -133,7 +127,7 @@ describe('review-findings: meta validation before transport', () => {
       channelDefaults: {},
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c6')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     const result = group.attachNodeResponse(req, res, {})
@@ -147,7 +141,7 @@ describe('review-findings: meta validation before transport', () => {
       channelDefaults: {},
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c7')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     group.attachNodeResponse(req, res, {
@@ -162,7 +156,7 @@ describe('review-findings: meta validation before transport', () => {
       channelDefaults: {},
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c8')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     group.attachNodeResponse(req, res, {})
@@ -185,21 +179,21 @@ describe('review-findings: meta validation before transport', () => {
     expect(group.size).toBe(0)
   })
 
-  it('register() stores validated meta that broadcast predicate can match', () => {
+  it('register() stores validated meta that broadcast predicate can match', async () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<TestMeta>({
       channelDefaults: {},
       metaSchema,
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c9')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     group.attachNodeResponse(req, res, { meta: { userId: 'alice', role: 'admin' } })
 
     const spy = vi.fn()
     const seenMetas: TestMeta[] = []
-    group.broadcast({ key: ['test'] }, (meta) => {
+    await group.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       seenMetas.push(meta)
       spy()
@@ -217,7 +211,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const req = createMockRequest('/sse?__restale_cid__=c10')
+    const req = createMockRequest('/sse')
     const res = createMockResponse()
 
     try {
@@ -236,7 +230,7 @@ describe('review-findings: meta validation before transport', () => {
       channelDefaults: {},
       metaSchema: metaSchemaGood,
     })
-    const req2 = createMockRequest('/sse?__restale_cid__=c10b')
+    const req2 = createMockRequest('/sse')
     const res2 = createMockResponse()
     const result = group2.attachNodeResponse(req2, res2, { meta: { userId: 'good' } })
     expect(result.channel.state).toBe('open')
@@ -250,7 +244,7 @@ describe('review-findings: meta validation before transport', () => {
       metaSchema,
     })
 
-    const request = new Request('http://localhost/sse?__restale_cid__=c11')
+    const request = new Request('http://localhost/sse')
 
     let threw = false
     try {
