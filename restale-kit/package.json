@@ -85,6 +85,7 @@
     "build": "pnpm run clean && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "test": "vitest run",
+    "test:regression": "vitest run src/__tests__/regression",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:types": "vitest run --typecheck",

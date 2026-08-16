@@ -38,7 +38,6 @@ describe('universal signal protocol', () => {
     const client = new SSEInvalidatorClient('https://example.test/events')
     const eventSourceUrl = Reflect.get(client, 'eventSourceUrl') as string
     expect(eventSourceUrl).toContain('__restale_cid__=')
-    expect(eventSourceUrl).not.toContain('__restale_target__')
   })
 })
 

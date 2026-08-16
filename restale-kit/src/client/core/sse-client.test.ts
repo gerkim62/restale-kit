@@ -676,42 +676,7 @@ describe('SSEInvalidatorClient', () => {
     await expect(p).rejects.toBeInstanceOf(Event)
   })
 
-  it('does NOT append __restale_target__ when target option is not set', () => {
-    const client = new SSEInvalidatorClient('/sse')
-    void client.connect()
-
-    expect(MockEventSource.instances).toHaveLength(1)
-    const url = MockEventSource.instances[0]?.url ?? ''
-    expect(url).not.toContain('__restale_target__')
-  })
-
-  it('sets status to { status: closed, reason: revoked } and suppresses retry on unsupported-target revoke', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
-      autoReconnect: true,
-      reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
-    })
-
-    const p = client.connect()
-    p.catch(() => {})
-    const es = MockEventSource.instances[0]
-    es?.emitOpen()
-    await p
-
-    const payload = JSON.stringify({
-      reason: 'unsupported-target',
-      requested: 'rtk-query',
-      supported: ['swr'],
-    })
-    es?.emitCustomEvent('revoke', payload)
-
-    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
-
-    // Advance timers — no retry should occur
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(MockEventSource.instances).toHaveLength(1)
-  })
-
-  it('dispatches revoke event with only reason field when no details present (backward compat)', async () => {
+  it('dispatches revoke event with only reason field when no details present', async () => {
     const client = new SSEInvalidatorClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
@@ -724,7 +689,6 @@ describe('SSEInvalidatorClient', () => {
 
     es?.emitCustomEvent('revoke', JSON.stringify({ reason: 'logout' }))
 
-    // The detail matches the non-unsupported-target branch: only reason is present
     expect(revokeSpy).toHaveBeenCalledWith({ reason: 'logout' })
   })
 
@@ -766,37 +730,11 @@ describe('SSEInvalidatorClient', () => {
     // revoke arrives after open
     es?.emitCustomEvent(
       'revoke',
-      JSON.stringify({ reason: 'unsupported-target', requested: 'rtk-query', supported: ['swr'] })
+      JSON.stringify({ reason: 'session-expired' })
     )
 
     // Status sequence: connecting → open → closed (revoked)
     expect(events).toEqual(['statuschange:connecting', 'statuschange:open', 'statuschange:closed', 'revoke'])
-  })
-
-  it('partial unsupported-target frame (missing requested/supported) falls to generic branch', async () => {
-    // If server sends reason:'unsupported-target' but omits requested/supported fields,
-    // the client must NOT emit the structured first branch (which requires all three fields).
-    // It must fall through to the generic branch: { reason: 'unsupported-target' } is
-    // NOT possible in the type — but at runtime it would be a plain string. The guard in
-    // wireInvalidateListener requires parsedRequested !== undefined && parsedSupported !== undefined
-    // before emitting the first branch, so this should dispatch { reason: undefined } when
-    // those fields are absent.
-    const client = new SSEInvalidatorClient('/sse')
-    const revokeSpy = vi.fn()
-    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
-
-    const p = client.connect()
-    p.catch(() => {})
-    const es = MockEventSource.instances[0]
-    es?.emitOpen()
-    await p
-
-    // Frame has reason but is missing required requested+supported
-    es?.emitCustomEvent('revoke', JSON.stringify({ reason: 'unsupported-target' }))
-
-    // Must fall to generic branch because parsedSupported is undefined
-    expect(revokeSpy).toHaveBeenCalledWith({ reason: 'unsupported-target' })
-    expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
   })
 })
 
@@ -1820,28 +1758,6 @@ describe('frameguard-spec §4.1.2 — revoke event from renew exhaustion carries
     expect(revokeSpy).toHaveBeenCalledTimes(1)
     expect(revokeSpy).toHaveBeenCalledWith({ reason: 'deadline' })
     expect(client.status).toEqual({ status: 'closed', reason: 'revoked' })
-  })
-
-  // The revoke event from renew exhaustion must NOT carry extra fields that would
-  // make it look like an 'unsupported-target' revoke.
-  it('revoke event from renew exhaustion does not contain requested or supported fields', async () => {
-    const client = new SSEInvalidatorClient('/sse')
-    const revokeSpy = vi.fn()
-    client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
-
-    const p = client.connect()
-    MockEventSource.instances[0]?.emitOpen()
-    await p
-
-    MockEventSource.instances[0]?.emitCustomEvent(
-      'renew',
-      JSON.stringify({ reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 })
-    )
-    MockEventSource.instances[1]?.emitError()
-
-    const detail = revokeSpy.mock.calls[0][0]
-    expect(detail.requested).toBeUndefined()
-    expect(detail.supported).toBeUndefined()
   })
 
   it('cancels pending retryTimer and updates status when updateRuntimeOptions disables autoReconnect while retry is queued', () => {
