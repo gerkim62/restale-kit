@@ -1,13 +1,11 @@
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 
-export class MemoryPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>
-  implements PubSubAdapter<TSignal>
-{
-  private subscriptions = new Map<string, Set<(message: PubSubMessage<TSignal>) => void>>()
+export class MemoryPubSubAdapter implements PubSubAdapter {
+  private subscriptions = new Map<string, Set<(message: PubSubMessage) => void>>()
   private errorHandlers = new Set<(error: unknown) => void>()
 
-  async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+  async publish(topic: string, message: PubSubMessage): Promise<void> {
     await Promise.resolve()
     const handlers = this.subscriptions.get(topic)
     if (handlers) {
@@ -23,7 +21,7 @@ export class MemoryPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSi
 
   async subscribe(
     topic: string,
-    onMessage: (message: PubSubMessage<TSignal>) => void
+    onMessage: (message: PubSubMessage) => void
   ): Promise<() => Promise<void>> {
     await Promise.resolve()
     let handlers = this.subscriptions.get(topic)

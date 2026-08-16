@@ -1,93 +1,46 @@
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
-import { isJSONValue } from '@/types/protocol.js'
+import type { PubSubMessage, UniversalSignal } from '@/types/protocol.js'
+import { isJSONValue, isJSONValueArray } from '@/types/protocol.js'
 
-/**
- * Type guard to check if a value is a non-null object.
- */
 export function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
 }
 
-/**
- * Type guard to check if a value is a valid invalidation signal or array of signals.
- */
-function isValidSignalItem(item: unknown): boolean {
-  if (!isObject(item)) return false
-  return (
-    typeof item['key'] === 'string' ||
-    Array.isArray(item['key']) ||
-    Array.isArray(item['queryKey']) ||
-    Array.isArray(item['tags'])
-  )
-}
-
-/**
- * Type guard to check if a value is a valid invalidation signal or array of signals.
- */
-export function isSignalPayload<T extends InvalidateSignal>(val: unknown): val is T | T[] {
-  if (Array.isArray(val)) {
-    return val.length > 0 && val.every(isValidSignalItem)
+function isValidSignal(value: unknown): value is UniversalSignal {
+  if (!isObject(value) || !isJSONValueArray(value.key)) return false
+  if ('inlineData' in value) {
+    return isJSONValue(value.inlineData) && !('exact' in value) &&
+      (!('markStale' in value) || typeof value.markStale === 'boolean')
   }
-  return isValidSignalItem(val)
+  return !('markStale' in value) && (!('exact' in value) || typeof value.exact === 'boolean')
 }
 
-/**
- * Type guard to check if a value is a valid PubSubMessage envelope.
- */
-export function isPubSubMessage<T extends InvalidateSignal>(val: unknown): val is PubSubMessage<T> {
+export function isSignalPayload(val: unknown): val is UniversalSignal | UniversalSignal[] {
+  return Array.isArray(val) ? val.length > 0 && val.every(isValidSignal) : isValidSignal(val)
+}
+
+export function isPubSubMessage(val: unknown): val is PubSubMessage {
   if (!isObject(val)) return false
-  if (val['kind'] === 'signal') {
-    return isSignalPayload<T>(val['data'])
-  }
-  if (val['kind'] === 'control') {
-    return isJSONValue(val['data'])
-  }
-  if (val['kind'] === 'inlineData') {
-    return typeof val['topic'] === 'string' && isJSONValue(val['payload'])
-  }
-  return false
+  if (val.kind === 'signal') return isSignalPayload(val.data)
+  if (val.kind === 'control') return isJSONValue(val.data)
+  return val.kind === 'inlineData' && typeof val.topic === 'string' && isJSONValue(val.payload)
 }
 
-/**
- * Interface representing a standard Pub/Sub envelope.
- */
-export interface Envelope {
-  origin: string
-  payload: unknown
-}
-
-/**
- * Type guard to check if a value is a valid pub/sub envelope.
- */
+export interface Envelope { origin: string; payload: unknown }
 export function isEnvelope(val: unknown): val is Envelope {
-  if (!isObject(val)) return false
-  return typeof val['origin'] === 'string' && 'payload' in val
+  return isObject(val) && typeof val.origin === 'string' && 'payload' in val
 }
 
-const WARN_THROTTLE_MS = 60_000 // 1 minute
-
-/**
- * Creates a rate-limited decryption error handler for Pub/Sub adapters.
- * Returns a function that handles PubSubDecryptionError instances by throttling warnings to once per minute.
- */
+const WARN_THROTTLE_MS = 60_000
 export function createDecryptionErrorHandler(adapterName: string) {
   let lastDecryptionErrorTime = 0
-
   return (err: unknown, topic: string): boolean => {
     if (err && typeof err === 'object' && 'name' in err && err.name === 'PubSubDecryptionError') {
-      const now = Date.now()
-      if (now - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
-        lastDecryptionErrorTime = now
-        console.warn(
-          `[WARN][${adapterName}] Decryption failed for topic "${topic}". ` +
-            'This may indicate a key mismatch (due to key rotation) or tampered payloads. ' +
-            'Further warnings will be throttled for 1 minute.',
-          err
-        )
+      if (Date.now() - lastDecryptionErrorTime > WARN_THROTTLE_MS) {
+        lastDecryptionErrorTime = Date.now()
+        console.warn(`[WARN][${adapterName}] Decryption failed for topic "${topic}".`, err)
       }
       return true
     }
     return false
   }
 }
-

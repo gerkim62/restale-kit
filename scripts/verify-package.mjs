@@ -85,30 +85,28 @@ console.log('All public entry points imported successfully.')
     join(temporaryDirectory, 'types.ts'),
     `import type {
   JSONValue,
-  InvalidateSignal,
+  RevalidateSignal,
   RevokeEventDetail,
   RenewEventDetail,
   ChannelClosedError,
   SchemaValidationError,
 } from 'restale-kit'
 import type { SSEChannel } from 'restale-kit/server'
-import type { createSSEChannel, DirectSSEChannelOptions } from 'restale-kit/testing'
+import type { createSSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 import type { SSEInvalidatorClient, AutoReconnectOptions } from 'restale-kit/client'
 import type { UseReStaleResult } from 'restale-kit/react'
 
 // Verify types are properly exported and resolved
 const _testTypes: JSONValue = 'test'
-const _testSignal: InvalidateSignal = { key: ['test'] }
+const _testSignal: RevalidateSignal = { key: ['test'] }
 const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
 const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
 const _testReconnect: AutoReconnectOptions = { native: true, jsBackoff: false }
-const _testDirectChannel: DirectSSEChannelOptions = { target: 'swr' }
+const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000 } }
 
 declare const _client: SSEInvalidatorClient
 declare const _channel: SSEChannel
-// @ts-expect-error React lifecycle cleanup is not part of the published client surface.
-_client.closeWithUnmount()
-// @ts-expect-error Transport disconnect handling is not part of the published channel surface.
+_client.close()
 _channel.disconnect()
 `
   )

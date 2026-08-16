@@ -18,14 +18,14 @@ describe('pusherPubSubAdapter', () => {
     const client = createMockPusherClient()
     const adapter = pusherPubSubAdapter(client)
 
-    await adapter.publish('my-channel', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
+    await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
 
     expect(client.trigger).toHaveBeenCalledWith(
       'my-channel',
       'invalidate',
       expect.objectContaining({
         origin: expect.any(String),
-        payload: { kind: 'signal', data: { target: 'swr', key: ['todos'] } },
+        payload: { kind: 'signal', data: { key: ['todos'] } },
       })
     )
   })
@@ -176,7 +176,7 @@ describe('pusherPubSubAdapter', () => {
     const client = createMockPusherClient()
     const adapter = pusherPubSubAdapter(client, { encryptionKey: validKey })
 
-    await adapter.publish('my-channel', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
+    await adapter.publish('my-channel', { kind: 'signal', data: { key: ['todos'] } })
 
     expect(client.trigger).toHaveBeenCalledWith(
       'my-channel',
@@ -234,4 +234,3 @@ describe('pusherPubSubAdapter', () => {
     consoleWarnSpy.mockRestore()
   })
 })
-

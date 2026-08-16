@@ -3,187 +3,45 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from './adapter.js'
-import type { QueryClient } from '@tanstack/react-query'
-import type { TanStackQuerySignal } from '@/types/protocol.js'
+import type { QueryKey } from '@tanstack/react-query'
 
 describe('tanstackQueryAdapter', () => {
-  it('defaults omitted action to invalidateQueries', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      refetchQueries: vi.fn(),
-      removeQueries: vi.fn(),
-      resetQueries: vi.fn(),
-      cancelQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    const signal: TanStackQuerySignal = {
-      target: 'tanstack-query',
-      queryKey: ['todos', { status: 'active' }],
-      exact: true,
-    }
-    adapter(signal)
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['todos', { status: 'active' }],
-      exact: true,
-    })
-    expect(queryClient.refetchQueries).not.toHaveBeenCalled()
-    expect(queryClient.removeQueries).not.toHaveBeenCalled()
-  })
-
-  it('maps stale: true to refetchType none for invalidate', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    const signal: TanStackQuerySignal = {
-      target: 'tanstack-query',
-      queryKey: ['todos'],
-      stale: true,
-    }
-    adapter(signal)
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['todos'],
-      refetchType: 'none',
-    })
-  })
-
-  it('maps reset and cancel actions', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      resetQueries: vi.fn(),
-      cancelQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    adapter([
-      { target: 'tanstack-query', queryKey: ['reset-key'], action: 'reset', type: 'active' },
-      { target: 'tanstack-query', queryKey: ['cancel-key'], action: 'cancel' },
-    ])
-
-    expect(queryClient.resetQueries).toHaveBeenCalledWith({
-      queryKey: ['reset-key'],
-      type: 'active',
-    })
-    expect(queryClient.cancelQueries).toHaveBeenCalledWith({
-      queryKey: ['cancel-key'],
-    })
-  })
-
-  it('maps refetch action to queryClient.refetchQueries', () => {
-    const queryClient = {
-      refetchQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    adapter({ target: 'tanstack-query', queryKey: ['users'], action: 'refetch' })
-
-    expect(queryClient.refetchQueries).toHaveBeenCalledWith({
-      queryKey: ['users'],
-    })
-  })
-
-  it('maps remove action to queryClient.removeQueries', () => {
-    const queryClient = {
-      removeQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    adapter({ target: 'tanstack-query', queryKey: ['posts'], action: 'remove' })
-
-    expect(queryClient.removeQueries).toHaveBeenCalledWith({
-      queryKey: ['posts'],
-    })
-  })
-
-  it('writes inlineData to an exact query key before marking that key stale', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      setQueryData: vi.fn(),
-    } as unknown as QueryClientLike
-    const adapter = tanstackQueryAdapter(queryClient)
-
-    adapter({ target: 'tanstack-query', queryKey: ['todos'], inlineData: [{ id: 1 }] })
-
-    expect(queryClient.setQueryData).toHaveBeenCalledWith(['todos'], [{ id: 1 }])
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos'], exact: true })
-  })
 
   it('can trust pushed inlineData without marking it stale', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
       setQueryData: vi.fn(),
     } as unknown as QueryClientLike
-    const adapter = tanstackQueryAdapter(queryClient, { markInlineDataStale: false })
+    const adapter = tanstackQueryAdapter(queryClient)
 
-    adapter({ target: 'tanstack-query', queryKey: ['todos'], inlineData: [{ id: 1 }] })
+    adapter({ key: ['todos'], inlineData: [{ id: 1 }] })
 
     expect(queryClient.setQueryData).toHaveBeenCalledWith(['todos'], [{ id: 1 }])
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
   })
 
-  it('ignores signals targeting other frameworks', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      removeQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    adapter({ target: 'swr', key: ['todos'] } as any)
-    adapter({ target: 'rtk-query', tags: ['todos'] } as any)
-
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
-    expect(queryClient.removeQueries).not.toHaveBeenCalled()
-  })
-
-  it('ignores signals missing queryKey property', () => {
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-    } as unknown as QueryClient
-
-    const adapter = tanstackQueryAdapter(queryClient)
-    adapter({ key: ['legacy'] } as any)
-
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
-  })
-
-  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
-    const queryClient = {} as unknown as QueryClient
-    const adapter = tanstackQueryAdapter(queryClient)
-    expect((adapter as any).__restaleTarget).toBe('tanstack-query')
-  })
-
 })
 
 describe('useTanstackQueryAdapter', () => {
-  it('returns a stable memoized callback that delegates to tanstackQueryAdapter', () => {
+  it('keeps its callback stable while using the latest key mapper', () => {
     const queryClient = {
-      invalidateQueries: vi.fn(),
-    } as unknown as QueryClient
-
+      invalidateQueries: vi.fn(() => Promise.resolve()),
+      setQueryData: vi.fn(),
+    } as unknown as QueryClientLike
     const { result, rerender } = renderHook(
-      ({ client }) => useTanstackQueryAdapter(client),
-      { initialProps: { client: queryClient } }
+      ({ options }: { options: Parameters<typeof useTanstackQueryAdapter>[1] }) =>
+        useTanstackQueryAdapter(queryClient, options),
+      { initialProps: { options: {} } },
     )
 
-    const cb1 = result.current
-    cb1({ target: 'tanstack-query', queryKey: ['todos'], action: 'invalidate' })
+    const callback = result.current
+    result.current({ key: ['todos'] })
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos'], exact: undefined })
 
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['todos'],
-    })
+    rerender({ options: { toQueryKey: (key: QueryKey) => ['cache', ...key] } })
+    expect(result.current).toBe(callback)
 
-    rerender({ client: queryClient })
-    const cb2 = result.current
-    expect(cb1).toBe(cb2)
-  })
-
-  it('exposes __restaleTarget brand set to "tanstack-query"', () => {
-    const queryClient = {} as unknown as QueryClient
-    const { result } = renderHook(() => useTanstackQueryAdapter(queryClient))
-    expect((result.current as any).__restaleTarget).toBe('tanstack-query')
+    result.current({ key: ['todos'], inlineData: [{ id: 1 }] })
+    expect(queryClient.setQueryData).toHaveBeenLastCalledWith(['cache', 'todos'], [{ id: 1 }])
   })
 })

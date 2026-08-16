@@ -54,7 +54,7 @@ Put this in a shared module (such as `lib/restale.ts` or `src/lib/restale.ts`) a
 ```ts
 // lib/restale.ts
 import Redis from 'ioredis';
-import { SSEChannelGroup, SIGNAL_TARGETS } from 'restale-kit/server';
+import { SSEChannelGroup } from 'restale-kit/server';
 import { redisPubSubAdapter } from 'restale-kit/redis';
 
 // 1. Maintain singleton references across HMR cycles
@@ -75,7 +75,6 @@ const redis =
 export const channelGroup =
   globalForRestale.channelGroup ??
   new SSEChannelGroup({
-    channelDefaults: { target: SIGNAL_TARGETS.TANSTACK_QUERY },
     pubsub: redisPubSubAdapter(redis),
   });
 
@@ -125,7 +124,7 @@ export async function POST(req: Request) {
 
   // Broadcast invalidation signal to all connected clients
   await channelGroup.broadcastToAll({
-    queryKey: ['todos'],
+    key: ['todos'],
   });
 
   return NextResponse.json({ success: true });

@@ -22,7 +22,7 @@ describe('redisPubSubAdapter', () => {
     const { client } = createMockRedisClient()
     const adapter = redisPubSubAdapter(client)
 
-    await adapter.publish('topic-1', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
+    await adapter.publish('topic-1', { kind: 'signal', data: { key: ['todos'] } })
 
     expect(client.publish).toHaveBeenCalledWith(
       'topic-1',
@@ -40,12 +40,12 @@ describe('redisPubSubAdapter', () => {
     // Simulate incoming message event from redis subscriber
     const remoteEnvelope = JSON.stringify({
       origin: 'remote-instance',
-      payload: { kind: 'signal', data: { target: 'swr', key: ['users'] } },
+      payload: { kind: 'signal', data: { key: ['users'] } },
     })
 
     listeners['message']?.('topic-1', remoteEnvelope)
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { target: 'swr', key: ['users'] } })
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['users'] } })
   })
 
   it('suppresses self-echoed messages', async () => {
@@ -56,7 +56,7 @@ describe('redisPubSubAdapter', () => {
     await adapter.subscribe('topic-1', callback)
 
     // Capture published payload to get local origin ID
-    await adapter.publish('topic-1', { kind: 'signal', data: { target: 'swr', key: ['self'] } })
+    await adapter.publish('topic-1', { kind: 'signal', data: { key: ['self'] } })
     const publishedPayload = (client.publish as any).mock.calls[0][1]
 
     listeners['message']?.('topic-1', publishedPayload)
@@ -102,7 +102,7 @@ describe('redisPubSubAdapter', () => {
 
     const remoteEnvelope = JSON.stringify({
       origin: 'remote-id',
-      payload: { kind: 'signal', data: { target: 'swr', key: ['err-test'] } },
+      payload: { kind: 'signal', data: { key: ['err-test'] } },
     })
     listeners['message']?.('topic-1', remoteEnvelope)
     expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
@@ -122,7 +122,7 @@ describe('redisPubSubAdapter', () => {
 
     // Fire message for 'unregistered-topic'
     expect(() => {
-      listeners['message']?.('unregistered-topic', JSON.stringify({ origin: 'other', payload: { kind: 'signal', data: { target: 'swr', key: ['x'] } } }))
+      listeners['message']?.('unregistered-topic', JSON.stringify({ origin: 'other', payload: { kind: 'signal', data: { key: ['x'] } } }))
     }).not.toThrow()
   })
 
@@ -133,7 +133,7 @@ describe('redisPubSubAdapter', () => {
     const { client } = createMockRedisClient()
     const adapter = redisPubSubAdapter(client, { encryptionKey: validKey })
 
-    await adapter.publish('topic-encrypted', { kind: 'signal', data: { target: 'swr', key: ['todos'] } })
+    await adapter.publish('topic-encrypted', { kind: 'signal', data: { key: ['todos'] } })
 
     expect(client.publish).toHaveBeenCalledWith(
       'topic-encrypted',
@@ -190,4 +190,3 @@ describe('redisPubSubAdapter', () => {
     consoleWarnSpy.mockRestore()
   })
 })
-

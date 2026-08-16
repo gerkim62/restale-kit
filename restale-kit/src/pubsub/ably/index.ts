@@ -1,6 +1,6 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
 import { PubSubDecryptionError } from '@/pubsub/core/index.js'
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol.js'
 import { isPubSubMessage, isSignalPayload, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
 import {
@@ -47,10 +47,10 @@ export interface AblyClient {
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
  * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
-export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function ablyPubSubAdapter(
   client: AblyClient,
   options: ({ useNativeEchoSuppression?: boolean } & PubSubEncryptionOptions) = {}
-): PubSubAdapter<TSignal> {
+): PubSubAdapter {
   const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
   const useNativeEchoSuppression = !!options.useNativeEchoSuppression
@@ -78,7 +78,7 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
   const handleDecryptionError = createDecryptionErrorHandler('ablyPubSubAdapter')
 
   return {
-    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+    async publish(topic: string, message: PubSubMessage): Promise<void> {
       const channel = client.channels.get(topic)
       if (useNativeEchoSuppression) {
         if (encryptionKey) {
@@ -95,7 +95,7 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
 
     async subscribe(
       topic: string,
-      onMessage: (message: PubSubMessage<TSignal>) => void
+      onMessage: (message: PubSubMessage) => void
     ): Promise<() => Promise<void>> {
       const channel = client.channels.get(topic)
 
@@ -110,13 +110,13 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
               }
               payload = decryptPayload(data, encryptionKey, topic)
             }
-            if (isPubSubMessage<TSignal>(payload)) {
+            if (isPubSubMessage(payload)) {
               onMessage(payload)
-            } else if (isSignalPayload<TSignal>(payload)) {
+            } else if (isSignalPayload(payload)) {
               onMessage({ kind: 'signal', data: payload })
             }
           } else {
-            const unwrapped = unwrapEnvelope<TSignal>(data, instanceId, encryptionKey, topic)
+            const unwrapped = unwrapEnvelope(data, instanceId, encryptionKey, topic)
             if (unwrapped) {
               onMessage(unwrapped)
             }
@@ -161,5 +161,3 @@ export function ablyPubSubAdapter<TSignal extends InvalidateSignal = InvalidateS
     },
   }
 }
-
-

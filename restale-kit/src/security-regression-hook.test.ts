@@ -15,11 +15,11 @@ import { renderHook, act } from '@testing-library/react'
 import { useReStale } from '@/client/react/useReStale.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { AdaptedInvalidateCallback } from '@/client/core/client-contracts.js'
+import type { AdaptedCallback } from '@/client/core/client-contracts.js'
 
-/** Cast a plain function to AdaptedInvalidateCallback for test use. */
-function asAdapter(fn: (...args: any[]) => any): AdaptedInvalidateCallback<'swr'> {
-  return fn as unknown as AdaptedInvalidateCallback<'swr'>
+/** Cast a plain function to AdaptedCallback for test use. */
+function asAdapter(fn: (...args: any[]) => any): AdaptedCallback {
+  return fn as unknown as AdaptedCallback
 }
 
 describe('Issue 9 — useReStale does not orphan clients on repeated renders', () => {

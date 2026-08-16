@@ -1,21 +1,17 @@
-import { describe, test } from 'vitest'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
-import { makeAdaptedCallback } from '@/client/core/client-contracts.js'
-import { useReStale } from '@/client/react/useReStale.js'
-import type { SWRSignal } from '@/types/protocol.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-interface ClientContext {
-  page: number
-  pageSize: number
-}
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-describe('client context interface compatibility', () => {
-  test('accepts ordinary interfaces while retaining runtime JSON validation', () => {
-    const context: ClientContext = { page: 1, pageSize: 20 }
-    const client = new SSEInvalidatorClient('https://example.com/sse')
-    void client.updateClientContext(context)
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-    const onInvalidate = makeAdaptedCallback('swr', (_signal: SWRSignal | SWRSignal[]) => {})
-    useReStale('/sse', { onInvalidate, clientContext: context })
-  })
+  void targetSignal
+  void invalidInlineData
 })

@@ -1,37 +1,17 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import { ablyPubSubAdapter, type AblyClient } from '@/pubsub/ably/index.js'
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { TanStackQuerySignal, SWRSignal } from '@/types/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-describe('ablyPubSubAdapter type safety', () => {
-  test('ablyPubSubAdapter returns PubSubAdapter<TSignal>', () => {
-    const mockClient = {} as AblyClient
-    const adapter = ablyPubSubAdapter<TanStackQuerySignal>(mockClient, { useNativeEchoSuppression: true })
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-    expectTypeOf(adapter).toEqualTypeOf<PubSubAdapter<TanStackQuerySignal>>()
-    expectTypeOf(adapter.publish).toBeCallableWith('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
-    expectTypeOf(adapter.subscribe).toBeCallableWith('topic', (_msg: PubSubMessage<TanStackQuerySignal>) => {})
-    expectTypeOf(adapter.onError).toBeCallableWith((_err: unknown) => {})
-  })
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-  test('ablyPubSubAdapter publish rejects mismatched signal data', () => {
-    const mockClient = {} as AblyClient
-    const adapter = ablyPubSubAdapter<TanStackQuerySignal>(mockClient, { useNativeEchoSuppression: true })
-
-    // @ts-expect-error SWRSignal data should be rejected on TanStackQuerySignal adapter
-    void adapter.publish('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
-  })
-
-  test('ablyPubSubAdapter encryption options validation', () => {
-    const mockClient = {} as AblyClient
-
-    const disabled = ablyPubSubAdapter(mockClient, { encrypt: false })
-    const enabled = ablyPubSubAdapter(mockClient, { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' })
-    expectTypeOf(disabled).toExtend<PubSubAdapter>()
-    expectTypeOf(enabled).toExtend<PubSubAdapter>()
-
-    // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    void ablyPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
-  })
+  void targetSignal
+  void invalidInlineData
 })

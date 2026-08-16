@@ -12,7 +12,7 @@
     "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
-    "validate": "pnpm run typecheck && pnpm run lint",
+    "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.mjs",
     "test:package": "pnpm --filter restale-kit run test:coverage && node scripts/verify-package.mjs",
     "test:ci": "pnpm --filter restale-kit run test:coverage && node scripts/verify-package.mjs",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",

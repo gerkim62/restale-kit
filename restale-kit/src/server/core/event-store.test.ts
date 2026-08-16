@@ -95,4 +95,23 @@ describe('event-store', () => {
     expect(stale).toBe(true)
     expect(events).toEqual([])
   })
+
+  it('replays from the latest occurrence when duplicate IDs exist', () => {
+    const store = createEventStore()
+    store.add({ key: ['first'] }, 'dup-1')
+    store.add({ key: ['middle'] }, 'other')
+    store.add({ key: ['second'] }, 'dup-1')
+    store.add({ key: ['after'] }, 'tail')
+
+    const result = store.getEventsAfter('dup-1')
+    expect(result.stale).toBe(false)
+    expect(result.events.map((e) => e.id)).toEqual(['tail'])
+  })
+
+  it('falls back to auto-incrementing integer string ID if idGenerator returns empty string', () => {
+    const store = createEventStore({ idGenerator: () => '' })
+    const record = store.add({ key: ['a'] })
+    expect(record.id).toBe('1')
+  })
 })
+

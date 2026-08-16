@@ -2,6 +2,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function hasToJSON(value: unknown): value is { toJSON: () => unknown } {
+  return typeof value === 'object' && value !== null && 'toJSON' in value && typeof value.toJSON === 'function'
+}
+
 /**
  * Deterministically serializes any JSON-compatible value into a canonical string.
  * Object keys are sorted alphabetically at every level.
@@ -18,6 +22,14 @@ export function canonicalJsonSerialize(value: unknown): string | undefined {
     const type = typeof current
     if (type === 'number' || type === 'boolean' || type === 'string') {
       return JSON.stringify(current)
+    }
+
+    if (hasToJSON(current)) {
+      try {
+        return serialize(current.toJSON())
+      } catch {
+        return undefined
+      }
     }
 
     if (Array.isArray(current) || isPlainObject(current)) {

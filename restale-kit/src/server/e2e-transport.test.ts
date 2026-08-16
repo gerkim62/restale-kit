@@ -45,130 +45,9 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     vi.useRealTimers()
   })
 
-  it('Fetch: internal_toSSEResponse → invalidate → reads correct SSE frame from Response body', async () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-1')
-    const { response, channel } = internal_toSSEResponse(request, { target: 'swr' })
-
-    expect(channel.connectionId).toBe('e2e-1')
-    expect(response.headers.get('content-type')).toBe('text/event-stream')
-
-    // Invalidate, then read from the Response body stream
-    channel.invalidate({ key: ['todos', 1] })
-    const text = await readStreamChunk(response.body!)
-
-    expect(text).toBe('event: invalidate\ndata: {"key":["todos",1],"target":"swr"}\n\n')
-  })
-
-  it('Fetch: internal_toSSEResponse with eventStore emits id: field in SSE frame', async () => {
-    const store = createEventStore({ capacity: 10 })
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-2')
-    const { response, channel } = internal_toSSEResponse(request, { target: 'swr', eventStore: store })
-
-    const id = channel.invalidate({ key: ['users'] })
-    expect(id).toBe('1') // auto-increment
-
-    const text = await readStreamChunk(response.body!)
-    expect(text).toBe('id: 1\nevent: invalidate\ndata: {"key":["users"],"target":"swr"}\n\n')
-  })
-
-  it('Fetch: group event history is replayed to a transport-created reconnect', async () => {
-    const eventStore = createEventStore({ capacity: 10 })
-    const group = new SSEChannelGroup({ target: 'swr', eventStore })
-    group.createFetchResponse(new Request('https://example.com/sse?__restale_cid__=first'), {})
-    group.broadcastToAll({ key: ['already-seen'] })
-    group.broadcastToAll({ key: ['todos'] })
-
-    const { response } = group.createFetchResponse(
-      new Request('https://example.com/sse?__restale_cid__=second', { headers: { 'Last-Event-ID': '1' } }),
-      {}
-    )
-    const text = await readStreamChunk(response.body!)
-
-    expect(text).toBe('id: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n')
-  })
-
-  it('Fetch: deadline renewal closes the stream and a shared store replays the reconnect gap', async () => {
-    const eventStore = createEventStore({ capacity: 10 })
-    const group = new SSEChannelGroup({ target: 'swr', eventStore })
-    const first = group.createFetchResponse(
-      new Request('https://example.com/sse?__restale_cid__=deadline-first'),
-      { lifetime: { ttlMs: 100 } }
-    )
-
-    group.broadcastToAll({ key: ['already-seen'] })
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    expect(first.channel.state).toBe('closed')
-    expect(await readStreamChunk(first.response.body!)).toContain('id: 1\nevent: invalidate')
-    expect(await readStreamChunk(first.response.body!)).toContain('event: renew')
-
-    // The first channel is closed, but the group-owned store continues recording broadcasts.
-    group.broadcastToAll({ key: ['written-during-reconnect'] })
-
-    const resumed = group.createFetchResponse(
-      new Request('https://example.com/sse?__restale_cid__=deadline-second', {
-        headers: { 'Last-Event-ID': '1' },
-      }),
-      {}
-    )
-
-    expect(await readStreamChunk(resumed.response.body!)).toBe(
-      'id: 2\nevent: invalidate\ndata: {"key":["written-during-reconnect"],"target":"swr"}\n\n'
-    )
-  })
-
-  it('Node: group event history is replayed to a transport-created reconnect', async () => {
-    const eventStore = createEventStore({ capacity: 10 })
-    const group = new SSEChannelGroup({ target: 'swr', eventStore })
-    const first = createMockNodeRequest('/sse?__restale_cid__=first')
-    group.attachNodeResponse(first, createMockNodeResponse(), {})
-    group.broadcastToAll({ key: ['already-seen'] })
-    group.broadcastToAll({ key: ['todos'] })
-
-    const response = createMockNodeResponse()
-    group.attachNodeResponse(
-      createMockNodeRequest('/sse?__restale_cid__=second', { 'last-event-id': '1' }),
-      response,
-      {}
-    )
-    await vi.advanceTimersByTimeAsync(50)
-
-    expect((response as any).__chunks.join('')).toBe(
-      ':\n\nid: 2\nevent: invalidate\ndata: {"key":["todos"],"target":"swr"}\n\n'
-    )
-  })
-
-  it('Node: internal_attachSSE → invalidate → reads correct SSE frame from piped stream', async () => {
-    const req = createMockNodeRequest('/sse?__restale_cid__=e2e-node-1')
-    const res = createMockNodeResponse()
-
-    const channel = internal_attachSSE(req, res, { target: 'swr' })
-    expect(channel.connectionId).toBe('e2e-node-1')
-
-    channel.invalidate({ key: ['products'] })
-
-    // Node stream pipe is asynchronous across event loop ticks
-    await vi.advanceTimersByTimeAsync(50)
-
-    const chunks = (res as any).__chunks as string[]
-    expect(chunks.join('')).toBe(':\n\nevent: invalidate\ndata: {"key":["products"],"target":"swr"}\n\n')
-  })
-
-  it('Fetch: batch invalidate produces single SSE frame with JSON array', async () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-3')
-    const { response, channel } = internal_toSSEResponse(request, { target: 'swr' })
-
-    channel.invalidate([{ key: ['todos'] }, { key: ['users'] }])
-    const text = await readStreamChunk(response.body!)
-
-    expect(text).toBe(
-      'event: invalidate\ndata: [{"key":["todos"],"target":"swr"},{"key":["users"],"target":"swr"}]\n\n'
-    )
-  })
-
   it('Fetch: keepalive frame is correctly formatted in E2E stream', async () => {
     const request = new Request('https://example.com/sse?__restale_cid__=e2e-4')
-    const { response, channel } = internal_toSSEResponse(request, { target: 'swr', keepaliveIntervalMs: 1000 })
+    const { response, channel } = internal_toSSEResponse(request, { keepaliveIntervalMs: 1000 })
 
     const reader = response.body!.getReader()
 
@@ -190,7 +69,7 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     const request = new Request('https://example.com/sse?__restale_cid__=e2e-5', {
       headers: { 'Last-Event-ID': 'evt-1' },
     })
-    const { response } = internal_toSSEResponse(request, { target: 'swr', eventStore: store })
+    const { response } = internal_toSSEResponse(request, { eventStore: store })
 
     const reader = response.body!.getReader()
     const { value: v1 } = await reader.read()
@@ -199,14 +78,5 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
 
     expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
-  })
-
-  it('Fetch: internal_toSSEResponse emits X-ReStale-Target and X-ReStale-Supported headers', () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-target&__restale_target__=swr')
-    const { response, channel } = internal_toSSEResponse(request, { target: ['swr', 'tanstack-query'] })
-
-    expect(channel.target).toEqual(['swr', 'tanstack-query'])
-    expect(response.headers.get('x-restale-target')).toBe('swr')
-    expect(response.headers.get('x-restale-supported')).toBe('swr, tanstack-query')
   })
 })

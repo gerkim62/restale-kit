@@ -1,59 +1,17 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from '@/client/tanstack-query/index.js'
-import type { AdaptedInvalidateCallback } from '@/client/core/index.js'
-import type { QueryClient } from '@tanstack/react-query'
-import type { TanStackQuerySignal, InvalidateSignal } from '@/types/index.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-describe('tanstackQueryAdapter type safety', () => {
-  test('tanstackQueryAdapter returns AdaptedInvalidateCallback<"tanstack-query">', () => {
-    const mockQueryClient = {} as QueryClient
-    const adapter = tanstackQueryAdapter(mockQueryClient)
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
-    expectTypeOf(adapter.__restaleTarget).toEqualTypeOf<'tanstack-query'>()
-  })
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-  test('useTanstackQueryAdapter hook returns branded AdaptedInvalidateCallback<"tanstack-query">', () => {
-    const mockQueryClient = {} as QueryClient
-    const adapterHook = useTanstackQueryAdapter(mockQueryClient)
-
-    expectTypeOf(adapterHook).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
-    expectTypeOf(adapterHook.__restaleTarget).toEqualTypeOf<'tanstack-query'>()
-  })
-
-  test('tanstackQueryAdapter supports custom TSignal generic type parameter', () => {
-    const mockQueryClient = {} as QueryClient
-    interface CustomTSQuerySignal extends TanStackQuerySignal {
-      customMeta?: string
-    }
-
-    const adapter = tanstackQueryAdapter<CustomTSQuerySignal>(mockQueryClient)
-    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', CustomTSQuerySignal>>()
-  })
-
-  test('tanstackQueryAdapter accepts structural QueryClientLike interface without nominal class errors', () => {
-    const structuralClient = {
-      setQueryData: () => undefined,
-      invalidateQueries: async () => {},
-      removeQueries: () => {},
-      resetQueries: async () => {},
-      cancelQueries: async () => {},
-      refetchQueries: async () => {},
-    }
-    const adapter = tanstackQueryAdapter(structuralClient)
-    expectTypeOf(adapter).toExtend<AdaptedInvalidateCallback<'tanstack-query', TanStackQuerySignal>>()
-    expectTypeOf(structuralClient).toExtend<QueryClientLike>()
-  })
-
-  test('rejects incompatible filter parameters on QueryClientLike', () => {
-    const incompatibleClient = {
-      invalidateQueries: async (_filters?: string) => {},
-      removeQueries: () => {},
-      resetQueries: async () => {},
-      cancelQueries: async () => {},
-      refetchQueries: async () => {},
-    }
-    expectTypeOf<typeof incompatibleClient>().not.toExtend<QueryClientLike>()
-  })
+  void targetSignal
+  void invalidInlineData
 })
-

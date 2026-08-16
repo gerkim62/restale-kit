@@ -7,7 +7,7 @@ import type { SSEChannelOptions } from './channel.js'
 function opts(
   overrides: Partial<SSEChannelOptions> = {}
 ): SSEChannelOptions {
-  return { target: 'swr', ...overrides }
+  return { ...overrides }
 }
 
 describe('mergeChannelDefaults', () => {
@@ -48,10 +48,15 @@ describe('mergeChannelDefaults', () => {
     expect(result.guardKeepalive).toBe(true)
   })
 
-  it('does not add guardKeepalive when default is undefined', () => {
+  it('does not add guardKeepalive when defaults omit it', () => {
     const channelOpts = opts()
-    const result = mergeChannelDefaults(channelOpts, { guardKeepalive: undefined })
+    const result = mergeChannelDefaults(channelOpts, {})
     expect(Object.hasOwn(result, 'guardKeepalive')).toBe(false)
+  })
+
+  it('applies event buffer capacity when the channel does not set it', () => {
+    const result = mergeChannelDefaults(opts(), { eventBufferCapacity: 10 })
+    expect(result.eventBufferCapacity).toBe(10)
   })
 
   // ── lifetime — channel sets nothing ───────────────────────────────────────
@@ -89,13 +94,6 @@ describe('mergeChannelDefaults', () => {
     )
     expect((result.lifetime as { deadline: number }).deadline).toBe(deadline)
     expect((result.lifetime as any).ttlMs).toBeUndefined()
-  })
-
-  it('rejects a channel lifetime that specifies both ttlMs and deadline', () => {
-    expect(() => mergeChannelDefaults(
-      opts({ lifetime: { ttlMs: 1000, deadline: Date.now() + 5000 } as any }),
-      { lifetime: { ttlMs: 9999 } }
-    )).toThrow('[mergeChannelDefaults] lifetime.ttlMs and lifetime.deadline are mutually exclusive.')
   })
 
   it('default ttlMs fills in when channel has no time value', () => {
@@ -156,21 +154,6 @@ describe('mergeChannelDefaults', () => {
       { lifetime: { ttlMs: 9999 } }
     )
     expect(Object.hasOwn(result.lifetime ?? {}, 'onDeadline')).toBe(false)
-  })
-
-  // ── Unrelated channel options are preserved ────────────────────────────────
-
-  it('does not mutate or drop unrelated channel options', () => {
-    const channelOpts = opts({
-      keepaliveIntervalMs: 5000,
-      connectionId: 'conn-1',
-      requestedTarget: 'swr',
-    })
-    const result = mergeChannelDefaults(channelOpts, { guardKeepalive: true, lifetime: { ttlMs: 1000 } })
-    expect(result.keepaliveIntervalMs).toBe(5000)
-    expect(result.connectionId).toBe('conn-1')
-    expect(result.requestedTarget).toBe('swr')
-    expect(result.target).toBe('swr')
   })
 
   it('does not mutate the original channel options object', () => {

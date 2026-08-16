@@ -1,5 +1,5 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import type { InvalidateSignal, PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol.js'
 import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
 import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
@@ -25,10 +25,10 @@ export interface RedisClient {
  * @param options.encryptionKey Base64 or hex encoded key of 32+ bytes generated via CSPRNG (e.g. not human-chosen) to encrypt payloads sent to the provider.
  * @param options.encrypt Set to false to explicitly disable encryption. Exclusive with encryptionKey.
  */
-export function redisPubSubAdapter<TSignal extends InvalidateSignal = InvalidateSignal>(
+export function redisPubSubAdapter(
   client: RedisClient,
   options: ({ subscribeClient?: RedisClient } & PubSubEncryptionOptions) = {}
-): PubSubAdapter<TSignal> {
+): PubSubAdapter {
   const { encryptionKey } = validateEncryptionOptions(options)
   const instanceId = generateInstanceId()
   const subscribeClient = options.subscribeClient || client.duplicate()
@@ -43,7 +43,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   })
 
   // Map of topic to the onMessage callback
-  const callbacks = new Map<string, (message: PubSubMessage<TSignal>) => void>()
+  const callbacks = new Map<string, (message: PubSubMessage) => void>()
 
   const handleDecryptionError = createDecryptionErrorHandler('redisPubSubAdapter')
 
@@ -53,7 +53,7 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     if (!onMessage) return
 
     try {
-      const unwrapped = unwrapEnvelope<TSignal>(message, instanceId, encryptionKey, channel)
+      const unwrapped = unwrapEnvelope(message, instanceId, encryptionKey, channel)
       if (unwrapped) {
         onMessage(unwrapped)
       }
@@ -66,14 +66,14 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
   })
 
   return {
-    async publish(topic: string, message: PubSubMessage<TSignal>): Promise<void> {
+    async publish(topic: string, message: PubSubMessage): Promise<void> {
       const envelope = wrapEnvelope(instanceId, message, encryptionKey, topic)
       await client.publish(topic, JSON.stringify(envelope))
     },
 
     async subscribe(
       topic: string,
-      onMessage: (message: PubSubMessage<TSignal>) => void
+      onMessage: (message: PubSubMessage) => void
     ): Promise<() => Promise<void>> {
       if (callbacks.has(topic)) {
         throw new Error(
@@ -107,5 +107,4 @@ export function redisPubSubAdapter<TSignal extends InvalidateSignal = Invalidate
     },
   }
 }
-
 

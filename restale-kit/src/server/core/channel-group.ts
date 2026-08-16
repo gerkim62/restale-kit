@@ -1,215 +1,26 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { type InvalidateSignal, type EventStore, type JSONValue, type PubSubMessage, type SignalTarget, type SignalInputForTarget, type TargetForSignal, type ReStaleSignalForTarget, isJSONValue, matchesJSONValue, matchesInvalidateSignalKey } from '@/types/protocol.js'
-import { type StandardSchemaV1, validateStandardSchema } from '@/types/standard-schema.js'
-import { validateSignalPayload, validateTargetConfiguration, validateSignalTargets, type SSEChannel, type SSEChannelOptions } from '@/server/core/channel.js'
+import {
+  isJSONValue,
+  isJSONValueArray,
+  type EventStore,
+  type JSONValue,
+  type RevalidateSignal,
+  type UniversalSignal,
+} from '@/types/protocol.js'
 import { ChannelClosedError } from '@/types/errors.js'
+import type { StandardSchemaV1 } from '@/types/standard-schema.js'
+import { validateStandardSchema } from '@/types/standard-schema.js'
 import type { PubSubAdapter } from '@/pubsub/core/index.js'
 import { createEventStore } from '@/server/core/event-store.js'
-import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
-import { generateInstanceId } from '@/utils/id.js'
-import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
+import { type SSEChannel, type SSEChannelOptions, validateSignalPayload } from '@/server/core/channel.js'
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
-import { internal_attachSSE, type FastifyRequestLike, type FastifyReplyLike } from '@/server/node/attach.js'
-import { computeContextHash } from '@/utils/canonical-hash.js'
+import { internal_attachSSE, type FastifyReplyLike, type FastifyRequestLike } from '@/server/node/attach.js'
+import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
+import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 
-/**
- * Internal channel wrapper that redeclares `invalidate` as a method signature rather than a function property.
- * Function properties are checked contravariantly, which would reject storing multi-target channels in the group.
- * Redeclaring as a method enables bivariant parameter checking so multi-target channels can be registered
- * while allowing the group to deliver `TSignal | TSignal[]` broadcasts.
- */
-type RegisteredChannel<TSignal extends InvalidateSignal> =
-  Omit<SSEChannel<TSignal>, 'invalidate'> & {
-    invalidate(signal: TSignal | TSignal[], customId?: string): string
-  }
-
-/**
- * Options passed to `SSEChannelGroup.createFetchResponse` and `SSEChannelGroup.attachNodeResponse`.
- */
-export type ChannelSetupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-> = Omit<
-  SSEChannelOptions<TSignal>,
-  'target'
-> & {
-  target?: TTarget
+export type ChannelSetupOptions<TMeta = unknown> = SSEChannelOptions & {
   topics?: string[]
-} & (undefined extends TMeta ? { meta?: TMeta } : { meta: TMeta })
-
-/**
- * Manages subscription state and serialization for a specific topic.
- *
- * NOTE: Even when the `pubsub` adapter is undefined (single-instance fallback),
- * `TopicManager` is still instantiated and populated. In this scenario, it serves
- * as a local index of registered channels per topic, facilitating fast O(1) routing
- * inside `publish(topic, ...)` without iterating over all channels in the group.
- */
-class TopicManager<TSignal extends InvalidateSignal = InvalidateSignal> {
-  readonly channels = new Set<RegisteredChannel<TSignal>>()
-  private unsubscribeFn?: () => void | Promise<void>
-  private isSubscribed = false
-  private pendingOp = Promise.resolve()
-
-  constructor(
-    private readonly topic: string,
-    private readonly pubsub: PubSubAdapter<TSignal> | undefined,
-    private readonly onMessage: (message: PubSubMessage<TSignal>) => void,
-    private readonly onTeardown?: (topic: string) => void
-  ) {}
-
-  add(channel: RegisteredChannel<TSignal>): void {
-    this.channels.add(channel)
-    this.sync()
-  }
-
-  remove(channel: RegisteredChannel<TSignal>): void {
-    this.channels.delete(channel)
-    this.sync()
-  }
-
-  get size(): number {
-    return this.channels.size
-  }
-
-  private sync(): void {
-    const pubsub = this.pubsub
-    if (!pubsub) {
-      if (this.channels.size === 0) {
-        this.onTeardown?.(this.topic)
-      }
-      return
-    }
-
-    const wantsSubscribe = this.channels.size > 0
-    if (wantsSubscribe && !this.isSubscribed) {
-      this.isSubscribed = true
-      this.pendingOp = this.pendingOp
-        .then(async () => {
-          if (this.channels.size === 0) {
-            this.isSubscribed = false
-            this.onTeardown?.(this.topic)
-            return
-          }
-          if (this.unsubscribeFn) {
-            // Already subscribed (e.g. from a prior task that finished in time)
-            this.isSubscribed = true
-            return
-          }
-          let attempts = 0
-          const maxAttempts = 5
-          let delay = 100
-
-          const sleep = (ms: number) => {
-            const start = Date.now()
-            return new Promise<void>((resolve) => {
-              const interval = setInterval(() => {
-                if (Date.now() - start >= ms || this.channels.size === 0) {
-                  clearInterval(interval)
-                  resolve()
-                }
-              }, 50)
-            })
-          }
-
-          for (;;) {
-            if (this.channels.size === 0) {
-              this.isSubscribed = false
-              this.onTeardown?.(this.topic)
-              return
-            }
-            try {
-              const unsub = await pubsub.subscribe(this.topic, this.onMessage)
-              this.unsubscribeFn = unsub
-              if (this.channels.size === 0) {
-                this.unsubscribeFn = undefined
-                this.isSubscribed = false
-                await unsub()
-                this.onTeardown?.(this.topic)
-              }
-              break
-            } catch (err) {
-              attempts++
-              if (attempts >= maxAttempts || this.channels.size === 0) {
-                this.isSubscribed = false
-                this.onTeardown?.(this.topic)
-                console.error(`[ERROR][TopicManager.subscribe] Failed to subscribe to topic "${this.topic}" after ${attempts.toString()} attempts:`, err)
-                break
-              }
-              await sleep(delay)
-              delay = Math.min(delay * 2, 2000)
-            }
-          }
-        })
-        .catch((err: unknown) => {
-          console.error(`[ERROR][TopicManager.sync] Unexpected error in subscribe chain for topic "${this.topic}":`, err)
-        })
-    } else if (!wantsSubscribe && this.isSubscribed) {
-      this.isSubscribed = false
-      this.pendingOp = this.pendingOp
-        .then(async () => {
-          if (this.channels.size > 0) {
-            this.isSubscribed = true
-            return
-          }
-          const unsub = this.unsubscribeFn
-          this.unsubscribeFn = undefined
-          if (unsub) {
-            try {
-              await unsub()
-            } catch (err) {
-              // Note: `isSubscribed` remains false to keep state consistent after unsubscribe failure.
-              console.error(`[ERROR][TopicManager.unsubscribe] Failed to unsubscribe from topic "${this.topic}":`, err)
-            }
-          }
-          if (this.channels.size === 0) {
-            this.onTeardown?.(this.topic)
-          }
-        })
-        .catch((err: unknown) => {
-          console.error(`[ERROR][TopicManager.sync] Unexpected error in unsubscribe chain for topic "${this.topic}":`, err)
-        })
-    }
-  }
-}
-
-
-export type SignalsForTargets<TTarget> =
-  TTarget extends SignalTarget
-    ? ReStaleSignalForTarget<TTarget>
-    : TTarget extends SignalTarget[] | readonly SignalTarget[]
-      ? SignalInputForTarget<TTarget>
-      : InvalidateSignal
-
-type GroupSignalInput<
-  TSignal extends InvalidateSignal,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[],
-> = (TSignal | TSignal[]) &
-  ([TTarget] extends [readonly SignalTarget[]]
-    ? SignalInputForTarget<TTarget>
-    : [TTarget] extends [SignalTarget]
-      ? SignalInputForTarget<TTarget>
-      : unknown)
-
-export interface SSEChannelGroupOptions<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | SignalTarget[] | readonly SignalTarget[],
-  TClientContext = unknown,
-> {
-  /** Target discriminator or target array for automatic signal tagging across channels in this group. */
-  target?: TTarget
-  metaSchema?: StandardSchemaV1<unknown, TMeta>
-  clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
-  resolveInlineData?: ResolveInlineData<TMeta, TClientContext, TSignal>
-  onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
-  /** Broker adapter used for cross-instance signal delivery and control messages. */
-  pubsub?: PubSubAdapter<TSignal>
-  eventStore?: EventStore<TSignal>
-  eventBufferCapacity?: number
-  controlTopic?: string
-  channelDefaults?: ChannelDefaults
+  meta?: TMeta
 }
 
 export interface InlineDataConnection<TMeta, TClientContext> {
@@ -218,1237 +29,477 @@ export interface InlineDataConnection<TMeta, TClientContext> {
   readonly clientContext: TClientContext | undefined
 }
 
-export interface InlineDataResult<TSignal extends InvalidateSignal> {
-  signal: TSignal
+/**
+ * The resolver returns the signal for each connection. Inline data is deliberately
+ * kept separate to preserve the client-context API; it is converted to a universal
+ * InlineDataSignal immediately before delivery.
+ */
+export interface InlineDataResult {
+  /**
+   * The target cache key signal. If `inlineData` is omitted, the entire signal is delivered as a universal signal.
+   * If `inlineData` is provided, the key (and optional markStale) is combined with inlineData into an InlineDataSignal.
+   */
+  signal: RevalidateSignal
   inlineData?: JSONValue
+  markStale?: boolean
 }
 
-export type ResolveInlineData<TMeta, TClientContext, TSignal extends InvalidateSignal> = (
+export type ResolveInlineData<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
-  payload: JSONValue
-) => Map<string, InlineDataResult<TSignal>> | Promise<Map<string, InlineDataResult<TSignal>>>
+  payload: JSONValue,
+) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
 
-type SchemaOutput<TSchema extends StandardSchemaV1<unknown, unknown>> =
-  TSchema extends StandardSchemaV1<unknown, infer TOutput> ? TOutput : unknown
+export interface SSEChannelGroupOptions<TMeta = unknown, TClientContext = unknown> {
+  metaSchema?: StandardSchemaV1<unknown, TMeta>
+  clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
+  resolveInlineData?: ResolveInlineData<TMeta, TClientContext>
+  onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
+  pubsub?: PubSubAdapter
+  eventStore?: EventStore
+  eventBufferCapacity?: number
+  controlTopic?: string
+  channelDefaults?: ChannelDefaults
+}
 
-type SchemaValue<TExplicit, TSchema extends StandardSchemaV1<unknown, unknown>> =
-  unknown extends TExplicit ? SchemaOutput<TSchema> : TExplicit
+type Entry<TMeta, TClientContext> = {
+  meta: TMeta | undefined
+  clientContext: TClientContext | undefined
+  topics: Set<string>
+}
 
-
-/**
- * Manages a group of SSE channels for multi-client broadcasting and pub/sub synchronization.
- *
- * Gap 6: Methods are readonly function properties (contravariant) not method declarations.
- *
- * @typeParam TSignal - The invalidation signal type (must extend `InvalidateSignal`).
- * @typeParam TMeta - The metadata type associated with each channel.
- * @typeParam TTarget - The target or targets constrained by the group's top-level `target` option.
- * @typeParam TBroadcastTarget - The target or targets that determine broadcast and publish signal requirements. This is inferred from `channelDefaults.target` when no top-level target is set.
- */
-class SSEChannelGroupImplementation<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-  TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
-  TClientContext = unknown,
-> {
-  private readonly channels = new Map<RegisteredChannel<TSignal>, {
-    meta: TMeta | undefined
-    clientContext: TClientContext | undefined
-    topics: Set<string>
-    connectionId: string
-  }>()
-  private readonly connectionIndex = new Map<string, Set<RegisteredChannel<TSignal>>>()
+export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
+  private readonly channels = new Map<SSEChannel, Entry<TMeta, TClientContext>>()
+  private readonly topicChannels = new Map<string, Set<SSEChannel>>()
+  private readonly topicUnsubscribers = new Map<string, () => void | Promise<void>>()
+  private readonly pendingTopicSubscriptions = new Map<string, Promise<(() => void | Promise<void>) | undefined>>()
+  private readonly connectionIndex = new Map<string, Set<SSEChannel>>()
   private readonly clientContextRevisions = new Map<string, number>()
-  private readonly topics = new Map<string, TopicManager<TSignal>>()
-  private readonly instanceId = generateInstanceId()
-  private readonly metaSchema?: StandardSchemaV1<unknown, TMeta>
-  private readonly clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
-  private readonly resolveInlineData?: ResolveInlineData<TMeta, TClientContext, TSignal>
-  private readonly onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
-  private readonly pubsub?: PubSubAdapter<TSignal>
-  readonly target?: TTarget
-  readonly eventStore?: EventStore<TSignal>
+  private controlUnsubscribe: (() => void | Promise<void>) | undefined
+  readonly eventStore: EventStore | undefined
+  readonly channelDefaults: ChannelDefaults | undefined
   readonly controlTopic: string
-  readonly channelDefaults?: ChannelDefaults
 
-  private controlUnsubscribeFn?: () => void | Promise<void>
-  private controlPendingOp: Promise<void> = Promise.resolve()
-
-  constructor(options: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext> = {}) {
-    this.target = options.target
-    this.metaSchema = options.metaSchema
-    this.clientContextSchema = options.clientContextSchema
-    this.resolveInlineData = options.resolveInlineData
-    this.onInlineDataResolverError = options.onInlineDataResolverError
-    if (options.pubsub !== undefined && !hasPubSubMethods<TSignal>(options.pubsub)) {
-      throw new TypeError(
-        '[SSEChannelGroup] pubsub must implement publish() and subscribe(). ' +
-        'Pass a PubSubAdapter (for example redisPubSubAdapter(redis)).'
-      )
-    }
-    this.pubsub = options.pubsub
-
-    if (options.target !== undefined) {
-      validateTargetConfiguration(options.target)
-    }
-    if (options.channelDefaults?.target !== undefined) {
-      validateTargetConfiguration(options.channelDefaults.target)
-      if (options.target !== undefined) {
-        const groupTargets = new Set(toTargetList(options.target))
-        const defaultTargets = toTargetList(options.channelDefaults.target)
-        for (const t of defaultTargets) {
-          if (!groupTargets.has(t)) {
-            throw new Error(
-              `[target] Target "${t}" in channelDefaults.target is not compatible with channel group targets.`
-            )
-          }
-        }
-      }
-    }
-
-    const mergedDefaults: ChannelDefaults = { ...options.channelDefaults }
-    if (options.target !== undefined && mergedDefaults.target === undefined) {
-      mergedDefaults.target = options.target
-    }
-    this.channelDefaults = Object.keys(mergedDefaults).length > 0 ? mergedDefaults : undefined
-
-    // Gap 10: Validate controlTopic - reject blank/whitespace strings
-    const rawControlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
-    if (typeof rawControlTopic !== 'string' || removeInvisibleWhitespace(rawControlTopic) === '') {
-      throw new Error(
-        `[SSEChannelGroup] controlTopic must be a non-empty, non-whitespace string. ` +
-        `Got: ${JSON.stringify(rawControlTopic)}`
-      )
-    }
-    this.controlTopic = rawControlTopic
-
-    if (options.eventBufferCapacity !== undefined && (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)) {
+  constructor(private readonly options: SSEChannelGroupOptions<TMeta, TClientContext> = {}) {
+    this.channelDefaults = options.channelDefaults
+    this.eventStore = options.eventStore ?? (options.eventBufferCapacity && options.eventBufferCapacity > 0
+      ? createEventStore({ capacity: options.eventBufferCapacity })
+      : undefined)
+    this.controlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
+    validateTopic(this.controlTopic, 'controlTopic')
+    if (options.eventBufferCapacity !== undefined &&
+      (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)) {
       throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
     }
-
-    if (options.eventStore) {
-      this.eventStore = options.eventStore
-    } else if (options.eventBufferCapacity !== undefined && options.eventBufferCapacity > 0) {
-      this.eventStore = createEventStore<TSignal>({ capacity: options.eventBufferCapacity })
-    }
-
-    if (this.pubsub) {
-      this.initControlSubscription()
-    }
+    if (options.pubsub) void this.subscribeControl()
   }
 
-  /** Number of active channels in the group. */
-  get size(): number {
-    return this.channels.size
-  }
+  get size(): number { return this.channels.size }
 
-  private initControlSubscription(): void {
-    const pubsub = this.pubsub
-    if (!pubsub) return
-
-    this.controlPendingOp = this.controlPendingOp.then(async () => {
-      let attempts = 0
-      let delay = 100
-
-      const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-      for (;;) {
-        try {
-          const unsub = await pubsub.subscribe(this.controlTopic, (msg) => {
-            if (msg.kind === 'control') {
-              const handledTargetedControl = this.handleTargetedControlMessage(msg.data)
-              if (!handledTargetedControl) {
-                this.closeLocalMatches(msg.data)
-              }
-            } else if (msg.kind === 'inlineData') {
-              void this.handleInlineDataMessage(msg).catch((error: unknown) => {
-                console.error('[SSEChannelGroup.handleInlineDataMessage] Failed to deliver inline data.', error)
-              })
-            }
-          })
-          this.controlUnsubscribeFn = unsub
-          break
-        } catch (err) {
-          attempts++
-          console.error(
-            `[ERROR][SSEChannelGroup.initControlSubscription] Failed to subscribe to control topic "${this.controlTopic}" (attempt ${attempts.toString()}):`,
-            err
-          )
-          await sleep(delay)
-          delay = Math.min(delay * 2, 2000)
-        }
-      }
-    })
-  }
-
-  /**
-   * Closes local channels whose metadata matches the criteria via subset matching.
-   */
-  private closeLocalMatches(criteria: JSONValue): number {
-    let localClosed = 0
-    const channelEntries = Array.from(this.channels.entries())
-    for (const [ch, entry] of channelEntries) {
-      if (channelMatchesCriteria(ch, entry.meta, criteria)) {
-        try {
-          ch.revoke()
-        } catch {
-          // Ignore close errors on already closed channels
-        }
-        this.deregister(ch)
-        localClosed++
-      }
-    }
-    return localClosed
-  }
-
-  private closeLocalConnection(connectionId: string, scope?: Record<string, JSONValue>): boolean {
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels || channels.size === 0) return false
-
-    let closedAny = false
-    for (const channel of Array.from(channels)) {
-      if (scope !== undefined) {
-        const entry = this.channels.get(channel)
-        if (!entry) continue
-        if (!entryMatchesScope(entry.meta, scope)) continue
-      }
-
-      try {
-        channel.revoke()
-      } catch {
-        // already closed
-      }
-      this.deregister(channel)
-      closedAny = true
-    }
-    return closedAny
-  }
-
-  private handleTargetedControlMessage(data: JSONValue): boolean {
-    if (!data || typeof data !== 'object' || Array.isArray(data) || !('type' in data)) return false
-
-    if (data.type === 'revokeByConnectionId' && 'revokeByConnectionId' in data) {
-      const payload = data.revokeByConnectionId
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.connectionId !== 'string') {
-        return true
-      }
-      this.closeLocalConnection(payload.connectionId, readControlScope(payload))
-      return true
-    }
-
-    if (data.type === 'updateClientContext' && 'updateClientContext' in data) {
-      const payload = data.updateClientContext
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.connectionId !== 'string' || !('clientContext' in payload)) {
-        return true
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Cross-instance messages were origin-validated.
-      const clientContext = payload.clientContext as TClientContext
-      const connectionId = payload.connectionId
-      const scope = readControlScope(payload)
-      const revision = readClientContextRevision(payload)
-      if (revision === null) return true
-      this.updateLocalClientContext(
-        connectionId,
-        clientContext,
-        scope,
-        revision
-      )
-      return true
-    }
-
-    return false
-  }
-
-  private updateLocalClientContext(
-    connectionId: string,
-    clientContext: TClientContext,
-    scope?: Record<string, JSONValue>,
-    revision?: number
-  ): boolean {
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels || channels.size === 0) return false
-    const latestRevision = this.clientContextRevisions.get(connectionId)
-    if (revision !== undefined && latestRevision !== undefined && revision < latestRevision) return false
-
-    let updated = false
-    for (const channel of channels) {
-      const entry = this.channels.get(channel)
-      if (!entry || (scope !== undefined && !entryMatchesScope(entry.meta, scope))) continue
-      entry.clientContext = clientContext
-      updated = true
-    }
-    if (updated && revision !== undefined) this.clientContextRevisions.set(connectionId, revision)
-    return updated
-  }
-
-  private async handleInlineDataMessage(message: Extract<PubSubMessage<TSignal>, { kind: 'inlineData' }>): Promise<void> {
-    await this.deliverInlineData(message.topic, message.payload)
-  }
-
-  private async deliverInlineData(topic: string, payload: JSONValue): Promise<void> {
-    const topicManager = this.topics.get(topic)
-    if (!topicManager || topicManager.channels.size === 0) return
-    const resolver = this.resolveInlineData
-    if (!resolver) {
-      throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
-    }
-
-    const localChannels = Array.from(topicManager.channels)
-    const connections: InlineDataConnection<TMeta, TClientContext>[] = []
-    const channelsByConnectionId = new Map<string, RegisteredChannel<TSignal>>()
-    for (const channel of localChannels) {
-      const entry = this.channels.get(channel)
-      if (entry) {
-        if (channelsByConnectionId.has(entry.connectionId)) {
-          throw new Error(`[SSEChannelGroup.pushInlineData] Duplicate active connection ID: ${entry.connectionId}`)
-        }
-        channelsByConnectionId.set(entry.connectionId, channel)
-        connections.push({
-          connectionId: entry.connectionId,
-          meta: entry.meta,
-          clientContext: entry.clientContext,
-        })
-      }
-    }
-    if (connections.length === 0) return
-
-    const resolved = await resolver(connections, payload)
-    const missingConnectionIds = connections
-      .filter((connection) => !resolved.has(connection.connectionId))
-      .map((connection) => connection.connectionId)
-    if (missingConnectionIds.length > 0 && this.onInlineDataResolverError) {
-      try {
-        this.onInlineDataResolverError({ topic, missingConnectionIds })
-      } catch (error) {
-        console.error('[SSEChannelGroup.onInlineDataResolverError] callback threw', error)
-      }
-    }
-
-    for (const connection of connections) {
-      const result = resolved.get(connection.connectionId)
-      if (!result) continue
-      const channel = channelsByConnectionId.get(connection.connectionId)
-      if (!channel) continue
-      const existingHash = 'contextHash' in result.signal && typeof result.signal.contextHash === 'string'
-        ? result.signal.contextHash
-        : undefined
-      const contextHash = existingHash ?? computeContextHash(connection.clientContext)
-      if (result.inlineData === undefined) {
-        this.deliverToChannel(channel, result.signal, 'publish', topic)
-        continue
-      }
-      const signal = {
-        ...result.signal,
-        inlineData: result.inlineData,
-        ...(contextHash ? { contextHash } : {}),
-      } as TSignal
-      this.deliverToChannel(channel, signal, 'publish', topic)
-    }
-  }
-
-  /**
-   * Helper to deliver a signal to a single channel and handle closed connection cleanup/errors.
-   */
-  private deliverToChannel(
-    channel: RegisteredChannel<TSignal>,
-    signal: TSignal | TSignal[],
-    context: 'broadcast' | 'publish' | 'pubsub',
-    topic?: string,
-    eventId?: string
-  ): void {
-    try {
-      // Channel has its own required target, so channel.invalidate() handles the transform.
-      channel.invalidate(signal, eventId)
-    } catch (error) {
-      if (error instanceof ChannelClosedError) {
-        this.deregister(channel)
-      } else if (context !== 'broadcast') {
-        // For broadcast context, let broadcast() handle logging with full metadata/signal details.
-        // For other contexts, log here since there is no outer catch with that context.
-        const err = error instanceof Error ? error : new Error(String(error))
-        console.error(
-          `[ERROR][SSEChannelGroup.${context}] Failed to invalidate channel` +
-          (topic ? ` on topic "${topic}"` : ""),
-          err.stack || err.message
-        )
-      }
-      if (context === 'broadcast') {
-        throw error
-      }
-    }
-  }
-
-  /**
-   * Creates a Web Standard Fetch API `Response` object containing the SSE stream,
-   * registers the channel with this group, and returns `{ response, channel }`.
-   *
-   * @framework Hono, Next.js App Router, Bun, Deno, Cloudflare Workers, Edge Runtimes
-   *
-   * @example
-   * ```ts
-   * // Hono / Web Standards
-   * app.get('/api/sse', (c) => {
-   *   const { response } = sseGroup.createFetchResponse(c.req.raw, {
-   *     meta: { userId: c.var.userId },
-   *     topics: [`user:${c.var.userId}`],
-   *   })
-   *   return response
-   * })
-   * ```
-   */
   createFetchResponse(
     request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { response: Response; channel: SSEChannel<TSignal, TTarget> }
-  createFetchResponse(
-    request: Request,
-    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
-  ): unknown {
-    validateTopics(options.topics)
-    this.validateSetupTarget(options.target)
-    const validatedMeta = this.validateMeta(options.meta)
-    const channelOpts = { ...options }
-    delete channelOpts.meta
-    delete channelOpts.topics
-    const result = internal_toSSEResponse<TSignal>(request, channelOpts, this)
-    this.doRegisterPrevalidated(result.channel, validatedMeta, options.topics)
+    options: ChannelSetupOptions<TMeta> = {},
+  ): { response: Response; channel: SSEChannel } {
+    const { meta: rawMeta, topics, ...channelOptions } = options
+    this.validateTopics(topics)
+    const meta = this.validateMeta(rawMeta)
+    const result = internal_toSSEResponse(request, channelOptions, this)
+    this.register(result.channel, meta, topics === undefined ? undefined : { topics })
     return result
   }
 
-  /**
-   * Attaches an SSE channel to a Node.js HTTP response (`res`) or Fastify `reply`,
-   * registers it with this group, and returns `{ channel }`.
-   *
-   * The channel is automatically deregistered when it closes.
-   *
-   * @framework Node.js, Express, Fastify
-   *
-   * @example
-   * ```ts
-   * // Express / Node HTTP
-   * app.get('/api/sse', (req, res) => {
-   *   sseGroup.attachNodeResponse(req, res, {
-   *     meta: { userId: req.user.id },
-   *     topics: [`user:${req.user.id}`],
-   *   })
-   * })
-   *
-   * // Fastify
-   * fastify.get('/api/sse', (req, reply) => {
-   *   sseGroup.attachNodeResponse(req, reply, {
-   *     meta: { userId: req.user.id },
-   *     topics: [`user:${req.user.id}`],
-   *   })
-   * })
-   * ```
-   */
   attachNodeResponse(
     req: IncomingMessage | FastifyRequestLike,
     res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta, TTarget>
-  ): { channel: SSEChannel<TSignal, TTarget> }
-  attachNodeResponse(
-    req: IncomingMessage | FastifyRequestLike,
-    res: ServerResponse | FastifyReplyLike,
-    options: ChannelSetupOptions<TSignal, TMeta, SignalTarget | readonly SignalTarget[]>
-  ): unknown {
-    validateTopics(options.topics)
-    this.validateSetupTarget(options.target)
-    const validatedMeta = this.validateMeta(options.meta)
-    const channelOpts = { ...options }
-    delete channelOpts.meta
-    delete channelOpts.topics
-    const channel = internal_attachSSE<TSignal>(req, res, channelOpts, this)
-    this.doRegisterPrevalidated(channel, validatedMeta, options.topics)
+    options: ChannelSetupOptions<TMeta> = {},
+  ): { channel: SSEChannel } {
+    const { meta: rawMeta, topics, ...channelOptions } = options
+    this.validateTopics(topics)
+    const meta = this.validateMeta(rawMeta)
+    const channel = internal_attachSSE(req, res, channelOptions, this)
+    this.register(channel, meta, topics === undefined ? undefined : { topics })
     return { channel }
   }
 
-  private validateMeta(meta: TMeta | undefined): TMeta | undefined {
-    if (this.metaSchema) {
-      return validateStandardSchema(meta, this.metaSchema)
+  register(channel: SSEChannel, meta?: TMeta, registrationOptions?: { topics?: string[] }): void {
+    this.validateTopics(registrationOptions?.topics)
+    const existing = this.channels.get(channel)
+    if (existing) this.detachTopics(channel, existing.topics)
+    const entry: Entry<TMeta, TClientContext> = {
+      meta: this.validateMeta(meta),
+      clientContext: existing?.clientContext,
+      topics: new Set(registrationOptions?.topics ?? []),
     }
-    return meta
-  }
-
-  private validateSetupTarget(target: SignalTarget | SignalTarget[] | readonly SignalTarget[] | undefined): void {
-    if (target === undefined) return
-    validateTargetConfiguration(target)
-    if (this.target !== undefined) {
-      const groupTargets = new Set(toTargetList(this.target))
-      const setupTargets = toTargetList(target)
-      for (const t of setupTargets) {
-        if (!groupTargets.has(t)) {
-          throw new Error(`[target] Target "${t}" is not compatible with channel group targets.`)
-        }
-      }
-    }
-  }
-
-  private doRegisterPrevalidated(
-    channel: RegisteredChannel<TSignal>,
-    validatedMeta: TMeta | undefined,
-    topics?: string[]
-  ): void {
-    validateTopics(topics)
-    const topicsList = topics ?? []
-    const topicsSet = new Set(topicsList)
-
-    const existingEntry = this.channels.get(channel)
-    if (existingEntry) {
-      // Find topics that were dropped
-      for (const oldTopic of existingEntry.topics) {
-        if (!topicsSet.has(oldTopic)) {
-          const topicManager = this.topics.get(oldTopic)
-          if (topicManager) {
-            topicManager.remove(channel)
-            if (topicManager.size === 0) {
-              this.topics.delete(oldTopic)
-            }
-          }
-        }
-      }
-    }
-
-    const connectionId = channel.connectionId
-    this.channels.set(channel, {
-      meta: validatedMeta,
-      clientContext: existingEntry?.clientContext,
-      topics: topicsSet,
-      connectionId,
-    })
-    if (connectionId) {
-      let set = this.connectionIndex.get(connectionId)
-      if (!set) {
-        set = new Set()
-        this.connectionIndex.set(connectionId, set)
-      }
+    this.channels.set(channel, entry)
+    if (channel.connectionId) {
+      let set = this.connectionIndex.get(channel.connectionId)
+      if (!set) this.connectionIndex.set(channel.connectionId, set = new Set())
       set.add(channel)
     }
-
-    for (const topic of topicsSet) {
-      let topicManager = this.topics.get(topic)
-      if (!topicManager) {
-        topicManager = new TopicManager(
-          topic,
-          this.pubsub,
-          (msg) => {
-            if (msg.kind !== 'signal') return
-            const currentManager = this.topics.get(topic)
-            if (!currentManager) return
-            let effectiveId = msg.id
-            if (this.eventStore !== undefined) {
-              const record = this.eventStore.add(msg.data, msg.id)
-              effectiveId = record.id
-            }
-            for (const ch of currentManager.channels) {
-              this.deliverToChannel(ch, msg.data, 'pubsub', topic, effectiveId)
-            }
-          },
-          (t) => {
-            this.topics.delete(t)
-          }
-        )
-        this.topics.set(topic, topicManager)
-      }
-      if (!existingEntry || !existingEntry.topics.has(topic)) {
-        topicManager.add(channel)
-      }
-    }
-
-    // Auto-deregister when the channel closes. Only wire once (new channels only).
-    if (!existingEntry) {
-      channel.onClose(() => { this.deregister(channel) })
+    for (const topic of entry.topics) this.attachTopic(channel, topic)
+    if (!existing) {
+      channel.onClose(() => {
+        this.deregister(channel)
+      })
     }
   }
 
-  /**
-   * Registers a channel with its associated metadata and optional routing topics.
-   *
-   * If `metaSchema` was provided to the constructor, validates the metadata
-   * synchronously. Throws `SchemaValidationError` if validation fails or
-   * if the schema returns a Promise (async schemas are not supported).
-   *
-   * The channel is automatically deregistered when it closes — no manual cleanup required.
-   * The channel's `connectionId` is stored internally and never needs to appear in `TMeta`.
-   */
-  register(
-    channel: RegisteredChannel<TSignal>,
-    ...args: undefined extends TMeta
-      ? [meta?: TMeta, options?: { topics?: string[] }]
-      : [meta: TMeta, options?: { topics?: string[] }]
-  ): void {
-    const meta = args[0]
-    const options = args[1]
-    this.validateSetupTarget(channel.target)
-    const validatedMeta = this.validateMeta(meta)
-    this.doRegisterPrevalidated(channel, validatedMeta, options?.topics)
-  }
-
-  /** Deregisters a channel from the group. */
-  deregister(channel: RegisteredChannel<TSignal>): void {
+  deregister(channel: SSEChannel): void {
     const entry = this.channels.get(channel)
     if (!entry) return
-
     this.channels.delete(channel)
-    if (entry.connectionId) {
-      const set = this.connectionIndex.get(entry.connectionId)
-      if (set) {
-        set.delete(channel)
-        if (set.size === 0) {
-          this.connectionIndex.delete(entry.connectionId)
-          this.clientContextRevisions.delete(entry.connectionId)
-        }
-      }
-    }
-
-    for (const topic of entry.topics) {
-      const topicManager = this.topics.get(topic)
-      if (topicManager) {
-        topicManager.remove(channel)
-      }
+    this.detachTopics(channel, entry.topics)
+    const indexed = this.connectionIndex.get(channel.connectionId)
+    indexed?.delete(channel)
+    if (indexed?.size === 0) {
+      this.connectionIndex.delete(channel.connectionId)
+      this.clientContextRevisions.delete(channel.connectionId)
     }
   }
 
-  /**
-   * Revokes connections by subset-matching channel metadata against `criteria`.
-   *
-   * Closes all matching channels locally and broadcasts the criteria to the cluster-wide control topic.
-   *
-   * Use this for bulk operations: log out all sessions for a user, ban a tenant, close all
-   * connections matching a role. Every channel whose registered metadata is a superset of
-   * `criteria` is closed.
-   *
-   * **Note:** Channels whose stored metadata is `undefined` are excluded from criteria-based matching
-   * because `undefined` is not a valid JSON value. To revoke such channels, use `revokeByConnectionId(connectionId)` instead.
-   *
-   * ## Security: do not use connectionId as the sole criteria
-   *
-   * `connectionId` is generated by the client and sent as a URL query parameter — it is an opaque
-   * correlation value, NOT an authentication credential. If you pass `{ connectionId: someId }`
-   * as the sole criteria, any HTTP client that knows (or guesses) a connection ID can trigger
-   * revocation of someone else's connection.
-   *
-   * Always combine `connectionId` with trusted server-side identity when targeting a single
-   * connection, or use `revokeByConnectionId(connectionId, { userId, ... })` which enforces
-   * scope-pinning explicitly:
-   *
-   * ```ts
-   * // ✅ Safe bulk revoke — criteria comes entirely from server-side auth context
-   * await group.revokeWhere({ userId: req.user.id })
-   *
-   * // ✅ Safe single-connection revoke with scope-pinning
-   * await group.revokeByConnectionId(connectionId, { userId: req.user.id })
-   *
-   * // ❌ Unsafe — connectionId is client-supplied and can be forged
-   * await group.revokeWhere({ connectionId: req.body.connectionId })
-   * ```
-   */
+  broadcast(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean = () => true): void {
+    this.broadcastRaw(signal, predicate)
+  }
+
+  broadcastToAll(signal: UniversalSignal | UniversalSignal[]): void {
+    this.broadcastRaw(signal, () => true)
+  }
+
+  broadcastByKey(signal: RevalidateSignal): void {
+    this.broadcastRaw(signal, (meta) => isMetaMatchedByKey(meta, signal.key, signal.exact === true))
+  }
+
+  async publish(topic: string, signal: UniversalSignal | UniversalSignal[]): Promise<void> {
+    validateTopic(topic, 'topic')
+    validateSignalPayload(signal)
+    const eventId = this.eventStore?.add(signal).id
+    for (const channel of this.topicChannels.get(topic) ?? []) {
+      try {
+        this.deliver(channel, signal, eventId)
+      } catch (error) {
+        console.error('[SSEChannelGroup] Failed to deliver signal to local channel during publish:', error)
+      }
+    }
+    await this.options.pubsub?.publish(topic, { kind: 'signal', data: signal, ...(eventId ? { id: eventId } : {}) })
+  }
+
+  async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
+    validateTopic(topic, 'topic')
+    if (!isJSONValue(payload)) throw new Error('[SSEChannelGroup.pushInlineData] payload must be a valid JSONValue.')
+    await this.deliverInlineData(topic, payload)
+    await this.options.pubsub?.publish(this.controlTopic, { kind: 'inlineData', topic, payload })
+  }
+
   async revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }> {
-    if (!isJSONValue(criteria)) {
-      throw new Error('[SSEChannelGroup.revokeWhere] criteria must be a valid JSONValue.')
+    if (!isJSONValue(criteria)) throw new Error('[SSEChannelGroup.revokeWhere] criteria must be a valid JSONValue.')
+    let localClosed = 0
+    for (const [channel, entry] of this.channels) {
+      if (matchesCriteria(channel.connectionId, entry.meta, criteria)) {
+        channel.revoke()
+        localClosed++
+      }
     }
-
-    const localClosed = this.closeLocalMatches(criteria)
-
-    if (this.pubsub) {
-      await this.pubsub.publish(this.controlTopic, { kind: 'control', data: criteria })
-    }
-
+    await this.options.pubsub?.publish(this.controlTopic, { kind: 'control', data: { type: 'revokeWhere', criteria } })
     return { localClosed }
   }
 
-  /**
-   * Target-revokes channels for a specific `connectionId`, with optional scope-pinning against `TMeta`.
-   *
-   * Closes matching local channels immediately and broadcasts a targeted control message
-   * to all cluster instances so remote connections for `connectionId` are closed as well.
-   *
-   * @param connectionId - The opaque `__restale_cid__` value sent by the client.
-   * @param scope - Optional metadata object that must match the channel's registered `TMeta`.
-   *                Enforces security scope-pinning so clients cannot revoke connectionIds belonging
-   *                to other users or tenants.
-   *
-   * @example
-   * ```ts
-   * // Revoke connection with scope-pinning
-   * await group.revokeByConnectionId(connectionId, { userId: req.user?.id })
-   * ```
-   */
   async revokeByConnectionId(
     connectionId: string,
-    scope?: TMeta extends object
-      ? Partial<Record<keyof TMeta, JSONValue | undefined>>
-      : Record<string, JSONValue | undefined>
+    scope?: Record<string, JSONValue | undefined>,
   ): Promise<{ closed: boolean }> {
-    if (typeof connectionId !== 'string' || connectionId.trim() === '') {
-      throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
-    }
-
-    const prunedScope = normalizeConnectionScope(
-      scope,
-      '[SSEChannelGroup.revokeByConnectionId]'
-    )
-
-    const localClosed = this.closeLocalConnection(connectionId, prunedScope)
-
-    if (this.pubsub) {
-      await this.pubsub.publish(this.controlTopic, {
-        kind: 'control',
-        data: {
-          type: 'revokeByConnectionId',
-          revokeByConnectionId: {
-            connectionId,
-            ...(prunedScope !== undefined ? { scope: prunedScope } : {}),
-          },
-        },
-      })
-    }
-
-    return { closed: localClosed }
+    if (!connectionId.trim()) throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
+    const normalisedScope = normalizeScope(scope)
+    const closed = this.closeConnection(connectionId, normalisedScope)
+    await this.options.pubsub?.publish(this.controlTopic, {
+      kind: 'control', data: { type: 'revokeByConnectionId', connectionId, ...(normalisedScope ? { scope: normalisedScope } : {}) },
+    })
+    return { closed }
   }
 
   async updateClientContext(
     connectionId: string,
     clientContext: TClientContext,
-    options?: {
-      scope?: TMeta extends object
-        ? Partial<Record<keyof TMeta, JSONValue | undefined>>
-        : Record<string, JSONValue | undefined>
-      revision?: number
-    }
+    updateOptions?: { scope?: Record<string, JSONValue | undefined>; revision?: number },
   ): Promise<{ updated: boolean }> {
-    if (typeof connectionId !== 'string' || connectionId.trim() === '') {
-      throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
-    }
-    const validatedClientContext = this.clientContextSchema
-      ? validateStandardSchema(clientContext, this.clientContextSchema)
+    if (!connectionId.trim()) throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
+    const context = this.options.clientContextSchema
+      ? validateStandardSchema(clientContext, this.options.clientContextSchema)
       : clientContext
-    const scope = normalizeConnectionScope(options?.scope, '[SSEChannelGroup.updateClientContext]')
-    const revision = options?.revision
+    const scope = normalizeScope(updateOptions?.scope)
+    const revision = updateOptions?.revision
     if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0)) {
       throw new Error('[SSEChannelGroup.updateClientContext] revision must be a non-negative safe integer.')
     }
-
-    let pubsubClientContext: JSONValue | undefined
-    if (this.pubsub) {
-      if (!isJSONValue(validatedClientContext)) {
-        throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
-      }
-      pubsubClientContext = validatedClientContext
-    }
-
-    const updated = this.updateLocalClientContext(connectionId, validatedClientContext, scope, revision)
-
-    if (this.pubsub) {
-      if (pubsubClientContext === undefined) {
-        throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be a valid JSONValue when pubsub is configured.')
-      }
-      await this.pubsub.publish(this.controlTopic, {
-        kind: 'control',
-        data: {
-          type: 'updateClientContext',
-          updateClientContext: {
-            connectionId,
-            clientContext: pubsubClientContext,
-            ...(revision !== undefined ? { revision } : {}),
-            ...(scope !== undefined ? { scope } : {}),
-          },
-        },
+    const updated = this.updateLocalClientContext(connectionId, context, scope, revision)
+    if (this.options.pubsub) {
+      if (!isJSONValue(context)) throw new Error('[SSEChannelGroup.updateClientContext] clientContext must be JSON-safe with pubsub.')
+      await this.options.pubsub.publish(this.controlTopic, {
+        kind: 'control', data: { type: 'updateClientContext', connectionId, clientContext: context,
+          ...(scope ? { scope } : {}), ...(revision !== undefined ? { revision } : {}) },
       })
     }
-
     return { updated }
   }
 
   getClientContext(connectionId: string): TClientContext | undefined {
-    const channels = this.connectionIndex.get(connectionId)
-    if (!channels) return undefined
-    for (const channel of channels) {
-      const entry = this.channels.get(channel)
-      if (entry) return entry.clientContext
+    for (const channel of this.connectionIndex.get(connectionId) ?? []) {
+      const value = this.channels.get(channel)?.clientContext
+      if (value !== undefined) return value
     }
     return undefined
   }
 
-  /**
-   * Unsubscribes from the control topic and cleans up PubSub resources.
-   */
   async dispose(): Promise<void> {
-    await this.controlPendingOp
-    const unsub = this.controlUnsubscribeFn
-    this.controlUnsubscribeFn = undefined
-    if (unsub) {
-      try {
-        await unsub()
-      } catch (err) {
-        console.error(
-          `[ERROR][SSEChannelGroup.dispose] Failed to unsubscribe control topic "${this.controlTopic}":`,
-          err
-        )
-      }
+    await this.controlUnsubscribe?.()
+    this.controlUnsubscribe = undefined
+    if (this.pendingTopicSubscriptions.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingTopicSubscriptions.values()))
     }
+    for (const unsubscribe of this.topicUnsubscribers.values()) await unsubscribe()
+    this.topicUnsubscribers.clear()
+    this.pendingTopicSubscriptions.clear()
   }
 
-  /**
-   * Broadcasts to channels matching the predicate.
-   *
-   * - If a channel throws `ChannelClosedError`, it is automatically deregistered
-   *   and iteration continues.
-   * - Any other errors (e.g. `SchemaValidationError`) are collected across all
-   *   channels and thrown as an `AggregateError` at the end — iteration always
-   *   completes. The errored channel is NOT deregistered (it may succeed next time).
-   *
-   * @example
-   * ```ts
-   * group.broadcast({ key: ['todos'] }, (meta) => meta?.role === 'admin')
-   * ```
-   */
-  broadcast(
-    signal: GroupSignalInput<TSignal, TBroadcastTarget>,
-    predicate?: (meta: TMeta | undefined) => boolean
-  ): void {
-    this.broadcastRaw(signal, predicate ?? (() => true))
-  }
-
-  private validateGroupSignalTargets(signal: TSignal | TSignal[]): void {
-    const groupTargets = this.target ?? this.channelDefaults?.target
-    if (groupTargets !== undefined) {
-      const targetList = toTargetList(groupTargets)
-      if (targetList.length > 1) {
-        validateSignalTargets(signal, targetList)
-      }
-    }
-  }
-
-  private normalizeSignalForGroup(signal: TSignal | TSignal[]): TSignal | TSignal[] {
-    const groupTargets = this.target ?? this.channelDefaults?.target
-    if (groupTargets === undefined) return signal
-    const targetList = toTargetList(groupTargets)
-    if (targetList.length === 1) {
-      const defaultTarget = targetList[0]
-      if (Array.isArray(signal)) {
-        return signal.map((item) =>
-          item && typeof item === 'object' && !('target' in item)
-            ? Object.assign({}, item, { target: defaultTarget })
-            : item
-        )
-      }
-      if (signal && typeof signal === 'object' && !('target' in signal)) {
-        return Object.assign({}, signal, { target: defaultTarget })
-      }
-    }
-    return signal
-  }
-
-  private broadcastRaw(signal: TSignal | TSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
-    const normalizedSignal = this.normalizeSignalForGroup(signal)
-    validateSignalPayload(normalizedSignal)
-    this.validateGroupSignalTargets(normalizedSignal)
+  private broadcastRaw(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+    validateSignalPayload(signal)
+    const eventId = this.eventStore?.add(signal).id
     const errors: unknown[] = []
-    let eventId: string | undefined = undefined
-    if (this.eventStore !== undefined) {
-      // Store the raw signal — deliverToChannel applies per-channel target transforms.
-      const record = this.eventStore.add(normalizedSignal)
-      eventId = record.id
-    }
-
-    // NOTE: Deleting entries from the `Map` during `for...of` iteration is fully safe in JS.
-    // Deletions of already-visited or current keys do not impact the iterator loop, and
-    // deregistration side effects (like topic cleanup) are localized to the deregistered channel.
     for (const [channel, entry] of this.channels) {
-      const shouldInclude = predicate(entry.meta)
+      if (!predicate(entry.meta)) continue
+      try { this.deliver(channel, signal, eventId) } catch (error) { errors.push(error) }
+    }
+    if (errors.length) throw new AggregateError(errors, 'Broadcast encountered runtime errors')
+  }
 
-      if (!shouldInclude) continue
+  private deliver(channel: SSEChannel, signal: UniversalSignal | UniversalSignal[], eventId?: string): void {
+    try { channel.invalidate(signal, eventId) }
+    catch (error) {
+      if (error instanceof ChannelClosedError) this.deregister(channel)
+      else throw error
+    }
+  }
 
-      try {
-        this.deliverToChannel(channel, normalizedSignal, 'broadcast', undefined, eventId)
-      } catch (error) {
-        if (error instanceof ChannelClosedError) {
-          this.deregister(channel)
-        } else {
-          const err = error instanceof Error ? error : new Error(String(error))
-          console.error(
-            "[ERROR][SSEChannelGroup.broadcast] Failed to invalidate channel",
-            "\n  metadata:", JSON.stringify(entry.meta, null, 2).slice(0, 500),
-            "\n  signal:", JSON.stringify(normalizedSignal, null, 2).slice(0, 500),
-            "\n  error:", err.stack || err.message
-          )
-          errors.push(error)
+  private validateMeta(meta: TMeta | undefined): TMeta | undefined {
+    return this.options.metaSchema ? validateStandardSchema(meta, this.options.metaSchema) : meta
+  }
+
+  private validateTopics(topics: string[] | undefined): void {
+    for (const topic of topics ?? []) validateTopic(topic, 'topics entry')
+  }
+
+  private attachTopic(channel: SSEChannel, topic: string): void {
+    let channels = this.topicChannels.get(topic)
+    if (!channels) this.topicChannels.set(topic, channels = new Set())
+    channels.add(channel)
+    if (this.options.pubsub && !this.topicUnsubscribers.has(topic) && !this.pendingTopicSubscriptions.has(topic)) {
+      const subscriptionPromise = this.options.pubsub.subscribe(topic, (message) => {
+        if (message.kind !== 'signal') return
+        const eventId = this.eventStore?.add(message.data, message.id).id ?? message.id
+        for (const subscribed of this.topicChannels.get(topic) ?? []) {
+          try {
+            this.deliver(subscribed, message.data, eventId)
+          } catch (error) {
+            console.error('[SSEChannelGroup] Failed to deliver pubsub signal to channel:', error)
+          }
         }
+      })
+      this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
+      subscriptionPromise
+        .then((unsubscribe) => {
+          if (!this.topicChannels.has(topic)) {
+            void unsubscribe()
+          } else {
+            this.topicUnsubscribers.set(topic, unsubscribe)
+          }
+          return unsubscribe
+        })
+        .catch((error: unknown) => {
+          console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
+          return undefined
+        })
+        .finally(() => {
+          this.pendingTopicSubscriptions.delete(topic)
+        })
+    }
+  }
+
+  private detachTopics(channel: SSEChannel, topics: Iterable<string>): void {
+    for (const topic of topics) {
+      const channels = this.topicChannels.get(topic)
+      channels?.delete(channel)
+      if (channels?.size === 0) {
+        this.topicChannels.delete(topic)
+        const unsubscribe = this.topicUnsubscribers.get(topic)
+        this.topicUnsubscribers.delete(topic)
+        if (unsubscribe) void unsubscribe()
       }
     }
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, 'Broadcast encountered validation or runtime errors')
-    }
   }
 
-  /**
-   * Explicitly broadcasts to ALL channels in the group.
-   *
-   * Forces the caller to consciously opt in to a blanket broadcast.
-   *
-   * - If a channel throws ChannelClosedError, it is automatically deregistered.
-   * - Any other errors are collected and thrown at the end of the broadcast.
-   */
-  broadcastToAll(signal: GroupSignalInput<TSignal, TBroadcastTarget>): void {
-    this.broadcastRaw(signal, () => true)
-  }
-
-  /**
-   * Broadcasts to channels whose metadata matches the signal's key using the
-   * same hierarchical prefix/exact matching semantics as the wire protocol.
-   *
-   * The signal's `key` is matched against channel metadata treated as a
-   * `JSONValue`. A channel receives the signal when its metadata is a JSON
-   * object whose fields are a superset of the signal's key objects.
-   *
-   * This eliminates the need to write manual predicate functions that mirror
-   * what the signal key already expresses.
-   *
-   * @example
-   * // Instead of:
-   * group.broadcast({ key: ['todos', { userId }] }, (meta) => meta.userId === userId)
-   * // You can write:
-   * group.broadcastByKey({ key: ['todos', { userId }] })
-   */
-  broadcastByKey(signal: [TBroadcastTarget] extends [readonly SignalTarget[]] ? never : TSignal): void
-  broadcastByKey(signal: TSignal): void {
-    const normalizedSignal = this.normalizeSignalForGroup(signal)
-    if (Array.isArray(normalizedSignal)) return
-    this.broadcastRaw(normalizedSignal, (meta) => {
-      if (!isJSONValue(meta)) return false
-      // Wrap scalar/array meta in an array to match against the signal key
-      const metaKey = Array.isArray(meta) ? meta : [meta]
-      return matchesInvalidateSignalKey(metaKey, normalizedSignal)
-    })
-  }
-
-  /**
-   * Publishes an invalidation signal to all local and remote subscribers on `topic`.
-   *
-   * Deliver to matching local channels first (synchronously), then publishes to the PubSub broker.
-   * Errors from the broker publish propagate to the caller.
-   *
-   * @example
-   * ```ts
-   * await group.publish(`user:${userId}`, { key: ['todos', { userId }] })
-   * ```
-   */
-  async publish(topic: string, signal: GroupSignalInput<TSignal, TBroadcastTarget>): Promise<void> {
-    await this.publishRaw(topic, signal)
-  }
-
-  async pushInlineData(topic: string, payload: JSONValue): Promise<void> {
-    validateTopic(topic, 'topic')
-    if (!isJSONValue(payload)) {
-      throw new Error('[SSEChannelGroup.pushInlineData] payload must be a valid JSONValue.')
-    }
-    if (!this.resolveInlineData) {
-      throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
-    }
-
-    let localError: Error | undefined
+  private async subscribeControl(): Promise<void> {
+    if (!this.options.pubsub) return
     try {
-      await this.deliverInlineData(topic, payload)
+      this.controlUnsubscribe = await this.options.pubsub.subscribe(this.controlTopic, (message) => {
+        try {
+          if (message.kind === 'inlineData') {
+            void this.deliverInlineData(message.topic, message.payload).catch((error: unknown) => {
+              console.error('[SSEChannelGroup] Failed to deliver inline data from pubsub:', error)
+            })
+            return
+          }
+          if (message.kind !== 'control' || !isRecord(message.data) || typeof message.data.type !== 'string') return
+          if (message.data.type === 'revokeWhere' && 'criteria' in message.data && isJSONValue(message.data.criteria)) {
+            for (const [channel, entry] of this.channels) {
+              if (matchesCriteria(channel.connectionId, entry.meta, message.data.criteria)) channel.revoke()
+            }
+          }
+          if (message.data.type === 'revokeByConnectionId' && typeof message.data.connectionId === 'string') {
+            this.closeConnection(message.data.connectionId, readScope(message.data))
+          }
+          if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
+            const raw = message.data.clientContext
+            const scope = readScope(message.data)
+            const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
+            if (this.options.clientContextSchema) {
+              const context = validateStandardSchema(raw, this.options.clientContextSchema)
+              this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
+            } else if (this.isClientContext(raw)) {
+              this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
+            }
+          }
+        } catch (error) {
+          console.error('[SSEChannelGroup] Error processing pubsub control message:', error)
+        }
+      })
     } catch (error) {
-      localError = error instanceof Error ? error : new Error(String(error))
+      console.error(`[SSEChannelGroup] Failed to subscribe to pubsub control topic "${this.controlTopic}":`, error)
     }
-    if (this.pubsub) {
-      await this.pubsub.publish(this.controlTopic, { kind: 'inlineData', topic, payload })
-    }
-    if (localError) throw localError
   }
 
-  private async publishRaw(topic: string, signal: TSignal | TSignal[]): Promise<void> {
-    validateTopic(topic, 'topic')
-    const normalizedSignal = this.normalizeSignalForGroup(signal)
-    validateSignalPayload(normalizedSignal)
-    this.validateGroupSignalTargets(normalizedSignal)
-    let eventId: string | undefined = undefined
-    if (this.eventStore !== undefined) {
-      // Store the raw signal — deliverToChannel applies per-channel target transforms.
-      const record = this.eventStore.add(normalizedSignal)
-      eventId = record.id
+  private closeConnection(connectionId: string, scope?: Record<string, JSONValue>): boolean {
+    let closed = false
+    for (const channel of Array.from(this.connectionIndex.get(connectionId) ?? [])) {
+      const entry = this.channels.get(channel)
+      if (!entry || (scope && !isScopeMatch(entry.meta, scope))) continue
+      channel.revoke()
+      closed = true
     }
+    return closed
+  }
 
-    // 1. Deliver to local channels registered on topic
-    const topicManager = this.topics.get(topic)
-    if (topicManager) {
-      for (const channel of topicManager.channels) {
-        this.deliverToChannel(channel, normalizedSignal, 'publish', topic, eventId)
+  private updateLocalClientContext(
+    connectionId: string, context: TClientContext, scope?: Record<string, JSONValue>, revision?: number,
+  ): boolean {
+    const latest = this.clientContextRevisions.get(connectionId)
+    if (revision !== undefined && latest !== undefined && revision <= latest) return false
+    let updated = false
+    for (const channel of this.connectionIndex.get(connectionId) ?? []) {
+      const entry = this.channels.get(channel)
+      if (entry && (!scope || isScopeMatch(entry.meta, scope))) { entry.clientContext = context; updated = true }
+    }
+    if (updated && revision !== undefined) this.clientContextRevisions.set(connectionId, revision)
+    return updated
+  }
+
+  private async deliverInlineData(topic: string, payload: JSONValue): Promise<void> {
+    const resolver = this.options.resolveInlineData
+    if (!resolver) throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
+    const channels = Array.from(this.topicChannels.get(topic) ?? [])
+    const connections = channels.map((channel) => {
+      const entry = this.channels.get(channel)
+      return { connectionId: channel.connectionId, meta: entry?.meta, clientContext: entry?.clientContext }
+    })
+    const resolved = await resolver(connections, payload)
+    const missingConnectionIds = connections.filter((connection) => !resolved.has(connection.connectionId)).map((connection) => connection.connectionId)
+    if (missingConnectionIds.length) {
+      console.warn(
+        `[SSEChannelGroup] resolveInlineData returned no result for ${String(missingConnectionIds.length)} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
+      )
+      this.options.onInlineDataResolverError?.({ topic, missingConnectionIds })
+    }
+    const errors: unknown[] = []
+    for (const channel of channels) {
+      const result = resolved.get(channel.connectionId)
+      if (!result) continue
+      const signal: UniversalSignal = result.inlineData === undefined
+        ? result.signal
+        : {
+            key: result.signal.key,
+            inlineData: result.inlineData,
+            ...(result.markStale ?? result.signal.markStale ? { markStale: true } : {}),
+          }
+      try {
+        this.deliver(channel, signal)
+      } catch (error) {
+        errors.push(error)
       }
     }
-
-    // 2. Publish to the broker (publish the raw signal — remote instances apply their own target transform)
-    if (this.pubsub) {
-      await this.pubsub.publish(topic, { kind: 'signal', data: normalizedSignal, id: eventId })
-    }
+    if (errors.length) throw new AggregateError(errors, 'Inline data delivery encountered runtime errors')
   }
-}
 
-export type SSEChannelGroup<
-  TSignal extends InvalidateSignal = InvalidateSignal,
-  TMeta = unknown,
-  TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-  TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
-  TClientContext = unknown,
-> = SSEChannelGroupImplementation<TSignal, TMeta, TTarget, TBroadcastTarget, TClientContext>
-
-interface SSEChannelGroupConstructor {
-  new <
-    TTarget extends SignalTarget,
-    TMeta = unknown,
-    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-      metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>
-      clientContextSchema?: TClientContextSchema
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
-      'channelDefaults' | 'metaSchema' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, SignalTarget, TTarget, TClientContext>
-  new <
-    TTarget extends readonly SignalTarget[],
-    TMeta = unknown,
-    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-      metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>
-      clientContextSchema?: TClientContextSchema
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
-      'channelDefaults' | 'metaSchema' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, SignalTarget, TTarget, TClientContext>
-  new <
-    TTarget extends SignalTarget,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-      clientContextSchema?: TClientContextSchema
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TClientContext>,
-      'channelDefaults' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, SignalTarget, TTarget, TClientContext>
-  new <
-    TTarget extends readonly SignalTarget[],
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: {
-      channelDefaults: ChannelDefaults & { target: TTarget }
-      clientContextSchema?: TClientContextSchema
-    } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TClientContext>,
-      'channelDefaults' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, SignalTarget, TTarget, TClientContext>
-  new <
-    TTarget extends SignalTarget,
-    TMeta = unknown,
-    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: { target: TTarget; metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
-      'target' | 'metaSchema' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, SchemaValue<TMeta, TSchema>, TTarget, TTarget, TClientContext>
-  new <
-    TTarget extends readonly SignalTarget[],
-    TMeta = unknown,
-    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: { target: TTarget; metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<
-      SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TClientContext>,
-      'target' | 'metaSchema' | 'clientContextSchema'
-    >
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, SchemaValue<TMeta, TSchema>, TTarget, TTarget, TClientContext>
-  new <
-    TMeta = unknown,
-    TSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TSignal extends InvalidateSignal = InvalidateSignal,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: { metaSchema: TSchema & StandardSchemaV1<unknown, TMeta>; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<TSignal, SchemaValue<TMeta, TSchema>, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>, 'metaSchema' | 'clientContextSchema'>
-  ): SSEChannelGroup<TSignal, SchemaValue<TMeta, TSchema>, TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[], TClientContext>
-  new <
-    TTarget extends SignalTarget,
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: { target: TTarget; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TClientContext>, 'target' | 'clientContextSchema'>
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget>, unknown, TTarget, TTarget, TClientContext>
-  new <
-    TTarget extends readonly SignalTarget[],
-    TClientContextSchema extends StandardSchemaV1<unknown, unknown> = StandardSchemaV1<unknown, unknown>,
-    TClientContext = SchemaOutput<TClientContextSchema>,
-  >(
-    options: { target: TTarget; clientContextSchema?: TClientContextSchema } & Omit<SSEChannelGroupOptions<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TClientContext>, 'target' | 'clientContextSchema'>
-  ): SSEChannelGroup<ReStaleSignalForTarget<TTarget[number]>, unknown, TTarget, TTarget, TClientContext>
-  new <
-    TSignal extends InvalidateSignal = InvalidateSignal,
-    TMeta = unknown,
-    TTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TargetForSignal<TSignal> | readonly TargetForSignal<TSignal>[],
-    TBroadcastTarget extends SignalTarget | SignalTarget[] | readonly SignalTarget[] = TTarget,
-    TClientContext = unknown,
-  >(
-    options?: SSEChannelGroupOptions<TSignal, TMeta, TTarget, TClientContext>
-  ): SSEChannelGroup<TSignal, TMeta, TTarget, TBroadcastTarget, TClientContext>
-}
-
-export const SSEChannelGroup: SSEChannelGroupConstructor = SSEChannelGroupImplementation
-
-function hasPubSubMethods<TSignal extends InvalidateSignal>(
-  pubsub: unknown
-): pubsub is PubSubAdapter<TSignal> {
-  if (pubsub === null || typeof pubsub !== 'object') return false
-  const obj: { publish?: unknown; subscribe?: unknown } = pubsub
-  return typeof obj.publish === 'function' && typeof obj.subscribe === 'function'
-}
-
-function validateTopics(topics: string[] | undefined): void {
-  if (topics === undefined) return
-  for (const topic of topics) validateTopic(topic, 'topics entry')
+  private isClientContext(value: unknown): value is TClientContext {
+    if (this.options.clientContextSchema) {
+      const result = this.options.clientContextSchema['~standard'].validate(value)
+      return !(result instanceof Promise) && !result.issues
+    }
+    return true
+  }
 }
 
 function validateTopic(topic: string, label: string): void {
-  // Gap 10: Reject zero-width unicode whitespace and blank strings
-  if (typeof topic !== 'string' || removeInvisibleWhitespace(topic) === '') {
+  if (typeof topic !== 'string' || topic.replace(/(?:\s|\u200B|\u200C|\u200D|\uFEFF)/gu, '') === '') {
     throw new Error(`[SSEChannelGroup] ${label} must be a non-empty, non-whitespace string.`)
   }
 }
 
-function removeInvisibleWhitespace(value: string): string {
-  return value
-    .replaceAll('\u200B', '')
-    .replaceAll('\u200C', '')
-    .replaceAll('\u200D', '')
-    .replaceAll('\uFEFF', '')
-    .trim()
-}
-
-function toTargetList(target: SignalTarget | SignalTarget[] | readonly SignalTarget[]): readonly SignalTarget[] {
-  if (typeof target === 'string') {
-    return [target]
-  }
-  return target
-}
-
-function channelMatchesCriteria(ch: { readonly connectionId: string }, meta: unknown, criteria: JSONValue): boolean {
-  if (!isJSONValue(meta)) return false
-
-  // 1. Direct match on metadata
-  if (matchesJSONValue(meta, criteria, false)) {
-    return true
-  }
-
-  // 2. Match on combined object if metadata is an object
-  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
-    const combined = { ...meta, connectionId: ch.connectionId }
-    if (matchesJSONValue(combined, criteria, false)) {
-      return true
-    }
-  }
-
-  // 3. Match on connectionId alone if criteria is an object containing connectionId
-  if (isJSONRecord(criteria)) {
-    const criteriaObj = criteria
-    if ('connectionId' in criteriaObj) {
-      if (ch.connectionId !== criteriaObj.connectionId) {
-        return false
-      }
-      const otherKeys = Object.keys(criteriaObj).filter(k => k !== 'connectionId')
-      if (otherKeys.length === 0) {
-        return true
-      }
-      if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
-        const remainingCriteria: Record<string, JSONValue> = {}
-        for (const k of otherKeys) {
-          remainingCriteria[k] = criteriaObj[k]
-        }
-        return matchesJSONValue(meta, remainingCriteria, false)
-      }
-      return false
-    }
-  }
-
-  return false
-}
-
-function isJSONRecord(value: JSONValue): value is { [key: string]: JSONValue } {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function readControlScope(payload: Record<string, JSONValue>): Record<string, JSONValue> | undefined {
-  if (!('scope' in payload)) return undefined
-  const scope = payload.scope
-  return scope && typeof scope === 'object' && !Array.isArray(scope) ? scope : undefined
+function normalizeScope(scope: Record<string, JSONValue | undefined> | undefined): Record<string, JSONValue> | undefined {
+  if (!scope) return undefined
+  const result: Record<string, JSONValue> = {}
+  for (const [key, value] of Object.entries(scope)) if (value !== undefined) {
+    if (!isJSONValue(value)) throw new Error('[SSEChannelGroup] scope values must be valid JSONValues.')
+    result[key] = value
+  }
+  if (!Object.keys(result).length) throw new Error('[SSEChannelGroup] scope must contain at least one non-undefined property.')
+  return result
 }
 
-/**
- * Checks whether a channel entry's stored `meta` is a JSON superset of the
- * given `scope`. Used by both `closeLocalConnection` (revocation) and
- * `updateLocalClientContext` (context updates) for scope-pinning.
- */
-function entryMatchesScope(meta: unknown, scope: Record<string, JSONValue>): boolean {
-  if (!isJSONValue(meta)) return false
-  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false
-  return matchesJSONValue(meta, scope, false)
+function readScope(value: Record<string, unknown>): Record<string, JSONValue> | undefined {
+  return 'scope' in value && isRecord(value.scope) && isJSONValue(value.scope) ? value.scope : undefined
 }
 
-/** Reads an optional non-negative safe-integer revision from a control payload. */
-function readClientContextRevision(payload: object): number | undefined | null {
-  if (!Object.hasOwn(payload, 'revision')) return undefined
-  const revision: unknown = Reflect.get(payload, 'revision')
-  if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return null
-  return revision
+function isScopeMatch(meta: unknown, scope: Record<string, JSONValue>): boolean {
+  return isRecord(meta) && Object.entries(scope).every(([key, value]) => matchesJson(meta[key], value, false))
 }
 
-/**
- * Normalises a caller-supplied scope object: prunes `undefined`-valued keys,
- * validates that remaining values are JSON-safe, and rejects scopes that resolve
- * to an empty object (which would unsafely match every connection).
- *
- * Returns `undefined` when no scope was supplied, or a null-prototype record
- * containing only defined JSON values otherwise.
- */
-function normalizeConnectionScope(
-  scope: Record<string, JSONValue | undefined> | undefined,
-  label: string
-): Record<string, JSONValue> | undefined {
-  if (scope === undefined) return undefined
-  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
-    throw new Error(`${label} scope must be a non-null JSON plain object.`)
-  }
-  const targetScope: Record<string, JSONValue> = {}
-  Object.setPrototypeOf(targetScope, null)
-  for (const [k, v] of Object.entries(scope)) {
-    if (v !== undefined) {
-      if (!isJSONValue(v)) {
-        throw new Error(`${label} scope values must be valid JSONValues.`)
-      }
-      targetScope[k] = v
-    }
-  }
-  if (Object.keys(targetScope).length === 0) {
-    throw new Error(`${label} scope must contain at least one non-undefined property.`)
-  }
-  return targetScope
+function matchesCriteria(connectionId: string, meta: unknown, criteria: JSONValue): boolean {
+  if (isRecord(criteria) && 'connectionId' in criteria && criteria.connectionId !== connectionId) return false
+  if (!isRecord(criteria)) return matchesJson(meta, criteria, false)
+  if (!isRecord(meta)) return false
+  return Object.entries(criteria).every(([key, value]) => key === 'connectionId' || matchesJson(meta[key], value, false))
 }
+
+function isMetaMatchedByKey(meta: unknown, key: JSONValue[], exact: boolean): boolean {
+  const metaKey: JSONValue[] = isJSONValueArray(meta) ? meta : isJSONValue(meta) ? [meta] : []
+  if (exact ? metaKey.length !== key.length : metaKey.length < key.length) return false
+  return key.every((part, index) => matchesJson(metaKey[index], part, exact))
+}
+
+function matchesJson(actual: unknown, expected: JSONValue, exact: boolean): boolean {
+  if (actual === expected) return true
+  if (!isJSONValue(actual) || actual === null || expected === null ||
+    typeof actual !== 'object' || typeof expected !== 'object') return false
+  if (Array.isArray(actual) || Array.isArray(expected)) {
+    if (!Array.isArray(actual) || !Array.isArray(expected)) return false
+    if (exact ? actual.length !== expected.length : actual.length < expected.length) return false
+    return expected.every((part, index) => matchesJson(actual[index], part, exact))
+  }
+  const actualRecord = actual as Record<string, JSONValue>
+  const expectedRecord = expected as Record<string, JSONValue>
+  if (exact && Object.keys(actualRecord).length !== Object.keys(expectedRecord).length) return false
+  return Object.entries(expectedRecord).every(([key, value]) =>
+    Object.hasOwn(actualRecord, key) && matchesJson(actualRecord[key], value, exact))
+}
+

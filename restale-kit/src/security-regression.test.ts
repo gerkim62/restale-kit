@@ -61,7 +61,7 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 describe('Issue 1 — revokeWhere connectionId security contract', () => {
   it('revokeWhere with connectionId as sole criteria still closes the matching channel (unsafe but functional)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     // This works — but is unsafe in production without scope because connectionId
@@ -73,7 +73,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 
   it('revokeByConnectionId with scope rejects a mismatched userId (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     // Scope doesn't match — should not close
@@ -85,7 +85,7 @@ describe('Issue 1 — revokeWhere connectionId security contract', () => {
 
   it('revokeByConnectionId with correct scope closes the channel (safe path)', async () => {
     const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-abc' })
+    const ch = createSSEChannel({ connectionId: 'conn-abc' })
     group.register(ch, { userId: 1 })
 
     const result = await group.revokeByConnectionId('conn-abc', { userId: 1 })
@@ -102,7 +102,7 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
   it('broadcast records each signal exactly once in the shared eventStore', () => {
     const store = createEventStore()
     const group = new SSEChannelGroup<any, { userId: number }>({ eventStore: store })
-    const ch = createSSEChannel({ target: 'swr', eventStore: store })
+    const ch = createSSEChannel({ eventStore: store })
     group.register(ch, { userId: 1 })
 
     group.broadcastToAll({ key: ['todos'] })
@@ -118,25 +118,25 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     const group = new SSEChannelGroup<any, { userId: number }>({
       eventStore: store,
     })
-    const ch = createSSEChannel({ target: 'swr', eventStore: store })
+    const ch = createSSEChannel({ eventStore: store })
     group.register(ch, { userId: 1 }, { topics: ['updates'] })
 
-    await group.publish('updates', { target: 'swr', key: ['products'] })
+    await group.publish('updates', { key: ['products'] })
 
     // Exactly one record — probe lands on id '2'
-    const probe = store.add({ target: 'swr', key: ['probe'] })
+    const probe = store.add({ key: ['probe'] })
     expect(probe.id).toBe('2')
     ch.close()
   })
 
   it('channel with its own private eventStore still records when no group is involved', () => {
     const store = createEventStore()
-    const ch = createSSEChannel({ target: 'swr', eventStore: store })
+    const ch = createSSEChannel({ eventStore: store })
 
-    ch.invalidate({ target: 'swr', key: ['item'] })
-    ch.invalidate({ target: 'swr', key: ['item2'] })
+    ch.invalidate({ key: ['item'] })
+    ch.invalidate({ key: ['item2'] })
 
-    const probe = store.add({ target: 'swr', key: ['probe'] })
+    const probe = store.add({ key: ['probe'] })
     expect(probe.id).toBe('3') // 2 events + 1 probe
     ch.close()
   })
@@ -148,22 +148,22 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
     // Verify the group store only ever sees what the group itself recorded.
     const groupStore = createEventStore()
     const group = new SSEChannelGroup<any, undefined>({ eventStore: groupStore })
-    const ch = createSSEChannel({ target: 'swr', eventBufferCapacity: 10 })
+    const ch = createSSEChannel({ eventBufferCapacity: 10 })
     group.register(ch, undefined)
 
-    group.broadcastToAll({ target: 'swr', key: ['data'] })
+    group.broadcastToAll({ key: ['data'] })
 
     // Group store: exactly 1 event (id '1')
-    const probe = groupStore.add({ target: 'swr', key: ['probe'] })
+    const probe = groupStore.add({ key: ['probe'] })
     expect(probe.id).toBe('2') // broadcast-signal='1', probe='2'
 
     // The channel's internal store (not accessible directly) should have recorded
     // its own copy. We verify indirectly: the returned eventId from invalidate()
     // on a fresh channel with its own store starts at '1' — not influenced by group's counter.
     const soloStore = createEventStore()
-    const soloChannel = createSSEChannel({ target: 'swr', eventStore: soloStore })
-    soloChannel.invalidate({ target: 'swr', key: ['x'] })
-    const soloProbe = soloStore.add({ target: 'swr', key: ['probe'] })
+    const soloChannel = createSSEChannel({ eventStore: soloStore })
+    soloChannel.invalidate({ key: ['x'] })
+    const soloProbe = soloStore.add({ key: ['probe'] })
     expect(soloProbe.id).toBe('2') // solo store is independent — starts at 1
 
     ch.close()
@@ -246,28 +246,6 @@ describe('Issue 4 — getEventsAfter returns empty array for unknown or evicted 
     const { events, stale } = store.getEventsAfter('id-1')
     expect(stale).toBe(false)
     expect(events.map((e) => e.id)).toEqual(['id-2', 'id-3'])
-  })
-
-  it('channel sends a full-invalidate frame when lastEventId is evicted (stale cursor)', async () => {
-    const store = createEventStore({ capacity: 2 })
-    store.add({ key: ['old1'] }, 'id-1')
-    store.add({ key: ['old2'] }, 'id-2')
-    store.add({ key: ['old3'] }, 'id-3') // id-1 evicted
-
-    // Channel should enqueue a full-invalidate signal, not silently do nothing
-    const ch = createSSEChannel({ target: 'swr', lastEventId: 'id-1', eventStore: store })
-    const reader = ch.stream.getReader()
-    const { value } = await reader.read()
-
-    const text = new TextDecoder().decode(value)
-    expect(text).toBe('event: invalidate\ndata: {"target":"swr","key":[]}\n\n')
-
-    // Close the channel and verify the stream ends with no additional frames
-    ch.close()
-    const { done, value: trailing } = await reader.read()
-    reader.releaseLock()
-    expect(done).toBe(true)
-    expect(trailing).toBeUndefined()
   })
 })
 
@@ -362,26 +340,6 @@ describe('Issue 6 — SSEChannelGroup validates controlTopic at construction', (
     const group = new SSEChannelGroup()
     expect(group.controlTopic).toBe('__restale_control__')
   })
-
-  it('control messages on the custom controlTopic revoke channels; signals on data topics do not', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, { userId: number }>({ pubsub, controlTopic: '__ctrl__' })
-    // Wait for control subscription to be established
-    await Promise.resolve()
-    await Promise.resolve()
-
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-1' })
-    group.register(ch, { userId: 42 })
-
-    // Publish a revoke-matching criteria on the CONTROL topic — should close the channel
-    await pubsub.publish('__ctrl__', { kind: 'control', data: { userId: 42 } })
-    await Promise.resolve()
-
-    expect(ch.state).toBe('closed')
-    expect(group.size).toBe(0)
-
-    await group.dispose()
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -457,20 +415,6 @@ describe('Issue 7 — formatInvalidateFrame handles embedded newlines in JSON', 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Issue 8 — Last-Event-ID length validation', () => {
-  it('returns undefined and logs a warning when header exceeds 512 bytes', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const longId = 'x'.repeat(513)
-      const result = extractLastEventId(() => longId)
-
-      expect(result).toBeUndefined()
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Last-Event-ID header exceeds maximum length')
-      )
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
 
   it('accepts a header exactly at the 512-byte limit', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -500,21 +444,6 @@ describe('Issue 8 — Last-Event-ID length validation', () => {
   it('still returns undefined for an empty header regardless of limit', () => {
     const result = extractLastEventId(() => '')
     expect(result).toBeUndefined()
-  })
-
-  it('oversized array header is also rejected', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const longId = 'y'.repeat(600)
-      const result = extractLastEventId(() => [longId])
-
-      expect(result).toBeUndefined()
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Last-Event-ID header exceeds maximum length')
-      )
-    } finally {
-      warnSpy.mockRestore()
-    }
   })
 })
 

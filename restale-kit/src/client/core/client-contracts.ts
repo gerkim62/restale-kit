@@ -1,83 +1,22 @@
-import type {
-  InvalidateSignal,
-  SignalTarget,
-  TargetForSignal,
-  ReStaleSignalForTarget,
-  RevokeEventDetail,
-  RenewEventDetail,
-} from '@/types/protocol.js'
+import type { RevokeEventDetail, RenewEventDetail, UniversalSignal } from '@/types/protocol.js'
 
 export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
 
-/**
- * A phantom brand that marks an `onInvalidate` callback as having been produced
- * by a specific framework adapter (e.g. `useTanstackQueryAdapter`, `useSwrAdapter`).
- *
- * The type parameter `TTarget` records which signal target the callback handles.
- * `useReStale` reads this brand to infer the `target` option automatically and to
- * enforce that `target` and `onInvalidate` are consistent at compile time.
- *
- * You never construct this directly — adapter hooks return it for you.
- */
-export type AdaptedInvalidateCallback<
-  TTarget extends SignalTarget = SignalTarget,
-  TSignal extends InvalidateSignal = InvalidateSignal,
-> = ((signal: TSignal | TSignal[]) => void) & {
-  readonly target: TTarget
-  readonly __restaleTarget: TTarget
+/** A callback produced by an adapter factory. */
+export type AdaptedCallback = ((signal: UniversalSignal | UniversalSignal[]) => void) & {
+  readonly __restaleAdapter: true
 }
-
-/**
- * Factory that brands a plain callback with its signal target.
- * Used internally by adapter hooks — not part of the public API.
- *
- * `Object.assign` merges the `__restaleTarget` property into the function object,
- * which TypeScript verifies structurally — no cast required.
- */
-export function makeAdaptedCallback<TSignal extends InvalidateSignal = InvalidateSignal>(
-  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void),
-  target: TargetForSignal<TSignal>
-): AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal>
-export function makeAdaptedCallback<TSignal extends InvalidateSignal = InvalidateSignal>(
-  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void)
-): AdaptedInvalidateCallback<'generic', TSignal>
-export function makeAdaptedCallback<
-  TTarget extends SignalTarget = SignalTarget,
-  TSignal extends ReStaleSignalForTarget<TTarget> = ReStaleSignalForTarget<TTarget>,
->(
-  target: TTarget,
-  fn: ((signal: TSignal) => void) | ((signals: TSignal[]) => void)
-): AdaptedInvalidateCallback<TTarget, TSignal>
+/** Brands a callback without attaching target-specific metadata. */
 export function makeAdaptedCallback(
-  arg1: unknown,
-  arg2?: unknown
-): unknown {
-  if (typeof arg1 === 'function') {
-    const target = typeof arg2 === 'string' ? arg2 : 'generic'
-    return Object.assign(arg1, { target, __restaleTarget: target })
+  fn: (signal: UniversalSignal | UniversalSignal[]) => void,
+): AdaptedCallback {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected an adapter callback function')
   }
-  if (typeof arg2 === 'function') {
-    const target = typeof arg1 === 'string' ? arg1 : 'generic'
-    return Object.assign(arg2, { target, __restaleTarget: target })
-  }
-  throw new TypeError(
-    '[makeAdaptedCallback] expected a callback function as the first or second argument.'
-  )
+
+  return Object.assign(fn, { __restaleAdapter: true as const })
 }
 
-/**
- * Discriminated union representing the SSE client's connection state.
- *
- * - `connecting` — actively establishing or waiting to retry.
- * - `open` — stream is live and delivering events.
- * - `closed` — stream has been shut down:
- *   - `reason: 'manual'` — caller called `client.close()`.
- *   - `reason: 'unmount'` — React hook unmounted the component.
- *   - `reason: 'revoked'` — server sent a terminal `revoke` frame (e.g. logout, ban),
- *     or a `renew`-triggered confirmatory reconnect exhausted its attempt budget.
- *     Auto-reconnect is suppressed until `connect()` is called explicitly.
- * - `error` — connection failed and retry limit was reached (or `autoReconnect` is off).
- */
 export type ConnectionStatus =
   | { status: 'connecting' }
   | { status: 'open' }
@@ -85,122 +24,48 @@ export type ConnectionStatus =
   | { status: 'closed'; reason: 'rejected'; response: RejectedConnectionResponse }
   | { status: 'error'; error: Event }
 
-/** HTTP response details exposed when an SSE handshake is intentionally not retried. */
 export interface RejectedConnectionResponse {
   status: number
   headers: Readonly<Record<string, readonly string[]>>
 }
 
-/** Matches one HTTP status, a status class, or an inclusive status-code range. */
 export type HttpStatusMatcher =
   | number
   | '1xx' | '2xx' | '3xx' | '4xx' | '5xx'
   | { from: number; to: number }
 
-/**
- * Configuration for the exponential backoff reconnect strategy.
- */
 export interface ReconnectOptions {
-  /** Base delay in milliseconds before the first retry. Default: 1_000. */
   baseDelayMs?: number
-  /** Maximum delay cap in milliseconds. Default: 30_000. */
   maxDelayMs?: number
-  /** Whether to apply random jitter to the delay. Default: true. */
   jitter?: boolean
-  /** Maximum number of retry attempts before giving up. Default: Infinity. */
   maxRetries?: number
-  /** Statuses that close immediately instead of being retried. Defaults to no matches. */
   nonRetryableStatuses?: HttpStatusMatcher | readonly HttpStatusMatcher[]
-  /** Respect a retryable response's `Retry-After` header for its next retry. Default: `'ignore'`. */
   retryAfter?: 'respect' | 'ignore'
 }
 
-/**
- * Granular auto-reconnect settings for SSEInvalidatorClient.
- */
 export interface AutoReconnectOptions {
-  /** Enable managed reconnection after a mid-stream network drop. Default: true. */
   native?: boolean
-  /** Enable managed exponential-backoff retries on connection setup failure or HTTP errors. Default: true. */
   jsBackoff?: boolean
 }
 
-/**
- * Configuration options for `SSEInvalidatorClient`.
- *
- * Gap 9: Target constrained to match signal's TargetForSignal<TSignal>.
- */
-export interface ClientOptions<TSignal extends InvalidateSignal = InvalidateSignal> {
-  /**
-   * Whether to automatically reconnect on failure. Default: true.
-   *
-   * Accepts a `boolean` or an `AutoReconnectOptions` object for granular control over
-   * managed mid-stream retries vs. JavaScript backoff retries during connection setup.
-   * Manual reconnection via `connect()` remains available regardless of setting.
-   */
+export interface ClientOptions {
   autoReconnect?: boolean | AutoReconnectOptions
-  /** Reconnect backoff configuration. */
   reconnect?: ReconnectOptions
-  /** Include cookies with cross-origin SSE requests. Default: `false`. Custom authorization headers are not supported. */
   withCredentials?: boolean
-  /** Enable debug logging for connection lifecycle events. Default: false. */
   debug?: boolean
-  target?: TargetForSignal<TSignal>
-  /** URL used for client-context POSTs. Defaults to the SSE stream URL. */
   clientContextUrl?: string
-  callback?: AdaptedInvalidateCallback<TargetForSignal<TSignal>, TSignal> | ((signal: TSignal | TSignal[]) => void)
+  callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void
 }
 
-/**
- * Payload carried by the `revoke` CustomEvent.
- *
- * Discriminated on `reason` so consumers can narrow the type:
- *
- * ```ts
- * client.addEventListener('revoke', (e) => {
- *   if (e.detail.reason === 'unsupported-target') {
- *     console.warn(`Server supports: ${e.detail.supported.join(', ')}`)
- *   }
- * })
- * ```
- */
-/**
- * Typed event map for `SSEInvalidatorClient`.
- */
-export interface SSEInvalidatorClientEventMap<TSignal extends InvalidateSignal> {
-  invalidate: CustomEvent<TSignal | TSignal[]>
+export interface SSEInvalidatorClientEventMap {
+  invalidate: CustomEvent<UniversalSignal | UniversalSignal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
-  /** Emitted when a configured non-retryable HTTP status rejects the handshake. */
   rejected: CustomEvent<RejectedConnectionResponse>
-  /**
-   * Emitted when the server sends a terminal `revoke` frame. Does not auto-reconnect.
-   *
-   * The `detail` is a `RevokeEventDetail` discriminated union — narrow on `detail.reason`
-   * to access the `requested`/`supported` fields for `'unsupported-target'`.
-   */
   revoke: CustomEvent<RevokeEventDetail>
-  /**
-   * Emitted when the server sends a `renew` frame, indicating the connection is ending
-   * intentionally (deadline reached) but the client is NOT being told it is unauthorized.
-   *
-   * The client will make up to `detail.maxAttempts` confirmatory reconnect attempts
-   * automatically. This event fires once, at the moment the `renew` frame is received,
-   * before any reconnect attempt begins. Listening to it is optional — reconnection
-   * happens regardless.
-   *
-   * If all confirmatory attempts fail, a `statuschange` event is emitted with
-   * `{ status: 'closed', reason: 'revoked' }` and a `revoke` event fires with
-   * `{ reason: 'deadline' }`.
-   */
   renew: CustomEvent<RenewEventDetail>
-  /**
-   * Emitted when automatic reconnection fails permanently after exhausting `maxRetries`.
-   *
-   * Accompanies the final `statuschange` event transitioning to `{ status: 'error' }`.
-   */
   retriesexhausted: CustomEvent<{ attempts: number; maxRetries: number }>
 }

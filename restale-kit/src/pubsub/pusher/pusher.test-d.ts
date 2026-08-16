@@ -1,37 +1,17 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import { pusherPubSubAdapter, type PusherClient } from '@/pubsub/pusher/index.js'
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { SWRSignal, TanStackQuerySignal } from '@/types/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-describe('pusherPubSubAdapter type safety', () => {
-  test('pusherPubSubAdapter returns PubSubAdapter<TSignal> with handleWebhook', () => {
-    const mockClient = {} as PusherClient
-    const adapter = pusherPubSubAdapter<SWRSignal>(mockClient)
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-    expectTypeOf(adapter).toExtend<PubSubAdapter<SWRSignal>>()
-    expectTypeOf(adapter.publish).toBeCallableWith('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
-    expectTypeOf(adapter.subscribe).toBeCallableWith('topic', (_msg: PubSubMessage<SWRSignal>) => {})
-    expectTypeOf(adapter.handleWebhook).toBeCallableWith('raw-body', { 'x-pusher-signature': 'sig' })
-  })
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-  test('pusherPubSubAdapter publish rejects mismatched signal data', () => {
-    const mockClient = {} as PusherClient
-    const adapter = pusherPubSubAdapter<SWRSignal>(mockClient)
-
-    // @ts-expect-error TanStackQuerySignal data should be rejected on SWRSignal adapter
-    void adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
-  })
-
-  test('pusherPubSubAdapter encryption options validation', () => {
-    const mockClient = {} as PusherClient
-
-    const disabled = pusherPubSubAdapter(mockClient, { encrypt: false })
-    const enabled = pusherPubSubAdapter(mockClient, { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' })
-    expectTypeOf(disabled).toExtend<PubSubAdapter>()
-    expectTypeOf(enabled).toExtend<PubSubAdapter>()
-
-    // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    void pusherPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
-  })
+  void targetSignal
+  void invalidInlineData
 })

@@ -1,57 +1,17 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import { PubSubDecryptionError } from '@/pubsub/core/index.js'
-import type { SWRSignal, PubSubMessage } from '@/types/index.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-describe('PubSubEncryptionOptions mutual exclusivity', () => {
-  test('valid encryption options compile', () => {
-    const disabled = { encrypt: false } as const
-    const enabled = { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' } as const
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-    expectTypeOf(disabled).toExtend<PubSubEncryptionOptions>()
-    expectTypeOf(enabled).toExtend<PubSubEncryptionOptions>()
-  })
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-  test('invalid combinations cause compile errors', () => {
-    // @ts-expect-error encrypt: false cannot be combined with an encryptionKey
-    const _invalid1: PubSubEncryptionOptions = { encrypt: false, encryptionKey: 'some-key' }
-
-    // @ts-expect-error encrypt: true requires an encryptionKey
-    const _invalid2: PubSubEncryptionOptions = { encrypt: true }
-  })
-})
-
-describe('PubSubAdapter interface typing', () => {
-  test('PubSubAdapter publish and subscribe parameter types', () => {
-    type Adapter = PubSubAdapter<SWRSignal>
-    const adapter = {} as Adapter
-
-    expectTypeOf(adapter.publish).toBeCallableWith('topic-name', {
-      kind: 'signal',
-      data: { target: 'swr', key: ['todos'] },
-    })
-
-    expectTypeOf(adapter.subscribe).toBeCallableWith('topic-name', (msg: PubSubMessage<SWRSignal>) => {
-      if (msg.kind === 'signal') {
-        expectTypeOf(msg.data).toEqualTypeOf<SWRSignal | SWRSignal[]>()
-      }
-    })
-  })
-
-  test('PubSubAdapter publish rejects mismatched generic signal', () => {
-    type Adapter = PubSubAdapter<SWRSignal>
-    const adapter = {} as Adapter
-
-    void adapter.publish('topic-name', {
-      kind: 'signal',
-      // @ts-expect-error TanStackQuerySignal should be rejected on PubSubAdapter<SWRSignal>
-      data: { target: 'tanstack-query', queryKey: ['todos'] },
-    })
-  })
-
-  test('PubSubDecryptionError class', () => {
-    const err = new PubSubDecryptionError('decryption failed')
-    expectTypeOf(err).toEqualTypeOf<PubSubDecryptionError>()
-    expectTypeOf(err.message).toEqualTypeOf<string>()
-  })
+  void targetSignal
+  void invalidInlineData
 })

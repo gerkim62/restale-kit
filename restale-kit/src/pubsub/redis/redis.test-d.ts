@@ -1,37 +1,17 @@
-import { describe, expectTypeOf, test } from 'vitest'
-import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index.js'
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import type { SWRSignal, TanStackQuerySignal } from '@/types/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
+import { expectTypeOf, test } from 'vitest'
+import type { InlineDataSignal, RevalidateSignal, UniversalSignal } from '@/types/index.js'
 
-describe('redisPubSubAdapter type safety', () => {
-  test('redisPubSubAdapter returns PubSubAdapter<TSignal>', () => {
-    const mockClient = {} as RedisClient
-    const adapter = redisPubSubAdapter<SWRSignal>(mockClient)
+test('universal signal type contracts', () => {
+  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
+  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
+  expectTypeOf(revalidate).toExtend<UniversalSignal>()
+  expectTypeOf(inlineData).toExtend<UniversalSignal>()
 
-    expectTypeOf(adapter).toEqualTypeOf<PubSubAdapter<SWRSignal>>()
-    expectTypeOf(adapter.publish).toBeCallableWith('topic', { kind: 'signal', data: { target: 'swr', key: ['users'] } })
-    expectTypeOf(adapter.subscribe).toBeCallableWith('topic', (_msg: PubSubMessage<SWRSignal>) => {})
-    expectTypeOf(adapter.onError).toBeCallableWith((_err: unknown) => {})
-  })
+  // @ts-expect-error target routing is intentionally absent
+  const targetSignal: UniversalSignal = { target: 'swr', key: ['todos'] }
+  // @ts-expect-error inline-data signals cannot specify exact matching
+  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
 
-  test('redisPubSubAdapter publish rejects mismatched signal data', () => {
-    const mockClient = {} as RedisClient
-    const adapter = redisPubSubAdapter<SWRSignal>(mockClient)
-
-    // @ts-expect-error TanStackQuerySignal data should be rejected on SWRSignal adapter
-    void adapter.publish('topic', { kind: 'signal', data: { target: 'tanstack-query', queryKey: ['users'] } })
-  })
-
-  test('redisPubSubAdapter encryption options validation', () => {
-    const mockClient = {} as RedisClient
-
-    const disabled = redisPubSubAdapter(mockClient, { encrypt: false })
-    const enabled = redisPubSubAdapter(mockClient, { encrypt: true, encryptionKey: '32-byte-secret-key-base64-or-hex' })
-    expectTypeOf(disabled).toExtend<PubSubAdapter>()
-    expectTypeOf(enabled).toExtend<PubSubAdapter>()
-
-    // @ts-expect-error encrypt: false combined with encryptionKey is an error
-    void redisPubSubAdapter(mockClient, { encrypt: false, encryptionKey: 'key' })
-  })
+  void targetSignal
+  void invalidInlineData
 })

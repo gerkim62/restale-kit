@@ -9,8 +9,8 @@ export type {
   HttpStatusMatcher,
   RejectedConnectionResponse,
   SSEInvalidatorClientEventMap,
-  AdaptedInvalidateCallback,
+  AdaptedCallback,
 } from './client-contracts.js'
 export type { RevokeEventDetail, RenewEventDetail } from '../../types/protocol.js'
 
-export type { InvalidateSignal } from '../../types/protocol.js'
+export type { UniversalSignal, RevalidateSignal, InlineDataSignal, CacheKey } from '../../types/protocol.js'

@@ -1,65 +1,41 @@
 import { useRef, useCallback, useSyncExternalStore, useEffect, useState } from 'react'
-import type { InvalidateSignal, SignalTarget, TargetForSignal, ReStaleSignalForTarget } from '@/types/protocol.js'
 import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
-import { canonicalJsonSerialize, computeContextHash } from '@/utils/canonical-hash.js'
+import { canonicalJsonSerialize } from '@/utils/canonical-hash.js'
 import type {
   ConnectionStatus,
   ClientOptions,
   SSEInvalidatorClientEventMap,
   RevokeEventDetail,
   RejectedConnectionResponse,
-  AdaptedInvalidateCallback,
+  AdaptedCallback,
 } from '@/client/core/client-contracts.js'
 
 /**
  * Options for `useReStale`.
  *
- * `TTarget` is inferred from the branded adapter callback passed as `onInvalidate`.
- * You do not need to pass `target` explicitly — it is inferred from the adapter.
- * If you *do* pass `target` explicitly it must match the adapter's target; a mismatch
- * is a compile-time error.
+ * Adapters and raw callbacks both receive the universal signal union.
  *
- * @example — target inferred, no need to write it:
+ * @example
  * ```ts
  * const onInvalidate = useTanstackQueryAdapter(queryClient)
  * useReStale('/api/sse', { onInvalidate })
  * ```
  *
- * @example — explicit target that matches is fine:
- * ```ts
- * useReStale('/api/sse', { onInvalidate, target: 'tanstack-query' })
- * ```
- *
- * @example — explicit target mismatch → compile error:
- * ```ts
- * useReStale('/api/sse', { onInvalidate, target: 'swr' }) // ❌ Type error
- * ```
  */
-export interface UseReStaleOptions<
-  TTarget extends SignalTarget = SignalTarget,
-  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
-> extends Omit<ClientOptions<TSignal>, 'target'> {
+export interface UseReStaleOptions extends ClientOptions {
   /** When true, the hook will not open a connection. Default: false. */
   disabled?: boolean
   /**
-   * The branded adapter callback returned by `useTanstackQueryAdapter` or `useSwrAdapter`.
-   * The `target` for the SSE connection is inferred from this callback's brand.
+   * A branded adapter callback or a raw callback handling universal signals.
    */
-  onInvalidate: AdaptedInvalidateCallback<TTarget, TSignal>
-  /**
-   * Explicit target override. Must match the adapter's target — a mismatch is a type error.
-   * You usually don't need to pass this; it is inferred from `onInvalidate`.
-   * 
-   * Gap 1.5 fix: Type constrained via function overloads.
-   */
-  target?: NoInfer<TTarget>
+  onInvalidate: AdaptedCallback | ((signal: import('@/types/protocol.js').UniversalSignal | import('@/types/protocol.js').UniversalSignal[]) => void)
   /**
    * Called when the server sends a terminal revocation frame.
    *
    * At this point the connection is already closed and auto-reconnect is suppressed.
    *
    * The `detail` is a `RevokeEventDetail` discriminated union. Branch on `detail.reason`
-   * (`'token-expired'`, `'token-missing'`, `'logout'`, `'unauthorized'`, `'unsupported-target'`, etc.)
+   * (`'token-expired'`, `'token-missing'`, `'logout'`, `'unauthorized'`, etc.)
    * to handle specific revocation causes:
    *
    * @example
@@ -67,8 +43,6 @@ export interface UseReStaleOptions<
    * onRevoke: (detail) => {
    *   if (detail.reason === 'token-expired' || detail.reason === 'token-missing') {
    *     auth.refreshToken().then(() => reconnect())
-   *   } else if (detail.reason === 'unsupported-target') {
-   *     console.warn('Unsupported target. Server supports:', detail.supported)
    *   } else {
    *     logout()
    *   }
@@ -128,11 +102,24 @@ const CLOSED_UNMOUNT: ConnectionStatus = { status: 'closed', reason: 'unmount' }
 
 function getClientIdentityKey(
   url: string,
-  target: SignalTarget | undefined,
   withCredentials: boolean | undefined,
   clientContextUrl: string | undefined
 ): string {
-  return `${url}\u0000${(target ?? '')}\u0000${String(withCredentials ?? false)}\u0000${clientContextUrl ?? ''}`
+  return `${url}\u0000${String(withCredentials ?? false)}\u0000${clientContextUrl ?? ''}`
+}
+
+function toClientOptions(opts: ClientOptions): ClientOptions {
+  return {
+    ...(opts.autoReconnect !== undefined ? { autoReconnect: opts.autoReconnect } : {}),
+    ...(opts.reconnect !== undefined ? { reconnect: opts.reconnect } : {}),
+    ...(opts.withCredentials !== undefined ? { withCredentials: opts.withCredentials } : {}),
+    ...(opts.debug !== undefined ? { debug: opts.debug } : {}),
+    ...(opts.callback !== undefined ? { callback: opts.callback } : {}),
+    ...(opts.onConnect !== undefined ? { onConnect: opts.onConnect } : {}),
+    ...(opts.onDisconnect !== undefined ? { onDisconnect: opts.onDisconnect } : {}),
+    ...(opts.onError !== undefined ? { onError: opts.onError } : {}),
+    ...(opts.clientContextUrl !== undefined ? { clientContextUrl: opts.clientContextUrl } : {}),
+  }
 }
 
 /**
@@ -140,17 +127,11 @@ function getClientIdentityKey(
  * subscription.
  *
  * Opens on mount unless `disabled`. Closes with reason `'unmount'` on unmount.
- * The SSE `target` is inferred automatically from the branded adapter callback
- * passed as `onInvalidate`.
- * 
- * Target/callback compatibility is enforced by NoInfer<TTarget> and AdaptedInvalidateCallback<TTarget, TSignal>.
+ * The hook accepts any callback that handles universal signals.
  */
-export function useReStale<
-  TTarget extends TargetForSignal<TSignal>,
-  TSignal extends InvalidateSignal = ReStaleSignalForTarget<TTarget>,
->(
+export function useReStale(
   url: string,
-  opts: UseReStaleOptions<TTarget, TSignal>
+  opts: UseReStaleOptions
 ): UseReStaleResult {
   const disabled = opts.disabled ?? false
   const onInvalidateRef = useRef(opts.onInvalidate)
@@ -162,16 +143,15 @@ export function useReStale<
   const onRetriesExhaustedRef = useRef(opts.onRetriesExhausted)
   onRetriesExhaustedRef.current = opts.onRetriesExhausted
 
-  const target = opts.target ?? opts.onInvalidate.__restaleTarget
-  const identityKey = getClientIdentityKey(url, target, opts.withCredentials, opts.clientContextUrl)
+  const identityKey = getClientIdentityKey(url, opts.withCredentials, opts.clientContextUrl)
 
   // Stable client reference — only recreated when connection identity changes.
   // We keep a separate pendingClientRef so the render phase never closes the committed
   // client. The swap is deferred to useEffect so an aborted/suspended render in
   // Concurrent Mode cannot tear down the live SSE connection.
   const identityRef = useRef<string | null>(null)
-  const clientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
-  const pendingClientRef = useRef<SSEInvalidatorClient<TSignal> | null>(null)
+  const clientRef = useRef<SSEInvalidatorClient | null>(null)
+  const pendingClientRef = useRef<SSEInvalidatorClient | null>(null)
 
   // On the first render, or when connection identity changes, build a new client and stage it in
   // pendingClientRef. If disabled=true and url is empty/falsy, bypass client creation.
@@ -185,19 +165,7 @@ export function useReStale<
           `[restale-kit][useReStale] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
         )
       }
-      pendingClientRef.current = new SSEInvalidatorClient<TSignal>(url, {
-        autoReconnect: opts.autoReconnect,
-        reconnect: opts.reconnect,
-        withCredentials: opts.withCredentials,
-        debug: opts.debug,
-        callback: opts.callback,
-        onConnect: opts.onConnect,
-        onDisconnect: opts.onDisconnect,
-        onError: opts.onError,
-        clientContextUrl: opts.clientContextUrl,
-        // Auto-infer target from the adapter's brand when not set explicitly.
-        target,
-      })
+      pendingClientRef.current = new SSEInvalidatorClient(url, toClientOptions(opts))
       identityRef.current = identityKey
     }
   }
@@ -211,15 +179,7 @@ export function useReStale<
   const client = clientRef.current
   useEffect(() => {
     if (!client) return
-    client.updateRuntimeOptions({
-      autoReconnect: opts.autoReconnect,
-      reconnect: opts.reconnect,
-      debug: opts.debug,
-      callback: opts.callback,
-      onConnect: opts.onConnect,
-      onDisconnect: opts.onDisconnect,
-      onError: opts.onError,
-    })
+    client.updateRuntimeOptions(toClientOptions(opts))
   }, [
     client,
     opts.autoReconnect,
@@ -272,31 +232,8 @@ export function useReStale<
   // Wire up onInvalidate
   useEffect(() => {
     if (!client) return
-    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['invalidate']) => {
-      const detail = event.detail
-      const currentHash = computeContextHash(clientContextRef.current)
-
-      const processSignal = (sig: TSignal): TSignal => {
-        if (typeof sig !== 'object' || sig === null || Array.isArray(sig)) return sig
-        if ('inlineData' in sig && 'contextHash' in sig && typeof sig.contextHash === 'string') {
-          if (sig.contextHash !== currentHash) {
-            const copy = { ...sig }
-            delete copy.inlineData
-            triggerSyncRef.current()
-      
-            return copy
-          }
-        }
-        return sig
-      }
-
-      if (Array.isArray(detail)) {
-        const processed = detail.map(processSignal)
-        onInvalidateRef.current(processed)
-      } else {
-        const processed = processSignal(detail)
-        onInvalidateRef.current(processed)
-      }
+    const handler = (event: SSEInvalidatorClientEventMap['invalidate']) => {
+      onInvalidateRef.current(event.detail)
     }
 
     client.addEventListener('invalidate', handler)
@@ -308,7 +245,7 @@ export function useReStale<
   // Wire up handshake rejection handling.
   useEffect(() => {
     if (!client) return
-    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['rejected']) => {
+    const handler = (event: SSEInvalidatorClientEventMap['rejected']) => {
       onRejectedRef.current?.(event.detail)
     }
 
@@ -321,7 +258,7 @@ export function useReStale<
   // Wire up onRevoke
   useEffect(() => {
     if (!client) return
-    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['revoke']) => {
+    const handler = (event: SSEInvalidatorClientEventMap['revoke']) => {
       onRevokeRef.current?.(event.detail)
     }
 
@@ -334,7 +271,7 @@ export function useReStale<
   // Wire up onRetriesExhausted
   useEffect(() => {
     if (!client) return
-    const handler = (event: SSEInvalidatorClientEventMap<TSignal>['retriesexhausted']) => {
+    const handler = (event: SSEInvalidatorClientEventMap['retriesexhausted']) => {
       onRetriesExhaustedRef.current?.(event.detail)
     }
 
@@ -402,13 +339,7 @@ export function useReStale<
       if (onExhausted === 'disableUntilReconnect') state.disabled = true
       console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')
       try {
-        const fallbackSignal = target === 'tanstack-query'
-          ? { target: 'tanstack-query', queryKey: [] }
-          : target === 'swr'
-            ? { target: 'swr', key: '' }
-            : { key: [] }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Fallback invalidation payload for active target
-        onInvalidateRef.current(fallbackSignal as unknown as TSignal)
+        onInvalidateRef.current({ key: [] })
       } catch {
         // onInvalidate error surface handled by caller
       }

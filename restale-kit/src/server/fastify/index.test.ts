@@ -30,7 +30,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
     const mockRequest = { raw: rawReq }
     const mockReply = { raw: rawRes, hijack: vi.fn() }
 
-    const { channel } = group.attachNodeResponse(mockRequest, mockReply, { target: 'swr' })
+    const { channel } = group.attachNodeResponse(mockRequest, mockReply, {})
 
     expect(mockReply.hijack).toHaveBeenCalledTimes(1)
     expect(channel.connectionId).toBe('fastify-1')
@@ -43,7 +43,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
     const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-2')
     const rawRes = createMockNodeResponse()
 
-    const { channel } = group.attachNodeResponse(rawReq, rawRes, { target: 'swr' })
+    const { channel } = group.attachNodeResponse(rawReq, rawRes, {})
 
     expect(channel.connectionId).toBe('fastify-2')
     expect(channel.state).toBe('open')

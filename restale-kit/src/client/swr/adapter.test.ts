@@ -3,6 +3,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
+import type { CacheKey } from '@/types/protocol.js'
+
+function toCacheKey(key: CacheKey): string {
+  const resource = key[0]
+  return `cache:${typeof resource === 'string' ? resource : 'unknown'}`
+}
 
 describe('swrAdapter', () => {
   it('invokes mutate with filter function for invalidate action', () => {
@@ -17,92 +23,9 @@ describe('swrAdapter', () => {
     expect(filter(['todos', 2])).toBe(false)
   })
 
-  it('invokes mutate with clear data option for remove action', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ key: ['todos'], action: 'remove' })
-
-    expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
-  })
-
-  it('supports custom toInvalidateKey mapping', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate, {
-      toInvalidateKey: (key) => (typeof key === 'string' ? [key] : undefined),
-    })
-
-    adapter({ key: ['users'] })
-
-    const filter = (mutate as any).mock.calls[0][0]
-    expect(filter('users')).toBe(true)
-    expect(filter('posts')).toBe(false)
-  })
-
-  it('supports SWRSignal primitive string keys with prefix and exact matching', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ target: 'swr', key: '/api/user', match: 'prefix' })
-    const prefixFilter = (mutate as any).mock.calls[0][0]
-    expect(prefixFilter('/api/user/123')).toBe(true)
-    expect(prefixFilter('/api/other')).toBe(false)
-
-    adapter({ target: 'swr', key: '/api/user', match: 'exact' })
-    const exactFilter = (mutate as any).mock.calls[1][0]
-    expect(exactFilter('/api/user')).toBe(true)
-    expect(exactFilter('/api/user/123')).toBe(false)
-  })
-
-  it('supports SWRSignal action purge', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ target: 'swr', key: '/api/user', action: 'purge' })
-    expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
-  })
-
-  it('ignores signals targeting other frameworks', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ target: 'tanstack-query', queryKey: ['todos'] } as any)
-    adapter({ target: 'rtk-query', tags: ['todos'] } as any)
-
-    expect(mutate).not.toHaveBeenCalled()
-  })
-
-  it('enforces exact tuple length matching when matching array key against string signal key', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ target: 'swr', key: '/api/user', match: 'exact' })
-    const exactFilter = (mutate as any).mock.calls[0][0]
-    expect(exactFilter(['/api/user'])).toBe(true)
-    expect(exactFilter(['/api/user', 'extra'])).toBe(false)
-  })
-
-  it('honors revalidate: false by passing false to mutate', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ target: 'swr', key: '/api/user', revalidate: false })
-    expect(mutate).toHaveBeenCalledWith(expect.any(Function), undefined, false)
-  })
-
-  it('writes inlineData to exactly the supplied key before marking that key stale', () => {
-    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
-    const adapter = swrAdapter(mutate)
-
-    adapter({ key: ['todos'], inlineData: [{ id: 1 }] })
-
-    expect(mutate).toHaveBeenNthCalledWith(1, ['todos'], [{ id: 1 }], { revalidate: false })
-    expect(mutate).toHaveBeenNthCalledWith(2, ['todos'])
-  })
-
   it('can trust pushed inlineData without marking it stale', () => {
     const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
-    const adapter = swrAdapter(mutate, { markInlineDataStale: false })
+    const adapter = swrAdapter(mutate)
 
     adapter({ key: ['todos'], inlineData: [{ id: 1 }] })
 
@@ -114,7 +37,7 @@ describe('swrAdapter', () => {
     const mutate = vi.fn() as unknown as SWRMutator
     const adapter = swrAdapter(mutate)
 
-    adapter([{ key: ['a'] }, { key: ['b'], action: 'remove' }])
+    adapter([{ key: ['a'] }, { key: ['b'] }])
     expect(mutate).toHaveBeenCalledTimes(2)
 
     const filter = (mutate as any).mock.calls[0][0]
@@ -122,41 +45,40 @@ describe('swrAdapter', () => {
     expect(filter('not-an-array')).toBe(false)
   })
 
+  it('matches mapped string keys for prefix and exact invalidations', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate, { toKey: toCacheKey })
+
+    adapter({ key: ['todos'] })
+    const prefixFilter = (mutate as any).mock.calls[0][0]
+    expect(prefixFilter(['cache:todos'])).toBe(false)
+    expect(prefixFilter('cache:todos:active')).toBe(true)
+
+    adapter({ key: ['todos'], exact: true })
+    const exactFilter = (mutate as any).mock.calls[1][0]
+    expect(exactFilter('cache:todos')).toBe(true)
+    expect(exactFilter('cache:todos:active')).toBe(false)
+  })
+
 })
 
 
 describe('useSwrAdapter', () => {
-  it('returns a stable memoized callback that delegates to swrAdapter, and updates with changed options', () => {
-    const mutate = vi.fn() as unknown as SWRMutator
-    const options1 = { toInvalidateKey: vi.fn().mockReturnValue(['todos']) }
-    const options2 = { toInvalidateKey: vi.fn().mockReturnValue(['todos']) }
-
+  it('keeps its callback stable while using the latest key mapper', () => {
+    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
     const { result, rerender } = renderHook(
-      ({ mut, opts }) => useSwrAdapter(mut, opts),
-      { initialProps: { mut: mutate, opts: options1 } }
+      ({ options }: { options: Parameters<typeof useSwrAdapter>[1] }) => useSwrAdapter(mutate, options),
+      { initialProps: { options: {} } },
     )
 
-    const cb1 = result.current
-    cb1({ key: ['todos'] })
-
+    const callback = result.current
+    result.current({ key: ['todos'] })
     expect(mutate).toHaveBeenCalledTimes(1)
-    const filter = (mutate as any).mock.calls[0][0]
-    filter('some-key')
-    expect(options1.toInvalidateKey).toHaveBeenCalledWith('some-key', { key: ['todos'] })
 
-    // Rerender with identical options (same reference) and check stability
-    rerender({ mut: mutate, opts: options1 })
-    expect(result.current).toBe(cb1)
+    rerender({ options: { toKey: toCacheKey } })
+    expect(result.current).toBe(callback)
 
-    // Rerender with different options - callback reference remains stable (same reference)
-    rerender({ mut: mutate, opts: options2 })
-    expect(result.current).toBe(cb1)
-
-    cb1({ key: ['todos'] })
-    expect(mutate).toHaveBeenCalledTimes(2)
-    const filter2 = (mutate as any).mock.calls[1][0]
-    filter2('some-key')
-    expect(options2.toInvalidateKey).toHaveBeenCalledWith('some-key', { key: ['todos'] })
-    expect(options1.toInvalidateKey).toHaveBeenCalledTimes(1) // not called again
+    result.current({ key: ['todos'], inlineData: [{ id: 1 }] })
+    expect(mutate).toHaveBeenLastCalledWith('cache:todos', [{ id: 1 }], { revalidate: false })
   })
 })

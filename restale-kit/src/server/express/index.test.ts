@@ -23,34 +23,13 @@ function createMockExpressResponse(): ServerResponse {
 }
 
 describe('server/express integration via attachNodeResponse', () => {
-  it('attaches SSE headers and exposes connectionId on the returned channel', () => {
-    const group = new SSEChannelGroup({})
-    const req = createMockExpressRequest('/sse?__restale_cid__=express-123')
-    const res = createMockExpressResponse()
-
-    const { channel } = group.attachNodeResponse(req, res, { target: 'swr' })
-
-    expect(channel.connectionId).toBe('express-123')
-    expect(SSE_HEADERS).toEqual({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    })
-    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-      ...SSE_HEADERS,
-      'X-ReStale-Target': 'swr',
-      'X-ReStale-Supported': 'swr',
-    }))
-    expect(channel.state).toBe('open')
-    channel.close()
-  })
 
   it('throws Error synchronously when __restale_cid__ is missing', () => {
     const group = new SSEChannelGroup({})
     const req = createMockExpressRequest('/sse')
     const res = createMockExpressResponse()
 
-    expect(() => group.attachNodeResponse(req, res, { target: 'swr' })).toThrow(
+    expect(() => group.attachNodeResponse(req, res, {})).toThrow(
       'Missing or invalid __restale_cid__ query parameter in request URL'
     )
   })

@@ -6,7 +6,6 @@ import { createEventStore } from './event-store.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
-import type { SWRSignal } from '@/types/protocol.js'
 
 interface TestMeta {
   userId: number
@@ -24,8 +23,8 @@ describe('channel-group', () => {
 
   it('validates metadata against metaSchema on registration', () => {
     const metaSchema = createInvalidSchema('Invalid metadata')
-    const group = new SSEChannelGroup<any, TestMeta>({ metaSchema })
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ metaSchema })
+    const channel = createSSEChannel({})
 
     expect(() => { group.register(channel, { userId: -1 }); }).toThrow(SchemaValidationError)
     expect(group.size).toBe(0)
@@ -33,22 +32,36 @@ describe('channel-group', () => {
 
   it('allows omitting meta when no metaSchema provided', () => {
     const group = new SSEChannelGroup()
-    const channel = createSSEChannel({ target: 'swr' })
+    const channel = createSSEChannel({})
 
     // Should work without passing meta
     group.register(channel)
     expect(group.size).toBe(1)
 
     const spy = vi.spyOn(channel, 'invalidate')
-    group.broadcastToAll({ target: 'swr', key: ['test'] })
+    group.broadcastToAll({ key: ['test'] })
     expect(spy).toHaveBeenCalled()
   })
 
+  it('broadcasts only to channels selected by its predicate', () => {
+    const group = new SSEChannelGroup<TestMeta>()
+    const selected = createSSEChannel({})
+    const skipped = createSSEChannel({})
+    group.register(selected, { userId: 1 })
+    group.register(skipped, { userId: 2 })
+    const selectedSpy = vi.spyOn(selected, 'invalidate')
+    const skippedSpy = vi.spyOn(skipped, 'invalidate')
+
+    group.broadcast({ key: ['todos'] }, (meta) => meta?.userId === 1)
+
+    expect(selectedSpy).toHaveBeenCalledOnce()
+    expect(skippedSpy).not.toHaveBeenCalled()
+  })
+
   it('stores validated client context and enforces connection scope-pinning', async () => {
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
+    const group = new SSEChannelGroup<TestMeta, { page: number }>({
     })
-    const channel = createSSEChannel({ target: 'swr', connectionId: 'context-connection' })
+    const channel = createSSEChannel({ connectionId: 'context-connection' })
     group.register(channel, { userId: 7 })
 
     await expect(group.updateClientContext('context-connection', { page: 2 }, { scope: { userId: 8 } }))
@@ -61,130 +74,47 @@ describe('channel-group', () => {
     await expect(group.updateClientContext('missing', { page: 3 })).resolves.toEqual({ updated: false })
   })
 
-  it('ignores client-context updates with a lower revision', async () => {
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({ target: 'swr' })
-    const channel = createSSEChannel({ target: 'swr', connectionId: 'revision-connection' })
+  it('ignores client-context updates with a lower or equal revision', async () => {
+    const group = new SSEChannelGroup<TestMeta, { page: number }>({})
+    const channel = createSSEChannel({ connectionId: 'revision-connection' })
     group.register(channel, { userId: 7 })
 
     await expect(group.updateClientContext('revision-connection', { page: 2 }, { revision: 2 }))
       .resolves.toEqual({ updated: true })
     await expect(group.updateClientContext('revision-connection', { page: 1 }, { revision: 1 }))
       .resolves.toEqual({ updated: false })
+    await expect(group.updateClientContext('revision-connection', { page: 99 }, { revision: 2 }))
+      .resolves.toEqual({ updated: false })
     expect(group.getClientContext('revision-connection')).toEqual({ page: 2 })
   })
 
-  it('rejects non-JSON PubSub context before changing local state', async () => {
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', unknown>({
-      target: 'swr',
-      pubsub: new MemoryPubSubAdapter(),
-    })
-    const channel = createSSEChannel({ target: 'swr', connectionId: 'non-json-context' })
-    group.register(channel, { userId: 7 })
-
-    await expect(group.updateClientContext('non-json-context', () => {}))
-      .rejects.toThrow('clientContext must be a valid JSONValue when pubsub is configured')
-    expect(group.getClientContext('non-json-context')).toBeUndefined()
-  })
-
   it('does not store invalid client context and removes stored context on deregistration', async () => {
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
+    const group = new SSEChannelGroup<TestMeta, { page: number }>({
       clientContextSchema: createInvalidSchema<{ page: number }>('Invalid client context'),
     })
-    const channel = createSSEChannel({ target: 'swr', connectionId: 'invalid-context' })
+    const channel = createSSEChannel({ connectionId: 'invalid-context' })
     group.register(channel, { userId: 7 })
 
     await expect(group.updateClientContext('invalid-context', { page: 1 })).rejects.toThrow(SchemaValidationError)
     expect(group.getClientContext('invalid-context')).toBeUndefined()
 
-    const unvalidated = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({ target: 'swr' })
-    const secondChannel = createSSEChannel({ target: 'swr', connectionId: 'removed-context' })
+    const unvalidated = new SSEChannelGroup<TestMeta, { page: number }>({})
+    const secondChannel = createSSEChannel({ connectionId: 'removed-context' })
     unvalidated.register(secondChannel, { userId: 8 })
     await unvalidated.updateClientContext('removed-context', { page: 4 })
     unvalidated.deregister(secondChannel)
     expect(unvalidated.getClientContext('removed-context')).toBeUndefined()
   })
 
-  it('applies context and delivers inline data on the connection-owning pubsub instance', async () => {
-    const pubsub = new MemoryPubSubAdapter<SWRSignal>()
-    const origin = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
-      pubsub,
-      resolveInlineData: () => new Map(),
-    })
-    const owner = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
-      pubsub,
-      resolveInlineData: (connections) => new Map(connections.map((connection) => [
-        connection.connectionId,
-        {
-          signal: { target: 'swr', key: ['todos', connection.clientContext?.page ?? 0] },
-          inlineData: ['from-owner'],
-        },
-      ])),
-    })
-    await (origin as unknown as { controlPendingOp: Promise<void> }).controlPendingOp
-    await (owner as unknown as { controlPendingOp: Promise<void> }).controlPendingOp
-
-    const channel = createSSEChannel({ target: 'swr', connectionId: 'remote-context' })
-    const invalidate = vi.spyOn(channel, 'invalidate')
-    owner.register(channel, { userId: 9 }, { topics: ['todos'] })
-
-    await expect(origin.updateClientContext('remote-context', { page: 5 }, { scope: { userId: 9 }, revision: 2 }))
-      .resolves.toEqual({ updated: false })
-    await expect(origin.updateClientContext('remote-context', { page: 4 }, { scope: { userId: 9 }, revision: 1 }))
-      .resolves.toEqual({ updated: false })
-    await Promise.resolve()
-    expect(owner.getClientContext('remote-context')).toEqual({ page: 5 })
-
-    await origin.pushInlineData('todos', { source: 'remote' })
-    await Promise.resolve()
-    expect(invalidate).toHaveBeenCalledWith(
-      { target: 'swr', key: ['todos', 5], inlineData: ['from-owner'], contextHash: '37c8de55' },
-      undefined
-    )
-  })
-
-  it('progressively delivers resolved inline data and reports missing connections', async () => {
-    const resolverError = vi.fn()
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
-      onInlineDataResolverError: resolverError,
-      resolveInlineData: (connections) => new Map(
-        connections.slice(0, 1).map((connection) => [
-          connection.connectionId,
-          { signal: { target: 'swr', key: ['todos', connection.clientContext?.page ?? 0] }, inlineData: ['fresh'] },
-        ])
-      ),
-    })
-    const first = createSSEChannel({ target: 'swr', connectionId: 'inline-first' })
-    const second = createSSEChannel({ target: 'swr', connectionId: 'inline-second' })
-    const firstInvalidate = vi.spyOn(first, 'invalidate')
-    const secondInvalidate = vi.spyOn(second, 'invalidate')
-    group.register(first, { userId: 1 }, { topics: ['todos'] })
-    group.register(second, { userId: 2 }, { topics: ['todos'] })
-    await group.updateClientContext('inline-first', { page: 1 })
-
-    await expect(group.pushInlineData('todos', { source: 'test' })).resolves.toBeUndefined()
-
-    expect(firstInvalidate).toHaveBeenCalledWith(
-      { target: 'swr', key: ['todos', 1], inlineData: ['fresh'], contextHash: '37be50f9' },
-      undefined
-    )
-    expect(secondInvalidate).not.toHaveBeenCalled()
-    expect(resolverError).toHaveBeenCalledWith({ topic: 'todos', missingConnectionIds: ['inline-second'] })
-  })
-
   it('delivers inline data only to the channel selected for its topic', async () => {
-    const group = new SSEChannelGroup<SWRSignal, TestMeta, 'swr', 'swr', { page: number }>({
-      target: 'swr',
+    const group = new SSEChannelGroup<TestMeta, { page: number }>({
       resolveInlineData: (connections) => new Map(connections.map((connection) => [
         connection.connectionId,
-        { signal: { target: 'swr', key: ['todos'] }, inlineData: ['fresh'] },
+        { signal: { key: ['todos'] }, inlineData: ['fresh'] },
       ])),
     })
-    const selected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
-    const unselected = createSSEChannel({ target: 'swr', connectionId: 'shared-connection' })
+    const selected = createSSEChannel({ connectionId: 'shared-connection' })
+    const unselected = createSSEChannel({ connectionId: 'shared-connection' })
     const selectedInvalidate = vi.spyOn(selected, 'invalidate')
     const unselectedInvalidate = vi.spyOn(unselected, 'invalidate')
     group.register(selected, { userId: 1 }, { topics: ['todos'] })
@@ -196,48 +126,13 @@ describe('channel-group', () => {
     expect(unselectedInvalidate).not.toHaveBeenCalled()
   })
 
-  it('rejects duplicate active connection IDs for inline data resolution', async () => {
-    const resolver = vi.fn()
-    const group = new SSEChannelGroup<SWRSignal, TestMeta>({ target: 'swr', resolveInlineData: resolver })
-    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 1 }, { topics: ['todos'] })
-    group.register(createSSEChannel({ target: 'swr', connectionId: 'duplicate-inline' }), { userId: 2 }, { topics: ['todos'] })
-
-    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow('Duplicate active connection ID')
-    expect(resolver).not.toHaveBeenCalled()
-  })
-
-  it('publishes inline data to PubSub before rethrowing a local resolver error', async () => {
-    const pubsub = new MemoryPubSubAdapter<SWRSignal>()
-    const publish = vi.spyOn(pubsub, 'publish').mockResolvedValue()
-    const localError = new Error('resolver failed')
-    const group = new SSEChannelGroup<SWRSignal, TestMeta>({
-      target: 'swr',
-      pubsub,
-      resolveInlineData: () => { throw localError },
-    })
-    group.register(createSSEChannel({ target: 'swr', connectionId: 'resolver-error' }), { userId: 1 }, { topics: ['todos'] })
-
-    await expect(group.pushInlineData('todos', { source: 'test' })).rejects.toThrow(localError)
-    expect(publish).toHaveBeenCalledWith(group.controlTopic, {
-      kind: 'inlineData',
-      topic: 'todos',
-      payload: { source: 'test' },
-    })
-  })
-
-  it('rejects runtime pubsub values that are not adapters', () => {
-    expect(() => new SSEChannelGroup({ pubsub: {} as never })).toThrow(
-      'pubsub must implement publish() and subscribe()'
-    )
-  })
-
   it('broadcastToAll delivers to all channels even when meta is undefined', () => {
     // Regression: broadcast() previously had `if (entry.meta === undefined) continue`
     // which skipped channels registered without meta, breaking broadcastToAll.
     const group = new SSEChannelGroup()
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
-    const ch3 = createSSEChannel({ target: 'swr' })
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
+    const ch3 = createSSEChannel({})
 
     const spy1 = vi.spyOn(ch1, 'invalidate')
     const spy2 = vi.spyOn(ch2, 'invalidate')
@@ -247,34 +142,19 @@ describe('channel-group', () => {
     group.register(ch2)
     group.register(ch3)
 
-    group.broadcastToAll({ target: 'swr', key: ['update'] })
+    group.broadcastToAll({ key: ['update'] })
 
-    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
-    expect(spy2).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
-    expect(spy3).toHaveBeenCalledWith({ target: 'swr', key: ['update'] }, undefined)
-  })
-
-  it('enqueues framed SSE bytes with id line when group has eventBufferCapacity', async () => {
-    const group = new SSEChannelGroup({ eventBufferCapacity: 50 })
-    const ch = createSSEChannel({ target: 'swr' })
-    group.register(ch)
-
-    group.broadcastToAll({ target: 'swr', key: ['todos'] })
-
-    const decoder = new TextDecoder()
-    const reader = ch.stream.getReader()
-    const { value } = await reader.read()
-    reader.releaseLock()
-
-    expect(decoder.decode(value)).toBe('id: 1\nevent: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n')
+    expect(spy1).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy2).toHaveBeenCalledWith({ key: ['update'] }, undefined)
+    expect(spy3).toHaveBeenCalledWith({ key: ['update'] }, undefined)
   })
 
   it('broadcast predicate is called with undefined meta when TMeta accepts undefined', () => {
     // Verifies the `meta as TMeta` cast in register is sound: when TMeta includes
     // undefined, the predicate receives undefined (not skipped) and can act on it.
-    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
-    const chWithMeta = createSSEChannel({ target: 'swr' })
-    const chNoMeta = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId: number } | undefined>()
+    const chWithMeta = createSSEChannel({})
+    const chNoMeta = createSSEChannel({})
 
     const spyWith = vi.spyOn(chWithMeta, 'invalidate')
     const spyNo = vi.spyOn(chNoMeta, 'invalidate')
@@ -283,7 +163,7 @@ describe('channel-group', () => {
     group.register(chNoMeta) // meta is undefined — valid because TMeta accepts undefined
 
     const seenMetas: ({ userId: number } | undefined)[] = []
-    group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+    group.broadcast({ key: ['test'] }, (meta) => {
       seenMetas.push(meta)
       return true
     })
@@ -297,9 +177,9 @@ describe('channel-group', () => {
   it('broadcast predicate can filter out channels with undefined meta', () => {
     // Predicate returning false for undefined meta should skip that channel,
     // but NOT all channels — channels with defined meta should still be reached.
-    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
-    const chWithMeta = createSSEChannel({ target: 'swr' })
-    const chNoMeta = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId: number } | undefined>()
+    const chWithMeta = createSSEChannel({})
+    const chNoMeta = createSSEChannel({})
 
     const spyWith = vi.spyOn(chWithMeta, 'invalidate')
     const spyNo = vi.spyOn(chNoMeta, 'invalidate')
@@ -307,7 +187,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 42 })
     group.register(chNoMeta)
 
-    group.broadcast({ target: 'swr', key: ['targeted'] }, (meta) => meta !== undefined)
+    group.broadcast({ key: ['targeted'] }, (meta) => meta !== undefined)
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -316,9 +196,9 @@ describe('channel-group', () => {
   it('broadcastByKey silently skips channels with undefined meta (not a JSON value)', () => {
     // undefined is not a valid JSONValue, so isJSONValue(meta) returns false and
     // the channel is excluded from key-based matching — this is correct behaviour.
-    const group = new SSEChannelGroup<any, { userId: number } | undefined>()
-    const chWithMeta = createSSEChannel({ target: 'swr' })
-    const chNoMeta = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId: number } | undefined>()
+    const chWithMeta = createSSEChannel({})
+    const chNoMeta = createSSEChannel({})
 
     const spyWith = vi.spyOn(chWithMeta, 'invalidate')
     const spyNo = vi.spyOn(chNoMeta, 'invalidate')
@@ -326,7 +206,7 @@ describe('channel-group', () => {
     group.register(chWithMeta, { userId: 7 })
     group.register(chNoMeta) // undefined meta
 
-    group.broadcastByKey({ target: 'swr', key: [{ userId: 7 }] })
+    group.broadcastByKey({ key: [{ userId: 7 }] })
 
     expect(spyWith).toHaveBeenCalled()
     expect(spyNo).not.toHaveBeenCalled()
@@ -337,7 +217,7 @@ describe('channel-group', () => {
     // channelMatchesCriteria returns false for any criteria — revokeWhere cannot revoke
     // these channels by metadata match. Use revokeByConnectionId(connectionId) instead.
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: 'swr' })
+    const ch = createSSEChannel({})
 
     group.register(ch) // no meta — meta is undefined
     expect(group.size).toBe(1)
@@ -352,7 +232,7 @@ describe('channel-group', () => {
     // revokeByConnectionId looks up by connectionId directly, bypassing metadata matching,
     // so it works regardless of whether meta was provided.
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'no-meta-conn' })
+    const ch = createSSEChannel({ connectionId: 'no-meta-conn' })
 
     group.register(ch)
     expect(group.size).toBe(1)
@@ -365,8 +245,8 @@ describe('channel-group', () => {
 
   it('allows omitting meta even with metaSchema if default satisfies schema', () => {
     const metaSchema = createValidSchema()
-    const group = new SSEChannelGroup<any, any>({ metaSchema })
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<any>({ metaSchema })
+    const channel = createSSEChannel({})
 
     // Omitted metadata (undefined) passes validation
     group.register(channel)
@@ -374,8 +254,8 @@ describe('channel-group', () => {
   })
 
   it('defaults omitted meta to undefined when registering', () => {
-    const group = new SSEChannelGroup<any, any>()
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<any>()
+    const channel = createSSEChannel({})
     group.register(channel)
 
     const entry = group['channels'].get(channel)
@@ -385,8 +265,8 @@ describe('channel-group', () => {
 
   it('respects metaSchema and triggers validation error if omitted meta does not satisfy schema', () => {
     const metaSchema = createInvalidSchema('Metadata is required')
-    const group = new SSEChannelGroup<any, any>({ metaSchema })
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<any>({ metaSchema })
+    const channel = createSSEChannel({})
 
     expect(() => {
       group.register(channel)
@@ -401,8 +281,8 @@ describe('channel-group', () => {
         role: String(obj.role || 'guest')
       }
     })
-    const group = new SSEChannelGroup<any, { userId?: number; role?: string } | undefined>({ metaSchema })
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId?: number; role?: string } | undefined>({ metaSchema })
+    const channel = createSSEChannel({})
 
     group.register(channel)
 
@@ -410,11 +290,10 @@ describe('channel-group', () => {
     expect(entry.meta).toEqual({ userId: 42, role: 'guest' })
   })
 
-  it('enforces meta to be required at compile-time when TMeta does not accept undefined', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const channel = createSSEChannel({ target: 'swr' })
+  it('allows omitted metadata and rejects metadata with the wrong shape at compile-time', () => {
+    const group = new SSEChannelGroup<TestMeta>()
+    const channel = createSSEChannel({})
 
-    // @ts-expect-error - meta is required because TestMeta does not accept undefined
     group.register(channel)
 
     // @ts-expect-error - meta must match TestMeta type (userId must be number)
@@ -426,32 +305,32 @@ describe('channel-group', () => {
 
   it('enforces metaSchema output type to match TMeta at compile-time', () => {
     const stringSchema = createValidSchema((_val: unknown) => 'hello')
-    
+
     // @ts-expect-error - metaSchema output (string) does not match TMeta (TestMeta)
-    new SSEChannelGroup<any, TestMeta>({ metaSchema: stringSchema })
+    new SSEChannelGroup<TestMeta>({ metaSchema: stringSchema })
   })
 
-  it('statically verifies register parameter requirement constraints', () => {
-    // 1. When TMeta does not accept undefined, meta parameter must be required
-    type ParamsRequired = Parameters<SSEChannelGroup<any, TestMeta>['register']>
+  it('statically verifies register metadata is optional', () => {
+    // Metadata is stored as TMeta | undefined, so registration can omit it.
+    type ParamsRequired = Parameters<SSEChannelGroup<TestMeta>['register']>
     type IsRequiredOptional = 1 extends ParamsRequired['length'] ? true : false
-    const checkRequired: IsRequiredOptional = false
-    expect(checkRequired).toBe(false)
+    const checkRequired: IsRequiredOptional = true
+    expect(checkRequired).toBe(true)
 
     // 2. When TMeta accepts undefined, meta parameter must be optional
-    type ParamsOptional = Parameters<SSEChannelGroup<any, TestMeta | undefined>['register']>
+    type ParamsOptional = Parameters<SSEChannelGroup<TestMeta | undefined>['register']>
     type IsOptionalOptional = 1 extends ParamsOptional['length'] ? true : false
     const checkOptional: IsOptionalOptional = true
     expect(checkOptional).toBe(true)
   })
 
   it('broadcast predicate represents omitted metadata explicitly', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const channel = createSSEChannel({})
     group.register(channel, { userId: 1 })
 
     // Static check: callers handle omitted metadata before reading fields.
-    group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+    group.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       const _userId: number = meta.userId
       return _userId > 0
@@ -459,8 +338,8 @@ describe('channel-group', () => {
   })
 
   it('registers channel and handles topic updates on re-registration', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const channel = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const channel = createSSEChannel({})
 
     group.register(channel, { userId: 1 }, { topics: ['topic-a', 'topic-b'] })
     expect(group.size).toBe(1)
@@ -471,9 +350,9 @@ describe('channel-group', () => {
   })
 
   it('broadcast filter selectively delivers signals to matching predicate', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     const spy1 = vi.spyOn(ch1, 'invalidate')
     const spy2 = vi.spyOn(ch2, 'invalidate')
@@ -481,16 +360,16 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1, role: 'admin' })
     group.register(ch2, { userId: 2, role: 'user' })
 
-    group.broadcast({ target: 'swr', key: ['admin-data'] }, (meta) => meta?.role === 'admin')
+    group.broadcast({ key: ['admin-data'] }, (meta) => meta?.role === 'admin')
 
-    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: ['admin-data'] }, undefined)
+    expect(spy1).toHaveBeenCalledWith({ key: ['admin-data'] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
   })
 
   it('broadcastToAll delivers to all registered channels', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     const spy1 = vi.spyOn(ch1, 'invalidate')
     const spy2 = vi.spyOn(ch2, 'invalidate')
@@ -498,15 +377,15 @@ describe('channel-group', () => {
     group.register(ch1, { userId: 1 })
     group.register(ch2, { userId: 2 })
 
-    group.broadcastToAll({ target: 'swr', key: ['global-update'] })
+    group.broadcastToAll({ key: ['global-update'] })
 
     expect(spy1).toHaveBeenCalled()
     expect(spy2).toHaveBeenCalled()
   })
 
   it('deregisters closed channels automatically during broadcast', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch1 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch1 = createSSEChannel({})
 
     group.register(ch1, { userId: 1 })
     expect(group.size).toBe(1)
@@ -517,31 +396,31 @@ describe('channel-group', () => {
   })
 
   it('aggregates errors on broadcast failures', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
     vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime invalidate error') })
 
     group.register(ch, { userId: 1 })
 
-    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow(AggregateError)
+    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
   })
 
   it('publishes locally before publishing to broker pubsub', async () => {
     const pubsub = new MemoryPubSubAdapter()
     const publishSpy = vi.spyOn(pubsub, 'publish')
 
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch = createSSEChannel({})
     const invalidateSpy = vi.spyOn(ch, 'invalidate')
 
     group.register(ch, { userId: 10 }, { topics: ['notifications'] })
 
-    await group.publish('notifications', { target: 'swr', key: ['alert'] })
+    await group.publish('notifications', { key: ['alert'] })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ target: 'swr', key: ['alert'] }, undefined)
+    expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, undefined)
     expect(publishSpy).toHaveBeenCalledWith('notifications', {
       kind: 'signal',
-      data: { target: 'swr', key: ['alert'] },
+      data: { key: ['alert'] },
       id: undefined,
     })
   })
@@ -550,17 +429,17 @@ describe('channel-group', () => {
     const pubsub = new MemoryPubSubAdapter()
     const publishSpy = vi.spyOn(pubsub, 'publish')
 
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub, eventBufferCapacity: 10 })
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub, eventBufferCapacity: 10 })
+    const ch = createSSEChannel({})
     group.register(ch, { userId: 10 }, { topics: ['notifications'] })
 
-    await group.publish('notifications', { target: 'swr', key: ['alert'] })
+    await group.publish('notifications', { key: ['alert'] })
 
     expect(publishSpy).toHaveBeenCalledWith(
       'notifications',
       expect.objectContaining({
         kind: 'signal',
-        data: { target: 'swr', key: ['alert'] },
+        data: { key: ['alert'] },
         id: expect.any(String),
       })
     )
@@ -568,8 +447,8 @@ describe('channel-group', () => {
 
   it('delivers pubsub signal with id to subscribed channels', async () => {
     const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch = createSSEChannel({})
     const invalidateSpy = vi.spyOn(ch, 'invalidate')
 
     group.register(ch, { userId: 10 }, { topics: ['notifications'] })
@@ -586,153 +465,21 @@ describe('channel-group', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ key: ['alert'] }, 'pubsub-evt-100')
   })
 
-  it('revokes matching channels locally and publishes control message to pubsub', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-    const publishSpy = vi.spyOn(pubsub, 'publish')
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
-
-    group.register(ch1, { userId: 100 })
-    group.register(ch2, { userId: 200 })
-
-    const result = await group.revokeWhere({ userId: 100 })
-
-    expect(result.localClosed).toBe(1)
-    expect(ch1.state).toBe('closed')
-    expect(ch2.state).toBe('open')
-
-    expect(publishSpy).toHaveBeenCalledWith(group.controlTopic, {
-      kind: 'control',
-      data: { userId: 100 },
-    })
-  })
-
-  it('retries subscription up to 5 times with backoff on failure in TopicManager', async () => {
-    const attempts = 0
-    const flakyPubSub = new MemoryPubSubAdapter()
-
-    let retryTopicAttempts = 0
-    vi.spyOn(flakyPubSub, 'subscribe').mockImplementation((topic) => {
-      if (topic === 'retry-topic') {
-        retryTopicAttempts++
-        if (retryTopicAttempts < 5) {
-          return Promise.reject(new Error(`Attempt ${String(retryTopicAttempts)} failed`))
-        }
-      }
-      return Promise.resolve(() => Promise.resolve())
-    })
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub: flakyPubSub })
-    const ch = createSSEChannel({ target: 'swr' })
-
-    group.register(ch, { userId: 1 }, { topics: ['retry-topic'] })
-
-    // TopicManager sleep timer advances clock and Date.now
-    for (let i = 0; i < 20; i++) {
-      await vi.advanceTimersByTimeAsync(200)
-    }
-
-    expect(retryTopicAttempts).toBe(5)
-  })
-
-  it('receives control messages via PubSub and revokes matching local connections', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
-
-    group.register(ch, { userId: 500, role: 'admin' })
-    await group['controlPendingOp']
-
-    // Simulate incoming control message over controlTopic
-    await pubsub.publish(group.controlTopic, {
-      kind: 'control',
-      data: { role: 'admin' },
-    })
-
-    expect(ch.state).toBe('closed')
-    expect(group.size).toBe(0)
-  })
-
-  it('retries control topic subscription if pubsub.subscribe fails initially', async () => {
-    let attempts = 0
-    const flakyPubSub = new MemoryPubSubAdapter()
-
-    vi.spyOn(flakyPubSub, 'subscribe').mockImplementation((topic, callback) => {
-      if (topic.includes('control')) {
-        attempts++
-        if (attempts === 1) {
-          return Promise.reject(new Error('Control sub failed'))
-        }
-      }
-      return Promise.resolve(() => Promise.resolve())
-    })
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub: flakyPubSub })
-    const ch = createSSEChannel({ target: 'swr' })
-    group.register(ch, { userId: 1 })
-
-    for (let i = 0; i < 10; i++) {
-      await vi.advanceTimersByTimeAsync(200)
-    }
-
-    expect(attempts).toBeGreaterThanOrEqual(2)
-  })
-
-  it('handles non-Error thrown exceptions during delivery', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
-
-    vi.spyOn(ch, 'invalidate').mockImplementation(() => {
-      throw new Error('String error thrown')
-    })
-
-    group.register(ch, { userId: 1 })
-
-    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow()
-    expect(consoleSpy).toHaveBeenCalled()
-    expect(consoleSpy.mock.calls[0][0]).toContain('[ERROR][SSEChannelGroup')
-
-    consoleSpy.mockRestore()
-  })
-
-  it('disposes control subscription idempotently and logs unsubscribe errors', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const flakyPubSub = new MemoryPubSubAdapter()
-
-    vi.spyOn(flakyPubSub, 'subscribe').mockResolvedValue(() => {
-      return Promise.reject(new Error('Unsub control error'))
-    })
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub: flakyPubSub })
-    await group['controlPendingOp']
-    await group.dispose()
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[ERROR][SSEChannelGroup.dispose] Failed to unsubscribe control topic'),
-      expect.any(Error)
-    )
-
-    consoleSpy.mockRestore()
-  })
-
   it('stores events in eventStore during broadcast and publish', async () => {
     const store = createEventStore()
-    const group = new SSEChannelGroup<any, TestMeta>({ eventStore: store })
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ eventStore: store })
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 1 }, { topics: ['chat'] })
 
-    group.broadcast({ target: 'swr', key: ['broadcast-event'] }, () => true)
+    group.broadcast({ key: ['broadcast-event'] }, () => true)
     // Probe at id '2' — broadcast-event was id '1', so getEventsAfter('1') returns probe + anything after
-    const r1 = store.add({ target: 'swr', key: ['probe'] }) // id '2'
+    const r1 = store.add({ key: ['probe'] }) // id '2'
     expect(store.getEventsAfter(r1.id).events).toEqual([]) // nothing after probe
     expect(store.getEventsAfter('0').stale).toBe(true) // '0' unknown → stale
 
-    await group.publish('chat', { target: 'swr', key: ['publish-event'] })
-    const r3 = store.add({ target: 'swr', key: ['probe2'] })
+    await group.publish('chat', { key: ['publish-event'] })
+    const r3 = store.add({ key: ['probe2'] })
     // broadcast-event='1', probe='2', publish-event='3', probe2='4'
     // getEventsAfter('1') → [probe, publish-event, probe2]
     const { events: allEvents, stale } = store.getEventsAfter('1')
@@ -743,14 +490,14 @@ describe('channel-group', () => {
   // --- Broadcast: non-ChannelClosedError does NOT deregister ---
 
   it('broadcast does NOT deregister channels that throw non-ChannelClosedError', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
     vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime error') })
 
     group.register(ch, { userId: 1 })
     expect(group.size).toBe(1)
 
-    expect(() => { group.broadcastToAll({ target: 'swr', key: ['test'] }); }).toThrow(AggregateError)
+    expect(() => { group.broadcastToAll({ key: ['test'] }); }).toThrow(AggregateError)
 
     // Channel should still be registered — it threw Error, not ChannelClosedError
     expect(group.size).toBe(1)
@@ -763,44 +510,23 @@ describe('channel-group', () => {
     const pubsub = new MemoryPubSubAdapter()
     const publishSpy = vi.spyOn(pubsub, 'publish')
 
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
 
     // No channels registered on 'orphan-topic'
-    await group.publish('orphan-topic', { target: 'swr', key: ['remote-only'] })
+    await group.publish('orphan-topic', { key: ['remote-only'] })
 
     // Broker should still receive the signal for remote instances
     expect(publishSpy).toHaveBeenCalledWith('orphan-topic', {
       kind: 'signal',
-      data: { target: 'swr', key: ['remote-only'] },
+      data: { key: ['remote-only'] },
     })
   })
 
   it('publish() is a no-op (not an error) when no local subs and no pubsub configured', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
+    const group = new SSEChannelGroup<TestMeta>()
 
     // Should not throw
-    await expect(group.publish('nonexistent', { target: 'swr', key: ['test'] })).resolves.toBeUndefined()
-  })
-
-  // --- deliverToChannel swallows non-ChannelClosedError in publish() context ---
-
-  it('publish() logs but does not throw when channel.invalidate throws non-ChannelClosedError', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
-    vi.spyOn(ch, 'invalidate').mockImplementation(() => { throw new Error('Runtime error') })
-
-    group.register(ch, { userId: 1 }, { topics: ['chat'] })
-
-    // publish() via deliverToChannel should log the error but NOT throw
-    await expect(group.publish('chat', { target: 'swr', key: ['test'] })).resolves.toBeUndefined()
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[ERROR][SSEChannelGroup.publish]'),
-      expect.any(String)
-    )
-
-    consoleSpy.mockRestore()
+    await expect(group.publish('nonexistent', { key: ['test'] })).resolves.toBeUndefined()
   })
 
   // --- TopicManager race: register during pending unsubscribe ---
@@ -809,9 +535,9 @@ describe('channel-group', () => {
     const pubsub = new MemoryPubSubAdapter()
     const subscribeSpy = vi.spyOn(pubsub, 'subscribe')
 
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     // Register ch1 on topic-x → TopicManager subscribes
     group.register(ch1, { userId: 1 }, { topics: ['topic-x'] })
@@ -837,21 +563,21 @@ describe('channel-group', () => {
   // --- eventBufferCapacity auto-creates eventStore ---
 
   it('auto-creates eventStore when eventBufferCapacity is set', () => {
-    const group = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 50 })
+    const group = new SSEChannelGroup<TestMeta>({ eventBufferCapacity: 50 })
     expect(group.eventStore).toBeDefined()
   })
 
   it('does not create eventStore when eventBufferCapacity is 0 or undefined', () => {
-    const group1 = new SSEChannelGroup<any, TestMeta>()
+    const group1 = new SSEChannelGroup<TestMeta>()
     expect(group1.eventStore).toBeUndefined()
 
-    const group2 = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 0 })
+    const group2 = new SSEChannelGroup<TestMeta>({ eventBufferCapacity: 0 })
     expect(group2.eventStore).toBeUndefined()
   })
 
   it('ignores errors thrown by ch.close() during revocation in closeLocalMatches', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 777 })
 
@@ -866,8 +592,8 @@ describe('channel-group', () => {
   })
 
   it('deregisters closed channel in deliverToChannel when ChannelClosedError is thrown on publish', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 1 }, { topics: ['events'] })
     expect(group.size).toBe(1)
@@ -883,8 +609,8 @@ describe('channel-group', () => {
 
   it('delivers remote signals received via PubSub callback to registered topic channels', async () => {
     const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 88 }, { topics: ['remote-topic'] })
 
@@ -902,72 +628,11 @@ describe('channel-group', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ key: ['remote-data'] }, undefined)
   })
 
-  // --- TopicManager edge cases for 100% line coverage ---
-
-  it('TopicManager handles channel removal while subscribe promise is resolving', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
-
-    // Register ch to create topic manager
-    group.register(ch, { userId: 1 }, { topics: ['transient-topic'] })
-
-    // Immediately deregister before subscribe resolves
-    group.deregister(ch)
-
-    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
-
-    expect(pubsub.getTopicSubscriberCount('transient-topic')).toBe(0)
-  })
-
-  it('TopicManager logs error when subscribe fails after max 5 attempts', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const pubsub = new MemoryPubSubAdapter()
-    vi.spyOn(pubsub, 'subscribe').mockRejectedValue(new Error('Persistent pubsub error'))
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
-
-    group.register(ch, { userId: 1 }, { topics: ['failing-topic'] })
-
-    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(200)
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[ERROR][TopicManager.subscribe] Failed to subscribe to topic "failing-topic" after 5 attempts:'),
-      expect.any(Error)
-    )
-
-    consoleSpy.mockRestore()
-  })
-
-  it('TopicManager logs error when unsubscribe fails', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const pubsub = new MemoryPubSubAdapter()
-    vi.spyOn(pubsub, 'subscribe').mockResolvedValue(() => Promise.reject(new Error('Unsubscribe network failure')))
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr' })
-
-    group.register(ch, { userId: 1 }, { topics: ['unsub-fail-topic'] })
-    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
-
-    group.deregister(ch)
-    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[ERROR][TopicManager.unsubscribe] Failed to unsubscribe from topic "unsub-fail-topic":'),
-      expect.any(Error)
-    )
-
-    consoleSpy.mockRestore()
-  })
-
   it('TopicManager handles channel added back while unsubscribe is pending', async () => {
     const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     group.register(ch1, { userId: 1 }, { topics: ['readd-topic'] })
     for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(50)
@@ -981,10 +646,10 @@ describe('channel-group', () => {
   })
 
   it('auto-creates EventStore when eventBufferCapacity > 0 is passed in options', () => {
-    const group = new SSEChannelGroup<any, TestMeta>({ eventBufferCapacity: 25 })
+    const group = new SSEChannelGroup<TestMeta>({ eventBufferCapacity: 25 })
     expect(group.eventStore).toBeDefined()
 
-    const ch = createSSEChannel({ target: 'swr' })
+    const ch = createSSEChannel({})
     const invalidateSpy = vi.spyOn(ch, 'invalidate')
     group.register(ch, { userId: 99 })
 
@@ -994,9 +659,9 @@ describe('channel-group', () => {
 
   it('preserves topic subscription when new channel registers while teardown is in-flight', async () => {
     const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>({ pubsub })
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     // 1. Initial register
     group.register(ch1, { userId: 10 }, { topics: ['shared-topic'] })
@@ -1016,8 +681,8 @@ describe('channel-group', () => {
   // --- Auto-deregister via onClose ---
 
   it('auto-deregisters channel when it is closed after register()', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 1 })
     expect(group.size).toBe(1)
@@ -1027,8 +692,8 @@ describe('channel-group', () => {
   })
 
   it('auto-deregisters channel when it is disconnected', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
 
     group.register(ch, { userId: 1 })
     ch.disconnect()
@@ -1036,8 +701,8 @@ describe('channel-group', () => {
   })
 
   it('does not wire a second onClose listener on re-registration', () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({})
     const onCloseSpy = vi.spyOn(ch, 'onClose')
 
     group.register(ch, { userId: 1 })
@@ -1054,9 +719,9 @@ describe('channel-group', () => {
   // --- broadcastByKey ---
 
   it('broadcastByKey delivers to channels whose metadata matches the signal key', () => {
-    const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId: number }>()
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     const spy1 = vi.spyOn(ch1, 'invalidate')
     const spy2 = vi.spyOn(ch2, 'invalidate')
@@ -1066,16 +731,16 @@ describe('channel-group', () => {
     group.register(ch2, { userId: 2 })
 
     // signal key [{ userId: 1 }] should match only ch1
-    group.broadcastByKey({ target: 'swr', key: [{ userId: 1 }] })
+    group.broadcastByKey({ key: [{ userId: 1 }] })
 
-    expect(spy1).toHaveBeenCalledWith({ target: 'swr', key: [{ userId: 1 }] }, undefined)
+    expect(spy1).toHaveBeenCalledWith({ key: [{ userId: 1 }] }, undefined)
     expect(spy2).not.toHaveBeenCalled()
   })
 
   it('broadcastByKey delivers to all channels when key matches all metadata', () => {
-    const group = new SSEChannelGroup<any, { role: string }>()
-    const ch1 = createSSEChannel({ target: 'swr' })
-    const ch2 = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ role: string }>()
+    const ch1 = createSSEChannel({})
+    const ch2 = createSSEChannel({})
 
     const spy1 = vi.spyOn(ch1, 'invalidate')
     const spy2 = vi.spyOn(ch2, 'invalidate')
@@ -1084,53 +749,26 @@ describe('channel-group', () => {
     group.register(ch2, { role: 'user' })
 
     // empty key prefix matches every channel
-    group.broadcastByKey({ target: 'swr', key: [] })
+    group.broadcastByKey({ key: [] })
 
     expect(spy1).toHaveBeenCalled()
     expect(spy2).toHaveBeenCalled()
   })
 
   it('broadcastByKey delivers nothing when no metadata matches', () => {
-    const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel({ target: 'swr' })
+    const group = new SSEChannelGroup<{ userId: number }>()
+    const ch = createSSEChannel({})
     const spy = vi.spyOn(ch, 'invalidate')
 
     group.register(ch, { userId: 5 })
 
-    group.broadcastByKey({ target: 'swr', key: [{ userId: 99 }] })
+    group.broadcastByKey({ key: [{ userId: 99 }] })
     expect(spy).not.toHaveBeenCalled()
   })
 
-  // --- revokeByConnectionId ---
-
-  it('revokeByConnectionId closes matching connection locally and publishes control message', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-    const publishSpy = vi.spyOn(pubsub, 'publish')
-
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-1' })
-
-    group.register(ch, { userId: 100 })
-    const result = await group.revokeByConnectionId(ch.connectionId)
-
-    expect(result.closed).toBe(true)
-    expect(ch.state).toBe('closed')
-    expect(group.size).toBe(0)
-
-    expect(publishSpy).toHaveBeenCalledWith(group.controlTopic, {
-      kind: 'control',
-      data: {
-        type: 'revokeByConnectionId',
-        revokeByConnectionId: {
-          connectionId: ch.connectionId
-        }
-      }
-    })
-  })
-
   it('revokeByConnectionId enforces scope checks', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-2' })
+    const group = new SSEChannelGroup<TestMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-2' })
 
     group.register(ch, { userId: 100, role: 'admin' })
 
@@ -1147,53 +785,12 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('revokeByConnectionId rejects invalid non-plain-object scope values', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-scope-val' })
-    group.register(ch, { userId: 100, role: 'admin' })
-
-    await expect(group.revokeByConnectionId(ch.connectionId, null as any)).rejects.toThrow(
-      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
-    )
-    await expect(group.revokeByConnectionId(ch.connectionId, [] as any)).rejects.toThrow(
-      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
-    )
-    await expect(group.revokeByConnectionId(ch.connectionId, 123 as any)).rejects.toThrow(
-      '[SSEChannelGroup.revokeByConnectionId] scope must be a non-null JSON plain object.'
-    )
-    expect(ch.state).toBe('open')
-  })
-
-  it('handles remote revokeByConnectionId messages via pubsub', async () => {
-    const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, TestMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-3' })
-
-    group.register(ch, { userId: 100 })
-    await group['controlPendingOp']
-
-    // Simulate remote node publishing control message
-    await pubsub.publish(group.controlTopic, {
-      kind: 'control',
-      data: {
-        type: 'revokeByConnectionId',
-        revokeByConnectionId: {
-          connectionId: ch.connectionId,
-          scope: { userId: 100 }
-        }
-      }
-    })
-
-    expect(ch.state).toBe('closed')
-    expect(group.size).toBe(0)
-  })
-
   it('revokeByConnectionId scope matching uses structural equality, not reference equality', async () => {
     // Regression: scope comparison previously used !== (reference equality), so
     // nested objects/arrays in scope would never match — even locally.
     interface NestedMeta { userId: number; address: { city: string } }
-    const group = new SSEChannelGroup<any, NestedMeta>()
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-nested' })
+    const group = new SSEChannelGroup<NestedMeta>()
+    const ch = createSSEChannel({ connectionId: 'conn-nested' })
 
     group.register(ch, { userId: 1, address: { city: 'London' } })
 
@@ -1206,40 +803,12 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('revokeByConnectionId scope matching works structurally after JSON round-trip (remote pubsub path)', async () => {
-    // Regression: the remote revokeByConnectionId path serializes scope to JSON and back.
-    // With reference equality this would always fail for nested objects.
-    interface NestedMeta { userId: number; permissions: { admin: boolean } }
-    const pubsub = new MemoryPubSubAdapter()
-    const group = new SSEChannelGroup<any, NestedMeta>({ pubsub })
-    const ch = createSSEChannel({ target: 'swr', connectionId: 'conn-roundtrip' })
-
-    group.register(ch, { userId: 7, permissions: { admin: true } })
-    await group['controlPendingOp']
-
-    // Simulate a remote node publishing the revokeByConnectionId control message.
-    // The scope object is a fresh deserialized value — different reference.
-    await pubsub.publish(group.controlTopic, {
-      kind: 'control',
-      data: {
-        type: 'revokeByConnectionId',
-        revokeByConnectionId: {
-          connectionId: ch.connectionId,
-          scope: { permissions: { admin: true } }
-        }
-      }
-    })
-
-    expect(ch.state).toBe('closed')
-    expect(group.size).toBe(0)
-  })
-
   it('manages connectionIndex collision-safely', async () => {
-    const group = new SSEChannelGroup<any, TestMeta>()
-    
+    const group = new SSEChannelGroup<TestMeta>()
+
     // Create two channels with the same connection ID
-    const ch1 = createSSEChannel({ target: 'swr', connectionId: 'shared-id' })
-    const ch2 = createSSEChannel({ target: 'swr', connectionId: 'shared-id' })
+    const ch1 = createSSEChannel({ connectionId: 'shared-id' })
+    const ch2 = createSSEChannel({ connectionId: 'shared-id' })
 
     group.register(ch1, { userId: 100 })
     group.register(ch2, { userId: 100 })
@@ -1256,69 +825,15 @@ describe('channel-group', () => {
     expect(group.size).toBe(0)
   })
 
-  it('delivers raw signals on broadcast to multi-target channel', async () => {
-    const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: ['swr', 'tanstack-query'], requestedTarget: 'swr' })
-    group.register(ch)
-
-    const reader = ch.stream.getReader()
-    group.broadcastToAll([
-      { target: 'swr', key: ['items'] },
-      { target: 'tanstack-query', queryKey: ['items'] },
-    ])
-
-    const { value } = await reader.read()
-    reader.releaseLock()
-
-    const decoder = new TextDecoder()
-    expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: [{"target":"swr","key":["items"]}]\n\n'
-    )
-  })
-
-  it('delivers raw signal on broadcast to channel which frames single-target signal', async () => {
-    const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: 'swr' })
-    group.register(ch)
-
-    const reader = ch.stream.getReader()
-    group.broadcastToAll({ target: 'swr', key: ['todos'] })
-
-    const { value } = await reader.read()
-    reader.releaseLock()
-
-    const decoder = new TextDecoder()
-    expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"target":"swr","key":["todos"]}\n\n'
-    )
-  })
-
   it('delivers raw signal to channel on broadcast', () => {
     const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: 'tanstack-query' })
+    const ch = createSSEChannel({})
     group.register(ch)
 
     const spy = vi.spyOn(ch, 'invalidate')
-    group.broadcastToAll({ target: 'tanstack-query', queryKey: ['items'] })
+    group.broadcastToAll({ key: ['items'] })
 
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ target: 'tanstack-query', queryKey: ['items'] }), undefined)
-  })
-
-  it('delivers raw signal on publish() to local topic subscribers', async () => {
-    const group = new SSEChannelGroup()
-    const ch = createSSEChannel({ target: 'tanstack-query' })
-    group.register(ch, undefined, { topics: ['items'] })
-
-    const reader = ch.stream.getReader()
-    await group.publish('items', { target: 'tanstack-query', queryKey: ['posts'] })
-
-    const { value } = await reader.read()
-    reader.releaseLock()
-
-    const decoder = new TextDecoder()
-    expect(decoder.decode(value)).toBe(
-      'event: invalidate\ndata: {"target":"tanstack-query","queryKey":["posts"]}\n\n'
-    )
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ key: ['items'] }), undefined)
   })
 })
 
@@ -1357,7 +872,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
 
     // Create a channel and register it
-    const ch = createSSEChannel({ target: 'swr' })
+    const ch = createSSEChannel({})
     group.register(ch)
 
     // The group's channelDefaults should have been merged into the channel during registration.
@@ -1371,15 +886,14 @@ describe('SSEChannelGroup — channelDefaults', () => {
     vi.useFakeTimers()
     const decoder = new TextDecoder()
 
-    const group = new SSEChannelGroup({
-      channelDefaults: { lifetime: { ttlMs: 2000, onDeadline: 'revoke' } },
-    })
+    const lifetime = { ttlMs: 2000, onDeadline: 'revoke' } as const
+    const group = new SSEChannelGroup({ channelDefaults: { lifetime } })
 
-    const ch = createSSEChannel({ target: 'swr', lifetime: group.channelDefaults?.lifetime })
+    const ch = createSSEChannel({ lifetime })
     group.register(ch)
 
     const reader = ch.stream.getReader()
-    
+
     // Advance past the TTL + jitter window
     await vi.advanceTimersByTimeAsync(3000)
 
@@ -1395,10 +909,9 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
   describe('createFetchResponse (Fetch API)', () => {
     it('creates a channel, registers it with the group, and returns response and channel reference', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const group = new SSEChannelGroup<{ userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-1')
       const { response, channel } = group.createFetchResponse(req, {
-        target: 'tanstack-query',
         meta: { userId: 42 },
         topics: ['user-42'],
       })
@@ -1408,15 +921,14 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(1)
 
       const invalidateSpy = vi.spyOn(channel, 'invalidate')
-      group.broadcastToAll({ target: 'tanstack-query', queryKey: ['items'] })
-      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['items'] }, undefined)
+      group.broadcastToAll({ key: ['items'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ key: ['items'] }, undefined)
     })
 
     it('automatically deregisters channel from group when channel closes', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const group = new SSEChannelGroup<{ userId: number }>({})
       const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-2')
       const { channel } = group.createFetchResponse(req, {
-        target: 'swr',
         meta: { userId: 10 },
       })
 
@@ -1425,33 +937,12 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(0)
     })
 
-    it('inherits target from group channelDefaults when target is omitted', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({
-        channelDefaults: { target: 'tanstack-query' },
-      })
-      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-3')
-      const { response, channel } = group.createFetchResponse(req, {
-        meta: { userId: 99 },
-      })
-
-      expect(channel.target).toBe('tanstack-query')
-      expect(response.headers.get('x-restale-target')).toBe('tanstack-query')
-    })
-
     it('throws synchronously when __restale_cid__ is missing', () => {
       const group = new SSEChannelGroup({})
       const req = new Request('http://localhost/sse')
       expect(() => {
-        group.createFetchResponse(req, { target: 'swr' })
-      }).toThrow('__restale_cid__')
-    })
-
-    it('throws synchronously when target is missing from options and defaults', () => {
-      const group = new SSEChannelGroup({})
-      const req = new Request('http://localhost/sse?__restale_cid__=conn-fetch-4')
-      expect(() => {
         group.createFetchResponse(req, {})
-      }).toThrow('target is required')
+      }).toThrow('__restale_cid__')
     })
   })
 
@@ -1464,28 +955,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
       })
     }
 
-    it('attaches channel to Node res, registers it with group, and returns channel reference', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({})
-      const req = new EventEmitter() as any
-      req.url = '/sse?__restale_cid__=conn-node-1'
-      req.headers = {}
-      const res = createMockNodeRes()
-
-      const { channel } = group.attachNodeResponse(req, res, {
-        target: 'swr',
-        meta: { userId: 100 },
-        topics: ['topic-a'],
-      })
-
-      expect(channel).toBeDefined()
-      expect(group.size).toBe(1)
-      expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-        'X-ReStale-Target': 'swr',
-      }))
-    })
-
     it('supports Fastify reply object and calls hijack() if present', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const group = new SSEChannelGroup<{ userId: number }>({})
       const rawReq = Object.assign(new EventEmitter(), { url: '/sse?__restale_cid__=conn-fastify-1', headers: {} })
       const req = { raw: rawReq } as any
       const rawRes = createMockNodeRes()
@@ -1493,7 +964,6 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const reply = { raw: rawRes, hijack: hijackSpy } as any
 
       const { channel } = group.attachNodeResponse(req, reply, {
-        target: 'tanstack-query',
         meta: { userId: 200 },
       })
 
@@ -1503,14 +973,13 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
 
     it('automatically deregisters channel on close', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({})
+      const group = new SSEChannelGroup<{ userId: number }>({})
       const req = new EventEmitter() as any
       req.url = '/sse?__restale_cid__=conn-node-2'
       req.headers = {}
       const res = createMockNodeRes()
 
       const { channel } = group.attachNodeResponse(req, res, {
-        target: 'swr',
         meta: { userId: 55 },
       })
 
@@ -1519,48 +988,12 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(0)
     })
 
-    it('inherits target from group channelDefaults when target is omitted', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({
-        channelDefaults: { target: 'swr' },
-      })
-      const req = new EventEmitter() as any
-      req.url = '/sse?__restale_cid__=conn-node-3'
-      req.headers = {}
-      const res = createMockNodeRes()
-
-      const { channel } = group.attachNodeResponse(req, res, {
-        meta: { userId: 77 },
-      })
-
-      expect(channel.target).toBe('swr')
-      expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-        'X-ReStale-Target': 'swr',
-      }))
-    })
-
-    it('inherits target from top-level group options', () => {
-      const group = new SSEChannelGroup<any, { userId: number }>({
-        target: 'tanstack-query',
-      })
-      const req = new EventEmitter() as any
-      req.url = '/sse?__restale_cid__=conn-node-top-target'
-      req.headers = {}
-      const res = createMockNodeRes()
-
-      const { channel } = group.attachNodeResponse(req, res, {
-        meta: { userId: 99 },
-      })
-
-      expect(channel.target).toBe('tanstack-query')
-    })
-
     it('auto-allocates event buffer when lifetime is set without eventStore', () => {
       const ch = createSSEChannel({
-        target: 'generic',
         lifetime: { ttlMs: 60000 },
       })
       // Emitting invalidations should assign an auto-increment ID because event store capacity was auto-allocated
-      const eventId = ch.invalidate({ target: 'generic', key: ['todos'] })
+      const eventId = ch.invalidate({ key: ['todos'] })
       expect(eventId).toBe('1')
       ch.close()
     })
@@ -1576,8 +1009,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
     }
 
     it('prunes undefined properties in scope when calling revokeByConnectionId', async () => {
-      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-100', target: 'swr' })
+      const group = new SSEChannelGroup<{ userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-100'})
       group.register(ch, { userId: 100 })
 
       // Passing scope with undefined role property
@@ -1586,29 +1019,9 @@ describe('SSEChannelGroup — channelDefaults', () => {
       expect(group.size).toBe(0)
     })
 
-    it('preserves __proto__ scope keys as own properties during revokeByConnectionId scope pruning', async () => {
-      const group = new SSEChannelGroup<any, Record<string, any>>()
-      const ch = createSSEChannel({ connectionId: 'conn-proto', target: 'swr' })
-      group.register(ch, { ['__proto__']: 'tenant-1' })
-
-      // Scope with __proto__ key matching tenant-1 should match
-      const resMatch = await group.revokeByConnectionId(ch.connectionId, { ['__proto__']: 'tenant-1' })
-      expect(resMatch.closed).toBe(true)
-      expect(group.size).toBe(0)
-
-      // Re-register channel to test mismatch
-      const ch2 = createSSEChannel({ connectionId: 'conn-proto-2', target: 'swr' })
-      group.register(ch2, { ['__proto__']: 'tenant-1' })
-
-      // Scope with __proto__ key mismatch should NOT match
-      const resMismatch = await group.revokeByConnectionId(ch2.connectionId, { ['__proto__']: 'tenant-2' })
-      expect(resMismatch.closed).toBe(false)
-      expect(group.size).toBe(1)
-    })
-
     it('throws rather than revoking everyone when scope prunes down to an empty object', async () => {
-      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-empty-scope', target: 'swr' })
+      const group = new SSEChannelGroup<{ userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-empty-scope'})
       group.register(ch, { userId: 100, role: 'member' })
 
       // Caller passed a scope object, but every key resolved to `undefined`
@@ -1623,8 +1036,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
 
     it('throws when scope is a non-plain object with no enumerable own properties', async () => {
-      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-date-scope', target: 'swr' })
+      const group = new SSEChannelGroup<{ userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-date-scope'})
       group.register(ch, { userId: 100, role: 'member' })
 
       // `new Date()` passes the `typeof scope === 'object'` / `!Array.isArray` guard,
@@ -1637,8 +1050,8 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
 
     it('throws when an explicitly empty object is passed as scope', async () => {
-      const group = new SSEChannelGroup<any, { userId: number; role?: string }>()
-      const ch = createSSEChannel({ connectionId: 'conn-literal-empty-scope', target: 'swr' })
+      const group = new SSEChannelGroup<{ userId: number; role?: string }>()
+      const ch = createSSEChannel({ connectionId: 'conn-literal-empty-scope'})
       group.register(ch, { userId: 100, role: 'member' })
 
       // Passing `{}` directly should be treated the same as a scope that pruned to
@@ -1655,11 +1068,11 @@ describe('SSEChannelGroup — channelDefaults', () => {
     it('auto-infers TMeta from metaSchema in constructor', () => {
       const metaSchema = createValidSchema((data) => ({ userId: Number((data as any).userId) }))
       const group = new SSEChannelGroup({ metaSchema })
-      const ch = createSSEChannel({ target: 'swr' })
+      const ch = createSSEChannel({})
       group.register(ch, { userId: 42 })
 
       let receivedMeta: unknown = null
-      group.broadcast({ target: 'swr', key: ['test'] }, (meta) => {
+      group.broadcast({ key: ['test'] }, (meta) => {
         receivedMeta = meta
         return true
       })
@@ -1667,27 +1080,27 @@ describe('SSEChannelGroup — channelDefaults', () => {
     })
 
     it('automatically injects single target into publish and broadcast signals when omitted', async () => {
-      const group = new SSEChannelGroup({ target: 'tanstack-query' })
-      const ch = createSSEChannel({ target: 'tanstack-query' })
+      const group = new SSEChannelGroup({})
+      const ch = createSSEChannel({})
       group.register(ch, undefined, { topics: ['todos-topic'] })
 
       const invalidateSpy = vi.spyOn(ch, 'invalidate')
 
       // Calling broadcastToAll with signal without explicit target
-      group.broadcastToAll({ queryKey: ['todos'] })
-      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+      group.broadcastToAll({ key: ['todos'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ key: ['todos'] }, undefined)
 
       invalidateSpy.mockClear()
 
       // Calling publish with signal without explicit target
-      await group.publish('todos-topic', { queryKey: ['todos'] })
-      expect(invalidateSpy).toHaveBeenCalledWith({ target: 'tanstack-query', queryKey: ['todos'] }, undefined)
+      await group.publish('todos-topic', { key: ['todos'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ key: ['todos'] }, undefined)
     })
 
     it('handles scalar non-object metadata during revokeWhere and connectionId matching', async () => {
-      const group = new SSEChannelGroup<any, string>()
-      const ch1 = createSSEChannel({ connectionId: 'scalar-conn-1', target: 'swr' })
-      const ch2 = createSSEChannel({ connectionId: 'scalar-conn-2', target: 'swr' })
+      const group = new SSEChannelGroup<string>()
+      const ch1 = createSSEChannel({ connectionId: 'scalar-conn-1'})
+      const ch2 = createSSEChannel({ connectionId: 'scalar-conn-2'})
 
       group.register(ch1, 'admin-user')
       group.register(ch2, 'normal-user')
@@ -1704,10 +1117,167 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('rejects non-object scope in revokeByConnectionId', async () => {
       const group = new SSEChannelGroup()
-      const ch = createSSEChannel({ connectionId: 'conn-scope-invalid', target: 'swr' })
+      const ch = createSSEChannel({ connectionId: 'conn-scope-invalid'})
       group.register(ch)
 
       await expect(group.revokeByConnectionId('conn-scope-invalid', 123 as any)).rejects.toThrow(/scope/i)
+    })
+
+    it('continues delivery to other channels on publish even when one channel throws and does not throw AggregateError', async () => {
+      const group = new SSEChannelGroup()
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      group.register(ch1, undefined, { topics: ['shared-topic'] })
+      group.register(ch2, undefined, { topics: ['shared-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await expect(group.publish('shared-topic', { key: ['test'] })).resolves.toBeUndefined()
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['test'] }, undefined)
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to deliver signal to local channel during publish:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('continues delivery to other channels on pubsub signal even when one channel throws', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      group.register(ch1, undefined, { topics: ['pubsub-topic'] })
+      group.register(ch2, undefined, { topics: ['pubsub-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 pubsub failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await pubsub.publish('pubsub-topic', { kind: 'signal', data: { key: ['pubsub-item'] } })
+
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['pubsub-item'] }, undefined)
+    })
+
+    it('continues delivery to other channels on pushInlineData even when one channel throws', async () => {
+      const group = new SSEChannelGroup({
+        resolveInlineData: (connections) => {
+          const map = new Map()
+          for (const conn of connections) {
+            map.set(conn.connectionId, { signal: { key: ['item'] }, inlineData: { value: 123 } })
+          }
+          return map
+        },
+      })
+      const ch1 = createSSEChannel({ connectionId: 'c1' })
+      const ch2 = createSSEChannel({ connectionId: 'c2' })
+
+      group.register(ch1, undefined, { topics: ['inline-topic'] })
+      group.register(ch2, undefined, { topics: ['inline-topic'] })
+
+      vi.spyOn(ch1, 'invalidate').mockImplementation(() => {
+        throw new Error('Simulated channel 1 inline failure')
+      })
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await expect(group.pushInlineData('inline-topic', { data: 'test' })).rejects.toThrow(AggregateError)
+      expect(ch2Spy).toHaveBeenCalledWith({ key: ['item'], inlineData: { value: 123 } }, undefined)
+    })
+
+    it('handles subscribeControl schema validation failure gracefully without throwing uncaught', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const invalidSchema = createInvalidSchema('Invalid schema payload')
+      const group = new SSEChannelGroup({
+        pubsub,
+        clientContextSchema: invalidSchema,
+      })
+      const ch = createSSEChannel({ connectionId: 'c-schema' })
+      group.register(ch)
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Publish a malformed updateClientContext control message
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: 'c-schema',
+          clientContext: { invalid: true },
+        },
+      })
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Error processing pubsub control message:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('catches and logs errors during pubsub inlineData delivery', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({
+        pubsub,
+        // No resolveInlineData configured -> will throw when inlineData is delivered
+      })
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await pubsub.publish(group.controlTopic, {
+        kind: 'inlineData',
+        topic: 'any-topic',
+        payload: { test: 1 },
+      })
+
+      // Wait a tick for promise rejection to be caught
+      await Promise.resolve()
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to deliver inline data from pubsub:'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('deduplicates concurrent attachTopic subscriptions to prevent race conditions', () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const subscribeSpy = vi.spyOn(pubsub, 'subscribe')
+      const group = new SSEChannelGroup({ pubsub })
+
+      const ch1 = createSSEChannel({})
+      const ch2 = createSSEChannel({})
+
+      // Register concurrently to the same topic
+      group.register(ch1, undefined, { topics: ['concurrent-topic'] })
+      group.register(ch2, undefined, { topics: ['concurrent-topic'] })
+
+      // pubsub.subscribe should only have been called once for 'concurrent-topic'
+      const topicSubscribes = subscribeSpy.mock.calls.filter(([t]) => t === 'concurrent-topic')
+      expect(topicSubscribes).toHaveLength(1)
+    })
+
+    it('handles pubsub.subscribe failure in attachTopic cleanly', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Mock rejection specifically for subsequent topic subscribe
+      vi.spyOn(pubsub, 'subscribe').mockRejectedValueOnce(new Error('Pubsub connection lost'))
+
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['failing-topic'] })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Failed to subscribe to pubsub topic "failing-topic":'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
     })
   })
 })
