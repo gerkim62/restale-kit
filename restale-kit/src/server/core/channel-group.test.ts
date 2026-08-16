@@ -1243,7 +1243,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       consoleSpy.mockRestore()
     })
 
-    it('deduplicates concurrent attachTopic subscriptions to prevent race conditions', async () => {
+    it('deduplicates concurrent attachTopic subscriptions to prevent race conditions', () => {
       const pubsub = new MemoryPubSubAdapter()
       const subscribeSpy = vi.spyOn(pubsub, 'subscribe')
       const group = new SSEChannelGroup({ pubsub })

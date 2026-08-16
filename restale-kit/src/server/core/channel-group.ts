@@ -312,7 +312,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
           }
           return unsubscribe
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
           return undefined
         })
@@ -341,7 +341,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       this.controlUnsubscribe = await this.options.pubsub.subscribe(this.controlTopic, (message) => {
         try {
           if (message.kind === 'inlineData') {
-            void this.deliverInlineData(message.topic, message.payload).catch((error) => {
+            void this.deliverInlineData(message.topic, message.payload).catch((error: unknown) => {
               console.error('[SSEChannelGroup] Failed to deliver inline data from pubsub:', error)
             })
             return
