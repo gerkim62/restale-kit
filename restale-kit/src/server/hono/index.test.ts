@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { SSEChannelGroup } from '../core/index.js'
 
 describe('server/hono integration via createFetchResponse', () => {
-
-  it('throws Error synchronously when __restale_cid__ query parameter is missing', () => {
+  it('creates an SSE response with auto-generated connection ID', () => {
     const group = new SSEChannelGroup({})
     const req = new Request('https://example.com/sse')
-    expect(() => group.createFetchResponse(req, {})).toThrow(
-      'Missing or invalid __restale_cid__ query parameter in request URL'
-    )
+    const result = group.createFetchResponse(req, {})
+    expect(result.response).toBeInstanceOf(Response)
+    expect(result.channel.connectionId).toBeDefined()
+    expect(typeof result.channel.connectionId).toBe('string')
+    expect(result.channel.connectionId.length).toBeGreaterThan(0)
+    expect(group.size).toBe(1)
   })
 })

@@ -1,3 +1,22 @@
+// Source - https://stackoverflow.com/a/48161723
+// Posted by Vitaly Zdanevich, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-08-16, License - CC BY-SA 4.0
+
+export async function sha256(message: string): Promise<string> {
+  // encode as UTF-8
+  const msgBuffer = new TextEncoder().encode(message)
+
+  // hash the message
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
+
+  // convert ArrayBuffer to Array
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+
+  // convert bytes to hex string
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+  return hashHex
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -69,24 +88,19 @@ export function canonicalJsonSerialize(value: unknown): string | undefined {
 }
 
 /**
- * Fast 32-bit FNV-1a hash algorithm returning an 8-character hex string.
+ * Computes a secure deterministic sender hash for connection self-exclusion.
  */
-function fnv1a32Hex(str: string): string {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
+export async function computeSenderHash(connectionId: string): Promise<string> {
+  return sha256(connectionId)
 }
 
 /**
  * Computes a deterministic canonical hash string for a client context value.
  * Returns undefined if context is undefined or not serializable.
  */
-export function computeContextHash(context: unknown): string | undefined {
+export async function computeContextHash(context: unknown): Promise<string | undefined> {
   if (context === undefined) return undefined
   const serialized = canonicalJsonSerialize(context)
   if (serialized === undefined) return undefined
-  return fnv1a32Hex(serialized)
+  return sha256(serialized)
 }

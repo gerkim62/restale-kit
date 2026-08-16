@@ -8,6 +8,7 @@ vi.mock('sse.js', async () => {
 })
 
 import { SSEInvalidatorClient } from './sse-client.js'
+import { computeSenderHash } from '@/utils/canonical-hash.js'
 
 describe('SSEInvalidatorClient', () => {
   beforeEach(() => {
@@ -19,13 +20,13 @@ describe('SSEInvalidatorClient', () => {
     vi.useRealTimers()
   })
 
-  it('passes options and URL with connectionId to sse.js', () => {
+  it('passes options and clean URL without query parameters to sse.js', () => {
     const client = new SSEInvalidatorClient('/sse', { withCredentials: true })
     void client.connect()
 
     expect(MockEventSource.instances).toHaveLength(1)
     const instance = MockEventSource.instances[0]
-    expect(instance.url).toBe(`/sse?__restale_cid__=${client.connectionId}`)
+    expect(instance.url).toBe('/sse')
     expect(instance.options).toEqual({
       withCredentials: true,
       headers: {},
@@ -34,10 +35,25 @@ describe('SSEInvalidatorClient', () => {
     })
   })
 
+  it('receives server-assigned connectionId via connected event', async () => {
+    const client = new SSEInvalidatorClient('/sse')
+    expect(client.connectionId).toBeUndefined()
+
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'server-assigned-uuid')
+    await pending
+
+    expect(client.connectionId).toBe('server-assigned-uuid')
+  })
+
   it('posts client context and maps 204 and 404 responses', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const client = new SSEInvalidatorClient('/sse', { clientContextUrl: '/context' })
+    const pending = client.connect()
+    MockEventSource.instances[0]?.emitOpen(undefined, 'conn-123')
+    await pending
 
     fetchMock.mockResolvedValueOnce({ status: 204 })
     await expect(client.updateClientContext({ page: 2 })).resolves.toEqual({ updated: true })
@@ -46,7 +62,7 @@ describe('SSEInvalidatorClient', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         purpose: 'CLIENT_CONTEXT',
-        connectionId: client.connectionId,
+        connectionId: 'conn-123',
         clientContext: { page: 2 },
       }),
       credentials: 'same-origin',
@@ -61,13 +77,16 @@ describe('SSEInvalidatorClient', () => {
     const fetchMock = vi.fn().mockResolvedValue({ status: 204 })
     vi.stubGlobal('fetch', fetchMock)
     const client = new SSEInvalidatorClient('/sse')
+    const pending = client.connect()
+    MockEventSource.instances[0]?.emitOpen(undefined, 'conn-rev-1')
+    await pending
 
     await client.updateClientContext({ page: 2 }, { revision: 3 })
 
     expect(fetchMock).toHaveBeenCalledWith('/sse', expect.objectContaining({
       body: JSON.stringify({
         purpose: 'CLIENT_CONTEXT',
-        connectionId: client.connectionId,
+        connectionId: 'conn-rev-1',
         clientContext: { page: 2 },
         revision: 3,
       }),
@@ -1838,7 +1857,77 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
     expect(MockEventSource.instances).toHaveLength(2)
     const renewUrl = MockEventSource.instances[1]?.url
 
-    // URL must be identical — same __restale_cid__, same path
+    // URL must be identical
     expect(renewUrl).toBe(originalUrl)
   })
 })
+
+describe('skipSelf and sender hash filtering', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    MockEventSource.clear()
+  })
+
+  it('drops self-originated signals when skipSelf is true and sender hash matches', async () => {
+    const callback = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: true, callback })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'my-connection-id')
+    await pending
+
+    const myHash = await computeSenderHash('my-connection-id')
+    const otherHash = await computeSenderHash('other-connection-id')
+
+    // Signal sent by self -> dropped
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['self-item'], _sh: myHash }))
+    expect(callback).not.toHaveBeenCalled()
+
+    // Signal sent by other -> delivered
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['other-item'], _sh: otherHash }))
+    expect(callback).toHaveBeenCalledWith({ key: ['other-item'], _sh: otherHash })
+
+    // Signal without _sh -> delivered
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['no-hash-item'] }))
+    expect(callback).toHaveBeenCalledWith({ key: ['no-hash-item'] })
+  })
+
+  it('filters only matching items in a signal batch when skipSelf is true', async () => {
+    const callback = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: true, callback })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'conn-batch')
+    await pending
+
+    const myHash = await computeSenderHash('conn-batch')
+    const otherHash = await computeSenderHash('other-conn')
+
+    const batch = [
+      { key: ['item-1'], _sh: myHash },
+      { key: ['item-2'], _sh: otherHash },
+      { key: ['item-3'] },
+    ]
+
+    instance.emitCustomEvent('invalidate', JSON.stringify(batch))
+    expect(callback).toHaveBeenCalledWith([
+      { key: ['item-2'], _sh: otherHash },
+      { key: ['item-3'] },
+    ])
+  })
+
+  it('delivers all signals when skipSelf is false or omitted', async () => {
+    const callback = vi.fn()
+    const client = new SSEInvalidatorClient('/sse', { skipSelf: false, callback })
+    const pending = client.connect()
+    const instance = MockEventSource.instances[0]
+    instance.emitOpen(undefined, 'my-conn')
+    await pending
+
+    const myHash = await computeSenderHash('my-conn')
+
+    instance.emitCustomEvent('invalidate', JSON.stringify({ key: ['self-item'], _sh: myHash }))
+    expect(callback).toHaveBeenCalledWith({ key: ['self-item'], _sh: myHash })
+  })
+})
+

@@ -12,6 +12,7 @@ import {
 import { ChannelClosedError } from '@/types/errors.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import {
+  formatConnectedFrame,
   formatInvalidateFrame,
   formatKeepalive,
   formatRenewFrame,
@@ -19,6 +20,7 @@ import {
   formatRevokeFrame,
 } from '@/server/core/framing.js'
 import { FRAME_GUARD_DEFAULTS, PROTOCOL_CONSTANTS } from '@/utils/constants.js'
+import { generateUUID } from '@/utils/id.js'
 
 export interface SSEChannelOptions {
   keepaliveIntervalMs?: number
@@ -27,7 +29,6 @@ export interface SSEChannelOptions {
   eventStore?: EventStore
   eventBufferCapacity?: number
   idGenerator?: () => string
-  connectionId?: string
   lifetime?: LifetimeOptions
   beforeFrame?: BeforeFrameFn
   guardKeepalive?: boolean
@@ -50,7 +51,7 @@ export interface SSEChannel {
 export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
   validateChannelOptions(options)
   const keepaliveIntervalMs = options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
-  const connectionId = options.connectionId ?? ''
+  const connectionId = generateUUID()
   const isResume = options.lastEventId !== undefined
   const ownsEventStore = options.eventStore === undefined
   const capacity = options.eventBufferCapacity ?? (options.eventStore === undefined && options.lifetime ? 50 : undefined)
@@ -133,6 +134,7 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
   const stream = new ReadableStream<Uint8Array>({
     start(streamController) {
       controller = streamController
+      streamController.enqueue(formatConnectedFrame(connectionId))
       if (options.retryIntervalMs !== undefined) streamController.enqueue(formatRetryFrame(options.retryIntervalMs))
       try { replay() } catch { closeInternal(); return }
       if (keepaliveIntervalMs > 0) {
@@ -202,20 +204,22 @@ export function validateSignalPayload(signal: unknown): asserts signal is Univer
     const signalValue = value
     if (!isJSONValueArray(signalValue.key)) throw new Error('[invalidate] Signal key must be a JSONValue array.')
     if (isInlineDataSignalLike(signalValue)) {
-      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')
+      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale' && key !== '_sh')
       if (unsupported.length > 0) {
         throw new Error(`[invalidate] Invalid inline-data signal: unsupported fields (${unsupported.join(', ')}).`)
       }
       if (!isJSONValue(signalValue.inlineData) || 'exact' in signalValue ||
-          ('markStale' in signalValue && typeof signalValue.markStale !== 'boolean')) {
+          ('markStale' in signalValue && typeof signalValue.markStale !== 'boolean') ||
+          ('_sh' in signalValue && typeof signalValue._sh !== 'string')) {
         throw new Error('[invalidate] Invalid inline-data signal.')
       }
     } else {
-      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'exact')
+      const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'exact' && key !== '_sh')
       if (unsupported.length > 0) {
         throw new Error(`[invalidate] Invalid revalidate signal: unsupported fields (${unsupported.join(', ')}).`)
       }
-      if ('markStale' in signalValue || ('exact' in signalValue && typeof signalValue.exact !== 'boolean')) {
+      if ('markStale' in signalValue || ('exact' in signalValue && typeof signalValue.exact !== 'boolean') ||
+          ('_sh' in signalValue && typeof signalValue._sh !== 'string')) {
         throw new Error('[invalidate] Invalid revalidate signal.')
       }
     }

@@ -1,6 +1,6 @@
 import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSEHeaders, extractConnectionId, extractLastEventId } from '@/server/transport-utils.js'
+import { buildSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -16,11 +16,6 @@ export function internal_toSSEResponse(
   options: SSEChannelTransportOptions,
   group?: Pick<SSEChannelGroup, 'channelDefaults' | 'eventStore'>
 ): { response: Response; channel: SSEChannel } {
-  const urlObj = new URL(request.url)
-  const connectionId =
-    options.connectionId !== undefined
-      ? options.connectionId
-      : extractConnectionId(urlObj.searchParams)
   const lastEventId =
     options.lastEventId ?? extractLastEventId((name) => request.headers.get(name))
 
@@ -28,7 +23,6 @@ export function internal_toSSEResponse(
   const effectiveEventStore = optionEventStore ?? group?.eventStore
   const baseOptions: SSEChannelTransportOptions = {
     ...restOptions,
-    connectionId,
     ...(lastEventId !== undefined ? { lastEventId } : {}),
     ...(effectiveEventStore !== undefined ? { eventStore: effectiveEventStore } : {}),
   }

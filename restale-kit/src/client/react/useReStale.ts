@@ -114,6 +114,7 @@ function toClientOptions(opts: ClientOptions): ClientOptions {
     ...(opts.reconnect !== undefined ? { reconnect: opts.reconnect } : {}),
     ...(opts.withCredentials !== undefined ? { withCredentials: opts.withCredentials } : {}),
     ...(opts.debug !== undefined ? { debug: opts.debug } : {}),
+    ...(opts.skipSelf !== undefined ? { skipSelf: opts.skipSelf } : {}),
     ...(opts.callback !== undefined ? { callback: opts.callback } : {}),
     ...(opts.onConnect !== undefined ? { onConnect: opts.onConnect } : {}),
     ...(opts.onDisconnect !== undefined ? { onDisconnect: opts.onDisconnect } : {}),
@@ -185,6 +186,7 @@ export function useReStale(
     opts.autoReconnect,
     opts.reconnect,
     opts.debug,
+    opts.skipSelf,
     opts.callback,
     opts.onConnect,
     opts.onDisconnect,
@@ -193,18 +195,32 @@ export function useReStale(
 
   // useSyncExternalStore subscription
   const subscribe = useCallback(
-    (callback: () => void) => {
+    (onStoreChange: () => void) => {
       if (!client) return () => {}
-      const handler = () => { callback() }
+      const handler = () => { onStoreChange() }
       client.addEventListener('statuschange', handler)
+      client.addEventListener('connected', handler)
       return () => {
         client.removeEventListener('statuschange', handler)
+        client.removeEventListener('connected', handler)
       }
     },
     [client]
   )
 
-  const getSnapshot = useCallback(() => (client ? client.status : CLOSED_UNMOUNT), [client])
+  const snapshotRef = useRef<ConnectionStatus>(CLOSED_UNMOUNT)
+  const lastStatusRef = useRef<ConnectionStatus | null>(null)
+  const lastCidRef = useRef<string | undefined>(undefined)
+
+  const getSnapshot = useCallback(() => {
+    if (!client) return CLOSED_UNMOUNT
+    if (client.status !== lastStatusRef.current || client.connectionId !== lastCidRef.current) {
+      lastStatusRef.current = client.status
+      lastCidRef.current = client.connectionId
+      snapshotRef.current = { ...client.status }
+    }
+    return snapshotRef.current
+  }, [client])
   const getServerSnapshot = useCallback(() => CLOSED_UNMOUNT, [])
 
   const connection = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
@@ -401,7 +417,7 @@ export function useReStale(
   const isError = connection.status === 'error'
 
   return {
-    connectionId: client ? client.connectionId : '',
+    connectionId: client?.connectionId ?? '',
     connection,
     attempt,
     isConnecting,

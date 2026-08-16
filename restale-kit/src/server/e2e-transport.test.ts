@@ -46,10 +46,14 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
   })
 
   it('Fetch: keepalive frame is correctly formatted in E2E stream', async () => {
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-4')
+    const request = new Request('https://example.com/sse')
     const { response, channel } = internal_toSSEResponse(request, { keepaliveIntervalMs: 1000 })
 
     const reader = response.body!.getReader()
+
+    // First frame is connected
+    const { value: connectedVal } = await reader.read()
+    expect(decoder.decode(connectedVal)).toBe(`event: connected\ndata: {"connectionId":"${channel.connectionId}"}\n\n`)
 
     await vi.advanceTimersByTimeAsync(1000)
 
@@ -66,16 +70,18 @@ describe('E2E: Transport → Channel → SSE Frame', () => {
     store.add({ key: ['c'] }, 'evt-3')
 
     // Simulate reconnection with Last-Event-ID header
-    const request = new Request('https://example.com/sse?__restale_cid__=e2e-5', {
+    const request = new Request('https://example.com/sse', {
       headers: { 'Last-Event-ID': 'evt-1' },
     })
-    const { response } = internal_toSSEResponse(request, { eventStore: store })
+    const { response, channel } = internal_toSSEResponse(request, { eventStore: store })
 
     const reader = response.body!.getReader()
+    const { value: v0 } = await reader.read()
     const { value: v1 } = await reader.read()
     const { value: v2 } = await reader.read()
     reader.releaseLock()
 
+    expect(decoder.decode(v0)).toBe(`event: connected\ndata: {"connectionId":"${channel.connectionId}"}\n\n`)
     expect(decoder.decode(v1)).toBe('id: evt-2\nevent: invalidate\ndata: {"key":["b"]}\n\n')
     expect(decoder.decode(v2)).toBe('id: evt-3\nevent: invalidate\ndata: {"key":["c"]}\n\n')
   })

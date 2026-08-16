@@ -17,6 +17,7 @@ export type CacheKey = JSONValue[]
 export interface RevalidateSignal {
   readonly key: CacheKey
   readonly exact?: boolean
+  readonly _sh?: string
   /** Disallowed: only inline-data signals can carry data. */
   readonly inlineData?: never
   /** Disallowed: stale marking only applies after an inline-data write. */
@@ -28,6 +29,7 @@ export interface InlineDataSignal {
   readonly key: CacheKey
   readonly inlineData: JSONValue
   readonly markStale?: boolean
+  readonly _sh?: string
   /** Disallowed: an inline-data write is always exact. */
   readonly exact?: never
 }
@@ -61,7 +63,7 @@ export function isJSONValueArray(value: unknown): value is JSONValue[] {
 
 /** Discriminated union envelope carried across pub/sub adapters. */
 export type PubSubMessage =
-  | { kind: 'signal'; data: UniversalSignal | UniversalSignal[]; id?: string }
+  | { kind: 'signal'; data: UniversalSignal | UniversalSignal[]; id?: string; senderConnectionId?: string }
   | { kind: 'control'; data: JSONValue }
   | { kind: 'inlineData'; topic: string; payload: JSONValue }
 

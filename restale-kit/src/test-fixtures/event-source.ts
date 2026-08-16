@@ -18,11 +18,18 @@ export class MockEventSource extends EventTarget {
     MockEventSource.instances.push(this)
   }
 
-  emitOpen(openEvent?: Event): void {
+  emitOpen(openEvent?: Event, connectionId = 'mock-conn-id'): void {
     this.readyState = MockEventSource.OPEN
     const event = openEvent || new Event('open')
     if (this.onopen) this.onopen(event)
     this.dispatchEvent(event)
+    if (connectionId) {
+      this.emitConnected(connectionId)
+    }
+  }
+
+  emitConnected(connectionId: string): void {
+    this.emitCustomEvent('connected', JSON.stringify({ connectionId }))
   }
 
   emitMessage(data: string, lastEventId = ''): void {
@@ -50,4 +57,3 @@ export class MockEventSource extends EventTarget {
     MockEventSource.instances = []
   }
 }
-

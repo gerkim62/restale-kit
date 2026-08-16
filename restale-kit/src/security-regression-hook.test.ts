@@ -12,10 +12,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useReStale } from '@/client/react/useReStale.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import type { AdaptedCallback } from '@/client/core/client-contracts.js'
+
+vi.mock('sse.js', async () => {
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  return { SSE }
+})
+
+import { useReStale } from '@/client/react/useReStale.js'
+import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 /** Cast a plain function to AdaptedCallback for test use. */
 function asAdapter(fn: (...args: any[]) => any): AdaptedCallback {
@@ -67,13 +73,21 @@ describe('Issue 9 — useReStale does not orphan clients on repeated renders', (
       useReStale(url, { onInvalidate })
     )
 
+    act(() => {
+      MockEventSource.instances[0]?.emitOpen(undefined, 'conn-v1')
+    })
     const idBefore = result.current.connectionId
+    expect(idBefore).toBe('conn-v1')
 
     // Change the URL — this should create a new client with a different connectionId
     url = '/api/sse-v2'
     rerender()
 
+    act(() => {
+      MockEventSource.instances[1]?.emitOpen(undefined, 'conn-v2')
+    })
     const idAfter = result.current.connectionId
+    expect(idAfter).toBe('conn-v2')
     expect(idAfter).not.toBe(idBefore)
 
     act(() => { result.current.close() })

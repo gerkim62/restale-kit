@@ -23,14 +23,16 @@ function createMockExpressResponse(): ServerResponse {
 }
 
 describe('server/express integration via attachNodeResponse', () => {
-
-  it('throws Error synchronously when __restale_cid__ is missing', () => {
+  it('attaches SSE response with auto-generated connection ID', () => {
     const group = new SSEChannelGroup({})
     const req = createMockExpressRequest('/sse')
     const res = createMockExpressResponse()
 
-    expect(() => group.attachNodeResponse(req, res, {})).toThrow(
-      'Missing or invalid __restale_cid__ query parameter in request URL'
-    )
+    const { channel } = group.attachNodeResponse(req, res, {})
+    expect(channel.connectionId).toBeDefined()
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
+    expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
+    expect(group.size).toBe(1)
   })
 })

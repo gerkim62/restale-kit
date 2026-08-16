@@ -6,10 +6,29 @@ import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.
 
 const decoder = new TextDecoder()
 
-async function readStreamChunk(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function readStreamChunk(stream: ReadableStream<Uint8Array>, skipConnected = true): Promise<string> {
   const reader = stream.getReader()
-  const { value } = await reader.read()
+  let { value } = await reader.read()
+  if (skipConnected && value) {
+    const str = decoder.decode(value)
+    if (str.startsWith('event: connected\n')) {
+      const next = await reader.read()
+      value = next.value
+    }
+  }
   reader.releaseLock()
+  return value ? decoder.decode(value) : ''
+}
+
+async function readNextChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
+  let { value } = await reader.read()
+  if (value) {
+    const str = decoder.decode(value)
+    if (str.startsWith('event: connected\n')) {
+      const next = await reader.read()
+      value = next.value
+    }
+  }
   return value ? decoder.decode(value) : ''
 }
 
@@ -25,6 +44,14 @@ describe('channel', () => {
   it('starts in open state', () => {
     const channel = createSSEChannel({})
     expect(channel.state).toBe('open')
+  })
+
+  it('emits connected frame as first event in stream', async () => {
+    const channel = createSSEChannel()
+    const reader = channel.stream.getReader()
+    const { value } = await reader.read()
+    reader.releaseLock()
+    expect(decoder.decode(value)).toBe(`event: connected\ndata: {"connectionId":"${channel.connectionId}"}\n\n`)
   })
 
   it.each([
@@ -69,6 +96,9 @@ describe('channel', () => {
     const channel = createSSEChannel({})
     const reader = channel.stream.getReader()
 
+    // Consume initial connected frame
+    await reader.read()
+
     await vi.advanceTimersByTimeAsync(60000)
 
     channel.close()
@@ -85,9 +115,9 @@ describe('channel', () => {
 
     await vi.advanceTimersByTimeAsync(5000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(text).toBe(': keepalive\n\n')
   })
 
   it('uses eventStore and custom idGenerator during invalidate', () => {
@@ -118,16 +148,15 @@ describe('channel', () => {
     expect(customGen).toHaveBeenCalled()
   })
 
-
   it('emits keepalive frame on timer interval when channel state is open', async () => {
     const channel = createSSEChannel({ keepaliveIntervalMs: 1000 })
     const reader = channel.stream.getReader()
 
     await vi.advanceTimersByTimeAsync(1000)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(text).toBe(': keepalive\n\n')
   })
 
   it('auto-creates eventStore when eventBufferCapacity > 0 is provided', () => {
@@ -136,14 +165,10 @@ describe('channel', () => {
     expect(id).toBe('1') // EventStore auto-increment ID
   })
 
-  it('exposes connectionId from options', () => {
-    const channel = createSSEChannel({ connectionId: 'test-conn-id' })
-    expect(channel.connectionId).toBe('test-conn-id')
-  })
-
-  it('connectionId defaults to empty string when not provided', () => {
-    const channel = createSSEChannel({})
-    expect(channel.connectionId).toBe('')
+  it('exposes server-generated connectionId', () => {
+    const channel = createSSEChannel()
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
   })
 
   it('revoke() sends a revoke frame then closes the channel', async () => {
@@ -152,10 +177,10 @@ describe('channel', () => {
 
     channel.revoke()
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe('event: revoke\ndata: {"reason":"revoked"}\n\n')
+    expect(text).toBe('event: revoke\ndata: {"reason":"revoked"}\n\n')
     expect(channel.state).toBe('closed')
   })
 
@@ -165,10 +190,10 @@ describe('channel', () => {
 
     channel.revoke('logout')
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    expect(decoder.decode(value)).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
+    expect(text).toBe('event: revoke\ndata: {"reason":"logout"}\n\n')
     expect(channel.state).toBe('closed')
   })
 
@@ -254,9 +279,9 @@ describe('Frame Guard — beforeFrame', () => {
     })
     const reader = channel.stream.getReader()
     expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toContain('"reason":"unauthorized"')
+    expect(text).toContain('"reason":"unauthorized"')
     expect(channel.state).toBe('closed')
   })
 
@@ -266,9 +291,9 @@ describe('Frame Guard — beforeFrame', () => {
     })
     const reader = channel.stream.getReader()
     expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toContain('"reason":"revoked"')
+    expect(text).toContain('"reason":"revoked"')
   })
 
   it('ctx.signal contains the outgoing signal', () => {
@@ -317,9 +342,9 @@ describe('Frame Guard — guardKeepalive', () => {
     })
     const reader = channel.stream.getReader()
     await vi.advanceTimersByTimeAsync(1000)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(text).toBe(': keepalive\n\n')
     expect(guardSpy).not.toHaveBeenCalled()
     channel.close()
   })
@@ -333,9 +358,9 @@ describe('Frame Guard — guardKeepalive', () => {
     })
     const reader = channel.stream.getReader()
     await vi.advanceTimersByTimeAsync(1000)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(text).toBe(': keepalive\n\n')
     expect(capturedCtxs).toHaveLength(1)
     expect(capturedCtxs[0].frameType).toBe('keepalive')
     expect(capturedCtxs[0].signal).toBeUndefined()
@@ -349,6 +374,8 @@ describe('Frame Guard — guardKeepalive', () => {
       guardKeepalive: true,
     })
     const reader = channel.stream.getReader()
+    // Consume connected frame
+    await reader.read()
     await vi.advanceTimersByTimeAsync(1000)
     // No frame should have been enqueued — channel is still open so no done yet
     expect(channel.state).toBe('open')
@@ -366,23 +393,22 @@ describe('Frame Guard — guardKeepalive', () => {
     })
     const reader = channel.stream.getReader()
     await vi.advanceTimersByTimeAsync(1000)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toContain('"reason":"kicked"')
+    expect(text).toContain('"reason":"kicked"')
     expect(channel.state).toBe('closed')
   })
 
   it('guardKeepalive: false with no beforeFrame — no-op, keepalive emitted normally', async () => {
-    // guardKeepalive alone (no beforeFrame) must be a no-op (spec §4.3)
     const channel = createSSEChannel({
       keepaliveIntervalMs: 1000,
-      guardKeepalive: true, // set but no beforeFrame — should be inert
+      guardKeepalive: true,
     })
     const reader = channel.stream.getReader()
     await vi.advanceTimersByTimeAsync(1000)
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toBe(': keepalive\n\n')
+    expect(text).toBe(': keepalive\n\n')
     channel.close()
   })
 })
@@ -398,9 +424,8 @@ describe('Frame Guard — lifetime', () => {
     // Advance past TTL + max jitter window
     await vi.advanceTimersByTimeAsync(6000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    const text = decoder.decode(value)
     expect(text).toContain('event: renew')
     expect(text).toContain('"reason":"deadline"')
     expect(channel.state).toBe('closed')
@@ -413,9 +438,9 @@ describe('Frame Guard — lifetime', () => {
 
     await vi.advanceTimersByTimeAsync(6000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toContain('event: renew')
+    expect(text).toContain('event: renew')
     expect(channel.state).toBe('closed')
   })
 
@@ -427,9 +452,8 @@ describe('Frame Guard — lifetime', () => {
 
     await vi.advanceTimersByTimeAsync(6000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    const text = decoder.decode(value)
     expect(text).toContain('event: revoke')
     expect(text).toContain('"reason":"deadline"')
     expect(text).not.toContain('event: renew')
@@ -444,9 +468,8 @@ describe('Frame Guard — lifetime', () => {
 
     await vi.advanceTimersByTimeAsync(6000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    const text = decoder.decode(value)
     expect(text).toContain('event: renew')
     const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
     const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
@@ -465,25 +488,22 @@ describe('Frame Guard — lifetime', () => {
     const channel = createSSEChannel({ lifetime: { ttlMs: 10000 } })
     channel.close()
     expect(channel.state).toBe('closed')
-    // Advancing past TTL must not enqueue extra frames or throw
     await vi.advanceTimersByTimeAsync(15000)
     expect(channel.state).toBe('closed')
   })
 
   it('already-past deadline still fires (after minimum delay floor), not immediately', async () => {
-    const past = Date.now() - 60000  // 1 minute in the past
+    const past = Date.now() - 60000
     const channel = createSSEChannel({ lifetime: { deadline: past } })
     const reader = channel.stream.getReader()
 
-    // Should NOT have fired synchronously at channel creation
     expect(channel.state).toBe('open')
 
-    // Advance past the minimum delay floor (250 ms) + jitter window (500 ms)
     await vi.advanceTimersByTimeAsync(1000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(decoder.decode(value)).toContain('event: renew')
+    expect(text).toContain('event: renew')
     expect(channel.state).toBe('closed')
   })
 
@@ -507,7 +527,6 @@ describe('Frame Guard — lifetime', () => {
   })
 })
 
-
 describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -517,19 +536,16 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     vi.useRealTimers()
   })
 
-  // FT-04: guardKeepalive + beforeFrame + default keepaliveIntervalMs
   it('guardKeepalive: true with no keepaliveIntervalMs (default 0) — guard never fires on keepalives', async () => {
     const guardSpy = vi.fn().mockReturnValue({ action: 'send' })
     const channel = createSSEChannel({
-      // keepaliveIntervalMs defaults to 0 — no keepalive ticks at all
       beforeFrame: guardSpy,
-      guardKeepalive: true, // set, but will never fire because no keepalives
+      guardKeepalive: true,
     })
     const reader = channel.stream.getReader()
 
     await vi.advanceTimersByTimeAsync(10000)
 
-    // Guard should not have been called at all (no keepalive ticks)
     expect(guardSpy).not.toHaveBeenCalled()
     expect(channel.state).toBe('open')
 
@@ -537,7 +553,6 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     reader.releaseLock()
   })
 
-  // FT-05: onDeadline object form with partial fields
   it('onDeadline object with only maxAttempts set uses spec default for retryDelayMs', async () => {
     const channel = createSSEChannel({
       lifetime: { ttlMs: 1000, onDeadline: { maxAttempts: 5 } },
@@ -546,15 +561,14 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
 
     await vi.advanceTimersByTimeAsync(2000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    const text = decoder.decode(value)
     expect(text).toContain('event: renew')
     const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
     const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
     expect(payload.maxAttempts).toBe(5)
-    expect(payload.retryDelayMs).toBe(250) // spec default
+    expect(payload.retryDelayMs).toBe(250)
     channel.close()
   })
 
@@ -566,22 +580,17 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
 
     await vi.advanceTimersByTimeAsync(2000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    const text = decoder.decode(value)
     expect(text).toContain('event: renew')
     const dataLine = text.split('\n').find((l) => l.startsWith('data:'))!
     const payload: { maxAttempts: number; retryDelayMs: number } = JSON.parse(dataLine.slice('data: '.length))
-    expect(payload.maxAttempts).toBe(1) // spec default
+    expect(payload.maxAttempts).toBe(1)
     expect(payload.retryDelayMs).toBe(1000)
     channel.close()
   })
 
-  // FT-06: beforeFrame does NOT intercept lifetime deadline frames
-  // The deadline timer fires directly — it bypasses beforeFrame entirely.
-  // beforeFrame only runs for invalidate() calls, not for the renew/revoke
-  // frames emitted by the lifetime timer. This test documents that contract.
   it('lifetime deadline fires renew frame even when beforeFrame would close — deadline bypasses beforeFrame', async () => {
     const beforeFrameSpy = vi.fn().mockReturnValue({ action: 'close', reason: 'guard-rejected' })
     const channel = createSSEChannel({
@@ -590,26 +599,20 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     })
     const reader = channel.stream.getReader()
 
-    // Wait past deadline
     await vi.advanceTimersByTimeAsync(2000)
 
-    const { value } = await reader.read()
+    const text = await readNextChunk(reader)
     reader.releaseLock()
 
-    const text = decoder.decode(value)
-    // The deadline timer calls fireDeadline() → controller.enqueue(formatRenewFrame(...))
-    // directly, bypassing beforeFrame entirely. The renew frame is emitted as-is.
     expect(text).toContain('event: renew')
-    // beforeFrame was not called by the deadline path (only by invalidate())
     expect(beforeFrameSpy).not.toHaveBeenCalled()
     expect(channel.state).toBe('closed')
   })
 
-  // FT-07: isResume with lastEventId but no eventStore
   it('ctx.isResume is true when lastEventId is set even with no eventStore', () => {
     let capturedIsResume: boolean | undefined
     const channel = createSSEChannel({
-      lastEventId: 'some-id', // triggers isResume=true
+      lastEventId: 'some-id',
       beforeFrame: (ctx) => {
         capturedIsResume = ctx.isResume
         return { action: 'send' }

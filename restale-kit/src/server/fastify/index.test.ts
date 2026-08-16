@@ -24,7 +24,7 @@ function createMockNodeResponse(): ServerResponse {
 describe('server/fastify integration via attachNodeResponse', () => {
   it('automatically calls reply.hijack() and exposes connectionId on the returned channel', () => {
     const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-1')
+    const rawReq = createMockNodeRequest('/sse')
     const rawRes = createMockNodeResponse()
 
     const mockRequest = { raw: rawReq }
@@ -33,19 +33,21 @@ describe('server/fastify integration via attachNodeResponse', () => {
     const { channel } = group.attachNodeResponse(mockRequest, mockReply, {})
 
     expect(mockReply.hijack).toHaveBeenCalledTimes(1)
-    expect(channel.connectionId).toBe('fastify-1')
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
     expect(channel.state).toBe('open')
     channel.close()
   })
 
   it('works directly with raw IncomingMessage and ServerResponse', () => {
     const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse?__restale_cid__=fastify-2')
+    const rawReq = createMockNodeRequest('/sse')
     const rawRes = createMockNodeResponse()
 
     const { channel } = group.attachNodeResponse(rawReq, rawRes, {})
 
-    expect(channel.connectionId).toBe('fastify-2')
+    expect(typeof channel.connectionId).toBe('string')
+    expect(channel.connectionId.length).toBeGreaterThan(0)
     expect(channel.state).toBe('open')
     channel.close()
   })
