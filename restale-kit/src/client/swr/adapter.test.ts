@@ -1,8 +1,5 @@
-// @vitest-environment jsdom
-
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
-import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
+import { swrAdapter, type SWRMutator } from './adapter.js'
 import type { CacheKey } from '@/types/protocol.js'
 
 function toCacheKey(key: CacheKey): string {
@@ -58,27 +55,5 @@ describe('swrAdapter', () => {
     const exactFilter = (mutate as any).mock.calls[1][0]
     expect(exactFilter('cache:todos')).toBe(true)
     expect(exactFilter('cache:todos:active')).toBe(false)
-  })
-
-})
-
-
-describe('useSwrAdapter', () => {
-  it('keeps its callback stable while using the latest key mapper', () => {
-    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
-    const { result, rerender } = renderHook(
-      ({ options }: { options: Parameters<typeof useSwrAdapter>[1] }) => useSwrAdapter(mutate, options),
-      { initialProps: { options: {} } },
-    )
-
-    const callback = result.current
-    result.current({ key: ['todos'] })
-    expect(mutate).toHaveBeenCalledTimes(1)
-
-    rerender({ options: { toKey: toCacheKey } })
-    expect(result.current).toBe(callback)
-
-    result.current({ key: ['todos'], inlineData: [{ id: 1 }] })
-    expect(mutate).toHaveBeenLastCalledWith('cache:todos', [{ id: 1 }], { revalidate: false })
   })
 })

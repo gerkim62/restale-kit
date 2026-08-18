@@ -168,26 +168,36 @@ type ResolveInlineData<TMeta, TClientContext> = (
 
 ## Client context registration
 
-With React, pass `clientContext` to `useReStale`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
+With React, pass `clientContextDefaults` to `<RestaleProvider>` or pass dynamic `clientContext` to `useRestale()`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
 
 ```tsx
-const onInvalidate = useSwrAdapter(mutate)
+const onInvalidate = swrAdapter(mutate)
 
-useReStale('/sse', {
-  onInvalidate,
-  clientContext: { page, pageSize: 20, sortBy },
-  clientContextSync: {
+<RestaleProvider
+  url="/sse"
+  onInvalidate={onInvalidate}
+  clientContextDefaults={{ userId: 'user-1' }}
+  clientContextSync={{
     maxAttempts: 2,
     retryDelayMs: 200,
     onExhausted: 'retryOnNextChange',
-  },
-})
+  }}
+>
+  <TodosPage />
+</RestaleProvider>
+
+function TodosPage() {
+  const { isConnected } = useRestale({
+    clientContext: { page, pageSize: 20, sortBy },
+  })
+  return <div>...</div>
+}
 ```
 
 `clientContextUrl` optionally points at a separate POST endpoint; otherwise it uses the SSE URL. The default retry policy makes two attempts per sync, retrying a `404` or network error after 200 ms. 
 
 When context synchronization fails after all retry attempts are exhausted:
-- `useReStale` logs an error via `console.error('[restale-kit][useReStale] Failed to synchronize clientContext.')`.
+- `RestaleProvider` logs an error via `console.error('[restale-kit][RestaleProvider] Failed to synchronize clientContext.')`.
 - It triggers a background query invalidation/refetch via `onInvalidate` so the client does not remain stuck on stale data.
 - With `onExhausted: 'disableUntilReconnect'`, context sync pauses after failures until the stream opens again. The SSE invalidation callback continues to work regardless of context sync failures.
 
@@ -212,15 +222,15 @@ In real-world web applications, network latency and concurrency can create race 
 ### How ReStale manages concurrent context updates
 
 1. **Monotonic Revisions**:
-   - Each context update sent by `useReStale` increments an internal `revision` counter (`revision: 1`, `revision: 2`, ...).
+   - Each context update sent by `RestaleProvider` increments an internal `revision` counter (`revision: 1`, `revision: 2`, ...).
    - The server tracks the latest applied revision for each connection. If an older request arrives out of order after a newer one has already been applied, the server discards the stale update (`revision <= latest`).
 
 2. **Deterministic Canonical Serialization**:
-   - `useReStale` serializes context objects using canonical JSON with sorted keys.
+   - `RestaleProvider` serializes context objects using canonical JSON with sorted keys.
    - Object key ordering differences (e.g. `{ page: 1, sort: 'asc' }` vs `{ sort: 'asc', page: 1 }`) produce identical strings, preventing redundant network requests when context values haven't meaningfully changed.
 
 3. **Fallback Invalidation on Exhaustion**:
-   - If context synchronization fails across all retry attempts (e.g. temporary network drop), `useReStale` logs an error and immediately triggers `onInvalidate({ key: [] })`.
+   - If context synchronization fails across all retry attempts (e.g. temporary network drop), `RestaleProvider` logs an error and immediately triggers `onInvalidate({ key: [] })`.
    - This invalidates active queries in the background and forces a refetch from the server, preventing the client from remaining stuck with stale data.
 
 ---

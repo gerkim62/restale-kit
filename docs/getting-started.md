@@ -83,17 +83,25 @@ app.listen(3000)
 ### 2. Client (React + TanStack Query)
 
 ```tsx
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useReStale } from 'restale-kit/react'
-import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
+import { RestaleProvider, useRestale } from 'restale-kit/react'
+import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
-function App() {
-  const queryClient = useQueryClient()
-  const onInvalidate = useTanstackQueryAdapter(queryClient)
+const queryClient = new QueryClient()
+const onInvalidate = tanstackQueryAdapter(queryClient)
 
-  // Connect to SSE; automatically invalidates queries on signal
-  useReStale('/sse', { onInvalidate })
+export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RestaleProvider url="/sse" onInvalidate={onInvalidate}>
+        <TodoList />
+      </RestaleProvider>
+    </QueryClientProvider>
+  )
+}
 
+function TodoList() {
+  const { isConnected } = useRestale()
   const { data: todos } = useQuery({
     queryKey: ['todos'],
     queryFn: () => fetch('/api/todos').then(r => r.json()),

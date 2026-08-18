@@ -1,12 +1,7 @@
-// @vitest-environment jsdom
-
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
-import { tanstackQueryAdapter, useTanstackQueryAdapter, type QueryClientLike } from './adapter.js'
-import type { QueryKey } from '@tanstack/react-query'
+import { tanstackQueryAdapter, type QueryClientLike } from './adapter.js'
 
 describe('tanstackQueryAdapter', () => {
-
   it('can trust pushed inlineData without marking it stale', () => {
     const queryClient = {
       invalidateQueries: vi.fn(),
@@ -20,28 +15,33 @@ describe('tanstackQueryAdapter', () => {
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled()
   })
 
-})
-
-describe('useTanstackQueryAdapter', () => {
-  it('keeps its callback stable while using the latest key mapper', () => {
+  it('invalidates queries with exact or prefix matching', () => {
     const queryClient = {
-      invalidateQueries: vi.fn(() => Promise.resolve()),
+      invalidateQueries: vi.fn(),
       setQueryData: vi.fn(),
     } as unknown as QueryClientLike
-    const { result, rerender } = renderHook(
-      ({ options }: { options: Parameters<typeof useTanstackQueryAdapter>[1] }) =>
-        useTanstackQueryAdapter(queryClient, options),
-      { initialProps: { options: {} } },
-    )
+    const adapter = tanstackQueryAdapter(queryClient)
 
-    const callback = result.current
-    result.current({ key: ['todos'] })
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos'], exact: undefined })
+    adapter({ key: ['todos'], exact: true })
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos'], exact: true })
 
-    rerender({ options: { toQueryKey: (key: QueryKey) => ['cache', ...key] } })
-    expect(result.current).toBe(callback)
+    adapter({ key: ['todos', 1] })
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['todos', 1], exact: undefined })
+  })
 
-    result.current({ key: ['todos'], inlineData: [{ id: 1 }] })
-    expect(queryClient.setQueryData).toHaveBeenLastCalledWith(['cache', 'todos'], [{ id: 1 }])
+  it('applies toQueryKey mapper when provided', () => {
+    const queryClient = {
+      invalidateQueries: vi.fn(),
+      setQueryData: vi.fn(),
+    } as unknown as QueryClientLike
+    const adapter = tanstackQueryAdapter(queryClient, {
+      toQueryKey: (key) => ['prefix', ...key],
+    })
+
+    adapter({ key: ['todos'] })
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['prefix', 'todos'],
+      exact: undefined,
+    })
   })
 })

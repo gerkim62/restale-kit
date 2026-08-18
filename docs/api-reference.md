@@ -299,11 +299,13 @@ function makeAdaptedCallback(
 
 ## `restale-kit/react`
 
-```ts
-import { useReStale } from 'restale-kit/react'
+```tsx
+import { RestaleProvider, useRestale } from 'restale-kit/react'
 import type {
-  UseReStaleOptions,
-  UseReStaleResult,
+  RestaleProviderProps,
+  UseRestaleOptions,
+  UseRestaleResult,
+  ConnectionSnapshot,
   ConnectionStatus,
   RevokeEventDetail,
   RenewEventDetail,
@@ -311,36 +313,60 @@ import type {
   AdaptedCallback,
 } from 'restale-kit/react'
 
-function useReStale(
-  url: string,
-  options: UseReStaleOptions,
-): UseReStaleResult
+function RestaleProvider<
+  TDefaults extends Record<string, unknown> = Record<string, unknown>,
+>(props: RestaleProviderProps<TDefaults>): React.JSX.Element
 
-interface UseReStaleOptions extends ClientOptions {
-  disabled?: boolean
+interface RestaleProviderProps<
+  TDefaults extends Record<string, unknown> = Record<string, unknown>,
+> {
+  url: string
   onInvalidate: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
+  disabled?: boolean
+  withCredentials?: boolean
+  autoReconnect?: boolean | { native?: boolean; jsBackoff?: boolean }
+  reconnect?: ReconnectOptions
+  debug?: boolean
+  clientContextUrl?: string
   onRevoke?: (detail: RevokeEventDetail) => void
   onRejected?: (response: RejectedConnectionResponse) => void
   onRetriesExhausted?: (detail: { attempts: number; maxRetries: number }) => void
-  clientContext?: unknown
+  onConnect?: (event: Event) => void
+  onDisconnect?: (event: Event) => void
+  onError?: (error: unknown) => void
+  clientContextDefaults?: TDefaults
   clientContextSync?: {
     maxAttempts?: number
     retryDelayMs?: number
     onExhausted?: 'retryOnNextChange' | 'disableUntilReconnect'
   }
+  children: React.ReactNode
 }
 
-interface UseReStaleResult {
-  connectionId: string | undefined
-  connection: ConnectionStatus
-  isConnected: boolean
-  reconnect(): Promise<void>
-  close(): void
+function useRestale<
+  TContext extends Record<string, unknown> = Record<string, unknown>,
+  TEffective = TContext,
+>(options?: UseRestaleOptions<TContext>): UseRestaleResult<TEffective>
+
+interface UseRestaleOptions<
+  TContext extends Record<string, unknown> = Record<string, unknown>,
+> {
+  clientContext?: TContext
+  clientContextMode?: 'merge' | 'replace'
+}
+
+interface UseRestaleResult<TEffective = Record<string, unknown>> {
+  connectionId: string
+  connection: ConnectionSnapshot
   attempt: number
   isConnecting: boolean
+  isConnected: boolean
   isReconnecting: boolean
   isClosed: boolean
   isError: boolean
+  reconnect(): Promise<void>
+  close(): void
+  clientContext: TEffective
 }
 ```
 
@@ -349,7 +375,7 @@ interface UseReStaleResult {
 ## `restale-kit/tanstack-query`
 
 ```ts
-import { tanstackQueryAdapter, useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import type { QueryClientLike, TanstackQueryAdapterOptions } from 'restale-kit/tanstack-query'
 import type { AdaptedCallback } from 'restale-kit/client'
 
@@ -366,11 +392,6 @@ function tanstackQueryAdapter(
   queryClient: QueryClientLike,
   options?: TanstackQueryAdapterOptions,
 ): AdaptedCallback
-
-function useTanstackQueryAdapter(
-  queryClient: QueryClientLike,
-  options?: TanstackQueryAdapterOptions,
-): AdaptedCallback
 ```
 
 ---
@@ -378,7 +399,7 @@ function useTanstackQueryAdapter(
 ## `restale-kit/swr`
 
 ```ts
-import { swrAdapter, useSwrAdapter } from 'restale-kit/swr'
+import { swrAdapter } from 'restale-kit/swr'
 import type { SWRKey, SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
 import type { AdaptedCallback } from 'restale-kit/client'
 
@@ -395,11 +416,6 @@ interface SWRAdapterOptions {
 }
 
 function swrAdapter(
-  mutate: SWRMutator,
-  options?: SWRAdapterOptions,
-): AdaptedCallback
-
-function useSwrAdapter(
   mutate: SWRMutator,
   options?: SWRAdapterOptions,
 ): AdaptedCallback
