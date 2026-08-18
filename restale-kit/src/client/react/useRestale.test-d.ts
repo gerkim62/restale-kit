@@ -50,10 +50,10 @@ describe('useRestale type inference', () => {
 })
 
 describe('RestaleProviderProps type contracts', () => {
-  it('accepts generic default context', () => {
-    type Defaults = { userId: string; tenantId: number }
-    type Props = RestaleProviderProps<Defaults>
+  it('accepts generic base context', () => {
+    type Base = { userId: string; tenantId: number }
+    type Props = RestaleProviderProps<Base>
 
-    expectTypeOf<Props['clientContextDefaults']>().toEqualTypeOf<Defaults | undefined>()
+    expectTypeOf<Props['initialClientContext']>().toEqualTypeOf<Base | undefined>()
   })
 })

@@ -168,7 +168,7 @@ type ResolveInlineData<TMeta, TClientContext> = (
 
 ## Client context registration
 
-With React, pass `clientContextDefaults` to `<RestaleProvider>` or pass dynamic `clientContext` to `useRestale()`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
+With React, pass `initialClientContext` to `<RestaleProvider>` or pass dynamic `clientContext` to `useRestale()`. It is canonically serialized with key sorting, sent whenever it changes while the stream is open, and resent after every successful open.
 
 ```tsx
 const onInvalidate = swrAdapter(mutate)
@@ -176,7 +176,7 @@ const onInvalidate = swrAdapter(mutate)
 <RestaleProvider
   url="/sse"
   onInvalidate={onInvalidate}
-  clientContextDefaults={{ userId: 'user-1' }}
+  initialClientContext={{ userId: 'user-1' }}
   clientContextSync={{
     maxAttempts: 2,
     retryDelayMs: 200,

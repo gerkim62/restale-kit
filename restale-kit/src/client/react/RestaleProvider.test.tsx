@@ -311,7 +311,7 @@ describe('RestaleProvider & useRestale', () => {
   })
 
   describe('Client Context Synchronization (Happy, Merge, Replace, Revert, and Sad Paths)', () => {
-    it('synchronizes clientContextDefaults upon connection opening', async () => {
+    it('synchronizes initialClientContext upon connection opening', async () => {
       const syncSpy = vi
         .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
@@ -321,7 +321,7 @@ describe('RestaleProvider & useRestale', () => {
         <RestaleProvider
           url="/sse"
           onInvalidate={onInvalidate}
-          clientContextDefaults={{ userId: 'user-123' }}
+          initialClientContext={{ userId: 'user-123' }}
         >
           <div />
         </RestaleProvider>
@@ -337,7 +337,7 @@ describe('RestaleProvider & useRestale', () => {
       })
     })
 
-    it('merges hook clientContext with clientContextDefaults in merge mode (default)', async () => {
+    it('merges hook clientContext with initialClientContext in merge mode (default)', async () => {
       const syncSpy = vi
         .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
@@ -357,7 +357,7 @@ describe('RestaleProvider & useRestale', () => {
         <RestaleProvider
           url="/sse"
           onInvalidate={onInvalidate}
-          clientContextDefaults={{ userId: 'user-123', tenantId: 'tenant-abc' }}
+          initialClientContext={{ userId: 'user-123', tenantId: 'tenant-abc' }}
         >
           <Page />
         </RestaleProvider>
@@ -383,7 +383,7 @@ describe('RestaleProvider & useRestale', () => {
       })
     })
 
-    it('replaces clientContextDefaults when clientContextMode is "replace"', async () => {
+    it('replaces initialClientContext when clientContextMode is "replace"', async () => {
       const syncSpy = vi
         .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
@@ -401,7 +401,7 @@ describe('RestaleProvider & useRestale', () => {
         <RestaleProvider
           url="/sse"
           onInvalidate={onInvalidate}
-          clientContextDefaults={{ userId: 'user-123' }}
+          initialClientContext={{ userId: 'user-123' }}
         >
           <Page />
         </RestaleProvider>
@@ -417,7 +417,7 @@ describe('RestaleProvider & useRestale', () => {
       })
     })
 
-    it('reverts context to clientContextDefaults when page component unmounts', async () => {
+    it('reverts context to initialClientContext when page component unmounts', async () => {
       const syncSpy = vi
         .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
@@ -436,7 +436,7 @@ describe('RestaleProvider & useRestale', () => {
             <RestaleProvider
               url="/sse"
               onInvalidate={onInvalidate}
-              clientContextDefaults={{ userId: 'user-123' }}
+              initialClientContext={{ userId: 'user-123' }}
             >
               {mounted && <Page />}
             </RestaleProvider>
@@ -515,7 +515,7 @@ describe('RestaleProvider & useRestale', () => {
         <RestaleProvider
           url="/sse"
           onInvalidate={onInvalidate}
-          clientContextDefaults={{ page: 1 }}
+          initialClientContext={{ page: 1 }}
           clientContextSync={{ maxAttempts: 1, retryDelayMs: 0 }}
         >
           <div />

@@ -56,8 +56,8 @@ export interface RestaleProviderProps<
   onError?: (error: unknown) => void
 
   // --- Client Context Configuration ---
-  /** Optional base/default context object (e.g. { userId, tenantId }) */
-  clientContextDefaults?: TDefaults
+  /** Optional base context object (e.g. { userId, tenantId }) */
+  initialClientContext?: TDefaults
   /** Retry policy for client context synchronization */
   clientContextSync?: {
     maxAttempts?: number
@@ -137,7 +137,7 @@ export function RestaleProvider<
     onConnect,
     onDisconnect,
     onError,
-    clientContextDefaults,
+    initialClientContext,
     clientContextSync,
     children,
   } = props
@@ -324,15 +324,15 @@ export function RestaleProvider<
   // Compute effective context
   const activeHookEntry = hookEntries.length > 0 ? hookEntries[hookEntries.length - 1] : undefined
   const effectiveContext = useMemo((): Record<string, unknown> => {
-    const defaults = clientContextDefaults ?? {}
+    const base = initialClientContext ?? {}
     if (!activeHookEntry || activeHookEntry.context === undefined) {
-      return defaults
+      return base
     }
     if (activeHookEntry.mode === 'replace') {
       return activeHookEntry.context
     }
-    return { ...defaults, ...activeHookEntry.context }
-  }, [clientContextDefaults, activeHookEntry])
+    return { ...base, ...activeHookEntry.context }
+  }, [initialClientContext, activeHookEntry])
 
   const serializedContext = canonicalJsonSerialize(effectiveContext)
 

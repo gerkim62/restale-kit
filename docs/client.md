@@ -74,8 +74,8 @@ The provider opens a single SSE connection on mount and closes it when unmounted
   disabled={false} // skip connection while true
   debug={false} // enable console logging
 
-  // Client context defaults (optional)
-  clientContextDefaults={{ userId: user?.id, tenantId: 'acme' }}
+  // Client context (optional)
+  initialClientContext={{ userId: user?.id, tenantId: 'acme' }}
   clientContextUrl="/api/sse" // defaults to url
   clientContextSync={{
     maxAttempts: 2,
@@ -99,7 +99,7 @@ The provider opens a single SSE connection on mount and closes it when unmounted
 
 ### Client context & Dynamic Page Context
 
-Use `clientContextDefaults` on `<RestaleProvider>` for static connection-level data (e.g. `userId`), and `useRestale({ clientContext })` in page components for dynamic view state (e.g. `page`, `search`, `filters`):
+Use `initialClientContext` on `<RestaleProvider>` for static or root-level data (e.g. `userId`), and `useRestale({ clientContext })` in page components for dynamic view state (e.g. `page`, `search`, `filters`):
 
 ```tsx
 // Deep page component (e.g. in Next.js App Router)
@@ -107,7 +107,7 @@ function TodosPage() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
 
-  // Shallow-merges with clientContextDefaults:
+  // Shallow-merges with initialClientContext:
   // Effective context sent to server: { userId: '123', page: 1, search: '' }
   const { isConnected, clientContext } = useRestale({
     clientContext: { page, search },
@@ -122,9 +122,9 @@ function TodosPage() {
 }
 ```
 
-- **Merge Mode (Default)**: Shallow-merges `{ ...clientContextDefaults, ...hookContext }`.
-- **Replace Mode**: Pass `clientContextMode: 'replace'` to completely override defaults.
-- **Unmount Reversion**: When a component supplying `clientContext` unmounts, the context automatically reverts to `clientContextDefaults`.
+- **Merge Mode (Default)**: Shallow-merges `{ ...initialClientContext, ...hookContext }`.
+- **Replace Mode**: Pass `clientContextMode: 'replace'` to completely override `initialClientContext`.
+- **Unmount Reversion**: When a component supplying `clientContext` unmounts, the context automatically reverts to `initialClientContext`.
 - **Deduplication**: Deep canonical JSON comparison ensures only actual value changes trigger a server sync.
 
 ### `useRestale` return value

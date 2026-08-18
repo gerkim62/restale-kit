@@ -10,9 +10,9 @@ export interface UseRestaleOptions<
   /** Page or component-specific context */
   clientContext?: TContext
   /**
-   * Mode for resolving effective context with provider clientContextDefaults:
-   * - 'merge' (default): Shallow merges { ...defaults, ...clientContext }
-   * - 'replace': Uses clientContext directly, ignoring defaults
+   * Mode for resolving effective context with provider initialClientContext:
+   * - 'merge' (default): Shallow merges { ...initialClientContext, ...clientContext }
+   * - 'replace': Uses clientContext directly, ignoring initialClientContext
    */
   clientContextMode?: 'merge' | 'replace'
 }

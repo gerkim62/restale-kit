@@ -334,7 +334,7 @@ interface RestaleProviderProps<
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void
-  clientContextDefaults?: TDefaults
+  initialClientContext?: TDefaults
   clientContextSync?: {
     maxAttempts?: number
     retryDelayMs?: number
