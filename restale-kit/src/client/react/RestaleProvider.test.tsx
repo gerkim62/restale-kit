@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, renderHook, act, waitFor, screen } from '@testing-library/react'
+import { render, renderHook, act, waitFor, screen, cleanup } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
 import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
 import type { UniversalSignal } from '@/types/protocol.js'
@@ -27,6 +27,8 @@ describe('RestaleProvider & useRestale', () => {
   })
 
   afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -161,10 +163,15 @@ describe('RestaleProvider & useRestale', () => {
       expect(instance?.readyState).toBe(MockEventSource.CLOSED)
 
       // Invoke destructured reconnect without object context
-      await act(async () => {
-        await reconnectFn()
+      let reconnectPromise!: Promise<void>
+      act(() => {
+        reconnectPromise = reconnectFn()
       })
       expect(MockEventSource.instances).toHaveLength(2)
+      act(() => {
+        MockEventSource.instances[1]?.emitOpen()
+      })
+      await expect(reconnectPromise).resolves.toBeUndefined()
     })
   })
 

@@ -9,18 +9,18 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
     typecheck: {
       enabled: true,
-      include: ['src/**/*.test-d.ts'],
+      include: ['src/**/*.test-d.{ts,tsx}'],
     },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
-      include: ['src/**/*.ts'],
+      include: ['src/**/*.{ts,tsx}'],
       exclude: [
-        'src/**/*.test.ts',
-        'src/**/*.test-d.ts',
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.test-d.{ts,tsx}',
         'src/**/__tests__/**',
         'src/test-fixtures/**',
       ],
