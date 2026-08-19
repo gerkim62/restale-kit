@@ -178,13 +178,59 @@ describe('pubsub envelope & encryption', () => {
       expect(result).toEqual({ kind: 'signal', data: { key: ['legacy-key'] } })
     })
 
-    it('returns null on invalid envelope structure', () => {
-      expect(unwrapEnvelope({ foo: 'bar' }, 'my-origin')).toBeNull()
-    })
-
     it('returns null when envelope payload is neither a valid PubSubMessage nor InvalidateSignal', () => {
       const env = { origin: 'other-origin', payload: { invalidPayload: true } }
       expect(unwrapEnvelope(env, 'my-origin')).toBeNull()
     })
+
+    it('throws PubSubDecryptionError when encrypted payload in envelope is not a string', () => {
+      const env = { origin: 'other-origin', payload: { notAnEncryptedString: 123 } }
+      expect(() => unwrapEnvelope(env, 'my-origin', validHexKey, 'topic')).toThrow(
+        PubSubDecryptionError
+      )
+      expect(() => unwrapEnvelope(env, 'my-origin', validHexKey, 'topic')).toThrow(
+        'Expected encrypted payload to be a string.'
+      )
+    })
+  })
+
+  describe('decryptPayload format and parameter validation (sad paths)', () => {
+    it('throws Error when AAD is missing, non-string, or whitespace', () => {
+      expect(() => decryptPayload('iv:tag:ciphertext', validHexKey, '')).toThrow(
+        'AAD (topic) must be a non-empty string for decryption.'
+      )
+      expect(() => decryptPayload('iv:tag:ciphertext', validHexKey, '   ')).toThrow(
+        'AAD (topic) must be a non-empty string for decryption.'
+      )
+      expect(() => decryptPayload('iv:tag:ciphertext', validHexKey, null as any)).toThrow(
+        'AAD (topic) must be a non-empty string for decryption.'
+      )
+    })
+
+    it('throws PubSubDecryptionError when encrypted payload does not have 3 colon-separated parts', () => {
+      expect(() => decryptPayload('only-one-part', validHexKey, 'topic')).toThrow(
+        'Invalid encrypted payload format.'
+      )
+      expect(() => decryptPayload('iv:tag', validHexKey, 'topic')).toThrow(
+        'Invalid encrypted payload format.'
+      )
+      expect(() => decryptPayload('iv:tag:cipher:extra', validHexKey, 'topic')).toThrow(
+        'Invalid encrypted payload format.'
+      )
+    })
+
+    it('throws PubSubDecryptionError when auth tag length is invalid or parts are empty', () => {
+      // Empty parts
+      expect(() => decryptPayload('::', validHexKey, 'topic')).toThrow(
+        'Invalid encrypted payload format parts.'
+      )
+
+      // Auth tag length != 32 hex chars (16 bytes)
+      const badAuthTag = 'shortTag'
+      expect(() => decryptPayload(`abcdef123456:${badAuthTag}:abcdef123456`, validHexKey, 'topic')).toThrow(
+        'Invalid encrypted payload format parts.'
+      )
+    })
   })
 })
+

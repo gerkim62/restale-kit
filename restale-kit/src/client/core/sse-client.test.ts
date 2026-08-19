@@ -319,6 +319,65 @@ describe('SSEInvalidatorClient', () => {
     expect(MockEventSource.instances).toHaveLength(2)
   })
 
+  it('respects Retry-After when provided as an HTTP-date string in the future', async () => {
+    const now = Math.floor(Date.now() / 1000) * 1000
+    vi.setSystemTime(now)
+
+    const client = new SSEInvalidatorClient('/sse', {
+      reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
+    })
+    const pending = client.connect()
+    pending.catch(() => {})
+
+    const futureDate = new Date(now + 5_000).toUTCString()
+    MockEventSource.instances[0]?.emitError(Object.assign(new Event('error'), {
+      responseCode: 429,
+      headers: { 'retry-after': futureDate },
+    }))
+
+    await vi.advanceTimersByTimeAsync(4_990)
+    expect(MockEventSource.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
+  it('handles past date or invalid format in Retry-After gracefully', async () => {
+    // Past HTTP-date -> 0 delay
+    const client1 = new SSEInvalidatorClient('/sse', {
+      reconnect: { retryAfter: 'respect', baseDelayMs: 500, jitter: false },
+    })
+    const pending1 = client1.connect()
+    pending1.catch(() => {})
+
+    const pastDate = new Date(Date.now() - 5_000).toUTCString()
+    MockEventSource.instances[0]?.emitError(Object.assign(new Event('error'), {
+      responseCode: 429,
+      headers: { 'retry-after': pastDate },
+    }))
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(MockEventSource.instances).toHaveLength(2)
+
+    // Invalid format -> falls back to base delay backoff (500ms)
+    MockEventSource.clear()
+    const client2 = new SSEInvalidatorClient('/sse', {
+      reconnect: { retryAfter: 'respect', baseDelayMs: 500, jitter: false },
+    })
+    const pending2 = client2.connect()
+    pending2.catch(() => {})
+
+    MockEventSource.instances[0]?.emitError(Object.assign(new Event('error'), {
+      responseCode: 429,
+      headers: { 'retry-after': 'invalid-date-string' },
+    }))
+
+    await vi.advanceTimersByTimeAsync(490)
+    expect(MockEventSource.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(20)
+    expect(MockEventSource.instances).toHaveLength(2)
+  })
+
+
   it('recreates the sse.js stream through the managed backoff after a mid-stream drop', async () => {
     const client = new SSEInvalidatorClient('/sse', {
       reconnect: { baseDelayMs: 10, jitter: false },

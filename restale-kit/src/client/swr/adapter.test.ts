@@ -56,4 +56,58 @@ describe('swrAdapter', () => {
     expect(exactFilter('cache:todos')).toBe(true)
     expect(exactFilter('cache:todos:active')).toBe(false)
   })
+
+  it('matches complex nested array and object keys with deep equality', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ key: ['todos', { filter: 'completed', tags: ['urgent', 'work'] }], exact: true })
+    const filter = (mutate as any).mock.calls[0][0]
+
+    // Matching key with identical nested object and array structure
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent', 'work'] }])
+    ).toBe(true)
+
+    // Matching key with object properties in different declaration order
+    expect(
+      filter(['todos', { tags: ['urgent', 'work'], filter: 'completed' }])
+    ).toBe(true)
+
+    // Sad path: nested object value differs
+    expect(
+      filter(['todos', { filter: 'active', tags: ['urgent', 'work'] }])
+    ).toBe(false)
+
+    // Sad path: nested array length differs
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent'] }])
+    ).toBe(false)
+
+    // Sad path: nested object has extra or missing keys
+    expect(
+      filter(['todos', { filter: 'completed' }])
+    ).toBe(false)
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent', 'work'], extra: true }])
+    ).toBe(false)
+
+    // Sad path: candidate is null, undefined, or wrong type
+    expect(filter(null)).toBe(false)
+    expect(filter(undefined)).toBe(false)
+    expect(filter(['todos', null])).toBe(false)
+    expect(filter(['todos', 'not-an-object'])).toBe(false)
+  })
+
+  it('handles markStale: true for inlineData signals', () => {
+    const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
+
+    adapter({ key: ['todos'], inlineData: [{ id: 1 }], markStale: true })
+
+    expect(mutate).toHaveBeenCalledTimes(2)
+    expect(mutate).toHaveBeenNthCalledWith(1, ['todos'], [{ id: 1 }], { revalidate: false })
+    expect(mutate).toHaveBeenNthCalledWith(2, ['todos'])
+  })
 })
+

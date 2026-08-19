@@ -94,7 +94,7 @@ console.log('All public entry points imported successfully.')
 import type { SSEChannel } from 'restale-kit/server'
 import type { createSSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 import type { SSEInvalidatorClient, AutoReconnectOptions } from 'restale-kit/client'
-import type { UseReStaleResult } from 'restale-kit/react'
+import type { UseRestaleResult } from 'restale-kit/react'
 
 // Verify types are properly exported and resolved
 const _testTypes: JSONValue = 'test'

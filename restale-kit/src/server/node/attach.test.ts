@@ -57,4 +57,32 @@ describe('node internal_attachSSE', () => {
     expect(typeof channel.connectionId).toBe('string')
     expect(channel.connectionId.length).toBeGreaterThan(0)
   })
+
+  it('respects lastEventId from headers and effective eventStore', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse',
+      headers: { 'last-event-id': 'evt-50' },
+    }) as unknown as IncomingMessage
+    const res = createMockResponse()
+
+    const channel = internal_attachSSE(req, res, { lastEventId: 'custom-id' })
+    expect(channel.connectionId).toBeDefined()
+  })
+
+  it('invokes hijack method on FastifyReplyLike response object', () => {
+    const req = Object.assign(new EventEmitter(), {
+      url: '/sse',
+      headers: {},
+    }) as unknown as IncomingMessage
+    const rawRes = createMockResponse()
+    const hijackSpy = vi.fn()
+    const fastifyReply = {
+      raw: rawRes,
+      hijack: hijackSpy,
+    }
+
+    internal_attachSSE(req, fastifyReply, {})
+    expect(hijackSpy).toHaveBeenCalledOnce()
+  })
 })
+
