@@ -13,7 +13,8 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { AdaptedCallback } from '@/client/core/client-contracts.js'
+import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
+import type { UniversalSignal } from '@/types/protocol.js'
 
 vi.mock('sse.js', async () => {
   const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
@@ -25,22 +26,17 @@ import { useRestale } from '@/client/react/useRestale.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 /** Cast a plain function to AdaptedCallback for test use. */
-function asAdapter(fn: (...args: any[]) => any): AdaptedCallback {
-  return fn as unknown as AdaptedCallback
+function asAdapter(fn: (signal: UniversalSignal | UniversalSignal[]) => void = vi.fn()): AdaptedCallback {
+  return makeAdaptedCallback(fn)
 }
 
 describe('Issue 9 — RestaleProvider does not orphan clients on repeated renders', () => {
-  let originalEventSource: typeof globalThis.EventSource
-
   beforeEach(() => {
-    originalEventSource = globalThis.EventSource
     MockEventSource.clear()
-    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
     vi.useFakeTimers()
   })
 
   afterEach(() => {
-    globalThis.EventSource = originalEventSource
     vi.useRealTimers()
     vi.restoreAllMocks()
   })

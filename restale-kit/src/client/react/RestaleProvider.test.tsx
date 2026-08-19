@@ -4,7 +4,8 @@ import React, { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, act, waitFor, screen } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { AdaptedCallback } from '@/client/core/client-contracts.js'
+import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
+import type { UniversalSignal } from '@/types/protocol.js'
 import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
 
 vi.mock('sse.js', async () => {
@@ -15,9 +16,9 @@ vi.mock('sse.js', async () => {
 import { RestaleProvider } from './RestaleProvider.js'
 import { useRestale } from './useRestale.js'
 
-/** Helper to cast a mock function to AdaptedCallback */
-function asAdapter(fn: (...args: any[]) => any): AdaptedCallback {
-  return fn as unknown as AdaptedCallback
+/** Helper to wrap a mock function as an AdaptedCallback */
+function asAdapter(fn: (signal: UniversalSignal | UniversalSignal[]) => void = vi.fn()): AdaptedCallback {
+  return makeAdaptedCallback(fn)
 }
 
 describe('RestaleProvider & useRestale', () => {
@@ -158,7 +159,7 @@ describe('RestaleProvider & useRestale', () => {
         const [disabled, setDisabled] = useState(true)
         return (
           <div>
-            <button onClick={() => setDisabled(false)}>Enable</button>
+            <button onClick={() => { setDisabled(false) }}>Enable</button>
             <RestaleProvider url="/sse" onInvalidate={onInvalidate} disabled={disabled}>
               <div />
             </RestaleProvider>
@@ -217,7 +218,7 @@ describe('RestaleProvider & useRestale', () => {
         const [cb, setCb] = useState(() => firstCallback)
         return (
           <div>
-            <button onClick={() => setCb(() => secondCallback)}>Switch</button>
+            <button onClick={() => { setCb(() => secondCallback) }}>Switch</button>
             <RestaleProvider url="/sse" onInvalidate={cb}>
               <div />
             </RestaleProvider>
@@ -343,7 +344,7 @@ describe('RestaleProvider & useRestale', () => {
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
-      let effectiveCtx: any
+      let effectiveCtx: Record<string, unknown> | undefined
 
       function Page() {
         const { clientContext } = useRestale({
@@ -432,7 +433,7 @@ describe('RestaleProvider & useRestale', () => {
         const [mounted, setMounted] = useState(true)
         return (
           <div>
-            <button onClick={() => setMounted(false)}>Unmount Page</button>
+            <button onClick={() => { setMounted(false) }}>Unmount Page</button>
             <RestaleProvider
               url="/sse"
               onInvalidate={onInvalidate}
@@ -474,7 +475,7 @@ describe('RestaleProvider & useRestale', () => {
         const [, setTick] = useState(0)
         // Creating a new object reference on each render with same keys/values
         useRestale({ clientContext: { filter: 'active', order: 'asc' } })
-        return <button onClick={() => setTick((t) => t + 1)}>Rerender</button>
+        return <button onClick={() => { setTick((t) => t + 1) }}>Rerender</button>
       }
 
       render(
@@ -546,7 +547,7 @@ describe('RestaleProvider & useRestale', () => {
         const [url, setUrl] = useState('/sse-v1')
         return (
           <div>
-            <button onClick={() => setUrl('/sse-v2')}>Change URL</button>
+            <button onClick={() => { setUrl('/sse-v2') }}>Change URL</button>
             <RestaleProvider url={url} onInvalidate={onInvalidate}>
               <div />
             </RestaleProvider>

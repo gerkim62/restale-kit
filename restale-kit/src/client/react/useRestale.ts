@@ -31,17 +31,23 @@ export interface UseRestaleResult<TEffective = Record<string, unknown>> {
   isClosed: boolean
   isError: boolean
   /** Manually trigger reconnect */
-  reconnect(): Promise<void>
+  reconnect: () => Promise<void>
   /** Manually close the connection */
-  close(): void
+  close: () => void
   /** The currently active effective client context */
   clientContext: TEffective
 }
 
 export function useRestale<
-  TContext extends Record<string, unknown> = Record<string, unknown>,
+  TEffective = Record<string, unknown>,
+>(): UseRestaleResult<TEffective>
+export function useRestale<
+  TContext extends Record<string, unknown>,
   TEffective = TContext,
->(options?: UseRestaleOptions<TContext>): UseRestaleResult<TEffective> {
+>(options: UseRestaleOptions<TContext>): UseRestaleResult<TEffective>
+export function useRestale(
+  options?: UseRestaleOptions
+): UseRestaleResult {
   const ctx = useContext(RestaleContext)
   if (!ctx) {
     throw new Error(
@@ -80,6 +86,6 @@ export function useRestale<
     isError: ctx.isError,
     reconnect: ctx.reconnect,
     close: ctx.close,
-    clientContext: ctx.clientContext as TEffective,
+    clientContext: ctx.clientContext,
   }
 }

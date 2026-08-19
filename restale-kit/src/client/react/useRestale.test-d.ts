@@ -6,7 +6,7 @@ import type { UseRestaleResult, ConnectionSnapshot } from './useRestale.js'
 describe('useRestale type inference', () => {
   it('infers Record<string, unknown> as effective context when called with no arguments', () => {
     const result = useRestale()
-    expectTypeOf(result).toMatchTypeOf<UseRestaleResult<Record<string, unknown>>>()
+    expectTypeOf(result).toEqualTypeOf<UseRestaleResult<Record<string, unknown>>>()
     expectTypeOf(result.clientContext).toEqualTypeOf<Record<string, unknown>>()
     expectTypeOf(result.isConnected).toEqualTypeOf<boolean>()
     expectTypeOf(result.connection).toEqualTypeOf<ConnectionSnapshot>()
@@ -20,7 +20,7 @@ describe('useRestale type inference', () => {
       clientContext: { page: 1, search: 'test' },
     })
 
-    expectTypeOf(result.clientContext).toMatchTypeOf<{
+    expectTypeOf(result.clientContext).toEqualTypeOf<{
       page: number
       search: string
     }>()

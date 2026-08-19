@@ -77,15 +77,15 @@ export interface RestaleContextValue {
   isReconnecting: boolean
   isClosed: boolean
   isError: boolean
-  reconnect(): Promise<void>
-  close(): void
+  reconnect: () => Promise<void>
+  close: () => void
   clientContext: Record<string, unknown>
-  registerHookContext(
+  registerHookContext: (
     id: string,
     context: Record<string, unknown> | undefined,
     mode: 'merge' | 'replace'
-  ): void
-  unregisterHookContext(id: string): void
+  ) => void
+  unregisterHookContext: (id: string) => void
 }
 
 export const RestaleContext = createContext<RestaleContextValue | null>(null)
@@ -100,7 +100,7 @@ function getClientIdentityKey(
   return `${url}\u0000${String(withCredentials ?? false)}\u0000${clientContextUrl ?? ''}`
 }
 
-function toClientOptions(opts: RestaleProviderProps<any>): ClientOptions {
+function toClientOptions(opts: RestaleProviderProps): ClientOptions {
   return {
     ...(opts.autoReconnect !== undefined ? { autoReconnect: opts.autoReconnect } : {}),
     ...(opts.reconnect !== undefined ? { reconnect: opts.reconnect } : {}),
