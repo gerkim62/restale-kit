@@ -639,4 +639,39 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
     await reader.cancel(new Error('EPIPE'))
     expect(() => channel.invalidate({ key: ['test'] })).toThrow()
   })
+
+  describe('validateChannelOptions (sad paths)', () => {
+    it('throws RangeError on negative or non-integer eventBufferCapacity and retryIntervalMs', () => {
+      expect(() => createSSEChannel({ eventBufferCapacity: -1 })).toThrow(RangeError)
+      expect(() => createSSEChannel({ eventBufferCapacity: 1.5 })).toThrow(RangeError)
+      expect(() => createSSEChannel({ retryIntervalMs: -500 })).toThrow(RangeError)
+      expect(() => createSSEChannel({ retryIntervalMs: 2.5 })).toThrow(RangeError)
+    })
+
+    it('throws RangeError on negative or non-finite keepaliveIntervalMs', () => {
+      expect(() => createSSEChannel({ keepaliveIntervalMs: -10 })).toThrow(RangeError)
+      expect(() => createSSEChannel({ keepaliveIntervalMs: Infinity })).toThrow(RangeError)
+      expect(() => createSSEChannel({ keepaliveIntervalMs: NaN })).toThrow(RangeError)
+    })
+
+    it('validates lifetime options constraints and ranges', () => {
+      // Mutually exclusive ttlMs and deadline
+      expect(() => createSSEChannel({ lifetime: { ttlMs: 1000, deadline: 2000 } as any })).toThrow(
+        '[createSSEChannel] lifetime.ttlMs and lifetime.deadline are mutually exclusive.'
+      )
+
+      // Negative ttlMs or deadline
+      expect(() => createSSEChannel({ lifetime: { ttlMs: -1 } })).toThrow(RangeError)
+      expect(() => createSSEChannel({ lifetime: { deadline: -1 } })).toThrow(RangeError)
+
+      // Invalid onDeadline.maxAttempts
+      expect(() => createSSEChannel({ lifetime: { ttlMs: 1000, onDeadline: { maxAttempts: 0 } } })).toThrow(
+        RangeError
+      )
+      expect(() => createSSEChannel({ lifetime: { ttlMs: 1000, onDeadline: { maxAttempts: -1 } } })).toThrow(
+        RangeError
+      )
+    })
+  })
 })
+

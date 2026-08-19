@@ -1,8 +1,5 @@
-// @vitest-environment jsdom
-
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
-import { swrAdapter, useSwrAdapter, type SWRMutator } from './adapter.js'
+import { swrAdapter, type SWRMutator } from './adapter.js'
 import type { CacheKey } from '@/types/protocol.js'
 
 function toCacheKey(key: CacheKey): string {
@@ -60,25 +57,57 @@ describe('swrAdapter', () => {
     expect(exactFilter('cache:todos:active')).toBe(false)
   })
 
-})
+  it('matches complex nested array and object keys with deep equality', () => {
+    const mutate = vi.fn() as unknown as SWRMutator
+    const adapter = swrAdapter(mutate)
 
+    adapter({ key: ['todos', { filter: 'completed', tags: ['urgent', 'work'] }], exact: true })
+    const filter = (mutate as any).mock.calls[0][0]
 
-describe('useSwrAdapter', () => {
-  it('keeps its callback stable while using the latest key mapper', () => {
+    // Matching key with identical nested object and array structure
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent', 'work'] }])
+    ).toBe(true)
+
+    // Matching key with object properties in different declaration order
+    expect(
+      filter(['todos', { tags: ['urgent', 'work'], filter: 'completed' }])
+    ).toBe(true)
+
+    // Sad path: nested object value differs
+    expect(
+      filter(['todos', { filter: 'active', tags: ['urgent', 'work'] }])
+    ).toBe(false)
+
+    // Sad path: nested array length differs
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent'] }])
+    ).toBe(false)
+
+    // Sad path: nested object has extra or missing keys
+    expect(
+      filter(['todos', { filter: 'completed' }])
+    ).toBe(false)
+    expect(
+      filter(['todos', { filter: 'completed', tags: ['urgent', 'work'], extra: true }])
+    ).toBe(false)
+
+    // Sad path: candidate is null, undefined, or wrong type
+    expect(filter(null)).toBe(false)
+    expect(filter(undefined)).toBe(false)
+    expect(filter(['todos', null])).toBe(false)
+    expect(filter(['todos', 'not-an-object'])).toBe(false)
+  })
+
+  it('handles markStale: true for inlineData signals', () => {
     const mutate = vi.fn(() => Promise.resolve()) as unknown as SWRMutator
-    const { result, rerender } = renderHook(
-      ({ options }: { options: Parameters<typeof useSwrAdapter>[1] }) => useSwrAdapter(mutate, options),
-      { initialProps: { options: {} } },
-    )
+    const adapter = swrAdapter(mutate)
 
-    const callback = result.current
-    result.current({ key: ['todos'] })
-    expect(mutate).toHaveBeenCalledTimes(1)
+    adapter({ key: ['todos'], inlineData: [{ id: 1 }], markStale: true })
 
-    rerender({ options: { toKey: toCacheKey } })
-    expect(result.current).toBe(callback)
-
-    result.current({ key: ['todos'], inlineData: [{ id: 1 }] })
-    expect(mutate).toHaveBeenLastCalledWith('cache:todos', [{ id: 1 }], { revalidate: false })
+    expect(mutate).toHaveBeenCalledTimes(2)
+    expect(mutate).toHaveBeenNthCalledWith(1, ['todos'], [{ id: 1 }], { revalidate: false })
+    expect(mutate).toHaveBeenNthCalledWith(2, ['todos'])
   })
 })
+

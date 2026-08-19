@@ -287,4 +287,24 @@ describe('ablyPubSubAdapter', () => {
 
     consoleWarnSpy.mockRestore()
   })
+
+  it('handles non-string encrypted payload under native echo suppression and encryption', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { client, channelListeners } = createMockAblyClient(false)
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: validKey })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-encrypted', callback)
+
+    const listener = channelListeners[0]
+    // Sad path: msg.data is an object instead of the expected encrypted string
+    listener({ data: { objectInsteadOfString: true } })
+
+    expect(callback).not.toHaveBeenCalled()
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+    expect(consoleWarnSpy.mock.calls[0][0]).toContain('Decryption failed')
+
+    consoleWarnSpy.mockRestore()
+  })
 })
+

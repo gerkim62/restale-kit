@@ -36,23 +36,34 @@ type InlineDataSignal = {
 
 There is no target field, target query parameter, response target header, server-side cache-library configuration, or RTK Query adapter.
 
-## Client adapters
+## React & Client Adapters
 
-```ts
-import { useReStale } from 'restale-kit/react'
-import { useTanstackQueryAdapter } from 'restale-kit/tanstack-query'
+```tsx
+import { RestaleProvider, useRestale } from 'restale-kit/react'
+import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
-const onInvalidate = useTanstackQueryAdapter(queryClient, {
+const onInvalidate = tanstackQueryAdapter(queryClient, {
   toQueryKey: (key) => ['api', ...key],
 })
 
-useReStale('/api/sse', { onInvalidate })
+function App() {
+  return (
+    <RestaleProvider url="/api/sse" onInvalidate={onInvalidate}>
+      <Dashboard />
+    </RestaleProvider>
+  )
+}
+
+function Dashboard() {
+  const { isConnected, connection } = useRestale()
+  return <div>Status: {connection.status}</div>
+}
 ```
 
-For SWR, use `swrAdapter` or `useSwrAdapter`. Its optional `toKey` maps a universal array key to a native SWR key, including a string key.
+For SWR, use `swrAdapter(mutate, options)`. Its optional `toKey` maps a universal array key to a native SWR key, including a string key.
 
 ## SSE connection
 
 Clients connect directly to the SSE endpoint without requiring custom connection ID query parameters. Upon connection, the server automatically assigns a unique connection ID and delivers it via an initial `connected` SSE event frame (`{"connectionId":"..."}`).
 
-`Last-Event-ID` replay, keepalives, renew frames, and server-side revocation remain supported.
+`Last-Event-ID` replay, keepalives, renew frames, client context synchronization, and server-side revocation remain supported.

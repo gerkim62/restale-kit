@@ -1,4 +1,3 @@
-import { useCallback, useRef } from 'react'
 import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
 import { isInlineDataSignal, type CacheKey, type JSONValue, type UniversalSignal } from '@/types/protocol.js'
 
@@ -34,17 +33,6 @@ export function swrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}):
       applySwrSignal(mutate, signal, options)
     }
   })
-}
-
-export function useSwrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}): AdaptedCallback {
-  const optionsRef = useRef(options)
-  optionsRef.current = options
-  const callback = useCallback((signal: UniversalSignal | UniversalSignal[]) => {
-    for (const s of Array.isArray(signal) ? signal : [signal]) {
-      applySwrSignal(mutate, s, optionsRef.current)
-    }
-  }, [mutate])
-  return makeAdaptedCallback(callback)
 }
 
 function matchesKey(
@@ -84,4 +72,3 @@ function deepEqual(a: unknown, b: unknown): boolean {
   }
   return false
 }
-

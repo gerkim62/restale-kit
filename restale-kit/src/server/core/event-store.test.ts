@@ -113,5 +113,16 @@ describe('event-store', () => {
     const record = store.add({ key: ['a'] })
     expect(record.id).toBe('1')
   })
+
+  describe('createEventStore options validation (sad paths)', () => {
+    it('throws RangeError when capacity is not a positive safe integer', () => {
+      expect(() => createEventStore({ capacity: 0 })).toThrow(RangeError)
+      expect(() => createEventStore({ capacity: -10 })).toThrow(RangeError)
+      expect(() => createEventStore({ capacity: 1.5 })).toThrow(RangeError)
+      expect(() => createEventStore({ capacity: NaN })).toThrow(RangeError)
+      expect(() => createEventStore({ capacity: Infinity })).toThrow(RangeError)
+    })
+  })
 })
+
 

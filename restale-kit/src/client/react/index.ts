@@ -1,5 +1,7 @@
-export { useReStale } from './useReStale.js'
-export type { UseReStaleOptions, UseReStaleResult } from './useReStale.js'
+export { RestaleProvider } from './RestaleProvider.js'
+export type { RestaleProviderProps, ConnectionSnapshot } from './RestaleProvider.js'
+export { useRestale } from './useRestale.js'
+export type { UseRestaleOptions, UseRestaleResult } from './useRestale.js'
 
 // Re-export client contract types for convenience
 export type {

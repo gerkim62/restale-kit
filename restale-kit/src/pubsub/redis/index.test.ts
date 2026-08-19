@@ -189,4 +189,31 @@ describe('redisPubSubAdapter', () => {
 
     consoleWarnSpy.mockRestore()
   })
+
+  it('rolls back callback registration when subscribe fails so subscription can be retried', async () => {
+    const { client } = createMockRedisClient()
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
+
+    // Simulate first subscribe failure
+    vi.mocked(client.subscribe).mockRejectedValueOnce(new Error('Network error during subscribe'))
+
+    const callback = vi.fn()
+    await expect(adapter.subscribe('flaky-topic', callback)).rejects.toThrow('Network error during subscribe')
+
+    // Retry should succeed and NOT throw "Topic already subscribed"
+    vi.mocked(client.subscribe).mockResolvedValueOnce('OK')
+    await expect(adapter.subscribe('flaky-topic', callback)).resolves.toBeTypeOf('function')
+  })
+
+  it('rejects duplicate subscription to the same topic without unsubscribing first', async () => {
+    const { client } = createMockRedisClient()
+    const adapter = redisPubSubAdapter(client, { encrypt: false })
+
+    await adapter.subscribe('duplicate-topic', vi.fn())
+
+    await expect(adapter.subscribe('duplicate-topic', vi.fn())).rejects.toThrow(
+      'Topic "duplicate-topic" is already subscribed'
+    )
+  })
 })
+

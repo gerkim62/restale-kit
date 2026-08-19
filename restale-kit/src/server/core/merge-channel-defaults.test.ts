@@ -156,6 +156,16 @@ describe('mergeChannelDefaults', () => {
     expect(Object.hasOwn(result.lifetime ?? {}, 'onDeadline')).toBe(false)
   })
 
+  it('default deadline fills in when channel has no time value', () => {
+    const deadline = Date.now() + 10000
+    const result = mergeChannelDefaults(
+      opts({ lifetime: { onDeadline: 'revoke' } as any }),
+      { lifetime: { deadline, onDeadline: 'reconnect' } }
+    )
+    expect((result.lifetime as any).onDeadline).toBe('revoke')
+    expect((result.lifetime as any).deadline).toBe(deadline)
+  })
+
   it('does not mutate the original channel options object', () => {
     const channelOpts = opts()
     const original = { ...channelOpts }
@@ -163,3 +173,4 @@ describe('mergeChannelDefaults', () => {
     expect(channelOpts).toEqual(original)
   })
 })
+
