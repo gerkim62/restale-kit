@@ -129,6 +129,43 @@ describe('RestaleProvider & useRestale', () => {
       expect(hookResult.connection).toEqual({ status: 'closed', reason: 'manual' })
       expect(hookResult.isClosed).toBe(true)
     })
+
+    it('allows destructured reconnect and close callbacks to be invoked standalone without this binding', async () => {
+      const onInvalidate = asAdapter(vi.fn())
+      let reconnectFn!: () => Promise<void>
+      let closeFn!: () => void
+
+      function Consumer() {
+        const { reconnect, close } = useRestale()
+        reconnectFn = reconnect
+        closeFn = close
+        return null
+      }
+
+      render(
+        <RestaleProvider url="/sse" onInvalidate={onInvalidate}>
+          <Consumer />
+        </RestaleProvider>
+      )
+
+      expect(MockEventSource.instances).toHaveLength(1)
+      const instance = MockEventSource.instances[0]
+      act(() => {
+        instance?.emitOpen()
+      })
+
+      // Invoke destructured close without object context
+      act(() => {
+        closeFn()
+      })
+      expect(instance?.readyState).toBe(MockEventSource.CLOSED)
+
+      // Invoke destructured reconnect without object context
+      await act(async () => {
+        await reconnectFn()
+      })
+      expect(MockEventSource.instances).toHaveLength(2)
+    })
   })
 
   describe('disabled prop behavior', () => {

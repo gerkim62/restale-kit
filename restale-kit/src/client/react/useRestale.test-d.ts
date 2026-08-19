@@ -35,6 +35,16 @@ describe('useRestale type inference', () => {
     expectTypeOf(result.clientContext).toEqualTypeOf<{ customKey: boolean }>()
   })
 
+  it('infers typed context when called with no arguments but explicit generic', () => {
+    interface AppEffectiveContext {
+      userId: string
+      tenantId: string
+    }
+    const result = useRestale<AppEffectiveContext>()
+    expectTypeOf(result).toEqualTypeOf<UseRestaleResult<AppEffectiveContext>>()
+    expectTypeOf(result.clientContext).toEqualTypeOf<AppEffectiveContext>()
+  })
+
   it('supports explicit generic override when needed', () => {
     interface AppEffectiveContext {
       userId: string
@@ -47,6 +57,12 @@ describe('useRestale type inference', () => {
 
     expectTypeOf(result.clientContext).toEqualTypeOf<AppEffectiveContext>()
   })
+
+  it('ensures reconnect and close functions are standalone callable without this binding', () => {
+    const { reconnect, close } = useRestale()
+    expectTypeOf(reconnect).toEqualTypeOf<() => Promise<void>>()
+    expectTypeOf(close).toEqualTypeOf<() => void>()
+  })
 })
 
 describe('RestaleProviderProps type contracts', () => {
@@ -55,5 +71,10 @@ describe('RestaleProviderProps type contracts', () => {
     type Props = RestaleProviderProps<Base>
 
     expectTypeOf<Props['initialClientContext']>().toEqualTypeOf<Base | undefined>()
+  })
+
+  it('accepts default untyped RestaleProviderProps', () => {
+    type Props = RestaleProviderProps
+    expectTypeOf<Props['initialClientContext']>().toEqualTypeOf<Record<string, unknown> | undefined>()
   })
 })
