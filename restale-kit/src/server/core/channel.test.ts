@@ -645,6 +645,7 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
       expect(() => createSSEChannel({ eventBufferCapacity: -1 })).toThrow(RangeError)
       expect(() => createSSEChannel({ eventBufferCapacity: 1.5 })).toThrow(RangeError)
       expect(() => createSSEChannel({ retryIntervalMs: -500 })).toThrow(RangeError)
+      expect(() => createSSEChannel({ retryIntervalMs: 2.5 })).toThrow(RangeError)
     })
 
     it('throws RangeError on negative or non-finite keepaliveIntervalMs', () => {

@@ -131,7 +131,7 @@ function TodosPage() {
 
 ```ts
 const {
-  connectionId,    // string | undefined — unique connection ID assigned by server
+  connectionId,    // string — unique connection ID assigned by server (empty before assignment)
   connection,      // ConnectionSnapshot ({ status, reason, connectionId })
   attempt,         // number — current reconnection attempt count
   isConnecting,    // boolean — connecting before retry

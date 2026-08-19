@@ -300,6 +300,9 @@ function makeAdaptedCallback(
 ## `restale-kit/react`
 
 ```tsx
+import type React from 'react'
+import type { UniversalSignal } from 'restale-kit'
+import type { ReconnectOptions } from 'restale-kit/client'
 import { RestaleProvider, useRestale } from 'restale-kit/react'
 import type {
   RestaleProviderProps,
