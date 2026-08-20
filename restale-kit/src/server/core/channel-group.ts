@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   isJSONValue,
-  isJSONValueArray,
+  isCacheKey,
   type EventStore,
   type JSONValue,
   type RevalidateSignal,
-  type UniversalSignal,
+  type Signal,
 } from '@/types/protocol.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { StandardSchemaV1 } from '@/types/standard-schema.js'
@@ -162,13 +162,13 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   }
 
   broadcast(
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
     predicate: (meta: TMeta | undefined) => boolean = () => true,
   ): void {
     this.broadcastRaw(signal, predicate)
   }
 
-  broadcastToAll(signal: UniversalSignal | UniversalSignal[]): void {
+  broadcastToAll(signal: Signal | Signal[]): void {
     this.broadcastRaw(signal, () => true)
   }
 
@@ -178,7 +178,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   async publish(
     topic: string,
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
   ): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
@@ -295,7 +295,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     this.pendingTopicUnsubscriptions.clear()
   }
 
-  private broadcastRaw(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  private broadcastRaw(signal: Signal | Signal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
     const eventId = this.eventStore?.add(signal).id
     const errors: unknown[] = []
@@ -306,7 +306,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     if (errors.length) throw new AggregateError(errors, 'Broadcast encountered runtime errors')
   }
 
-  private deliver(channel: SSEChannel, signal: UniversalSignal | UniversalSignal[], eventId?: string): void {
+  private deliver(channel: SSEChannel, signal: Signal | Signal[], eventId?: string): void {
     try { channel.invalidate(signal, eventId) }
     catch (error) {
       if (error instanceof ChannelClosedError) this.deregister(channel)
@@ -499,7 +499,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     for (const channel of channels) {
       const result = resolved.get(channel.connectionId)
       if (!result) continue
-      const signal: UniversalSignal = result.inlineData === undefined
+      const signal: Signal = result.inlineData === undefined
         ? result.signal
         : {
             key: result.signal.key,
@@ -561,7 +561,7 @@ function matchesCriteria(connectionId: string, meta: unknown, criteria: JSONValu
 }
 
 function isMetaMatchedByKey(meta: unknown, key: JSONValue[], exact: boolean): boolean {
-  const metaKey: JSONValue[] = isJSONValueArray(meta) ? meta : isJSONValue(meta) ? [meta] : []
+  const metaKey: JSONValue[] = isCacheKey(meta) ? meta : isJSONValue(meta) ? [meta] : []
   if (exact ? metaKey.length !== key.length : metaKey.length < key.length) return false
   return key.every((part, index) => matchesJson(metaKey[index], part, exact))
 }

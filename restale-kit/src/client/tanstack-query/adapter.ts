@@ -1,6 +1,6 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
-import { isInlineDataSignal, type CacheKey, type UniversalSignal } from '@/types/protocol.js'
+import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import { isInlineDataSignal, type CacheKey, type Signal } from '@/types/protocol.js'
 
 export interface QueryClientLike {
   setQueryData(queryKey: QueryKey, data: unknown): void
@@ -13,7 +13,7 @@ export interface TanstackQueryAdapterOptions {
 
 function applySignal(
   queryClient: QueryClientLike,
-  signal: UniversalSignal,
+  signal: Signal,
   options: TanstackQueryAdapterOptions,
 ): void {
   const queryKey = options.toQueryKey?.(signal.key) ?? signal.key
@@ -28,8 +28,8 @@ function applySignal(
 export function tanstackQueryAdapter(
   queryClient: QueryClientLike,
   options: TanstackQueryAdapterOptions = {},
-): AdaptedCallback {
-  return makeAdaptedCallback((input: UniversalSignal | UniversalSignal[]) => {
+): InvalidationHandler {
+  return makeInvalidationHandler((input: Signal | Signal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {
       applySignal(queryClient, signal, options)
     }

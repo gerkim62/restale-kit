@@ -1,13 +1,13 @@
 import {
   isJSONValue,
-  isJSONValueArray,
+  isCacheKey,
   type BeforeFrameFn,
   type ChannelState,
   type EventStore,
   type FrameGuardCtx,
   type FrameGuardResult,
   type LifetimeOptions,
-  type UniversalSignal,
+  type Signal,
 } from '@/types/protocol.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import { createEventStore } from '@/server/core/event-store.js'
@@ -41,7 +41,7 @@ export interface SSEChannel {
   readonly state: ChannelState
   readonly connectionId: string
   readonly stream: ReadableStream<Uint8Array>
-  readonly invalidate: (signal: UniversalSignal | UniversalSignal[], customId?: string) => string
+  readonly invalidate: (signal: Signal | Signal[], customId?: string) => string
   close(): void
   disconnect(): void
   revoke(reason?: string): void
@@ -194,7 +194,7 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
 }
 
 /** Runtime validation for a signal or non-empty signal batch. */
-export function validateSignalPayload(signal: unknown): asserts signal is UniversalSignal | UniversalSignal[] {
+export function validateSignalPayload(signal: unknown): asserts signal is Signal | Signal[] {
   const signals = Array.isArray(signal) ? signal : [signal]
   if (signals.length === 0) throw new Error('[invalidate] Signals must be a non-empty array or object.')
   for (const value of signals) {
@@ -202,7 +202,7 @@ export function validateSignalPayload(signal: unknown): asserts signal is Univer
       throw new Error('[invalidate] Every signal must be an object.')
     }
     const signalValue = value
-    if (!isJSONValueArray(signalValue.key)) throw new Error('[invalidate] Signal key must be a JSONValue array.')
+    if (!isCacheKey(signalValue.key)) throw new Error('[invalidate] Signal key must be a JSONValue array.')
     if (isInlineDataSignalLike(signalValue)) {
       const unsupported = Object.keys(signalValue).filter((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')
       if (unsupported.length > 0) {

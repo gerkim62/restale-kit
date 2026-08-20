@@ -1,12 +1,12 @@
 import {
   isJSONValue,
-  isJSONValueArray,
-  type UniversalSignal,
+  isCacheKey,
+  type Signal,
 } from '@/types/protocol.js'
 import { isObject } from '@/pubsub/core/pubsub-utils.js'
 
-/** Validates the universal signal shape used by SSE invalidate frames. */
-export function validatePayload(data: unknown): UniversalSignal | UniversalSignal[] {
+/** Validates the signal shape used by SSE invalidate frames. */
+export function validatePayload(data: unknown): Signal | Signal[] {
   let parsed = data
   if (typeof parsed === 'string') {
     try {
@@ -23,9 +23,9 @@ export function validatePayload(data: unknown): UniversalSignal | UniversalSigna
   return validateSingleSignal(parsed)
 }
 
-function validateSingleSignal(value: unknown): UniversalSignal {
+function validateSingleSignal(value: unknown): Signal {
   if (!isObject(value)) throw new Error('Each signal must be a plain object')
-  if (!('key' in value) || !isJSONValueArray(value.key)) {
+  if (!('key' in value) || !isCacheKey(value.key)) {
     throw new Error('Signal must have a "key" property that is an array of JSON-serialisable values')
   }
 

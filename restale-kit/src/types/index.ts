@@ -6,10 +6,9 @@ export type {
   CacheKey,
   RevalidateSignal,
   InlineDataSignal,
-  UniversalSignal,
-  ReStaleSignal,
+  Signal,
   PubSubMessage,
-  SSEInvalidateEvent,
+  SignalPayload,
   EventRecord,
   EventStore,
   EventStoreResult,
@@ -22,5 +21,5 @@ export type {
   RevokeEventDetail,
   RenewEventDetail,
 } from './protocol.js'
-export { isInlineDataSignal, isJSONValue, isJSONValueArray } from './protocol.js'
+export { isInlineDataSignal, isJSONValue, isCacheKey } from './protocol.js'
 export { canonicalJsonSerialize, computeContextHash, sha256 } from '../utils/canonical-hash.js'

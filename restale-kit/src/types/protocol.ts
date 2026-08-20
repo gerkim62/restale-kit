@@ -33,13 +33,10 @@ export interface InlineDataSignal {
 }
 
 /** The only invalidation signal that crosses the wire. */
-export type UniversalSignal = RevalidateSignal | InlineDataSignal
+export type Signal = RevalidateSignal | InlineDataSignal
 
-/** Canonical backwards-compatible name for a wire signal. */
-export type ReStaleSignal = UniversalSignal
-
-/** Narrows a universal signal to the inline-data arm. */
-export function isInlineDataSignal(signal: UniversalSignal): signal is InlineDataSignal {
+/** Narrows a signal to the inline-data arm. */
+export function isInlineDataSignal(signal: Signal): signal is InlineDataSignal {
   return 'inlineData' in signal
 }
 
@@ -55,23 +52,23 @@ export function isJSONValue(value: unknown): value is JSONValue {
 }
 
 /** Returns whether a value is a JSON-safe hierarchical cache key. */
-export function isJSONValueArray(value: unknown): value is JSONValue[] {
+export function isCacheKey(value: unknown): value is CacheKey {
   return Array.isArray(value) && value.every(isJSONValue)
 }
 
 /** Discriminated union envelope carried across pub/sub adapters. */
 export type PubSubMessage =
-  | { kind: 'signal'; data: UniversalSignal | UniversalSignal[]; id?: string }
+  | { kind: 'signal'; data: Signal | Signal[]; id?: string }
   | { kind: 'control'; data: JSONValue }
   | { kind: 'inlineData'; topic: string; payload: JSONValue }
 
-/** The payload of a single SSE `invalidate` event. */
-export type SSEInvalidateEvent = UniversalSignal | UniversalSignal[]
+/** The payload of a single SSE `invalidate` event (a signal or batch of signals). */
+export type SignalPayload = Signal | Signal[]
 
 /** A recorded invalidation event with a unique sequence ID. */
 export interface EventRecord {
   id: string
-  signal: UniversalSignal | UniversalSignal[]
+  signal: Signal | Signal[]
 }
 
 /** The result of an EventStore lookup. */
@@ -82,7 +79,7 @@ export interface EventStoreResult {
 
 /** An event history store interface for invalidation replay. */
 export interface EventStore {
-  readonly add: (signal: UniversalSignal | UniversalSignal[], customId?: string) => EventRecord
+  readonly add: (signal: Signal | Signal[], customId?: string) => EventRecord
   readonly getEventsAfter: (lastEventId: string) => EventStoreResult
   readonly clear: () => void
 }
@@ -111,7 +108,7 @@ interface FrameGuardCtxBase {
 
 export interface SignalFrameCtx extends FrameGuardCtxBase {
   readonly frameType: 'signal'
-  readonly signal: UniversalSignal | UniversalSignal[]
+  readonly signal: Signal | Signal[]
 }
 
 export interface KeepaliveFrameCtx extends FrameGuardCtxBase {

@@ -1,12 +1,12 @@
-import type { PubSubMessage, UniversalSignal } from '@/types/protocol.js'
-import { isJSONValue, isJSONValueArray } from '@/types/protocol.js'
+import type { PubSubMessage, Signal } from '@/types/protocol.js'
+import { isJSONValue, isCacheKey } from '@/types/protocol.js'
 
 export function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
 }
 
-function isValidSignal(value: unknown): value is UniversalSignal {
-  if (!isObject(value) || !isJSONValueArray(value.key)) return false
+function isValidSignal(value: unknown): value is Signal {
+  if (!isObject(value) || !isCacheKey(value.key)) return false
   if ('inlineData' in value) {
     return isJSONValue(value.inlineData) && !('exact' in value) &&
       (!('markStale' in value) || typeof value.markStale === 'boolean')
@@ -14,7 +14,7 @@ function isValidSignal(value: unknown): value is UniversalSignal {
   return !('markStale' in value) && (!('exact' in value) || typeof value.exact === 'boolean')
 }
 
-export function isSignalPayload(val: unknown): val is UniversalSignal | UniversalSignal[] {
+export function isSignalPayload(val: unknown): val is Signal | Signal[] {
   return Array.isArray(val) ? val.length > 0 && val.every(isValidSignal) : isValidSignal(val)
 }
 

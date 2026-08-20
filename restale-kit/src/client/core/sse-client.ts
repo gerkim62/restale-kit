@@ -1,8 +1,8 @@
-import { isJSONValue, type UniversalSignal } from '@/types/protocol.js'
+import { isJSONValue, type Signal } from '@/types/protocol.js'
 import type {
   ConnectionStatus,
   ClientOptions,
-  SSEInvalidatorClientEventMap,
+  SSEClientEventMap,
   RevokeEventDetail,
   RenewEventDetail,
   RejectedConnectionResponse,
@@ -50,7 +50,7 @@ function isStatusMatcherList(
  * Supports automatic reconnection with exponential backoff, and optional
  * Standard Schema validation of incoming payloads.
  */
-export class SSEInvalidatorClient extends EventTarget {
+export class SSEClient extends EventTarget {
   private readonly url: string
   private readonly eventSourceUrl: string
   private readonly clientContextUrl: string
@@ -83,11 +83,10 @@ export class SSEInvalidatorClient extends EventTarget {
 
   constructor(url: string, opts?: ClientOptions) {
     super()
-    
-    // Gap 10: Validate URL - reject blank/whitespace strings
+       // Gap 10: Validate URL - reject blank/whitespace strings
     if (isBlankUrl(url)) {
       throw new Error(
-        '[SSEInvalidatorClient] url must be a non-empty, non-whitespace string. ' +
+        '[SSEClient] url must be a non-empty, non-whitespace string. ' +
         `Got: ${JSON.stringify(url)}`
       )
     }
@@ -99,7 +98,7 @@ export class SSEInvalidatorClient extends EventTarget {
     const clientContextUrl = opts?.clientContextUrl ?? url
     if (isBlankUrl(clientContextUrl)) {
       throw new Error(
-        '[SSEInvalidatorClient] clientContextUrl must be a non-empty, non-whitespace string. ' +
+        '[SSEClient] clientContextUrl must be a non-empty, non-whitespace string. ' +
         `Got: ${JSON.stringify(clientContextUrl)}`
       )
     }
@@ -116,7 +115,7 @@ export class SSEInvalidatorClient extends EventTarget {
 
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Instantiated new client (endpoint: ${this.url})`
+        `[restale-kit][SSEClient] Instantiated new client (endpoint: ${this.url})`
       )
     }
   }
@@ -188,13 +187,13 @@ export class SSEInvalidatorClient extends EventTarget {
     options?: { revision?: number }
   ): Promise<{ updated: boolean }> {
     if (!this.currentConnectionId) {
-      throw new Error('[SSEInvalidatorClient.updateClientContext] Client is not connected.')
+      throw new Error('[SSEClient.updateClientContext] Client is not connected.')
     }
     if (!isJSONValue(clientContext)) {
-      throw new Error('[SSEInvalidatorClient.updateClientContext] clientContext must be a valid JSONValue.')
+      throw new Error('[SSEClient.updateClientContext] clientContext must be a valid JSONValue.')
     }
     if (options?.revision !== undefined && (!Number.isSafeInteger(options.revision) || options.revision < 0)) {
-      throw new Error('[SSEInvalidatorClient.updateClientContext] revision must be a non-negative safe integer.')
+      throw new Error('[SSEClient.updateClientContext] revision must be a non-negative safe integer.')
     }
     const response = await fetch(this.clientContextUrl, {
       method: 'POST',
@@ -209,7 +208,7 @@ export class SSEInvalidatorClient extends EventTarget {
     })
     if (response.status === 204) return { updated: true }
     if (response.status === 404) return { updated: false }
-    throw new Error(`[SSEInvalidatorClient.updateClientContext] Request failed with status ${String(response.status)}.`)
+    throw new Error(`[SSEClient.updateClientContext] Request failed with status ${String(response.status)}.`)
   }
 
   /**
@@ -225,7 +224,7 @@ export class SSEInvalidatorClient extends EventTarget {
   connect(): Promise<void> {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] connect() called (connectionId: ${this.currentConnectionId ?? 'none'}, currentStatus: ${this.currentStatus.status})`
+        `[restale-kit][SSEClient] connect() called (connectionId: ${this.currentConnectionId ?? 'none'}, currentStatus: ${this.currentStatus.status})`
       )
     }
 
@@ -276,7 +275,7 @@ export class SSEInvalidatorClient extends EventTarget {
   close(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] close() called with reason: manual (connectionId: ${this.currentConnectionId ?? 'none'})`
+        `[restale-kit][SSEClient] close() called with reason: manual (connectionId: ${this.currentConnectionId ?? 'none'})`
       )
     }
     this.teardown()
@@ -301,7 +300,7 @@ export class SSEInvalidatorClient extends EventTarget {
   closeWithUnmount(): void {
     if (this.debug) {
       console.log(
-        `[restale-kit][SSEInvalidatorClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId ?? 'none'})`
+        `[restale-kit][SSEClient] closeWithUnmount() called with reason: unmount (connectionId: ${this.currentConnectionId ?? 'none'})`
       )
     }
     this.teardown()
@@ -316,11 +315,11 @@ export class SSEInvalidatorClient extends EventTarget {
 
   // --- Typed addEventListener / removeEventListener overloads ---
 
-  addEventListener<K extends keyof SSEInvalidatorClientEventMap>(
+  addEventListener<K extends keyof SSEClientEventMap>(
     type: K,
     listener: (
-      this: SSEInvalidatorClient,
-      ev: SSEInvalidatorClientEventMap[K]
+      this: SSEClient,
+      ev: SSEClientEventMap[K]
     ) => void,
     options?: boolean | AddEventListenerOptions
   ): void
@@ -337,11 +336,11 @@ export class SSEInvalidatorClient extends EventTarget {
     super.addEventListener(type, listener, options)
   }
 
-  removeEventListener<K extends keyof SSEInvalidatorClientEventMap>(
+  removeEventListener<K extends keyof SSEClientEventMap>(
     type: K,
     listener: (
-      this: SSEInvalidatorClient,
-      ev: SSEInvalidatorClientEventMap[K]
+      this: SSEClient,
+      ev: SSEClientEventMap[K]
     ) => void,
     options?: boolean | EventListenerOptions
   ): void
@@ -356,6 +355,7 @@ export class SSEInvalidatorClient extends EventTarget {
     options?: boolean | EventListenerOptions
   ): void {
     super.removeEventListener(type, listener, options)
+  }s)
   }
 
   // --- Private ---
@@ -392,7 +392,7 @@ export class SSEInvalidatorClient extends EventTarget {
         ? 'First connection attempt for this client instance'
         : `Automatic reconnection attempt ${String(this.currentAttempt)} after connection drop/error`
       console.log(
-        `[restale-kit][SSEInvalidatorClient] Creating EventSource (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
+        `[restale-kit][SSEClient] Creating EventSource (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
       )
     }
 
@@ -420,7 +420,7 @@ export class SSEInvalidatorClient extends EventTarget {
       this.invokeUserCallback('onConnect', this.onConnect, event)
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] EventSource opened successfully (connectionId: ${this.currentConnectionId ?? 'pending'}). Stream is live.`
+          `[restale-kit][SSEClient] EventSource opened successfully (connectionId: ${this.currentConnectionId ?? 'pending'}). Stream is live.`
         )
       }
       if (this.connectPromise && this.currentConnectionId !== undefined) {
@@ -499,7 +499,7 @@ export class SSEInvalidatorClient extends EventTarget {
       const delay = retryAfterDelay ?? calculateBackoff(this.currentAttempt, this.reconnectOptions)
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Connection failed/closed (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
+          `[restale-kit][SSEClient] Connection failed/closed (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
           `Retrying in ${String(delay)}ms (attempt ${String(this.currentAttempt + 1)} of ${String(this.maxRetries)}).`
         )
       }
@@ -520,7 +520,7 @@ export class SSEInvalidatorClient extends EventTarget {
           ? 'autoReconnect is disabled for this failure'
           : `Exhausted maxRetries (${String(this.maxRetries)})`
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Connection failed permanently (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
+          `[restale-kit][SSEClient] Connection failed permanently (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: ${reason}.`
         )
       }
 
@@ -567,7 +567,7 @@ export class SSEInvalidatorClient extends EventTarget {
   private wireInvalidateListener(es: SSE): void {
     es.addEventListener(SSE_EVENTS.INVALIDATE, (event: MessageEvent<string>) => {
       if (this.eventSource !== es) return
-      let validated: UniversalSignal | UniversalSignal[] | undefined = undefined
+      let validated: Signal | Signal[] | undefined = undefined
       try {
         // Built-in structural validation
         validated = validatePayload(event.data)
@@ -617,7 +617,7 @@ export class SSEInvalidatorClient extends EventTarget {
       // Mark revoked so onerror (which fires after the stream closes) does not retry.
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Revoke frame received (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
+          `[restale-kit][SSEClient] Revoke frame received (connectionId: ${this.currentConnectionId ?? 'none'}). Reason: Server revoked connection ("${parsedReason ?? 'unknown'}"). Auto-reconnect suppressed.`
         )
       }
       this.revoked = true
@@ -667,7 +667,7 @@ export class SSEInvalidatorClient extends EventTarget {
       if (!parseOk || maxAttempts === undefined) {
         if (this.debug) {
           console.warn(
-            `[restale-kit][SSEInvalidatorClient] Renew frame missing valid maxAttempts ` +
+            `[restale-kit][SSEClient] Renew frame missing valid maxAttempts ` +
             `(connectionId: ${this.currentConnectionId ?? 'none'}). Treating as revoke.`
           )
         }
@@ -679,7 +679,7 @@ export class SSEInvalidatorClient extends EventTarget {
 
       if (this.debug) {
         console.log(
-          `[restale-kit][SSEInvalidatorClient] Renew frame received (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
+          `[restale-kit][SSEClient] Renew frame received (connectionId: ${this.currentConnectionId ?? 'none'}). ` +
           `Deadline reached — making up to ${String(maxAttempts)} confirmatory reconnect attempt(s).`
         )
       }
@@ -710,7 +710,7 @@ export class SSEInvalidatorClient extends EventTarget {
           this.renewing = false
           if (this.debug) {
             console.log(
-              `[restale-kit][SSEInvalidatorClient] Renew confirmatory reconnect succeeded ` +
+              `[restale-kit][SSEClient] Renew confirmatory reconnect succeeded ` +
               `(connectionId: ${this.currentConnectionId ?? 'none'}).`
             )
           }
@@ -823,7 +823,7 @@ export class SSEInvalidatorClient extends EventTarget {
     try {
       callback(value)
     } catch (error) {
-      console.error(`[restale-kit][SSEInvalidatorClient] ${name} callback threw`, error)
+      console.error(`[restale-kit][SSEClient] ${name} callback threw`, error)
     }
   }
 
