@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,13 +17,10 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const root = resolve(scriptDir, '..')
 const packageDirectory = join(root, 'restale-kit')
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'restale-kit-package-'))
-const npmCache = join(temporaryDirectory, 'npm-cache')
-const environment = { ...process.env, npm_config_cache: npmCache }
 
 function run(command, arguments_, options = {}) {
   execFileSync(command, arguments_, {
     stdio: 'inherit',
-    env: environment,
     ...options,
   })
 }
@@ -33,29 +30,25 @@ try {
   const tarball = readdirSync(temporaryDirectory).find((file) => file.endsWith('.tgz'))
   if (!tarball) throw new Error('npm pack did not create a tarball')
 
-  run('npm', ['init', '--yes'], { cwd: temporaryDirectory })
+  const consumerNodeModules = join(temporaryDirectory, 'node_modules')
+  const restalePackageDir = join(consumerNodeModules, 'restale-kit')
+  mkdirSync(restalePackageDir, { recursive: true })
+  run('tar', ['-xzf', join(temporaryDirectory, tarball), '-C', restalePackageDir, '--strip-components=1'])
+
+  // Link peer/dev dependencies from restale-kit/node_modules for runtime and type-checking
+  const sourceNodeModules = join(packageDirectory, 'node_modules')
+  for (const item of readdirSync(sourceNodeModules)) {
+    if (item === 'restale-kit' || item === '.bin' || item === '.pnpm') continue
+    try {
+      symlinkSync(join(sourceNodeModules, item), join(consumerNodeModules, item), 'junction')
+    } catch {
+      // ignore if exists
+    }
+  }
+
   writeFileSync(
     join(temporaryDirectory, 'package.json'),
     JSON.stringify({ name: 'restale-kit-consumer-smoke', private: true, type: 'module' }, null, 2) + '\n'
-  )
-  run(
-    'npm',
-    [
-      'install',
-      '--ignore-scripts',
-      `./${tarball}`,
-      'react',
-      '@tanstack/react-query',
-      'swr',
-      'ioredis',
-      'ably',
-      'pusher',
-      'typescript',
-      '@types/node',
-      '@types/react',
-      '@types/react-dom',
-    ],
-    { cwd: temporaryDirectory }
   )
 
   writeFileSync(
@@ -127,7 +120,8 @@ _channel.disconnect()
       include: ['types.ts'],
     }, null, 2) + '\n'
   )
-  run('npx', ['tsc', '--noEmit'], { cwd: temporaryDirectory })
+  const tscBin = join(root, 'node_modules', 'typescript-7', 'bin', 'tsc')
+  run('node', [tscBin, '--noEmit'], { cwd: temporaryDirectory })
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true })
 }

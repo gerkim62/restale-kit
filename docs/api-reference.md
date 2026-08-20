@@ -205,7 +205,6 @@ interface ChannelSetupOptions<TMeta> {
 interface ChannelDefaults {
   lifetime?: LifetimeOptions
   guardKeepalive?: boolean
-  beforeFrame?: BeforeFrameFn
   eventBufferCapacity?: number
 }
 

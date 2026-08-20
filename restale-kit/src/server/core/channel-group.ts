@@ -318,6 +318,16 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     return this.options.metaSchema ? validateStandardSchema(meta, this.options.metaSchema) : meta
   }
 
+  private validateClientContext(context: TClientContext): TClientContext {
+    return this.options.clientContextSchema
+      ? validateStandardSchema(context, this.options.clientContextSchema)
+      : context
+  }
+
+  private isClientContext(value: unknown): value is TClientContext {
+    return value !== undefined
+  }
+
   private validateTopics(topics: string[] | undefined): void {
     for (const topic of topics ?? []) validateTopic(topic, 'topics entry')
   }
@@ -436,13 +446,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
           }
           if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
             const raw = message.data.clientContext
-            const scope = readScope(message.data)
-            const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
-            if (this.options.clientContextSchema) {
-              const context = validateStandardSchema(raw, this.options.clientContextSchema)
+            if (this.isClientContext(raw)) {
+              const scope = readScope(message.data)
+              const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
+              const context = this.validateClientContext(raw)
               this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
-            } else if (this.isClientContext(raw)) {
-              this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
             }
           }
         } catch (error) {
@@ -513,14 +521,6 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       }
     }
     if (errors.length) throw new AggregateError(errors, 'Inline data delivery encountered runtime errors')
-  }
-
-  private isClientContext(value: unknown): value is TClientContext {
-    if (this.options.clientContextSchema) {
-      const result = this.options.clientContextSchema['~standard'].validate(value)
-      return !(result instanceof Promise) && !result.issues
-    }
-    return true
   }
 }
 

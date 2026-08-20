@@ -6,6 +6,7 @@ import { createEventStore } from './event-store.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
+import type { PubSubAdapter } from '@/pubsub/core/index.js'
 
 interface TestMeta {
   userId: number
@@ -1278,6 +1279,75 @@ describe('SSEChannelGroup — channelDefaults', () => {
         expect.any(Error),
       )
       consoleSpy.mockRestore()
+    })
+
+    it('unsubscribes when all channels deregister while topic subscription is still pending', async () => {
+      let resolveSubscribe!: (unsub: () => Promise<void>) => void
+      const unsubscribeSpy = vi.fn().mockResolvedValue(undefined)
+      const pubsub: PubSubAdapter = {
+        publish: vi.fn(),
+        subscribe: vi.fn().mockImplementation(() => new Promise((res) => {
+          resolveSubscribe = () => {
+            res(unsubscribeSpy)
+          }
+        })),
+      }
+
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['pending-topic'] })
+
+      // Deregister while subscription is still pending
+      group.deregister(ch)
+
+      // Resolve the subscription promise
+      resolveSubscribe(unsubscribeSpy)
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(unsubscribeSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('handles and logs error during topic unsubscribe', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const unsubscribeSpy = vi.fn().mockRejectedValue(new Error('Unsubscribe network failure'))
+      const pubsub: PubSubAdapter = {
+        publish: vi.fn(),
+        subscribe: vi.fn().mockResolvedValue(unsubscribeSpy),
+      }
+
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['unsub-fail-topic'] })
+      await vi.advanceTimersByTimeAsync(50)
+
+      group.deregister(ch)
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Error unsubscribing from topic "unsub-fail-topic":'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('handles key matching with mismatched array/object types and varying array lengths in broadcastByKey', () => {
+      const group = new SSEChannelGroup<any>()
+      const chArray = createSSEChannel({})
+      const chObject = createSSEChannel({})
+      const spyArray = vi.spyOn(chArray, 'invalidate')
+      const spyObject = vi.spyOn(chObject, 'invalidate')
+
+      group.register(chArray, ['todos', 'list', 'extra'])
+      group.register(chObject, { key: 'not-an-array' })
+
+      // Array vs non-array mismatch & prefix length mismatch
+      group.broadcastByKey({ key: ['todos', 'list'], exact: true })
+      expect(spyArray).not.toHaveBeenCalled()
+      expect(spyObject).not.toHaveBeenCalled()
+
+      // Prefix match on array
+      group.broadcastByKey({ key: ['todos', 'list'], exact: false })
+      expect(spyArray).toHaveBeenCalledTimes(1)
     })
   })
 })

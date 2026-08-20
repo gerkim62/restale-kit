@@ -93,6 +93,32 @@ describe('SSEClient', () => {
     vi.unstubAllGlobals()
   })
 
+  it('rejects updateClientContext when client is not connected, payload is non-JSON, or revision is invalid', async () => {
+    const client = new SSEClient('/sse')
+    await expect(client.updateClientContext({ page: 1 })).rejects.toThrow(
+      '[SSEClient.updateClientContext] Client is not connected.'
+    )
+
+    const pending = client.connect()
+    MockEventSource.instances[0]?.emitOpen(undefined, 'conn-valid')
+    await pending
+
+    await expect(client.updateClientContext(() => {})).rejects.toThrow(
+      '[SSEClient.updateClientContext] clientContext must be a valid JSONValue.'
+    )
+
+    await expect(client.updateClientContext({ page: 1 }, { revision: -1 })).rejects.toThrow(
+      '[SSEClient.updateClientContext] revision must be a non-negative safe integer.'
+    )
+
+    const fetchMock = vi.fn().mockResolvedValue({ status: 500 })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(client.updateClientContext({ page: 1 })).rejects.toThrow(
+      '[SSEClient.updateClientContext] Request failed with status 500.'
+    )
+    vi.unstubAllGlobals()
+  })
+
   it('rejects blank clientContextUrl values', () => {
     expect(() => new SSEClient('/sse', { clientContextUrl: ' \u200B ' }))
       .toThrow('clientContextUrl must be a non-empty, non-whitespace string')

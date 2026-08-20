@@ -1,13 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { SSEChannelGroup } from 'restale-kit/server'
 import { createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
-import type { AppSignal, ClientMeta } from '@restale-kit-example/shared'
+import type { ClientMeta } from '@restale-kit-example/shared'
 
-const group = new SSEChannelGroup<AppSignal, ClientMeta>({
-  channelDefaults: { target: ['swr', 'tanstack-query'] },
-})
+const group = new SSEChannelGroup<ClientMeta>()
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
+  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 
 function getAuthenticatedUserId(req: IncomingMessage): string | null {

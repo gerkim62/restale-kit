@@ -304,6 +304,19 @@ describe('Frame Guard — beforeFrame', () => {
     expect(text).toContain('"reason":"revoked"')
   })
 
+  it('treats error thrown in beforeFrame as action: close', async () => {
+    const channel = createSSEChannel({
+      beforeFrame: () => {
+        throw new Error('Guard exploded')
+      },
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const text = await readNextChunk(reader)
+    reader.releaseLock()
+    expect(text).toContain('"reason":"revoked"')
+  })
+
   it('ctx.signal contains the outgoing signal', () => {
     const capturedCtx: Array<{ signal: unknown; frameType: string }> = []
     const channel = createSSEChannel({

@@ -113,6 +113,12 @@ describe('pubsub envelope & encryption', () => {
       const tampered = parts.join(':')
       expect(() => decryptPayload(tampered, key, topic)).toThrow(PubSubDecryptionError)
     })
+
+    it('throws Error when AAD is missing, non-string, or whitespace during encryptPayload', () => {
+      expect(() => encryptPayload(data, key, '')).toThrow('AAD (topic) must be a non-empty string for encryption.')
+      expect(() => encryptPayload(data, key, '   ')).toThrow('AAD (topic) must be a non-empty string for encryption.')
+      expect(() => encryptPayload(data, key, null as any)).toThrow('AAD (topic) must be a non-empty string for encryption.')
+    })
   })
 
   describe('wrapEnvelope and unwrapEnvelope', () => {

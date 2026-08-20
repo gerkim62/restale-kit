@@ -10,10 +10,9 @@ export const TodoSchema = z.object({
 export type Todo = z.infer<typeof TodoSchema>;
 
 export type AppSignal = {
-  key: ['todos'] | ['todos', { userId: string }];
-  exact?: boolean;
-  action?: 'invalidate' | 'refetch' | 'remove';
-};
+  key: ['todos'] | ['todos', { userId: string }]
+  exact?: boolean
+}
 
 export type ClientMeta = { userId: string };
 
