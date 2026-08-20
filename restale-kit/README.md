@@ -1,6 +1,6 @@
 # ReStale Kit
 
-ReStale Kit delivers cache invalidation over Server-Sent Events using one library-neutral wire protocol. The server emits a `UniversalSignal`; client adapters translate it for TanStack Query, SWR, or an application-owned cache.
+ReStale Kit delivers cache invalidation over Server-Sent Events using one library-neutral wire protocol. The server emits a `Signal`; client adapters translate it for TanStack Query, SWR, or an application-owned cache.
 
 ```ts
 import { SSEChannelGroup } from 'restale-kit/server'

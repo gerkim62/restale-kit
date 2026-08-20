@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createSSEChannel } from '@/server/core/channel.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { ChannelClosedError } from '@/types/errors.js'
-import type { FrameGuardCtx, UniversalSignal } from '@/types/protocol.js'
+import type { FrameGuardCtx, Signal } from '@/types/protocol.js'
 
 describe('Frame guard (beforeFrame) regression tests', () => {
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('Frame guard (beforeFrame) regression tests', () => {
       },
     })
 
-    const signal: UniversalSignal = {
+    const signal: Signal = {
       key: ['todos', 'detail', 42],
       inlineData: { title: 'Clean room', completed: false },
       markStale: true,

@@ -12,7 +12,7 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
 
 1. `JSON.parse` must succeed.
 2. Result must be a plain object or array of plain objects.
-3. Each object must be a valid `UniversalSignal` shape:
+3. Each object must be a valid `Signal` shape:
    - `key` must be present and be a JSON-safe `Array` of JSON values.
    - **`RevalidateSignal`**:
      - `exact` (if present) must be a `boolean`.

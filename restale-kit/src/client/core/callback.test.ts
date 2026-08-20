@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { makeAdaptedCallback } from './client-contracts.js'
+import { makeInvalidationHandler } from './client-contracts.js'
 
-describe('makeAdaptedCallback', () => {
-  it('brands a universal callback and preserves its behaviour', () => {
+describe('makeInvalidationHandler', () => {
+  it('brands a callback and preserves its behaviour', () => {
     const fn = vi.fn()
-    const adapted = makeAdaptedCallback(fn)
+    const adapted = makeInvalidationHandler(fn)
 
     expect(adapted.__restaleAdapter).toBe(true)
 
@@ -14,9 +14,9 @@ describe('makeAdaptedCallback', () => {
 
   it('throws TypeError for non-function arguments', () => {
     // @ts-expect-error - testing invalid arguments at runtime
-    expect(() => makeAdaptedCallback('invalid-arg')).toThrow(TypeError)
+    expect(() => makeInvalidationHandler('invalid-arg')).toThrow(TypeError)
 
     // @ts-expect-error - testing invalid arguments at runtime
-    expect(() => makeAdaptedCallback(null, null)).toThrow(TypeError)
+    expect(() => makeInvalidationHandler(null, null)).toThrow(TypeError)
   })
 })

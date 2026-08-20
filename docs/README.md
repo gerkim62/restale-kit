@@ -24,7 +24,7 @@
 ```text
 restale-kit/server         → SSEChannelGroup, createSSEChannel, createEventStore
 restale-kit/testing        → createSSEChannel (standalone direct channel helper)
-restale-kit/client         → SSEInvalidatorClient (vanilla JS)
+restale-kit/client         → SSEClient (vanilla JS)
 restale-kit/react          → RestaleProvider, useRestale
 restale-kit/tanstack-query → tanstackQueryAdapter
 restale-kit/swr            → swrAdapter

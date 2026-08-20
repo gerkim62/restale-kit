@@ -204,7 +204,7 @@ When context synchronization fails after all retry attempts are exhausted:
 For non-React clients, decide retry policy yourself:
 
 ```ts
-const client = new SSEInvalidatorClient('/sse', { clientContextUrl: '/sse' })
+const client = new SSEClient('/sse', { clientContextUrl: '/sse' })
 await client.connect()
 
 const { updated } = await client.updateClientContext({ page: 2, pageSize: 20, sortBy: 'createdAt' })

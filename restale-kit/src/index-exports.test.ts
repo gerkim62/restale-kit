@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SSEInvalidatorClient as ClientCoreExport } from './client/core/index.js'
+import { SSEClient as ClientCoreExport } from './client/core/index.js'
 import { RestaleProvider, useRestale } from './client/react/index.js'
 import { swrAdapter } from './client/swr/index.js'
 import { tanstackQueryAdapter } from './client/tanstack-query/index.js'

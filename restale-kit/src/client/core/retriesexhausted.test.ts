@@ -6,7 +6,7 @@ vi.mock('sse.js', async () => {
   return { SSE }
 })
 
-import { SSEInvalidatorClient } from './sse-client.js'
+import { SSEClient } from './sse-client.js'
 import { SSE_EVENTS } from '@/utils/constants.js'
 
 describe('retriesexhausted event', () => {
@@ -21,7 +21,7 @@ describe('retriesexhausted event', () => {
   })
 
   it('emits retriesexhausted event when maxRetries is reached', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: {
         maxRetries: 2,

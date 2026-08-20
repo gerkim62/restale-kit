@@ -85,6 +85,7 @@ console.log('All public entry points imported successfully.')
     join(temporaryDirectory, 'types.ts'),
     `import type {
   JSONValue,
+  Signal,
   RevalidateSignal,
   RevokeEventDetail,
   RenewEventDetail,
@@ -93,18 +94,19 @@ console.log('All public entry points imported successfully.')
 } from 'restale-kit'
 import type { SSEChannel } from 'restale-kit/server'
 import type { createSSEChannel, SSEChannelOptions } from 'restale-kit/testing'
-import type { SSEInvalidatorClient, AutoReconnectOptions } from 'restale-kit/client'
+import type { SSEClient, AutoReconnectOptions } from 'restale-kit/client'
 import type { UseRestaleResult } from 'restale-kit/react'
 
 // Verify types are properly exported and resolved
 const _testTypes: JSONValue = 'test'
 const _testSignal: RevalidateSignal = { key: ['test'] }
+const _testWireSignal: Signal = _testSignal
 const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
 const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
 const _testReconnect: AutoReconnectOptions = { native: true, jsBackoff: false }
 const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000 } }
 
-declare const _client: SSEInvalidatorClient
+declare const _client: SSEClient
 declare const _channel: SSEChannel
 _client.close()
 _channel.disconnect()

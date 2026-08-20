@@ -154,7 +154,7 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
     cancel: closeInternal,
   })
 
-  function invalidate(signal: UniversalSignal | UniversalSignal[], customId?: string): string {
+  function invalidate(signal: Signal | Signal[], customId?: string): string {
     if (state === 'closed') throw new ChannelClosedError()
     validateSignalPayload(signal)
     const result = runGuard({ frameType: 'signal', signal, connectionId, isResume })

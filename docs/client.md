@@ -3,7 +3,7 @@
 The client side connects to your SSE endpoint and translates incoming invalidation signals into cache operations. There are two layers:
 
 1. **`RestaleProvider` & `useRestale`** — React provider and consumer hook wrapping the client in `useSyncExternalStore`.
-2. **`SSEInvalidatorClient`** — framework-agnostic core client (vanilla JS, EventTarget).
+2. **`SSEClient`** — framework-agnostic core client (vanilla JS, EventTarget).
 
 Plus two ready-made cache adapters: **TanStack Query** and **SWR**.
 
@@ -57,7 +57,7 @@ The provider opens a single SSE connection on mount and closes it when unmounted
 <RestaleProvider
   // Required
   url="/api/sse"
-  // An AdaptedCallback returned by tanstackQueryAdapter, swrAdapter, or makeAdaptedCallback
+  // An InvalidationHandler returned by tanstackQueryAdapter, swrAdapter, or makeInvalidationHandler
   onInvalidate={onInvalidate}
 
   // Revocation & Errors (optional)
@@ -154,7 +154,7 @@ import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import { useQueryClient } from '@tanstack/react-query'
 ```
 
-`tanstackQueryAdapter(queryClient, options?)` is a plain function returning an `AdaptedCallback` that maps universal signals to `queryClient` operations:
+`tanstackQueryAdapter(queryClient, options?)` is a plain function returning an `InvalidationHandler` that maps signals to `queryClient` operations:
 
 ```ts
 const queryClient = new QueryClient()
@@ -166,7 +166,7 @@ const onInvalidate = tanstackQueryAdapter(queryClient)
 ```
 
 **Key transformation:**
-Pass `toQueryKey: (key: CacheKey) => QueryKey` in options if you need to prepend a namespace or transform the universal key array:
+Pass `toQueryKey: (key: CacheKey) => QueryKey` in options if you need to prepend a namespace or transform the key array:
 
 ```ts
 const onInvalidate = tanstackQueryAdapter(queryClient, {
@@ -183,7 +183,7 @@ import { swrAdapter } from 'restale-kit/swr'
 import { mutate } from 'swr'
 ```
 
-`swrAdapter(mutate, options?)` takes SWR's global `mutate` function and returns an `AdaptedCallback`:
+`swrAdapter(mutate, options?)` takes SWR's global `mutate` function and returns an `InvalidationHandler`:
 
 ```tsx
 import { mutate } from 'swr'
@@ -203,15 +203,15 @@ function Root() {
 
 ---
 
-## Vanilla JS: `SSEInvalidatorClient`
+## Vanilla JS: `SSEClient`
 
 For non-React applications or background workers:
 
 ```ts
-import { SSEInvalidatorClient } from 'restale-kit/client'
+import { SSEClient } from 'restale-kit/client'
 import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 
-const client = new SSEInvalidatorClient('/sse', {
+const client = new SSEClient('/sse', {
   autoReconnect: true,
   callback: tanstackQueryAdapter(queryClient),
 })

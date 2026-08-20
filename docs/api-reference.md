@@ -12,10 +12,9 @@ import type {
   CacheKey,
   RevalidateSignal,
   InlineDataSignal,
-  UniversalSignal,
-  ReStaleSignal,
+  Signal,
   PubSubMessage,
-  SSEInvalidateEvent,
+  SignalPayload,
   EventRecord,
   EventStore,
   EventStoreResult,
@@ -34,7 +33,7 @@ import {
   SchemaValidationError,
   isInlineDataSignal,
   isJSONValue,
-  isJSONValueArray,
+  isCacheKey,
   validateStandardSchema,
   canonicalJsonSerialize,
   computeContextHash,
@@ -69,17 +68,16 @@ interface InlineDataSignal {
   readonly exact?: never
 }
 
-type UniversalSignal = RevalidateSignal | InlineDataSignal
-type ReStaleSignal = UniversalSignal
-type SSEInvalidateEvent = UniversalSignal | UniversalSignal[]
+type Signal = RevalidateSignal | InlineDataSignal
+type SignalPayload = Signal | Signal[]
 type ChannelState = 'open' | 'closed'
 ```
 
 ### Utilities & Type Guards
 
-- `isInlineDataSignal(signal: UniversalSignal): signal is InlineDataSignal`: Narrows a universal signal to the `InlineDataSignal` arm.
+- `isInlineDataSignal(signal: Signal): signal is InlineDataSignal`: Narrows a signal to the `InlineDataSignal` arm.
 - `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
-- `isJSONValueArray(value: unknown): value is JSONValue[]`: Checks if a value is a JSON-safe array.
+- `isCacheKey(value: unknown): value is CacheKey`: Checks if a value is a JSON-safe cache key array.
 - `validateStandardSchema<T>(value: unknown, schema: StandardSchemaV1<unknown, T>): T`: Synchronously validates input against a Standard Schema v1 object.
 - `canonicalJsonSerialize(value: unknown): string | undefined`: Serializes a value into canonical JSON with sorted keys, returning `undefined` for `undefined` or cyclic references.
 - `computeContextHash(context: unknown): Promise<string | undefined>`: Computes a deterministic SHA-256 hash for client context tracking.
@@ -153,21 +151,21 @@ class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   deregister(channel: SSEChannel): void
 
   broadcast(
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
     predicate?: (meta: TMeta | undefined) => boolean,
   ): void
 
   broadcastToAll(
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
   ): void
 
   broadcastByKey(
-    signal: UniversalSignal,
+    signal: Signal,
   ): void
 
   publish(
     topic: string,
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
   ): Promise<void>
   pushInlineData(topic: string, payload: JSONValue): Promise<void>
 
@@ -197,6 +195,18 @@ interface SSEChannelGroupOptions<TMeta = unknown, TClientContext = unknown> {
   eventBufferCapacity?: number
   controlTopic?: string
   channelDefaults?: ChannelDefaults
+}
+
+interface ChannelSetupOptions<TMeta> {
+  meta?: TMeta
+  topics?: string[]
+}
+
+interface ChannelDefaults {
+  lifetime?: LifetimeOptions
+  guardKeepalive?: boolean
+  beforeFrame?: BeforeFrameFn
+  eventBufferCapacity?: number
 }
 
 interface InlineDataConnection<TMeta, TClientContext> {
@@ -235,28 +245,28 @@ function createSSEChannel(options?: SSEChannelOptions): SSEChannel
 ## `restale-kit/client`
 
 ```ts
-import { SSEInvalidatorClient, makeAdaptedCallback } from 'restale-kit/client'
+import { SSEClient, makeInvalidationHandler } from 'restale-kit/client'
 import type {
   ClientOptions,
   ReconnectOptions,
   AutoReconnectOptions,
   ConnectionStatus,
-  SSEInvalidatorClientEventMap,
+  SSEClientEventMap,
   RejectedConnectionResponse,
-  AdaptedCallback,
+  InvalidationHandler,
   RevokeEventDetail,
   RenewEventDetail,
-  UniversalSignal,
+  Signal,
   RevalidateSignal,
   InlineDataSignal,
   CacheKey,
 } from 'restale-kit/client'
 ```
 
-### `SSEInvalidatorClient`
+### `SSEClient`
 
 ```ts
-class SSEInvalidatorClient extends EventTarget {
+class SSEClient extends EventTarget {
   constructor(url: string, options?: ClientOptions)
   get connectionId(): string | undefined
   get endpointUrl(): string
@@ -267,9 +277,9 @@ class SSEInvalidatorClient extends EventTarget {
   updateClientContext(clientContext: unknown): Promise<{ updated: boolean }>
   close(): void
 
-  addEventListener<K extends keyof SSEInvalidatorClientEventMap>(
+  addEventListener<K extends keyof SSEClientEventMap>(
     type: K,
-    listener: (ev: SSEInvalidatorClientEventMap[K]) => void,
+    listener: (ev: SSEClientEventMap[K]) => void,
     options?: boolean | AddEventListenerOptions,
   ): void
 }
@@ -280,19 +290,19 @@ interface ClientOptions {
   reconnect?: ReconnectOptions
   clientContextUrl?: string
   debug?: boolean
-  callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
+  callback?: InvalidationHandler | ((signal: Signal | Signal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void
 }
 
-type AdaptedCallback = ((signal: UniversalSignal | UniversalSignal[]) => void) & {
-  readonly __brand?: 'AdaptedCallback'
+type InvalidationHandler = ((signal: Signal | Signal[]) => void) & {
+  readonly __brand?: 'InvalidationHandler'
 }
 
-function makeAdaptedCallback(
-  callback: (signal: UniversalSignal | UniversalSignal[]) => void,
-): AdaptedCallback
+function makeInvalidationHandler(
+  callback: (signal: Signal | Signal[]) => void,
+): InvalidationHandler
 ```
 
 ---
@@ -301,7 +311,7 @@ function makeAdaptedCallback(
 
 ```tsx
 import type React from 'react'
-import type { UniversalSignal } from 'restale-kit'
+import type { Signal } from 'restale-kit'
 import type { ReconnectOptions } from 'restale-kit/client'
 import { RestaleProvider, useRestale } from 'restale-kit/react'
 import type {
@@ -313,7 +323,7 @@ import type {
   RevokeEventDetail,
   RenewEventDetail,
   RejectedConnectionResponse,
-  AdaptedCallback,
+  InvalidationHandler,
 } from 'restale-kit/react'
 
 function RestaleProvider<
@@ -324,7 +334,7 @@ interface RestaleProviderProps<
   TDefaults extends Record<string, unknown> = Record<string, unknown>,
 > {
   url: string
-  onInvalidate: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
+  onInvalidate: InvalidationHandler | ((signal: Signal | Signal[]) => void)
   disabled?: boolean
   withCredentials?: boolean
   autoReconnect?: boolean | { native?: boolean; jsBackoff?: boolean }
@@ -380,7 +390,7 @@ interface UseRestaleResult<TEffective = Record<string, unknown>> {
 ```ts
 import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import type { QueryClientLike, TanstackQueryAdapterOptions } from 'restale-kit/tanstack-query'
-import type { AdaptedCallback } from 'restale-kit/client'
+import type { InvalidationHandler } from 'restale-kit/client'
 
 interface QueryClientLike {
   setQueryData(queryKey: QueryKey, data: unknown): void
@@ -394,7 +404,7 @@ interface TanstackQueryAdapterOptions {
 function tanstackQueryAdapter(
   queryClient: QueryClientLike,
   options?: TanstackQueryAdapterOptions,
-): AdaptedCallback
+): InvalidationHandler
 ```
 
 ---
@@ -404,7 +414,7 @@ function tanstackQueryAdapter(
 ```ts
 import { swrAdapter } from 'restale-kit/swr'
 import type { SWRKey, SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
-import type { AdaptedCallback } from 'restale-kit/client'
+import type { InvalidationHandler } from 'restale-kit/client'
 
 type SWRKey = string | readonly unknown[]
 
@@ -421,7 +431,7 @@ interface SWRAdapterOptions {
 function swrAdapter(
   mutate: SWRMutator,
   options?: SWRAdapterOptions,
-): AdaptedCallback
+): InvalidationHandler
 ```
 
 ---
@@ -443,7 +453,7 @@ interface PubSubAdapter {
 }
 
 type PubSubMessage =
-  | { kind: 'signal'; data: UniversalSignal | UniversalSignal[]; id?: string }
+  | { kind: 'signal'; data: Signal | Signal[]; id?: string }
   | { kind: 'control'; data: JSONValue }
   | { kind: 'inlineData'; topic: string; payload: JSONValue }
 

@@ -7,9 +7,9 @@ vi.mock('sse.js', async () => {
   return { SSE }
 })
 
-import { SSEInvalidatorClient } from './sse-client.js'
+import { SSEClient } from './sse-client.js'
 
-describe('SSEInvalidatorClient', () => {
+describe('SSEClient', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     MockEventSource.clear()
@@ -20,7 +20,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('passes options and clean URL without query parameters to sse.js', () => {
-    const client = new SSEInvalidatorClient('/sse', { withCredentials: true })
+    const client = new SSEClient('/sse', { withCredentials: true })
     void client.connect()
 
     expect(MockEventSource.instances).toHaveLength(1)
@@ -35,7 +35,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('receives server-assigned connectionId via connected event', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     expect(client.connectionId).toBeUndefined()
 
     const pending = client.connect()
@@ -49,7 +49,7 @@ describe('SSEInvalidatorClient', () => {
   it('posts client context and maps 204 and 404 responses', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const client = new SSEInvalidatorClient('/sse', { clientContextUrl: '/context' })
+    const client = new SSEClient('/sse', { clientContextUrl: '/context' })
     const pending = client.connect()
     MockEventSource.instances[0]?.emitOpen(undefined, 'conn-123')
     await pending
@@ -75,7 +75,7 @@ describe('SSEInvalidatorClient', () => {
   it('includes a supplied client-context revision in the request', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ status: 204 })
     vi.stubGlobal('fetch', fetchMock)
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const pending = client.connect()
     MockEventSource.instances[0]?.emitOpen(undefined, 'conn-rev-1')
     await pending
@@ -94,7 +94,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('rejects blank clientContextUrl values', () => {
-    expect(() => new SSEInvalidatorClient('/sse', { clientContextUrl: ' \u200B ' }))
+    expect(() => new SSEClient('/sse', { clientContextUrl: ' \u200B ' }))
       .toThrow('clientContextUrl must be a non-empty, non-whitespace string')
   })
 
@@ -106,7 +106,7 @@ describe('SSEInvalidatorClient', () => {
     const onDisconnect = vi.fn()
     const onError = vi.fn()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const client = new SSEInvalidatorClient('/sse', { callback, onConnect, onDisconnect, onError })
+    const client = new SSEClient('/sse', { callback, onConnect, onDisconnect, onError })
 
     const pending = client.connect()
     const source = MockEventSource.instances[0]
@@ -126,7 +126,7 @@ describe('SSEInvalidatorClient', () => {
 
   it('calls onConnect after a successful renew reconnect', async () => {
     const onConnect = vi.fn()
-    const client = new SSEInvalidatorClient('/sse', { onConnect })
+    const client = new SSEClient('/sse', { onConnect })
 
     const pending = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -143,7 +143,7 @@ describe('SSEInvalidatorClient', () => {
 
   describe('handshake validation', () => {
     it('rejects onopen if Content-Type is application/json', () => {
-      const client = new SSEInvalidatorClient('/sse', {
+      const client = new SSEClient('/sse', {
         reconnect: { maxRetries: 0 },
       })
       const pending = client.connect()
@@ -159,7 +159,7 @@ describe('SSEInvalidatorClient', () => {
     })
 
     it('accepts onopen if Content-Type is text/event-stream even on a non-OK HTTP status', async () => {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const pending = client.connect()
 
       const openEvent = Object.assign(new Event('open'), {
@@ -174,7 +174,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('does not retry a configured HTTP status and exposes the rejection', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { nonRetryableStatuses: 401 },
     })
     const rejected = vi.fn()
@@ -202,7 +202,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('matches arrays, status classes, and inclusive status ranges', () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { nonRetryableStatuses: [403, '4xx', { from: 500, to: 502 }] },
     })
 
@@ -213,7 +213,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('preserves Last-Event-ID on a retry', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { maxRetries: 1, baseDelayMs: 10, jitter: false },
     })
     const pending = client.connect()
@@ -231,7 +231,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('returns same pending promise while connecting', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const p1 = client.connect()
     const p2 = client.connect()
 
@@ -242,7 +242,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('transitions to open status on EventSource open event', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const statusChanges: string[] = []
 
     client.addEventListener('statuschange', (e: any) => {
@@ -260,7 +260,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('handles errors and auto-reconnects with backoff', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 2, baseDelayMs: 100, jitter: false },
     })
@@ -286,7 +286,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('respects Retry-After for retryable responses when configured', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
     })
     const pending = client.connect()
@@ -303,7 +303,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('respects Retry-After when provided as a string and with mixed casing', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
     })
     const pending = client.connect()
@@ -323,7 +323,7 @@ describe('SSEInvalidatorClient', () => {
     const now = Math.floor(Date.now() / 1000) * 1000
     vi.setSystemTime(now)
 
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
     })
     const pending = client.connect()
@@ -343,7 +343,7 @@ describe('SSEInvalidatorClient', () => {
 
   it('handles past date or invalid format in Retry-After gracefully', async () => {
     // Past HTTP-date -> 0 delay
-    const client1 = new SSEInvalidatorClient('/sse', {
+    const client1 = new SSEClient('/sse', {
       reconnect: { retryAfter: 'respect', baseDelayMs: 500, jitter: false },
     })
     const pending1 = client1.connect()
@@ -360,7 +360,7 @@ describe('SSEInvalidatorClient', () => {
 
     // Invalid format -> falls back to base delay backoff (500ms)
     MockEventSource.clear()
-    const client2 = new SSEInvalidatorClient('/sse', {
+    const client2 = new SSEClient('/sse', {
       reconnect: { retryAfter: 'respect', baseDelayMs: 500, jitter: false },
     })
     const pending2 = client2.connect()
@@ -379,7 +379,7 @@ describe('SSEInvalidatorClient', () => {
 
 
   it('recreates the sse.js stream through the managed backoff after a mid-stream drop', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { baseDelayMs: 10, jitter: false },
     })
     const p = client.connect()
@@ -403,7 +403,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('connect() cancels a managed retry and reconnects immediately', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { baseDelayMs: 10, jitter: false },
     })
     const p1 = client.connect()
@@ -431,7 +431,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('falls back to JS backoff retries when mid-stream error results in readyState CLOSED', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 2, baseDelayMs: 100, jitter: false },
     })
@@ -455,7 +455,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('tears down and sets error status when autoReconnect is false even if readyState is CONNECTING', async () => {
-    const client = new SSEInvalidatorClient('/sse', { autoReconnect: false })
+    const client = new SSEClient('/sse', { autoReconnect: false })
     const p = client.connect()
     const es = MockEventSource.instances[0]
     es?.emitOpen()
@@ -473,7 +473,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('supports autoReconnect object with { native: false, jsBackoff: true }', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: { native: false, jsBackoff: true },
       reconnect: { maxRetries: 2, baseDelayMs: 100, jitter: false },
     })
@@ -498,7 +498,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('supports autoReconnect object with { native: true, jsBackoff: false }', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: { native: true, jsBackoff: false },
     })
 
@@ -513,7 +513,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('does not schedule retry if error listener calls close()', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 100 },
     })
@@ -534,7 +534,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('validates incoming SSE invalidate event and updates lastEventId', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const invalidateSpy = vi.fn()
 
     client.addEventListener('invalidate', (e: any) => {
@@ -553,7 +553,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('dispatches error custom event on invalid payload structure', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const errorSpy = vi.fn()
     client.addEventListener('error', errorSpy)
 
@@ -567,7 +567,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('closes connection and sets status to closed with reason manual', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const p = client.connect()
     const es = MockEventSource.instances[0]
     es.emitOpen()
@@ -580,7 +580,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('closeWithUnmount closes connection and sets status to closed with reason unmount', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const p = client.connect()
     const es = MockEventSource.instances[0]
     es.emitOpen()
@@ -593,7 +593,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('clears active retryTimer when disconnect() or close() is called', () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 1000, jitter: false },
     })
@@ -617,7 +617,7 @@ describe('SSEInvalidatorClient', () => {
   // --- connect() edge cases: all 6 states from spec table ---
 
   it('connect() is no-op when already open — returns resolved promise', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
     await p
@@ -632,7 +632,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('connect() from closed-manual creates new EventSource and resets backoff', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
     })
@@ -656,7 +656,7 @@ describe('SSEInvalidatorClient', () => {
 
   it('connect() from closed-unmount creates new EventSource (allows reuse after re-mount)', async () => {
     // Simulate unmount close by directly testing that connect works from any closed state
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     // Open, close, then connect again
     const p1 = client.connect()
@@ -671,7 +671,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('connect() from error state creates new EventSource and resets backoff', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: false,
     })
 
@@ -693,7 +693,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('connect() while backing off cancels pending retry and immediately attempts', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 5000, jitter: false },
     })
@@ -722,7 +722,7 @@ describe('SSEInvalidatorClient', () => {
   // --- close() rejects pending connect promise ---
 
   it('close() while connecting rejects the pending connect() promise', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const p = client.connect()
 
     expect(client.status.status).toBe('connecting')
@@ -739,7 +739,7 @@ describe('SSEInvalidatorClient', () => {
     delete globalThis.ErrorEvent
 
     try {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const errorSpy = vi.fn()
       client.addEventListener('error', errorSpy)
 
@@ -762,7 +762,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('rejects initial connectPromise when autoReconnect is false and error occurs', async () => {
-    const client = new SSEInvalidatorClient('/sse', { autoReconnect: false })
+    const client = new SSEClient('/sse', { autoReconnect: false })
     const p = client.connect()
 
     MockEventSource.instances[0]?.emitError()
@@ -771,7 +771,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('dispatches revoke event with only reason field when no details present', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -787,7 +787,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('dispatches revoke event with undefined reason on malformed payload', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -803,7 +803,7 @@ describe('SSEInvalidatorClient', () => {
   })
 
   it('onopen fires before revoke arrives — ordering is open then revoke', async () => {
-    const client = new SSEInvalidatorClient('/sse', {})
+    const client = new SSEClient('/sse', {})
     const events: string[] = []
 
     client.addEventListener('statuschange', (e) => {
@@ -836,7 +836,7 @@ describe('SSEInvalidatorClient', () => {
 
 // ─── renew frame tests ────────────────────────────────────────────────────────
 
-describe('SSEInvalidatorClient — renew frame', () => {
+describe('SSEClient — renew frame', () => {
   let originalEventSource: typeof globalThis.EventSource
 
   beforeEach(() => {
@@ -852,7 +852,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('emits a renew CustomEvent with the frame payload when renew is received', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const renewSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
 
@@ -867,7 +867,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('transitions to connecting then open on a successful renew reconnect', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const statuses: string[] = []
     client.addEventListener('statuschange', (e: any) => statuses.push(e.detail.status))
 
@@ -892,7 +892,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('does NOT consume the general maxRetries budget (renew budget is separate)', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 1, baseDelayMs: 100, jitter: false },
     })
@@ -919,7 +919,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('emits revoke event with reason deadline when renew exhausts maxAttempts', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -940,7 +940,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('maxAttempts: 2 — makes second attempt after retryDelayMs when first fails', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -966,7 +966,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('successful renew reconnect clears renewing flag — subsequent network drops use normal backoff', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 3, baseDelayMs: 100, jitter: false },
     })
@@ -996,7 +996,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('dispatches an error event for a stream failure after a successful renew reconnect', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 1, baseDelayMs: 100, jitter: false },
     })
@@ -1021,7 +1021,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('malformed renew payload (not-json) is treated as a hard revoke — no confirmatory attempt', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const renewSpy = vi.fn()
     const revokeSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
@@ -1044,7 +1044,7 @@ describe('SSEInvalidatorClient — renew frame', () => {
   })
 
   it('renew does not fire onerror general backoff when renew reconnect is in progress', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
     })
@@ -1098,7 +1098,7 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // is made, and the connection closes with { reason: 'deadline' }.
   // This test verifies that spec-correct behaviour: no second EventSource created.
   it('renew frame with missing maxAttempts triggers hard revoke (no confirmatory attempt)', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -1125,7 +1125,7 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // default (no invented constant from FRAME_GUARD_DEFAULTS). With delay=0, the second
   // attempt fires immediately after the first fails.
   it('renew frame with missing retryDelayMs uses 0 delay (not the FRAME_GUARD_DEFAULTS constant)', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1153,7 +1153,7 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // NOT emit the renew event at all (there is no valid frame to report). This test
   // documents that contract and verifies it doesn't accidentally emit renew with fabricated data.
   it('renew CustomEvent is NOT emitted when payload is malformed — only revoke fires', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const renewSpy = vi.fn()
     const revokeSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
@@ -1181,7 +1181,7 @@ describe('frameguard-spec §4.1.2 — renew frame: maxAttempts is server-supplie
   // with no confirmatory attempt. This is spec-correct: a server sending maxAttempts: 0
   // is effectively saying "don't reconnect", and the client honours that.
   it('renew frame with maxAttempts: 0 triggers hard revoke (floor of 0 is protocol error)', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1222,7 +1222,7 @@ describe('frameguard-spec §4.1.3 — retry-budget isolation: renew attempts nev
   // so the budget question is moot for that connection — but this test verifies that
   // a *successful* renew reconnect correctly resets the attempt counter to 0.
   it('successful renew reconnect resets attempt counter so full maxRetries budget is available', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 2, baseDelayMs: 100, jitter: false },
     })
@@ -1272,7 +1272,7 @@ describe('frameguard-spec §4.1.3 — retry-budget isolation: renew attempts nev
   // The existing test checks instance count at t=1000ms but uses a weak assertion
   // (toHaveLength(2)). This stronger version also verifies client.status.
   it('after renew exhaustion the general backoff loop is completely suppressed', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 50, jitter: false },
     })
@@ -1304,7 +1304,7 @@ describe('frameguard-spec §4.1.3 — retry-budget isolation: renew attempts nev
   // The existing test uses `toBeLessThanOrEqual(2)` which could pass with 1 instance
   // (meaning no confirmatory attempt was made at all — equally wrong).
   it('onerror on original ES during renew produces exactly one new ES (the confirmatory attempt)', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 5, baseDelayMs: 100, jitter: false },
     })
@@ -1349,7 +1349,7 @@ describe('frameguard-spec §4.1.5 — jitter bounds on confirmatory attempt spac
   // This test verifies the LOWER bound: the second attempt must NOT fire before
   // retryDelayMs * (1 - RENEW_JITTER_FACTOR) = 400 ms.
   it('second confirmatory attempt does not fire before retryDelayMs*(1-jitter) floor', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1373,7 +1373,7 @@ describe('frameguard-spec §4.1.5 — jitter bounds on confirmatory attempt spac
   // SPEC §4.1.5: upper bound — the second attempt must fire within
   // retryDelayMs * (1 + RENEW_JITTER_FACTOR) = 600 ms.
   it('second confirmatory attempt fires within retryDelayMs*(1+jitter) ceiling', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1401,7 +1401,7 @@ describe('frameguard-spec §4.1.5 — jitter bounds on confirmatory attempt spac
   // The delay must NOT grow (no doubling). This test verifies the 3rd attempt
   // does not need an exponentially larger wait.
   it('delay between attempts is flat (not exponential) — third attempt still within one jitter window', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1448,7 +1448,7 @@ describe('frameguard-spec §4.1.2 — renew event fires BEFORE the first confirm
   // The implementation does dispatch before calling attemptRenewReconnect() — but
   // this test makes the ordering observable and will catch any refactor that breaks it.
   it('renew CustomEvent is dispatched synchronously before a new EventSource is created', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const order: string[] = []
 
     client.addEventListener('renew', () => {
@@ -1474,7 +1474,7 @@ describe('frameguard-spec §4.1.2 — renew event fires BEFORE the first confirm
   // Specifically: status must be 'connecting' at the moment the renew event fires,
   // not 'open' (which would mean the status update came too late).
   it('status is connecting at the moment the renew CustomEvent fires', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     let statusAtRenew: string | undefined
 
     client.addEventListener('renew', () => {
@@ -1514,7 +1514,7 @@ describe('frameguard-spec §4.1.5 — retryDelayMs is irrelevant and must be ign
   // The implementation only uses retryDelayMs when attemptsRemaining > 0 after a failure,
   // so this should hold — but we make it explicit.
   it('with maxAttempts=1 the single attempt is immediate even if retryDelayMs is huge', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1532,7 +1532,7 @@ describe('frameguard-spec §4.1.5 — retryDelayMs is irrelevant and must be ign
   // Complement: with maxAttempts=1, after failure NO timer is scheduled (no delay
   // before the revoke path fires — it should be immediate exhaustion).
   it('with maxAttempts=1 failure leads to immediate revoke path with no timer', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -1584,7 +1584,7 @@ describe('frameguard-spec §4.1.2 — renew is distinct from onerror path: does 
   // this.attempt = 0, so this should pass — but the test makes it explicit and
   // will catch any regression.
   it('renew confirmatory attempt does not decrement the maxRetries slot count', async () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       autoReconnect: true,
       reconnect: { maxRetries: 1, baseDelayMs: 100, jitter: false },
     })
@@ -1636,7 +1636,7 @@ describe('frameguard-spec §4.1.2 — close() during active renew sequence', () 
   // onRenewError calls `if (this.eventSource === null) return` — so it should
   // short-circuit. This test verifies the whole sequence doesn't escape.
   it('close() during renew cancels confirmatory attempt and yields closed/manual', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -1669,7 +1669,7 @@ describe('frameguard-spec §4.1.2 — close() during active renew sequence', () 
   // close() during a *delayed* renew attempt (maxAttempts=2, waiting between attempts)
   // must clear the renewRetryTimer so no further ES is created.
   it('close() during renew delay timer cancels the pending next attempt', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1718,7 +1718,7 @@ describe('frameguard-spec §4.1.2 — chained renew (renew on the reconnected co
   // observable and also verifies that the renewing flag is properly cleared
   // between cycles so the second renew isn't blocked.
   it('renew on the reconnected connection is handled correctly (chained renew cycles)', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const renewSpy = vi.fn()
     client.addEventListener('renew', (e: any) => renewSpy(e.detail))
 
@@ -1766,7 +1766,7 @@ describe('frameguard-spec §4.1.2 — status stays connecting for the full renew
   // The client must stay in 'connecting' throughout the whole renew sequence —
   // it must NOT briefly flicker to 'error' or 'open' between attempts.
   it('status remains connecting throughout all renew attempts until final outcome', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const statuses: string[] = []
     client.addEventListener('statuschange', (e: any) => statuses.push(e.detail.status))
 
@@ -1826,7 +1826,7 @@ describe('frameguard-spec §4.1.2 — revoke event from renew exhaustion carries
   // hits 0 after the second failure) also emits { reason: 'deadline' }, not some
   // other value or an empty object.
   it('revoke event after 2-attempt renew exhaustion has reason deadline', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const revokeSpy = vi.fn()
     client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -1855,7 +1855,7 @@ describe('frameguard-spec §4.1.2 — revoke event from renew exhaustion carries
   })
 
   it('cancels pending retryTimer and updates status when updateRuntimeOptions disables autoReconnect while retry is queued', () => {
-    const client = new SSEInvalidatorClient('/sse', {
+    const client = new SSEClient('/sse', {
       reconnect: { maxRetries: 3, baseDelayMs: 1000 },
     })
     void client.connect()
@@ -1898,7 +1898,7 @@ describe('frameguard-spec §4.1.2 — Last-Event-ID header carried to confirmato
   // is the same URL. Native EventSource handles Last-Event-ID automatically.
   // What we CAN test: the renew confirmatory ES uses the SAME URL as the original.
   it('confirmatory renew EventSource is created with the same URL as the original connection', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
 
     const p = client.connect()
     MockEventSource.instances[0]?.emitOpen()
@@ -1926,7 +1926,7 @@ describe('Connection ID lifecycle', () => {
   })
 
   it('resets currentConnectionId and ignores closed stream event', async () => {
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const pending = client.connect()
     const instance = MockEventSource.instances[0]
     instance.emitOpen(undefined, 'first-conn')

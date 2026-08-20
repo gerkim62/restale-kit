@@ -355,7 +355,6 @@ export class SSEClient extends EventTarget {
     options?: boolean | EventListenerOptions
   ): void {
     super.removeEventListener(type, listener, options)
-  }s)
   }
 
   // --- Private ---

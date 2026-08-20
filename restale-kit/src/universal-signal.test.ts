@@ -4,10 +4,10 @@ import { swrAdapter, type SWRMutator } from './client/swr/adapter.js'
 import { validatePayload } from './client/core/validation.js'
 import { createSSEChannel } from './server/core/channel.js'
 import { SSEChannelGroup } from './server/core/channel-group.js'
-import { SSEInvalidatorClient } from './client/core/sse-client.js'
+import { SSEClient } from './client/core/sse-client.js'
 
-describe('universal signal protocol', () => {
-  it('serialises universal signals without targets and validates both arms', async () => {
+describe('signal protocol', () => {
+  it('serialises signals without targets and validates both arms', async () => {
     const channel = createSSEChannel()
     const reader = channel.stream.getReader()
     // First event is the connected frame
@@ -25,7 +25,7 @@ describe('universal signal protocol', () => {
     expect(() => validatePayload('{"key":["todos"],"inlineData":1,"exact":true}')).toThrow('unsupported fields')
   })
 
-  it('broadcasts the same universal signal to every registered channel', async () => {
+  it('broadcasts the same signal to every registered channel', async () => {
     const group = new SSEChannelGroup()
     const first = createSSEChannel()
     const second = createSSEChannel()
@@ -44,7 +44,7 @@ describe('universal signal protocol', () => {
   })
 
   it('does not add query parameters to the client URL', () => {
-    const client = new SSEInvalidatorClient('https://example.test/events')
+    const client = new SSEClient('https://example.test/events')
     const eventSourceUrl = Reflect.get(client, 'eventSourceUrl') as string
     expect(eventSourceUrl).toBe('https://example.test/events')
   })
