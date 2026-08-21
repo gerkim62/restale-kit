@@ -458,7 +458,7 @@ When a client reconnects sending the standard `Last-Event-ID` HTTP header (enfor
 
 ## Teardown (`dispose()`)
 
-Call `group.dispose()` during graceful server shutdown to unsubscribe control topic listeners without force-closing client channels:
+Call `group.dispose()` during graceful server shutdown to close active client channels and unsubscribe all pub/sub control and topic listeners cleanly:
 
 ```ts
 process.on('SIGTERM', async () => {

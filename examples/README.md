@@ -14,9 +14,9 @@ The launcher prints the local frontend URL after you choose both applications.
 The client then asks you to sign in as Ada, Grace, or Linus. Each demo session
 has its own Todo list and SSE invalidation stream.
 
-- **Zod validation:** Express, Hono, and the React Query client pass Zod schemas
-  for request data and ReStale signals.
-- **No Zod validation:** Fastify, native Node, and the SWR client use the same
+- **Zod validation:** Express and Hono backends use Zod schemas for HTTP
+  request bodies, query parameters, and metadata validation.
+- **No Zod validation:** Fastify and native Node backends demonstrate the same
   flow without application-level Zod parsing.
 
 Run a backend and its matching client in separate terminals:

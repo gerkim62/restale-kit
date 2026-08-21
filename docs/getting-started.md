@@ -1,6 +1,6 @@
 # Getting Started
 
-> **What it does:** After a DB write on the server, call `channel.invalidate()`. Every connected browser client automatically refetches its stale queries. No polling, no websockets.
+> **What it does:** After a DB write on the server, call `group.broadcastToAll(...)` (or `group.publish(...)`). Every connected browser client automatically refetches its stale queries. No polling, no websockets.
 
 ---
 

@@ -210,7 +210,9 @@ For non-React applications or background workers:
 ```ts
 import { SSEClient } from 'restale-kit/client'
 import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
+import { QueryClient } from '@tanstack/react-query'
 
+const queryClient = new QueryClient()
 const client = new SSEClient('/sse', {
   autoReconnect: true,
   callback: tanstackQueryAdapter(queryClient),

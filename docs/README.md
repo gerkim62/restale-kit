@@ -22,13 +22,14 @@
 ## Quick orientation
 
 ```text
+restale-kit                → Core types, type guards, Standard Schema validator, hash utilities, errors
 restale-kit/server         → SSEChannelGroup, createSSEChannel, createEventStore
 restale-kit/testing        → createSSEChannel (standalone direct channel helper)
-restale-kit/client         → SSEClient (vanilla JS)
+restale-kit/client         → SSEClient (vanilla JS), makeInvalidationHandler
 restale-kit/react          → RestaleProvider, useRestale
 restale-kit/tanstack-query → tanstackQueryAdapter
 restale-kit/swr            → swrAdapter
-restale-kit/pubsub         → PubSubAdapter
+restale-kit/pubsub         → PubSubAdapter, PubSubDecryptionError
 restale-kit/redis          → redisPubSubAdapter
 restale-kit/ably           → ablyPubSubAdapter
 restale-kit/pusher         → pusherPubSubAdapter
