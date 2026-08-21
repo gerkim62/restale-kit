@@ -450,6 +450,11 @@ class SSEClient extends EventTarget {
     listener: (ev: SSEClientEventMap[K]) => void,
     options?: boolean | AddEventListenerOptions,
   ): void
+  removeEventListener<K extends keyof SSEClientEventMap>(
+    type: K,
+    listener: (ev: SSEClientEventMap[K]) => void,
+    options?: boolean | EventListenerOptions,
+  ): void
 }
 
 interface ClientOptions {
@@ -623,7 +628,8 @@ interface UseRestaleResult<TEffective = Record<string, unknown>> {
 ```ts
 import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
 import type { QueryClientLike, TanstackQueryAdapterOptions } from 'restale-kit/tanstack-query'
-import type { InvalidationHandler, CacheKey } from 'restale-kit'
+import type { InvalidationHandler } from 'restale-kit/client'
+import type { CacheKey } from 'restale-kit'
 import type { QueryKey } from '@tanstack/react-query'
 
 interface QueryClientLike {
@@ -648,7 +654,8 @@ function tanstackQueryAdapter(
 ```ts
 import { swrAdapter } from 'restale-kit/swr'
 import type { SWRKey, SWRAdapterOptions, SWRMutator } from 'restale-kit/swr'
-import type { InvalidationHandler, CacheKey, JSONValue } from 'restale-kit'
+import type { InvalidationHandler } from 'restale-kit/client'
+import type { CacheKey, JSONValue } from 'restale-kit'
 
 type SWRKey = string | readonly unknown[]
 

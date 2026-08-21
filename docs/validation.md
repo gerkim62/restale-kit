@@ -17,13 +17,14 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
    - **`RevalidateSignal`**:
      - `exact` (if present) must be a `boolean`.
      - Cannot carry `inlineData` or `markStale`.
+     - Unsupported/unknown fields are strictly rejected.
    - **`InlineDataSignal`**:
      - `inlineData` must be present and be a valid JSON value.
      - `markStale` (if present) must be a `boolean`.
      - Cannot specify `exact` (inline data writes are strictly exact).
-4. Unknown fields are ignored (forward-compatible).
+     - Unsupported/unknown fields are strictly rejected.
 
-If any of these structural checks fail, the client emits an `error` event instead of `invalidate`.
+If any of these structural checks fail, the client emits an `error` event instead of `invalidate` (and the server throws during `invalidate()` / drops the frame).
 
 ---
 
