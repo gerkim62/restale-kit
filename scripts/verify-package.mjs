@@ -127,7 +127,7 @@ console.log('All public entry points imported successfully.')
   SchemaValidationError,
   OnDeadlineAction,
 } from 'restale-kit'
-import type { SSEChannel, InlineDataResolver, SSEChannelGroupOptions } from 'restale-kit/server'
+import type { SSEChannel, InlineDataResolver, InlineDataResolverResult, SSEChannelGroupOptions } from 'restale-kit/server'
 import type { createSSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 import type { SSEClient, AutoReconnectOptions } from 'restale-kit/client'
 import type { UseRestaleResult } from 'restale-kit/react'
@@ -144,7 +144,7 @@ const _testDeadlineAction: OnDeadlineAction = 'reconnect'
 const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000, onDeadline: _testDeadlineAction } }
 const _testTanStackOptions: TanStackQueryAdapterOptions = { toQueryKey: (key) => key }
 const _testGroupOptions: SSEChannelGroupOptions = {
-  inlineDataResolver: (conns) => new Map(conns.map((c) => [c.connectionId, { signal: { key: ['test'] } }])),
+  inlineDataResolver: (conns) => new Map(conns.map((c) => [c.connectionId, { action: 'inlineData', signal: { key: ['test'] }, inlineData: { ok: true } }])),
 }
 
 declare const _client: SSEClient
