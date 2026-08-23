@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { Writable } from 'node:stream'
-import http, { type IncomingMessage, type ServerResponse, type Server } from 'node:http'
+import http, { type IncomingMessage, type Server } from 'node:http'
 import {
   internal_attachSSE,
   isFastifyReply,
@@ -11,23 +10,15 @@ import {
 } from './attach.js'
 import { createEventStore } from '@/server/core/event-store.js'
 import { SSE_HEADERS } from '@/utils/constants.js'
-
-function createMockResponse(): ServerResponse & { writtenChunks: string[] } {
-  const writtenChunks: string[] = []
-  const res = new Writable({
-    write(chunk, _encoding, callback) {
-      writtenChunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'))
-      callback()
-    },
-  }) as unknown as ServerResponse & { writtenChunks: string[] }
-  res.writtenChunks = writtenChunks
-  res.writeHead = vi.fn()
-  return res
-}
+import {
+  createMockNodeRequest,
+  createMockNodeResponse,
+  closeHttpServer,
+} from '@/test-fixtures/http-test-utils.js'
 
 describe('node/attach type guards & underlying helpers', () => {
   it('isFastifyReply accurately distinguishes Fastify from Node and Express', () => {
-    const rawRes = createMockResponse()
+    const rawRes = createMockNodeResponse()
 
     // Real Fastify reply structure
     const fastifyReply = { raw: rawRes, send: vi.fn(), header: vi.fn() }
@@ -37,7 +28,7 @@ describe('node/attach type guards & underlying helpers', () => {
     expect(isFastifyReply(rawRes)).toBe(false)
 
     // Express Response (inherits from ServerResponse, has send() but no 'raw' property)
-    const expressRes = Object.assign(createMockResponse(), { send: vi.fn() })
+    const expressRes = Object.assign(createMockNodeResponse(), { send: vi.fn() })
     expect(isFastifyReply(expressRes)).toBe(false)
 
     // Null and non-object values
@@ -66,7 +57,7 @@ describe('node/attach type guards & underlying helpers', () => {
   })
 
   it('getUnderlyingResponse extracts the native ServerResponse', () => {
-    const rawRes = createMockResponse()
+    const rawRes = createMockNodeResponse()
     const fastifyReply = { raw: rawRes, send: vi.fn() }
 
     expect(getUnderlyingResponse(rawRes)).toBe(rawRes)
@@ -78,23 +69,13 @@ describe('node internal_attachSSE', () => {
   let server: Server | undefined
 
   afterEach(async () => {
-    if (server) {
-      await new Promise<void>((resolve) => {
-        server!.close(() => {
-          resolve()
-        })
-      })
-      server = undefined
-    }
+    await closeHttpServer(server)
+    server = undefined
   })
 
   it('triggers disconnect on request close event', () => {
-    const req = Object.assign(new EventEmitter(), {
-      url: '/sse',
-      headers: {},
-    }) as unknown as IncomingMessage
-
-    const res = createMockResponse()
+    const req = createMockNodeRequest('/sse')
+    const res = createMockNodeResponse()
 
     const channel = internal_attachSSE(req, res, {})
 
@@ -106,11 +87,8 @@ describe('node internal_attachSSE', () => {
   })
 
   it('flushes response headers when the runtime supports it', () => {
-    const req = Object.assign(new EventEmitter(), {
-      url: '/sse',
-      headers: {},
-    }) as unknown as IncomingMessage
-    const res = createMockResponse()
+    const req = createMockNodeRequest('/sse')
+    const res = createMockNodeResponse()
     res.flushHeaders = vi.fn()
 
     internal_attachSSE(req, res, {})
@@ -125,7 +103,7 @@ describe('node internal_attachSSE', () => {
       headers: {},
     }) as unknown as IncomingMessage
 
-    const res = createMockResponse()
+    const res = createMockNodeResponse()
 
     const channel = internal_attachSSE(reqWithoutUrl, res, {})
     expect(typeof channel.connectionId).toBe('string')
@@ -137,11 +115,8 @@ describe('node internal_attachSSE', () => {
     eventStore.add({ key: ['todos', 1] }, 'evt-1')
     eventStore.add({ key: ['todos', 2] }, 'evt-2')
 
-    const req = Object.assign(new EventEmitter(), {
-      url: '/sse',
-      headers: { 'last-event-id': 'evt-1' },
-    }) as unknown as IncomingMessage
-    const res = createMockResponse()
+    const req = createMockNodeRequest('/sse', { 'last-event-id': 'evt-1' })
+    const res = createMockNodeResponse()
 
     const channel = internal_attachSSE(req, res, {}, { eventStore, channelDefaults: undefined })
     expect(channel.connectionId).toBeDefined()
@@ -183,13 +158,18 @@ describe('node internal_attachSSE', () => {
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
 
-    const firstChunk = await reader.read()
-    const text = decoder.decode(firstChunk.value)
-    expect(text).toContain(':\n\n')
-    expect(text).toContain('event: connected\ndata: {"connectionId":')
+    try {
+      const firstChunk = await reader.read()
+      const text = decoder.decode(firstChunk.value)
+      expect(text).toContain(':\n\n')
+      expect(text).toContain('event: connected\ndata: {"connectionId":')
 
-    abortController.abort()
-    await new Promise((r) => setTimeout(r, 50))
-    expect(attachedChannel.state).toBe('closed')
+      abortController.abort()
+      await vi.waitFor(() => {
+        expect(attachedChannel.state).toBe('closed')
+      }, { timeout: 1000 })
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
   })
 })

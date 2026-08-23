@@ -1,44 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { EventEmitter } from 'node:events'
-import { Writable } from 'node:stream'
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { SSEChannelGroup } from '../core/index.js'
-
-function createMockNodeRequest(url: string): IncomingMessage {
-  return Object.assign(new EventEmitter(), {
-    url,
-    headers: {},
-  }) as unknown as IncomingMessage
-}
-
-function createMockNodeResponse(): ServerResponse {
-  const res = new Writable({
-    write(_chunk, _encoding, callback) {
-      callback()
-    },
-  }) as unknown as ServerResponse
-  res.writeHead = vi.fn()
-  return res
-}
-
-async function readUntil(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  predicate: (text: string) => boolean,
-  timeoutMs = 1500
-): Promise<string> {
-  const decoder = new TextDecoder()
-  let accumulated = ''
-  const start = Date.now()
-
-  while (Date.now() - start < timeoutMs) {
-    const { value, done } = await reader.read()
-    if (done) break
-    accumulated += decoder.decode(value, { stream: true })
-    if (predicate(accumulated)) return accumulated
-  }
-  return accumulated
-}
+import {
+  createMockNodeRequest,
+  createMockNodeResponse,
+  readStreamUntil,
+} from '@/test-fixtures/http-test-utils.js'
 
 describe('server/fastify integration via attachNodeResponse', () => {
   let app: FastifyInstance | undefined
@@ -132,22 +99,25 @@ describe('server/fastify integration via attachNodeResponse', () => {
       expect(res.headers.get('connection')).toBe('keep-alive')
 
       const reader = res.body!.getReader()
+      try {
+        // Read until connected frame is received
+        const initialText = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(initialText).toContain(':\n\n')
+        expect(initialText).toContain('event: connected\ndata: {"connectionId":')
 
-      // Read until connected frame is received
-      const initialText = await readUntil(reader, (t) => t.includes('event: connected'))
-      expect(initialText).toContain(':\n\n')
-      expect(initialText).toContain('event: connected\ndata: {"connectionId":')
+        // Broadcast an invalidation signal
+        group.broadcastToAll({ key: ['todos'] })
 
-      // Broadcast an invalidation signal
-      group.broadcastToAll({ key: ['todos'] })
+        const broadcastText = await readStreamUntil(reader, (t) => t.includes('event: invalidate'))
+        expect(broadcastText).toContain('event: invalidate\ndata: {"key":["todos"]}\n\n')
 
-      const broadcastText = await readUntil(reader, (t) => t.includes('event: invalidate'))
-      expect(broadcastText).toContain('event: invalidate\ndata: {"key":["todos"]}\n\n')
-
-      abortController.abort()
-      await new Promise((r) => setTimeout(r, 50))
-
-      expect(group.size).toBe(0)
+        abortController.abort()
+        await vi.waitFor(() => {
+          expect(group.size).toBe(0)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
     })
 
     it('Happy path: works seamlessly with async route handlers returning reply', async () => {
@@ -155,7 +125,6 @@ describe('server/fastify integration via attachNodeResponse', () => {
       const group = new SSEChannelGroup<{ userId: string }>()
 
       app.get('/sse', async (request, reply) => {
-        // Simulating async auth check
         await new Promise((resolve) => setTimeout(resolve, 10))
         group.attachNodeResponse(request, reply, { meta: { userId: 'u-456' } })
         return reply
@@ -170,12 +139,17 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
       expect(res.status).toBe(200)
       const reader = res.body!.getReader()
-      const text = await readUntil(reader, (t) => t.includes('event: connected'))
-      expect(text).toContain('event: connected')
+      try {
+        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(text).toContain('event: connected')
 
-      abortController.abort()
-      await new Promise((r) => setTimeout(r, 50))
-      expect(group.size).toBe(0)
+        abortController.abort()
+        await vi.waitFor(() => {
+          expect(group.size).toBe(0)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
     })
 
     it('Happy path: Fastify hooks (onSend, onResponse) execute properly with reply.send()', async () => {
@@ -212,13 +186,18 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
       // Read response until complete
       const reader = res.body!.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
-      }
+      try {
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
 
-      await new Promise((r) => setTimeout(r, 50))
-      expect(onResponseFired).toBe(true)
+        await vi.waitFor(() => {
+          expect(onResponseFired).toBe(true)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
     })
 
     it('Sad path: early exit / 401 unauthorized in route handler before attach', async () => {
@@ -254,22 +233,25 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
       const res = await fetch(`${address}/sse`)
       const reader = res.body!.getReader()
+      try {
+        // Read connected
+        const initialText = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(initialText).toContain('event: connected')
 
-      // Read connected
-      const initialText = await readUntil(reader, (t) => t.includes('event: connected'))
-      expect(initialText).toContain('event: connected')
+        // Server revokes user connection
+        await group.revokeWhere({ userId: 'u-revoked' })
 
-      // Server revokes user connection
-      await group.revokeWhere({ userId: 'u-revoked' })
+        // Read until revoke frame is received
+        const revokeText = await readStreamUntil(reader, (t) => t.includes('event: revoke'))
+        expect(revokeText).toContain('event: revoke')
 
-      // Read until revoke frame is received
-      const revokeText = await readUntil(reader, (t) => t.includes('event: revoke'))
-      expect(revokeText).toContain('event: revoke')
-
-      // Stream should be closed by server
-      const chunk3 = await reader.read()
-      expect(chunk3.done).toBe(true)
-      expect(group.size).toBe(0)
+        // Stream should be closed by server
+        const chunk3 = await reader.read()
+        expect(chunk3.done).toBe(true)
+        expect(group.size).toBe(0)
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
     })
   })
 })
