@@ -211,6 +211,14 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   async revokeWhere(criteria: JSONValue): Promise<{ localClosed: number }> {
     if (!isJSONValue(criteria)) throw new Error('[SSEChannelGroup.revokeWhere] criteria must be a valid JSONValue.')
+    if (isRecord(criteria) && 'connectionId' in criteria) {
+      const nonConnectionIdKeys = Object.keys(criteria).filter((k) => k !== 'connectionId')
+      if (nonConnectionIdKeys.length === 0) {
+        console.warn(
+          '[SSEChannelGroup.revokeWhere] SECURITY: criteria contains only connectionId. This provides no secondary scoping guard. Prefer revokeByConnectionId(id, scope) or add identity fields (e.g. userId) to criteria.'
+        )
+      }
+    }
     let localClosed = 0
     for (const [channel, entry] of this.channels) {
       if (matchesCriteria(channel.connectionId, entry.meta, criteria)) {
@@ -227,6 +235,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     scope?: Record<string, JSONValue | undefined>,
   ): Promise<{ closed: boolean }> {
     if (!connectionId.trim()) throw new Error('[SSEChannelGroup.revokeByConnectionId] connectionId must be a non-empty string.')
+    if (!scope) {
+      console.warn(
+        '[SSEChannelGroup.revokeByConnectionId] SECURITY: scope omitted. A client-supplied connectionId without scope can revoke any connection. Pass { userId: req.user.id } or similar trusted identity as scope.'
+      )
+    }
     const normalisedScope = normalizeScope(scope)
     const closed = this.closeConnection(connectionId, normalisedScope)
     await this.options.pubsub?.publish(this.controlTopic, {
@@ -241,6 +254,11 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     updateOptions?: { scope?: Record<string, JSONValue | undefined>; revision?: number },
   ): Promise<{ updated: boolean }> {
     if (!connectionId.trim()) throw new Error('[SSEChannelGroup.updateClientContext] connectionId must be a non-empty string.')
+    if (!updateOptions?.scope) {
+      console.warn(
+        "[SSEChannelGroup.updateClientContext] SECURITY: scope omitted. A client-supplied connectionId without scope can update any connection's context. Pass { scope: { userId: req.user.id } } or similar trusted identity."
+      )
+    }
     const context = this.options.clientContextSchema
       ? validateStandardSchema(clientContext, this.options.clientContextSchema)
       : clientContext
