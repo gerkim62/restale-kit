@@ -1,7 +1,7 @@
 import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
 import { PubSubDecryptionError } from '@/pubsub/core/index.js'
 import type { PubSubMessage } from '@/types/protocol.js'
-import { isPubSubMessage, isSignalPayload, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
+import { isPubSubMessage, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
 import { generateInstanceId } from '@/utils/id.js'
 import {
   wrapEnvelope,
@@ -112,8 +112,6 @@ export function ablyPubSubAdapter(
             }
             if (isPubSubMessage(payload)) {
               onMessage(payload)
-            } else if (isSignalPayload(payload)) {
-              onMessage({ kind: 'signal', data: payload })
             }
           } else {
             const unwrapped = unwrapEnvelope(data, instanceId, encryptionKey, topic)

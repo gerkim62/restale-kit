@@ -178,13 +178,12 @@ describe('pubsub envelope & encryption', () => {
       expect(result).toEqual(message)
     })
 
-    it('normalizes legacy signal payload into signal PubSubMessage', () => {
-      const env = { origin: 'other-origin', payload: { key: ['legacy-key'] } }
-      const result = unwrapEnvelope(env, 'my-origin')
-      expect(result).toEqual({ kind: 'signal', data: { key: ['legacy-key'] } })
+    it('returns null when envelope payload is not a valid PubSubMessage', () => {
+      const env = { origin: 'other-origin', payload: { key: ['raw-signal-without-envelope'] } }
+      expect(unwrapEnvelope(env, 'my-origin')).toBeNull()
     })
 
-    it('returns null when envelope payload is neither a valid PubSubMessage nor InvalidateSignal', () => {
+    it('returns null when envelope payload is an arbitrary invalid object', () => {
       const env = { origin: 'other-origin', payload: { invalidPayload: true } }
       expect(unwrapEnvelope(env, 'my-origin')).toBeNull()
     })
