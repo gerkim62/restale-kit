@@ -1,4 +1,4 @@
-import type { LifetimeOptions, OnDeadline } from '@/types/protocol.js'
+import type { LifetimeOptions, OnDeadlineAction } from '@/types/protocol.js'
 import type { SSEChannelOptions } from '@/server/core/channel.js'
 
 /** Group-level defaults that may safely be shared by channel connections. */
@@ -32,7 +32,7 @@ function mergeLifetimeParts(channel: LifetimeOptions, defaults: LifetimeOptions)
   const time = ('ttlMs' in channel && channel.ttlMs !== undefined) || ('deadline' in channel && channel.deadline !== undefined)
     ? channel
     : defaults
-  const onDeadline: OnDeadline | undefined = channel.onDeadline ?? defaults.onDeadline
+  const onDeadline: OnDeadlineAction | undefined = channel.onDeadline ?? defaults.onDeadline
   return 'ttlMs' in time
     ? { ttlMs: time.ttlMs, ...(onDeadline !== undefined ? { onDeadline } : {}) }
     : { deadline: time.deadline, ...(onDeadline !== undefined ? { onDeadline } : {}) }

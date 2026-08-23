@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index.js'
 import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from '@/pubsub/ably/index.js'
 import { pusherPubSubAdapter, type PusherClient } from '@/pubsub/pusher/index.js'
-import type { PubSubMessage, UniversalSignal } from '@/types/protocol.js'
+import type { PubSubMessage, Signal } from '@/types/protocol.js'
 
 function createMockRedisClient(): {
   client: RedisClient
@@ -61,7 +61,7 @@ function createMockPusherClient(): {
 describe('Pub/sub envelope round trip (plaintext & encrypted)', () => {
   const encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
-  const batchSignal: UniversalSignal[] = [
+  const batchSignal: Signal[] = [
     { key: ['todos', 'list'], exact: true },
     { key: ['users', 42], inlineData: { name: 'Bob', role: 'admin' }, markStale: true },
   ]

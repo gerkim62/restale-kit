@@ -6,6 +6,7 @@ import { createEventStore } from './event-store.js'
 import { SchemaValidationError } from '@/types/errors.js'
 import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
 import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
+import type { PubSubAdapter } from '@/pubsub/core/index.js'
 
 interface TestMeta {
   userId: number
@@ -107,7 +108,7 @@ describe('channel-group', () => {
 
   it('delivers inline data only to the channel selected for its topic', async () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({
-      resolveInlineData: (connections) => new Map(connections.map((connection) => [
+      inlineDataResolver: (connections) => new Map(connections.map((connection) => [
         connection.connectionId,
         { signal: { key: ['todos'] }, inlineData: ['fresh'] },
       ])),
@@ -1167,7 +1168,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('continues delivery to other channels on pushInlineData even when one channel throws', async () => {
       const group = new SSEChannelGroup({
-        resolveInlineData: (connections) => {
+        inlineDataResolver: (connections) => {
           const map = new Map()
           for (const conn of connections) {
             map.set(conn.connectionId, { signal: { key: ['item'] }, inlineData: { value: 123 } })
@@ -1188,6 +1189,48 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
       await expect(group.pushInlineData('inline-topic', { data: 'test' })).rejects.toThrow(AggregateError)
       expect(ch2Spy).toHaveBeenCalledWith({ key: ['item'], inlineData: { value: 123 } }, undefined)
+    })
+
+    it('throws descriptive error when pushInlineData is called without configured inlineDataResolver', async () => {
+      const group = new SSEChannelGroup({})
+      const ch = createSSEChannel()
+      group.register(ch, undefined, { topics: ['no-resolver-topic'] })
+
+      await expect(group.pushInlineData('no-resolver-topic', { change: 1 })).rejects.toThrow(
+        '[SSEChannelGroup.pushInlineData] inlineDataResolver must be configured.',
+      )
+    })
+
+    it('notifies onInlineDataResolverError when inlineDataResolver omits connections but delivers to valid ones', async () => {
+      const onErrorSpy = vi.fn()
+      const group = new SSEChannelGroup({
+        inlineDataResolver: (connections) => {
+          // Return result for only the first connection, omitting others
+          const map = new Map()
+          if (connections.length > 0) {
+            map.set(connections[0].connectionId, { signal: { key: ['item', 1] }, inlineData: { name: 'Item 1' } })
+          }
+          return map
+        },
+        onInlineDataResolverError: onErrorSpy,
+      })
+
+      const ch1 = createSSEChannel()
+      const ch2 = createSSEChannel()
+      group.register(ch1, undefined, { topics: ['partial-topic'] })
+      group.register(ch2, undefined, { topics: ['partial-topic'] })
+
+      const ch1Spy = vi.spyOn(ch1, 'invalidate')
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await group.pushInlineData('partial-topic', { update: true })
+
+      expect(ch1Spy).toHaveBeenCalledWith({ key: ['item', 1], inlineData: { name: 'Item 1' } }, undefined)
+      expect(ch2Spy).not.toHaveBeenCalled()
+      expect(onErrorSpy).toHaveBeenCalledWith({
+        topic: 'partial-topic',
+        missingConnectionIds: [ch2.connectionId],
+      })
     })
 
     it('handles subscribeControl schema validation failure gracefully without throwing uncaught', async () => {
@@ -1219,11 +1262,66 @@ describe('SSEChannelGroup — channelDefaults', () => {
       consoleSpy.mockRestore()
     })
 
+    it('rejects pubsub updateClientContext control messages with negative or fractional revisions', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel()
+      group.register(ch)
+
+      // Set baseline context with valid revision 1
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 1 },
+          revision: 1,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with negative revision (-1) -> must be rejected
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 2 },
+          revision: -1,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with fractional revision (2.5) -> must be rejected
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 3 },
+          revision: 2.5,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with valid safe integer revision (2) -> must be accepted
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 4 },
+          revision: 2,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 4 })
+    })
+
     it('catches and logs errors during pubsub inlineData delivery', async () => {
       const pubsub = new MemoryPubSubAdapter()
       const group = new SSEChannelGroup({
         pubsub,
-        // No resolveInlineData configured -> will throw when inlineData is delivered
+        // No inlineDataResolver configured -> will throw when inlineData is delivered
       })
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -1278,6 +1376,75 @@ describe('SSEChannelGroup — channelDefaults', () => {
         expect.any(Error),
       )
       consoleSpy.mockRestore()
+    })
+
+    it('unsubscribes when all channels deregister while topic subscription is still pending', async () => {
+      let resolveSubscribe!: (unsub: () => Promise<void>) => void
+      const unsubscribeSpy = vi.fn().mockResolvedValue(undefined)
+      const pubsub: PubSubAdapter = {
+        publish: vi.fn(),
+        subscribe: vi.fn().mockImplementation(() => new Promise((res) => {
+          resolveSubscribe = () => {
+            res(unsubscribeSpy)
+          }
+        })),
+      }
+
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['pending-topic'] })
+
+      // Deregister while subscription is still pending
+      group.deregister(ch)
+
+      // Resolve the subscription promise
+      resolveSubscribe(unsubscribeSpy)
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(unsubscribeSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('handles and logs error during topic unsubscribe', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const unsubscribeSpy = vi.fn().mockRejectedValue(new Error('Unsubscribe network failure'))
+      const pubsub: PubSubAdapter = {
+        publish: vi.fn(),
+        subscribe: vi.fn().mockResolvedValue(unsubscribeSpy),
+      }
+
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel({})
+      group.register(ch, undefined, { topics: ['unsub-fail-topic'] })
+      await vi.advanceTimersByTimeAsync(50)
+
+      group.deregister(ch)
+      await vi.advanceTimersByTimeAsync(50)
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSEChannelGroup] Error unsubscribing from topic "unsub-fail-topic":'),
+        expect.any(Error),
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('handles key matching with mismatched array/object types and varying array lengths in broadcastByKey', () => {
+      const group = new SSEChannelGroup<any>()
+      const chArray = createSSEChannel({})
+      const chObject = createSSEChannel({})
+      const spyArray = vi.spyOn(chArray, 'invalidate')
+      const spyObject = vi.spyOn(chObject, 'invalidate')
+
+      group.register(chArray, ['todos', 'list', 'extra'])
+      group.register(chObject, { key: 'not-an-array' })
+
+      // Array vs non-array mismatch & prefix length mismatch
+      group.broadcastByKey({ key: ['todos', 'list'], exact: true })
+      expect(spyArray).not.toHaveBeenCalled()
+      expect(spyObject).not.toHaveBeenCalled()
+
+      // Prefix match on array
+      group.broadcastByKey({ key: ['todos', 'list'], exact: false })
+      expect(spyArray).toHaveBeenCalledTimes(1)
     })
   })
 })

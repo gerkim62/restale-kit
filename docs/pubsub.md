@@ -194,7 +194,7 @@ If you need to write a custom adapter (e.g. for Postgres `LISTEN/NOTIFY`, NATS, 
 
 ```ts
 import type { PubSubAdapter, PubSubEncryptionOptions } from 'restale-kit/pubsub'
-import type { PubSubMessage, UniversalSignal } from 'restale-kit'
+import type { PubSubMessage, Signal } from 'restale-kit'
 
 function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
   // Omitted options keep broker payloads unencrypted.
@@ -206,7 +206,7 @@ function myCustomAdapter(options: PubSubEncryptionOptions = {}): PubSubAdapter {
       // is defined, encrypt the envelope payload with it and bind it to topic;
       // otherwise send the plaintext envelope.
       // message is a discriminated union:
-      // - Signals: { kind: 'signal', data: UniversalSignal | UniversalSignal[], id?: string }
+      // - Signals: { kind: 'signal', data: Signal | Signal[], id?: string }
       //   Batched signals preserve their array structure: { kind: 'signal', data: [signalA, signalB], id?: string }
       //   When an eventStore is configured, id carries the sequence event ID for Last-Event-ID replay across instances.
       // - Control: { kind: 'control', data: JSONValue }

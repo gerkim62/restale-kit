@@ -1,23 +1,23 @@
 import { describe, it, expect, vi } from 'vitest'
 import { tanstackQueryAdapter, type QueryClientLike } from '@/client/tanstack-query/adapter.js'
 import { swrAdapter, type SWRMutator, type SWRKey } from '@/client/swr/adapter.js'
-import type { UniversalSignal } from '@/types/protocol.js'
+import type { Signal } from '@/types/protocol.js'
 
 describe('Cross-adapter behavioral parity', () => {
   it('exercises identical semantics across TanStack Query and SWR for the same signal batch', () => {
-    const revalExact: UniversalSignal = { key: ['users', 1], exact: true }
-    const revalPrefix: UniversalSignal = { key: ['posts'] }
-    const inlineNoStale: UniversalSignal = {
+    const revalExact: Signal = { key: ['users', 1], exact: true }
+    const revalPrefix: Signal = { key: ['posts'] }
+    const inlineNoStale: Signal = {
       key: ['comments', 10],
       inlineData: { text: 'hello' },
     }
-    const inlineMarkStale: UniversalSignal = {
+    const inlineMarkStale: Signal = {
       key: ['todos', 5],
       inlineData: { done: true },
       markStale: true,
     }
 
-    const batch: UniversalSignal[] = [
+    const batch: Signal[] = [
       revalExact,
       revalPrefix,
       inlineNoStale,

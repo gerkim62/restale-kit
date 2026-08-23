@@ -265,6 +265,21 @@ describe('ablyPubSubAdapter', () => {
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
   })
 
+  it('decrypts encrypted raw signal payload under native echo suppression mode', async () => {
+    const { client, channelListeners } = createMockAblyClient(false)
+    const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: validKey })
+    const callback = vi.fn()
+
+    await adapter.subscribe('channel-encrypted', callback)
+
+    const encrypted = encryptPayload({ key: ['raw-todos'] }, validKey, 'channel-encrypted')
+
+    const listener = channelListeners[0]
+    listener({ data: encrypted })
+
+    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['raw-todos'] } })
+  })
+
   it('throttles decryption failure warnings and drops messages on key mismatch', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { client, channelListeners } = createMockAblyClient()

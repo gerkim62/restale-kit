@@ -7,7 +7,7 @@ export type {
   ChannelSetupOptions,
   InlineDataConnection,
   InlineDataResult,
-  ResolveInlineData,
+  InlineDataResolver,
 } from './channel-group.js'
 export type { FastifyRequestLike, FastifyReplyLike } from '../node/attach.js'
 export { createEventStore } from './event-store.js'

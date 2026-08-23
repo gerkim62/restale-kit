@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { formatInvalidateFrame, formatRevokeFrame, formatRenewFrame } from '@/server/core/framing.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import { SSEClient } from '@/client/core/sse-client.js'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { UniversalSignal, RevalidateSignal, InlineDataSignal } from '@/types/protocol.js'
+import type { Signal, RevalidateSignal, InlineDataSignal } from '@/types/protocol.js'
 
 vi.mock('sse.js', async () => {
   const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
@@ -60,8 +60,8 @@ describe('Wire round trip (server bytes → client parse)', () => {
 
   it('round-trips a single RevalidateSignal', async () => {
     const signal: RevalidateSignal = { key: ['todos', 'list'], exact: true }
-    const client = new SSEInvalidatorClient('/sse')
-    const received: UniversalSignal[] = []
+    const client = new SSEClient('/sse')
+    const received: Signal[] = []
 
     client.addEventListener('invalidate', (event: any) => {
       received.push(event.detail)
@@ -87,8 +87,8 @@ describe('Wire round trip (server bytes → client parse)', () => {
       inlineData: { id: 42, title: 'Buy milk', done: false },
       markStale: true,
     }
-    const client = new SSEInvalidatorClient('/sse')
-    const received: UniversalSignal[] = []
+    const client = new SSEClient('/sse')
+    const received: Signal[] = []
 
     client.addEventListener('invalidate', (event: any) => {
       received.push(event.detail)
@@ -107,12 +107,12 @@ describe('Wire round trip (server bytes → client parse)', () => {
   })
 
   it('round-trips a batch array containing both RevalidateSignal and InlineDataSignal', async () => {
-    const batch: UniversalSignal[] = [
+    const batch: Signal[] = [
       { key: ['posts'], exact: false },
       { key: ['users', 'profile'], inlineData: { username: 'alice' }, markStale: true },
       { key: ['comments', 101], inlineData: { text: 'Great post!' } },
     ]
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const received: any[] = []
 
     client.addEventListener('invalidate', (event: any) => {
@@ -132,10 +132,10 @@ describe('Wire round trip (server bytes → client parse)', () => {
   })
 
   it('round-trips a signal with embedded newlines across multi-line data frames', async () => {
-    const signal: UniversalSignal = {
+    const signal: Signal = {
       key: ['query\nwith\nnewlines', 'item\r\nvalue'],
     }
-    const client = new SSEInvalidatorClient('/sse')
+    const client = new SSEClient('/sse')
     const received: any[] = []
 
     client.addEventListener('invalidate', (event: any) => {
@@ -156,7 +156,7 @@ describe('Wire round trip (server bytes → client parse)', () => {
 
   describe('formatRevokeFrame round trip', () => {
     it('handles defined reason', async () => {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const revokeSpy = vi.fn()
       client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -174,7 +174,7 @@ describe('Wire round trip (server bytes → client parse)', () => {
     })
 
     it('handles undefined reason', async () => {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const revokeSpy = vi.fn()
       client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -193,7 +193,7 @@ describe('Wire round trip (server bytes → client parse)', () => {
     })
 
     it('handles empty string reason', async () => {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const revokeSpy = vi.fn()
       client.addEventListener('revoke', (e: any) => revokeSpy(e.detail))
 
@@ -213,7 +213,7 @@ describe('Wire round trip (server bytes → client parse)', () => {
 
   describe('formatRenewFrame round trip', () => {
     it('handles renew frame and emits renew event with server parameters', async () => {
-      const client = new SSEInvalidatorClient('/sse')
+      const client = new SSEClient('/sse')
       const renewSpy = vi.fn()
       client.addEventListener('renew', (e: any) => renewSpy(e.detail))
 

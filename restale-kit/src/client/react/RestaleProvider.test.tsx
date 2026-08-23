@@ -4,9 +4,9 @@ import React, { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, act, waitFor, screen, cleanup } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
-import type { UniversalSignal } from '@/types/protocol.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import type { Signal } from '@/types/protocol.js'
+import { SSEClient } from '@/client/core/sse-client.js'
 
 vi.mock('sse.js', async () => {
   const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
@@ -16,9 +16,9 @@ vi.mock('sse.js', async () => {
 import { RestaleProvider } from './RestaleProvider.js'
 import { useRestale } from './useRestale.js'
 
-/** Helper to wrap a mock function as an AdaptedCallback */
-function asAdapter(fn: (signal: UniversalSignal | UniversalSignal[]) => void = vi.fn()): AdaptedCallback {
-  return makeAdaptedCallback(fn)
+/** Helper to wrap a mock function as an InvalidationHandler */
+function asAdapter(fn: (signal: Signal | Signal[]) => void = vi.fn()): InvalidationHandler {
+  return makeInvalidationHandler(fn)
 }
 
 describe('RestaleProvider & useRestale', () => {
@@ -47,7 +47,7 @@ describe('RestaleProvider & useRestale', () => {
 
   describe('Connection Lifecycle & Multi-Consumer Sharing', () => {
     it('opens connection on mount and closes with unmount reason when provider unmounts', () => {
-      const closeSpy = vi.spyOn(SSEInvalidatorClient.prototype, 'closeWithUnmount')
+      const closeSpy = vi.spyOn(SSEClient.prototype, 'closeWithUnmount')
       const onInvalidate = asAdapter(vi.fn())
 
       const { unmount } = render(
@@ -358,7 +358,7 @@ describe('RestaleProvider & useRestale', () => {
   describe('Client Context Synchronization (Happy, Merge, Replace, Revert, and Sad Paths)', () => {
     it('synchronizes initialClientContext upon connection opening', async () => {
       const syncSpy = vi
-        .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+        .spyOn(SSEClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
@@ -384,7 +384,7 @@ describe('RestaleProvider & useRestale', () => {
 
     it('merges hook clientContext with initialClientContext in merge mode (default)', async () => {
       const syncSpy = vi
-        .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+        .spyOn(SSEClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
@@ -430,7 +430,7 @@ describe('RestaleProvider & useRestale', () => {
 
     it('replaces initialClientContext when clientContextMode is "replace"', async () => {
       const syncSpy = vi
-        .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+        .spyOn(SSEClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
@@ -464,7 +464,7 @@ describe('RestaleProvider & useRestale', () => {
 
     it('reverts context to initialClientContext when page component unmounts', async () => {
       const syncSpy = vi
-        .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+        .spyOn(SSEClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
@@ -511,7 +511,7 @@ describe('RestaleProvider & useRestale', () => {
 
     it('does not send redundant sync requests when context deep value is identical (canonical dedup)', async () => {
       const syncSpy = vi
-        .spyOn(SSEInvalidatorClient.prototype, 'updateClientContext')
+        .spyOn(SSEClient.prototype, 'updateClientContext')
         .mockResolvedValue({ updated: true })
       const onInvalidate = asAdapter(vi.fn())
 
@@ -551,7 +551,7 @@ describe('RestaleProvider & useRestale', () => {
 
     it('logs console.error and invokes onInvalidate fallback when client context sync fails (sad path)', async () => {
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      vi.spyOn(SSEInvalidatorClient.prototype, 'updateClientContext').mockRejectedValue(
+      vi.spyOn(SSEClient.prototype, 'updateClientContext').mockRejectedValue(
         new Error('Network failure')
       )
       const onInvalidate = asAdapter(vi.fn())

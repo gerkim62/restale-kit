@@ -7,19 +7,19 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { SSEInvalidatorClient, isBlankUrl } from '@/client/core/sse-client.js'
+import { SSEClient, isBlankUrl } from '@/client/core/sse-client.js'
 import { canonicalJsonSerialize } from '@/utils/canonical-hash.js'
 import type {
   ConnectionStatus,
   ClientOptions,
-  SSEInvalidatorClientEventMap,
+  SSEClientEventMap,
   RevokeEventDetail,
   RejectedConnectionResponse,
-  AdaptedCallback,
+  InvalidationHandler,
   AutoReconnectOptions,
   ReconnectOptions,
 } from '@/client/core/client-contracts.js'
-import type { UniversalSignal } from '@/types/protocol.js'
+import type { Signal } from '@/types/protocol.js'
 
 export type ConnectionSnapshot = ConnectionStatus & {
   readonly connectionId?: string
@@ -31,7 +31,7 @@ export interface RestaleProviderProps<
   /** The SSE endpoint URL */
   url: string
   /** Invalidation handler (e.g., tanstackQueryAdapter(queryClient) or swrAdapter(mutate)) */
-  onInvalidate: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
+  onInvalidate: InvalidationHandler | ((signal: Signal | Signal[]) => void)
 
   // --- Connection Configuration ---
   /** When true, connection is not opened. Default: false */
@@ -160,8 +160,8 @@ export function RestaleProvider<
   const identityKey = getClientIdentityKey(url, withCredentials, clientContextUrl)
 
   const identityRef = useRef<string | null>(null)
-  const clientRef = useRef<SSEInvalidatorClient | null>(null)
-  const pendingClientRef = useRef<SSEInvalidatorClient | null>(null)
+  const clientRef = useRef<SSEClient | null>(null)
+  const pendingClientRef = useRef<SSEClient | null>(null)
 
   if (identityRef.current !== identityKey) {
     if (!disabled || !isBlankUrl(url)) {
@@ -171,10 +171,10 @@ export function RestaleProvider<
             ? `Provider mounted with URL: "${url}"`
             : `Connection identity changed for URL: "${url}"`
         console.log(
-          `[restale-kit][RestaleProvider] Instantiating new SSEInvalidatorClient. Reason: ${reason}.`
+          `[restale-kit][RestaleProvider] Instantiating new SSEClient. Reason: ${reason}.`
         )
       }
-      pendingClientRef.current = new SSEInvalidatorClient(url, toClientOptions(props))
+      pendingClientRef.current = new SSEClient(url, toClientOptions(props))
       identityRef.current = identityKey
     }
   }
@@ -259,16 +259,16 @@ export function RestaleProvider<
   // Event listeners wiring
   useEffect(() => {
     if (!client) return
-    const onInvalidateHandler = (event: SSEInvalidatorClientEventMap['invalidate']) => {
+    const onInvalidateHandler = (event: SSEClientEventMap['invalidate']) => {
       onInvalidateRef.current(event.detail)
     }
-    const onRejectedHandler = (event: SSEInvalidatorClientEventMap['rejected']) => {
+    const onRejectedHandler = (event: SSEClientEventMap['rejected']) => {
       onRejectedRef.current?.(event.detail)
     }
-    const onRevokeHandler = (event: SSEInvalidatorClientEventMap['revoke']) => {
+    const onRevokeHandler = (event: SSEClientEventMap['revoke']) => {
       onRevokeRef.current?.(event.detail)
     }
-    const onRetriesExhaustedHandler = (event: SSEInvalidatorClientEventMap['retriesexhausted']) => {
+    const onRetriesExhaustedHandler = (event: SSEClientEventMap['retriesexhausted']) => {
       onRetriesExhaustedRef.current?.(event.detail)
     }
 

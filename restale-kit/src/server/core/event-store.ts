@@ -1,4 +1,4 @@
-import type { EventRecord, EventStore, EventStoreResult, UniversalSignal } from '@/types/protocol.js'
+import type { EventRecord, EventStore, EventStoreResult, Signal } from '@/types/protocol.js'
 export interface EventStoreOptions {
   capacity?: number
   idGenerator?: () => string
@@ -14,7 +14,7 @@ export function createEventStore(options?: EventStoreOptions): EventStore {
   const events: EventRecord[] = []
   let nextSequence = 1
 
-  function add(signal: UniversalSignal | UniversalSignal[], customId?: string): EventRecord {
+  function add(signal: Signal | Signal[], customId?: string): EventRecord {
     const generated = customId ?? idGenerator?.()
     const id = (typeof generated === 'string' && generated.length > 0) ? generated : String(nextSequence++)
     const record = { id, signal }

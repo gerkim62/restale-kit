@@ -84,4 +84,29 @@ describe('canonicalJsonSerialize, sha256, and computeContextHash', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('returns undefined when toJSON throws', () => {
+    const throwingObj = {
+      toJSON: () => {
+        throw new Error('toJSON error')
+      },
+    }
+    expect(canonicalJsonSerialize(throwingObj)).toBeUndefined()
+  })
+
+  it('returns undefined for non-serializable types like symbols, functions, and bigints', () => {
+    expect(canonicalJsonSerialize(Symbol('test'))).toBeUndefined()
+    expect(canonicalJsonSerialize(() => {})).toBeUndefined()
+    expect(canonicalJsonSerialize(100n)).toBeUndefined()
+  })
+
+  it('serializes array with undefined or functions to null entries', () => {
+    expect(canonicalJsonSerialize([1, undefined, () => {}, 4])).toBe('[1,null,null,4]')
+  })
+
+  it('returns undefined for cyclic arrays', () => {
+    const cyclicArr: unknown[] = [1]
+    cyclicArr.push(cyclicArr)
+    expect(canonicalJsonSerialize(cyclicArr)).toBeUndefined()
+  })
 })

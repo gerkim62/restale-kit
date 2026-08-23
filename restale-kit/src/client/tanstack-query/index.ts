@@ -1,5 +1,5 @@
 export {
   tanstackQueryAdapter,
   type QueryClientLike,
-  type TanstackQueryAdapterOptions,
+  type TanStackQueryAdapterOptions,
 } from './adapter.js'

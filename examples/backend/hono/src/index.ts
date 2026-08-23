@@ -5,18 +5,15 @@ import { SSEChannelGroup } from 'restale-kit/server'
 import {
   CreateTodoSchema,
   createTodoApi,
-  type AppSignal,
   type ClientMeta,
   UpdateTodoSchema,
   UserIdSchema,
 } from '@restale-kit-example/shared'
 
 const app = new Hono()
-const group = new SSEChannelGroup<AppSignal, ClientMeta>({
-  channelDefaults: { target: ['swr', 'tanstack-query'] },
-})
+const group = new SSEChannelGroup<ClientMeta>()
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }], action: 'invalidate' }, (meta) => meta.userId === userId)
+  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 
 app.use('*', cors())

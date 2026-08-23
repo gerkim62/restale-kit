@@ -1,15 +1,15 @@
-import type { RevokeEventDetail, RenewEventDetail, UniversalSignal } from '@/types/protocol.js'
+import type { RevokeEventDetail, RenewEventDetail, Signal } from '@/types/protocol.js'
 
 export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
 
 /** A callback produced by an adapter factory. */
-export type AdaptedCallback = ((signal: UniversalSignal | UniversalSignal[]) => void) & {
+export type InvalidationHandler = ((signal: Signal | Signal[]) => void) & {
   readonly __restaleAdapter: true
 }
 /** Brands a callback without attaching target-specific metadata. */
-export function makeAdaptedCallback(
-  fn: (signal: UniversalSignal | UniversalSignal[]) => void,
-): AdaptedCallback {
+export function makeInvalidationHandler(
+  fn: (signal: Signal | Signal[]) => void,
+): InvalidationHandler {
   if (typeof fn !== 'function') {
     throw new TypeError('Expected an adapter callback function')
   }
@@ -54,15 +54,15 @@ export interface ClientOptions {
   withCredentials?: boolean
   debug?: boolean
   clientContextUrl?: string
-  callback?: AdaptedCallback | ((signal: UniversalSignal | UniversalSignal[]) => void)
+  callback?: InvalidationHandler | ((signal: Signal | Signal[]) => void)
   onConnect?: (event: Event) => void
   onDisconnect?: (event: Event) => void
   onError?: (error: unknown) => void
 }
 
-export interface SSEInvalidatorClientEventMap {
+export interface SSEClientEventMap {
   connected: CustomEvent<{ connectionId: string }>
-  invalidate: CustomEvent<UniversalSignal | UniversalSignal[]>
+  invalidate: CustomEvent<Signal | Signal[]>
   statuschange: CustomEvent<ConnectionStatus>
   error: CustomEvent<Event>
   rejected: CustomEvent<RejectedConnectionResponse>

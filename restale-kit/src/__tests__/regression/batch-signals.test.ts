@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { validatePayload } from '@/client/core/validation.js'
 import { validateSignalPayload, createSSEChannel } from '@/server/core/channel.js'
 import { createEventStore } from '@/server/core/event-store.js'
-import type { UniversalSignal } from '@/types/protocol.js'
+import type { Signal } from '@/types/protocol.js'
 
 describe('Batch signal semantics', () => {
   describe('All-or-nothing validation atomicity', () => {
-    const validSignal1: UniversalSignal = { key: ['todos'], exact: true }
-    const validSignal2: UniversalSignal = { key: ['users', 1], inlineData: { name: 'Alice' }, markStale: true }
+    const validSignal1: Signal = { key: ['todos'], exact: true }
+    const validSignal2: Signal = { key: ['users', 1], inlineData: { name: 'Alice' }, markStale: true }
     const invalidSignalMissingKey = { exact: true }
     const invalidSignalInvalidInlineData = { key: ['users'], inlineData: undefined }
     const invalidSignalMixedArms = { key: ['users'], inlineData: { id: 1 }, exact: true }
@@ -58,9 +58,9 @@ describe('Batch signal semantics', () => {
 
       const reader = channel.stream.getReader()
 
-      const sig1: UniversalSignal = { key: ['posts', 1], exact: true }
-      const sig2: UniversalSignal = { key: ['comments'], inlineData: [{ id: 101, text: 'hi' }] }
-      const batch: UniversalSignal[] = [sig1, sig2]
+      const sig1: Signal = { key: ['posts', 1], exact: true }
+      const sig2: Signal = { key: ['comments'], inlineData: [{ id: 101, text: 'hi' }] }
+      const batch: Signal[] = [sig1, sig2]
 
       // Add a baseline event so we can test replay/getEventsAfter
       eventStore.add({ key: ['baseline'] }, 'evt-0')

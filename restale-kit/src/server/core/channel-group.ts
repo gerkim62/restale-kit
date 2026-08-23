@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   isJSONValue,
-  isJSONValueArray,
+  isCacheKey,
   type EventStore,
   type JSONValue,
   type RevalidateSignal,
-  type UniversalSignal,
+  type Signal,
 } from '@/types/protocol.js'
 import { ChannelClosedError } from '@/types/errors.js'
 import type { StandardSchemaV1 } from '@/types/standard-schema.js'
@@ -44,7 +44,7 @@ export interface InlineDataResult {
   markStale?: boolean
 }
 
-export type ResolveInlineData<TMeta, TClientContext> = (
+export type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
 ) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
@@ -52,7 +52,7 @@ export type ResolveInlineData<TMeta, TClientContext> = (
 export interface SSEChannelGroupOptions<TMeta = unknown, TClientContext = unknown> {
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
-  resolveInlineData?: ResolveInlineData<TMeta, TClientContext>
+  inlineDataResolver?: InlineDataResolver<TMeta, TClientContext>
   onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
   pubsub?: PubSubAdapter
   eventStore?: EventStore
@@ -162,13 +162,13 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   }
 
   broadcast(
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
     predicate: (meta: TMeta | undefined) => boolean = () => true,
   ): void {
     this.broadcastRaw(signal, predicate)
   }
 
-  broadcastToAll(signal: UniversalSignal | UniversalSignal[]): void {
+  broadcastToAll(signal: Signal | Signal[]): void {
     this.broadcastRaw(signal, () => true)
   }
 
@@ -178,7 +178,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   async publish(
     topic: string,
-    signal: UniversalSignal | UniversalSignal[],
+    signal: Signal | Signal[],
   ): Promise<void> {
     validateTopic(topic, 'topic')
     validateSignalPayload(signal)
@@ -295,7 +295,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     this.pendingTopicUnsubscriptions.clear()
   }
 
-  private broadcastRaw(signal: UniversalSignal | UniversalSignal[], predicate: (meta: TMeta | undefined) => boolean): void {
+  private broadcastRaw(signal: Signal | Signal[], predicate: (meta: TMeta | undefined) => boolean): void {
     validateSignalPayload(signal)
     const eventId = this.eventStore?.add(signal).id
     const errors: unknown[] = []
@@ -306,7 +306,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     if (errors.length) throw new AggregateError(errors, 'Broadcast encountered runtime errors')
   }
 
-  private deliver(channel: SSEChannel, signal: UniversalSignal | UniversalSignal[], eventId?: string): void {
+  private deliver(channel: SSEChannel, signal: Signal | Signal[], eventId?: string): void {
     try { channel.invalidate(signal, eventId) }
     catch (error) {
       if (error instanceof ChannelClosedError) this.deregister(channel)
@@ -316,6 +316,16 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   private validateMeta(meta: TMeta | undefined): TMeta | undefined {
     return this.options.metaSchema ? validateStandardSchema(meta, this.options.metaSchema) : meta
+  }
+
+  private validateClientContext(context: TClientContext): TClientContext {
+    return this.options.clientContextSchema
+      ? validateStandardSchema(context, this.options.clientContextSchema)
+      : context
+  }
+
+  private isClientContext(value: unknown): value is TClientContext {
+    return value !== undefined
   }
 
   private validateTopics(topics: string[] | undefined): void {
@@ -435,14 +445,15 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
             this.closeConnection(message.data.connectionId, readScope(message.data))
           }
           if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
+            if ('revision' in message.data && (typeof message.data.revision !== 'number' || !Number.isSafeInteger(message.data.revision) || message.data.revision < 0)) {
+              return
+            }
             const raw = message.data.clientContext
-            const scope = readScope(message.data)
-            const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
-            if (this.options.clientContextSchema) {
-              const context = validateStandardSchema(raw, this.options.clientContextSchema)
+            if (this.isClientContext(raw)) {
+              const scope = readScope(message.data)
+              const revision = typeof message.data.revision === 'number' ? message.data.revision : undefined
+              const context = this.validateClientContext(raw)
               this.updateLocalClientContext(message.data.connectionId, context, scope, revision)
-            } else if (this.isClientContext(raw)) {
-              this.updateLocalClientContext(message.data.connectionId, raw, scope, revision)
             }
           }
         } catch (error) {
@@ -480,8 +491,8 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   }
 
   private async deliverInlineData(topic: string, payload: JSONValue): Promise<void> {
-    const resolver = this.options.resolveInlineData
-    if (!resolver) throw new Error('[SSEChannelGroup.pushInlineData] resolveInlineData must be configured.')
+    const resolver = this.options.inlineDataResolver
+    if (!resolver) throw new Error('[SSEChannelGroup.pushInlineData] inlineDataResolver must be configured.')
     const channels = Array.from(this.topicChannels.get(topic) ?? [])
     const connections = channels.map((channel) => {
       const entry = this.channels.get(channel)
@@ -491,7 +502,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     const missingConnectionIds = connections.filter((connection) => !resolved.has(connection.connectionId)).map((connection) => connection.connectionId)
     if (missingConnectionIds.length) {
       console.warn(
-        `[SSEChannelGroup] resolveInlineData returned no result for ${String(missingConnectionIds.length)} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
+        `[SSEChannelGroup] inlineDataResolver returned no result for ${String(missingConnectionIds.length)} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
       )
       this.options.onInlineDataResolverError?.({ topic, missingConnectionIds })
     }
@@ -499,7 +510,7 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     for (const channel of channels) {
       const result = resolved.get(channel.connectionId)
       if (!result) continue
-      const signal: UniversalSignal = result.inlineData === undefined
+      const signal: Signal = result.inlineData === undefined
         ? result.signal
         : {
             key: result.signal.key,
@@ -513,14 +524,6 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
       }
     }
     if (errors.length) throw new AggregateError(errors, 'Inline data delivery encountered runtime errors')
-  }
-
-  private isClientContext(value: unknown): value is TClientContext {
-    if (this.options.clientContextSchema) {
-      const result = this.options.clientContextSchema['~standard'].validate(value)
-      return !(result instanceof Promise) && !result.issues
-    }
-    return true
   }
 }
 
@@ -561,7 +564,7 @@ function matchesCriteria(connectionId: string, meta: unknown, criteria: JSONValu
 }
 
 function isMetaMatchedByKey(meta: unknown, key: JSONValue[], exact: boolean): boolean {
-  const metaKey: JSONValue[] = isJSONValueArray(meta) ? meta : isJSONValue(meta) ? [meta] : []
+  const metaKey: JSONValue[] = isCacheKey(meta) ? meta : isJSONValue(meta) ? [meta] : []
   if (exact ? metaKey.length !== key.length : metaKey.length < key.length) return false
   return key.every((part, index) => matchesJson(metaKey[index], part, exact))
 }

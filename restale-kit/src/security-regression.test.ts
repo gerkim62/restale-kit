@@ -13,7 +13,7 @@
  *  6. controlTopic validation — empty / whitespace-only strings
  *  7. formatInvalidateFrame embeds multi-line JSON without splitting data: lines
  *  8. Last-Event-ID length not validated before buffer scan
- *  9. SSEInvalidatorClient created during render phase (useReStale)
+ *  9. SSEClient created during render phase (useReStale)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

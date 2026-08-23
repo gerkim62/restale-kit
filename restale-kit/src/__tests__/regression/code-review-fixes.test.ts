@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { SSEInvalidatorClient } from '@/client/core/sse-client.js'
+import { SSEClient } from '@/client/core/sse-client.js'
 
 describe('Code review fixes verification', () => {
   describe('SSEChannelGroup fixes', () => {
@@ -105,9 +105,9 @@ describe('Code review fixes verification', () => {
     })
   })
 
-  describe('SSEInvalidatorClient fixes', () => {
+  describe('SSEClient fixes', () => {
     it('close() clears lastEventId and connectionId', () => {
-      const client = new SSEInvalidatorClient('/api/sse')
+      const client = new SSEClient('/api/sse')
       // Simulate connected state
       // @ts-expect-error accessing private property for test verification
       client.currentLastEventId = 'evt-123'
@@ -122,7 +122,7 @@ describe('Code review fixes verification', () => {
     })
 
     it('closeWithUnmount() clears lastEventId and connectionId', () => {
-      const client = new SSEInvalidatorClient('/api/sse')
+      const client = new SSEClient('/api/sse')
       // @ts-expect-error accessing private property for test verification
       client.currentLastEventId = 'evt-999'
       // @ts-expect-error accessing private property for test verification

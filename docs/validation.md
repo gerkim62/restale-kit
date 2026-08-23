@@ -12,18 +12,19 @@ Every incoming SSE payload is structurally validated by `restale-kit` before bei
 
 1. `JSON.parse` must succeed.
 2. Result must be a plain object or array of plain objects.
-3. Each object must be a valid `UniversalSignal` shape:
+3. Each object must be a valid `Signal` shape:
    - `key` must be present and be a JSON-safe `Array` of JSON values.
    - **`RevalidateSignal`**:
      - `exact` (if present) must be a `boolean`.
      - Cannot carry `inlineData` or `markStale`.
+     - Unsupported/unknown fields are strictly rejected.
    - **`InlineDataSignal`**:
      - `inlineData` must be present and be a valid JSON value.
      - `markStale` (if present) must be a `boolean`.
      - Cannot specify `exact` (inline data writes are strictly exact).
-4. Unknown fields are ignored (forward-compatible).
+     - Unsupported/unknown fields are strictly rejected.
 
-If any of these structural checks fail, the client emits an `error` event instead of `invalidate`.
+If any of these structural checks fail, the client emits an `error` event instead of `invalidate` (and the server throws during `invalidate()` / drops the frame).
 
 ---
 
@@ -93,7 +94,7 @@ const clientContextSchema = z.object({
 
 const group = new SSEChannelGroup({
   clientContextSchema,
-  resolveInlineData: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload) => {
     // connections[i].meta decides authorization.
     // connections[i].clientContext decides the authorized result's page/shape.
     return new Map()

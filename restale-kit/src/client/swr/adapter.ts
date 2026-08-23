@@ -1,5 +1,5 @@
-import { makeAdaptedCallback, type AdaptedCallback } from '@/client/core/client-contracts.js'
-import { isInlineDataSignal, type CacheKey, type JSONValue, type UniversalSignal } from '@/types/protocol.js'
+import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import { isInlineDataSignal, type CacheKey, type JSONValue, type Signal } from '@/types/protocol.js'
 
 export type SWRKey = string | readonly unknown[]
 
@@ -15,7 +15,7 @@ export interface SWRMutator {
 
 function applySwrSignal(
   mutate: SWRMutator,
-  signal: UniversalSignal,
+  signal: Signal,
   options: SWRAdapterOptions,
 ): void {
   const swrKey = options.toKey?.(signal.key) ?? signal.key
@@ -27,8 +27,8 @@ function applySwrSignal(
   void mutate((candidate: SWRKey | undefined) => matchesKey(candidate, signal.key, signal.exact === true, options.toKey))
 }
 
-export function swrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}): AdaptedCallback {
-  return makeAdaptedCallback((input: UniversalSignal | UniversalSignal[]) => {
+export function swrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}): InvalidationHandler {
+  return makeInvalidationHandler((input: Signal | Signal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {
       applySwrSignal(mutate, signal, options)
     }

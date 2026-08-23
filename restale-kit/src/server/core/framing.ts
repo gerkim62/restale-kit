@@ -1,4 +1,4 @@
-import type { SSEInvalidateEvent } from '@/types/protocol.js'
+import type { SignalPayload } from '@/types/protocol.js'
 import { SSE_EVENTS } from '@/utils/constants.js'
 
 /**
@@ -44,7 +44,7 @@ export function formatConnectedFrame(connectionId: string): Uint8Array {
  * (e.g. from a custom `.toJSON()`) is split across multiple `data:` lines so
  * the frame is never broken by embedded newline characters.
  */
-export function formatInvalidateFrame(signal: SSEInvalidateEvent, id?: string | number): Uint8Array {
+export function formatInvalidateFrame(signal: SignalPayload, id?: string | number): Uint8Array {
   const json = JSON.stringify(signal)
   const sanitizedId = id !== undefined ? String(id).replace(/[\r\n]/g, '') : undefined
   const idPrefix = sanitizedId !== undefined && sanitizedId !== '' ? `id: ${sanitizedId}\n` : ''
