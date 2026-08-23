@@ -1,17 +1,42 @@
 import { expectTypeOf, test } from 'vitest'
-import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index.js'
+import { SSEClient } from '@/client/core/index.js'
+import type { ClientOptions, ConnectionStatus } from '@/client/core/index.js'
 
-test('signal type contracts', () => {
-  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
-  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
-  expectTypeOf(revalidate).toExtend<Signal>()
-  expectTypeOf(inlineData).toExtend<Signal>()
+test('SSEClient constructor and instance type contracts', () => {
+  const options: ClientOptions = {
+    autoReconnect: true,
+    reconnect: {
+      baseDelayMs: 500,
+      maxDelayMs: 10_000,
+      maxRetries: 5,
+      jitter: true,
+      retryAfter: 'respect',
+      nonRetryableStatuses: [400, 401, 403, 404],
+    },
+    withCredentials: true,
+  }
 
-  // @ts-expect-error target routing is intentionally absent
-  const targetSignal: Signal = { target: 'swr', key: ['todos'] }
-  // @ts-expect-error inline-data signals cannot specify exact matching
-  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
+  const client = new SSEClient('/sse', options)
 
-  void targetSignal
-  void invalidInlineData
+  expectTypeOf(client.connectionId).toEqualTypeOf<string | undefined>()
+  expectTypeOf(client.status).toEqualTypeOf<ConnectionStatus>()
+  expectTypeOf(client.endpointUrl).toEqualTypeOf<string>()
+  expectTypeOf(client.attempt).toEqualTypeOf<number>()
+  expectTypeOf(client.lastEventId).toEqualTypeOf<string | null>()
+  expectTypeOf(client.connect()).toEqualTypeOf<Promise<void>>()
+  expectTypeOf(client.close()).toEqualTypeOf<void>()
+
+  // Event listener types
+  client.addEventListener('invalidate', (e) => {
+    expectTypeOf(e.type).toEqualTypeOf<string>()
+  })
+  client.addEventListener('revoke', (e) => {
+    expectTypeOf(e.type).toEqualTypeOf<string>()
+  })
+  client.addEventListener('renew', (e) => {
+    expectTypeOf(e.type).toEqualTypeOf<string>()
+  })
+  client.addEventListener('statuschange', (e) => {
+    expectTypeOf(e.type).toEqualTypeOf<string>()
+  })
 })
