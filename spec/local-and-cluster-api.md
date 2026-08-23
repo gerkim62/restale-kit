@@ -36,7 +36,7 @@ app.all('/sse', (c) => group.handle(c.req.raw, { meta: { userId: c.get('userId')
 | **1. Cache Invalidation** *(Client Refetches)* | **`.broadcast(signal, filter)`**<br/>`filter`: `{ key: val }` \| `(meta) => boolean` \| `true` | **`.broadcast(topic, signal)`**<br/>`topic`: string *(e.g. `'user:42'`, `'global'`)* |
 | **2. Direct Inline Cache Push** *(No Refetch, Resolved)* | **`.pushInlineData(payload, filter)`**<br/>`filter`: `{ key: val }` \| `(meta) => boolean` \| `true` | **`.pushInlineData(topic, payload)`**<br/>`topic`: string *(routes to distributed resolvers)* |
 | **3. Criteria Revocation** *(Logout / Ban)* | **`.revokeWhere(filter)`**<br/>`filter`: `{ key: val }` \| `(meta) => boolean` \| `true` | **`.revokeWhere(filter)`**<br/>`filter`: `{ key: val }` JSON object \| `true` |
-| **4. ID Revocation** *(Single Connection)* | **`.revokeByConnectionId(connectionId)`**<br/>*Token signature proves ownership* | **`.revokeByConnectionId(connectionId)`**<br/>*Token signature proves ownership cluster-wide* |
+| **4. ID Revocation** *(Single Connection)* | **`.revokeByConnectionId(connectionId, scope)`**<br/>`scope`: strictly typed `Pick<TMeta, TScopeKeys>` | **`.revokeByConnectionId(connectionId, scope)`**<br/>`scope`: strictly typed `Pick<TMeta, TScopeKeys>` |
 | **5. State & Inspection** | **`.size`** *(Property: active local connections)* | *(Handled automatically across cluster)* |
 
 ---
@@ -63,14 +63,14 @@ export type ClusterFilter<TMeta> =
 ```
 
 ### Safety Rule: Explicit `true` Required for Match-All
-To prevent accidental data leaks or mass invalidations caused by an unexpected `undefined` variable (e.g. unauthenticated session), **omitting the filter is disallowed**. 
+To prevent accidental data leaks or mass invalidations caused by an unexpected `undefined` variable (e.g. unauthenticated session), **omitting the filter is strictly disallowed across all applications**. 
 
 You must explicitly pass:
 * A criteria object: `{ userId: '42' }`
 * A predicate function (local only): `(meta) => meta?.role === 'admin'`
 * Or literal **`true`** to intentionally target all connections.
 
-Passing `undefined` or `false` throws a `TypeError` and is rejected by TypeScript.
+Passing `undefined` or `false` throws a `TypeError` and is rejected at compile-time by TypeScript.
 
 > [!CAUTION]
 > **Cluster Revoke-All Warning:** Calling `group.cluster.revokeWhere(true)` will disconnect and revoke **every single connected client across every server instance in the entire cluster**. Use only for emergency system maintenance or global deployments.
@@ -79,7 +79,7 @@ Passing `undefined` or `false` throws a `TypeError` and is rejected by TypeScrip
 When passing object criteria `{ key: val }`, ReStale performs **deep recursive subset matching**:
 * Primitives match exactly (`actual === expected`).
 * Nested objects match if all keys in `expected` match in `actual`.
-* Arrays match by element prefix.
+* Arrays match by **element containment / subset** (every element in `expected` must exist in `actual`, e.g. `{ roles: ['admin'] }` matches `{ roles: ['user', 'admin'] }`).
 
 ---
 
@@ -96,7 +96,7 @@ group.local.broadcast({ key: ['todos'] }, { userId: '42' })
 // Invalidate for specific roles (dynamic predicate function):
 group.local.broadcast({ key: ['admin-stats'] }, (meta) => meta?.roles.includes('admin'))
 
-// Invalidate for ALL local connections (explicit `true`):
+// Invalidate for ALL local connections (explicit `true` required):
 group.local.broadcast({ key: [] }, true)
 ```
 
@@ -148,8 +148,8 @@ await group.cluster.pushInlineData('team:engineering', { changedTodoId: '10' })
 
 Closes SSE connection streams intentionally (e.g. on user logout, account ban, or session expiration), sending a terminal `event: revoke` frame that suppresses automatic client reconnection.
 
-### Trusted Signed Connection IDs
-Because connection IDs are cryptographically signed with `secret`, the connection token is an unforgeable bearer capability. Calling `revokeByConnectionId(connectionId)` verifies the token's HMAC signature directly. If an invalid or tampered token is passed, it returns `{ closed: false }` and logs a warning without broadcasting to the cluster.
+### Cryptographically Verified Revocation by ID
+Calling `revokeByConnectionId(connectionId, scope)` verifies the token's HMAC signature deterministically against the provided `scope` (typed as `Pick<TMeta, TScopeKeys>`). If the signature fails or the token was tampered with, it returns `{ closed: false }` without propagating invalid operations across the cluster.
 
 ### Local (In-Memory)
 
@@ -163,8 +163,8 @@ group.local.revokeWhere((meta) => meta?.expiresAt < Date.now())
 // Kick ALL connections on this instance (e.g. server shutdown):
 group.local.revokeWhere(true)
 
-// Close one specific connection on this instance (cryptographically verified):
-group.local.revokeByConnectionId(connectionId)
+// Close one specific connection on this instance (cryptographically verified with typed scope):
+group.local.revokeByConnectionId(connectionId, { userId: '42' })
 ```
 
 ### Cluster (Distributed / Multi-Instance)
@@ -177,7 +177,7 @@ await group.cluster.revokeWhere({ userId: '42' })
 await group.cluster.revokeWhere(true)
 
 // Close one specific connection across whichever pod holds it (cryptographically verified):
-await group.cluster.revokeByConnectionId(connectionId)
+await group.cluster.revokeByConnectionId(connectionId, { userId: '42' })
 ```
 
 ---
@@ -200,20 +200,27 @@ interface ClientCtx {
   page: number
 }
 
+interface TodoPayload {
+  teamId: string
+}
+
 const group = new SSEChannelGroup<UserMeta, ClientCtx>({
   secret: process.env.RESTALE_SECRET!,
   scopeBy: ['userId', 'teamId'],
   clientContextSchema: z.object({ page: z.number() }),
-  inlineDataResolver: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload: TodoPayload) => {
     const todos = await db.todos.findMany({ where: { teamId: payload.teamId } })
-    return new Map(connections.map((conn) => [
-      conn.connectionId,
-      {
-        action: 'inlineData',
-        signal: { key: ['todos', { page: conn.clientContext?.page ?? 1 }] },
-        inlineData: todos.slice((conn.clientContext?.page ?? 1) * 20, 20),
-      }
-    ]))
+    return new Map(connections.map((conn) => {
+      const page = conn.clientContext?.page ?? 0
+      return [
+        conn.connectionId,
+        {
+          action: 'inlineData',
+          signal: { key: ['todos', { page }] },
+          inlineData: todos.slice(page * 20, (page + 1) * 20),
+        }
+      ]
+    }))
   }
 })
 
@@ -222,7 +229,7 @@ app.use(express.json()) // Required for POST /sse body parsing
 
 // Universal Route Handler (Handles GET stream, POST context, and OPTIONS preflight automatically)
 app.all('/sse', (req, res) => {
-  group.handle(req, res, {
+  return group.handle(req, res, {
     meta: { userId: req.user.id, teamId: req.user.teamId },
   })
 })
@@ -244,7 +251,7 @@ app.patch('/api/todos/:id', async (req, res) => {
 // Logout Route: Revocation by connection ID or criteria
 app.post('/api/logout', async (req, res) => {
   if (req.body.connectionId) {
-    group.local.revokeByConnectionId(req.body.connectionId)
+    group.local.revokeByConnectionId(req.body.connectionId, { userId: req.user.id })
   } else {
     group.local.revokeWhere({ userId: req.user.id })
   }
@@ -261,28 +268,37 @@ app.post('/api/logout', async (req, res) => {
 import { SSEChannelGroup } from 'restale-kit/server'
 import { redisPubSubAdapter } from 'restale-kit/redis'
 import Redis from 'ioredis'
+import { z } from 'zod'
 
 interface UserMeta {
   userId: string
   teamId: string
 }
 
+interface ClientCtx {
+  page: number
+}
+
 const redis = new Redis(process.env.REDIS_URL!)
 
-export const group = new SSEChannelGroup<UserMeta>({
+export const group = new SSEChannelGroup<UserMeta, ClientCtx>({
   secret: process.env.RESTALE_SECRET!,
   scopeBy: ['userId', 'teamId'],
   pubsub: redisPubSubAdapter(redis),
-  inlineDataResolver: async (connections, payload) => {
+  clientContextSchema: z.object({ page: z.number() }),
+  inlineDataResolver: async (connections, payload: { teamId: string }) => {
     const todos = await db.todos.findMany({ where: { teamId: payload.teamId } })
-    return new Map(connections.map((conn) => [
-      conn.connectionId,
-      {
-        action: 'inlineData',
-        signal: { key: ['todos', { page: conn.clientContext?.page ?? 1 }] },
-        inlineData: todos,
-      }
-    ]))
+    return new Map(connections.map((conn) => {
+      const page = conn.clientContext?.page ?? 0
+      return [
+        conn.connectionId,
+        {
+          action: 'inlineData',
+          signal: { key: ['todos', { page }] },
+          inlineData: todos.slice(page * 20, (page + 1) * 20),
+        }
+      ]
+    }))
   }
 })
 
@@ -292,6 +308,8 @@ import { getSession } from '@/lib/auth'
 
 export async function GET(req: Request) {
   const session = await getSession(req)
+  if (!session) return new Response('Unauthorized', { status: 401 })
+
   return group.handle(req, {
     meta: { userId: session.userId, teamId: session.teamId },
     topics: [`team:${session.teamId}`, `user:${session.userId}`],
@@ -300,6 +318,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const session = await getSession(req)
+  if (!session) return new Response('Unauthorized', { status: 401 })
+
   return group.handle(req, {
     meta: { userId: session.userId, teamId: session.teamId },
   })
@@ -316,3 +336,4 @@ export async function POST(req: Request) {
   return Response.json(todo, { status: 201 })
 }
 ```
+

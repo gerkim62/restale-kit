@@ -75,7 +75,7 @@ interface BaseGroupOptions<TMeta, TClientContext> {
 
   /**
    * Number of invalidation events retained in memory for Last-Event-ID replay on reconnect.
-   * @default undefined (Replay disabled unless configured or lifetime is set)
+   * @default undefined (Replay disabled unless configured)
    */
   eventBufferCapacity?: number
 
@@ -92,19 +92,26 @@ interface BaseGroupOptions<TMeta, TClientContext> {
 
 export type SSEChannelGroupOptions<TMeta = undefined, TClientContext = unknown> =
   BaseGroupOptions<TMeta, TClientContext> &
-    ([TMeta] extends [undefined]
+    ([TMeta] extends [undefined | void]
       ? {
           /**
            * Optional for unauthenticated apps where TMeta is undefined.
            */
-          scopeBy?: never[]
+          scopeBy?: readonly never[]
+        }
+      : keyof TMeta & string extends never
+      ? {
+          /**
+           * Optional when TMeta keys cannot be statically resolved.
+           */
+          scopeBy?: readonly string[]
         }
       : {
           /**
            * Required for authenticated apps. Specify the stable identity keys in TMeta to sign
            * (e.g. ['userId', 'orgId']). Prevents signature mismatches when dynamic session fields shift.
            */
-          scopeBy: [keyof TMeta & string, ...(keyof TMeta & string)[]]
+          scopeBy: readonly [keyof TMeta & string, ...(keyof TMeta & string)[]]
         })
 ```
 
@@ -115,10 +122,11 @@ export type SSEChannelGroupOptions<TMeta = undefined, TClientContext = unknown> 
 | Option | Type | Default | Required? | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
 | **`secret`** | `string` | *(None)* | **YES** | Cryptographic secret for HMAC-SHA256 signing of connection tokens. Throws immediately if omitted or empty. |
-| **`scopeBy`** | `(keyof TMeta & string)[]` | *(None)* | **Required when `TMeta` is typed** | Selects stable identity keys (e.g. `['userId']`) to bind in the HMAC signature. Prevents signature validation failure when dynamic session fields (timestamps, IPs) change. |
+| **`scopeBy`** | `readonly (keyof TMeta & string)[]` | *(None)* | **Required when `TMeta` is typed** | Selects stable identity keys (e.g. `['userId']`) to bind in the HMAC signature. Prevents signature validation failure when dynamic session fields (timestamps, IPs) change. |
 | **`metaSchema`** | `StandardSchemaV1` | `undefined` | No | Validates server `meta` on connection open (Zod, Valibot, ArkType). |
 | **`clientContextSchema`** | `StandardSchemaV1` | `undefined` | No | Validates untrusted client query parameters on `POST /sse`. |
 | **`inlineDataResolver`** | `InlineDataResolver` | `undefined` | Required for `pushInlineData` | Resolves custom cache payloads per connection for `pushInlineData()`. Throws if `pushInlineData` is called without it. |
+| **`onInlineDataResolverError`** | `Function` | `undefined` | No | Hook invoked if `inlineDataResolver` omits any matching active connections. |
 | **`pubsub`** | `PubSubAdapter` | `undefined` | Required for `group.cluster.*` | Message broker adapter for multi-instance horizontal scaling (Redis, Ably, Pusher). |
 | **`controlTopic`** | `string` | `'__restale_control__'` | No | Internal cluster topic for cross-pod revocations and context updates. |
 | **`eventBufferCapacity`** | `number` | `undefined` | No | Capacity of the in-memory ring buffer for `Last-Event-ID` reconnection replay. |
@@ -161,6 +169,10 @@ interface ClientCtx {
   sortBy: 'createdAt' | 'title'
 }
 
+interface TodoPayload {
+  teamId: string
+}
+
 const clientContextSchema = z.object({
   page: z.number().int().min(0),
   pageSize: z.number().int().min(1).max(100),
@@ -182,16 +194,19 @@ export const group = new SSEChannelGroup<UserMeta, ClientCtx>({
   eventBufferCapacity: 100,
 
   // 5. Per-connection direct cache resolver
-  inlineDataResolver: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload: TodoPayload) => {
     const todos = await db.todos.findMany({ where: { teamId: payload.teamId } })
-    return new Map(connections.map((conn) => [
-      conn.connectionId,
-      {
-        action: 'inlineData',
-        signal: { key: ['todos', { page: conn.clientContext?.page ?? 0 }] },
-        inlineData: todos,
-      }
-    ]))
+    return new Map(connections.map((conn) => {
+      const page = conn.clientContext?.page ?? 0
+      return [
+        conn.connectionId,
+        {
+          action: 'inlineData',
+          signal: { key: ['todos', { page }] },
+          inlineData: todos.slice(page * 20, (page + 1) * 20),
+        }
+      ]
+    }))
   },
 
   // 6. Default channel settings
@@ -217,9 +232,17 @@ interface UserMeta {
   userId: string
 }
 
+interface ClientCtx {
+  page: number
+}
+
+interface TeamDataPayload {
+  items: string[]
+}
+
 const redis = new Redis(process.env.REDIS_URL!)
 
-export const group = new SSEChannelGroup<UserMeta>({
+export const group = new SSEChannelGroup<UserMeta, ClientCtx>({
   // Mandatory secret
   secret: process.env.RESTALE_SECRET!,
   scopeBy: ['userId'],
@@ -236,13 +259,13 @@ export const group = new SSEChannelGroup<UserMeta>({
   eventBufferCapacity: 200,
 
   // Distributed resolver (runs on whichever pod owns each connection)
-  inlineDataResolver: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload: TeamDataPayload) => {
     return new Map(connections.map((conn) => [
       conn.connectionId,
       {
         action: 'inlineData',
         signal: { key: ['team-data', conn.clientContext?.page ?? 1] },
-        inlineData: { ...payload },
+        inlineData: payload.items,
       }
     ]))
   }
@@ -275,3 +298,4 @@ process.on('SIGTERM', async () => {
   server.close()
 })
 ```
+

@@ -25,7 +25,7 @@ function handle(
   req: NodeRequestLike,
   res: NodeResponseLike,
   options?: ChannelSetupOptions<TMeta>
-): Promise<void> | void
+): Promise<void>
 
 // 2. Fetch API / Web Standard Runtimes (Next.js, Bun, Deno, Cloudflare, Hono)
 function handle(
@@ -50,12 +50,13 @@ Incoming HTTP Request -> group.handle(req, [res], options)
         │
         ├── IF Method === 'POST':
         │     ├── Reads body: expects pre-parsed `req.body` in Node or calls `await request.json()` in Fetch
+        │     │     └── IF req.body missing in Node -> HTTP 500 Internal Server Error (misconfiguration)
         │     ├── Validates purpose === 'CLIENT_CONTEXT'
         │     ├── Cryptographically verifies connection token against request `meta` (using `scopeBy`)
         │     ├── Validates `clientContext` against configured `clientContextSchema`
         │     ├── Updates in-memory context and syncs across cluster control topic
         │     ├── (Note: `topics` in options is safely ignored during POST)
-        │     └── Returns HTTP 200 (local match) or 204 (pub/sub dispatched)
+        │     └── Returns HTTP 200 OK {"ok":true}
         │
         ├── IF Method === 'OPTIONS':
         │     └── Returns HTTP 204 No Content with standard CORS preflight headers
@@ -85,8 +86,8 @@ When a browser client updates its query context via `POST /sse`, it sends a `Con
 
 * **Fetch API Runtimes (Next.js, Hono, Bun, Deno, Cloudflare):** Handled automatically via standard `await request.json()`.
 * **Fastify:** Handled automatically via Fastify's built-in JSON body parser. Fastify wrapped `(request, reply)` objects are detected natively, and SSE streaming uses Fastify's `reply.send(stream)` pipeline without socket hijacking.
-* **Express / Node.js HTTP:** Requires JSON middleware (e.g. `app.use(express.json())`). If `req.body` is `undefined` on `POST`, `group.handle()` returns `400 Bad Request` with message:
-  `"[restale] Request body is missing. Ensure JSON body-parser middleware (e.g. express.json()) is mounted before group.handle()."`
+* **Express / Node.js HTTP:** Requires JSON middleware (e.g. `app.use(express.json())`). If `req.body` is `undefined` on `POST`, `group.handle()` returns `500 Internal Server Error` with diagnostic message:
+  `"[restale] Request body is missing on POST /sse. Ensure JSON body-parser middleware (e.g. express.json()) is mounted before group.handle()."`
 
 ---
 
@@ -96,12 +97,13 @@ When handling `POST /sse` context updates, `group.handle()` handles all validati
 
 | Status Code | Reason | Cause |
 | :--- | :--- | :--- |
-| **`200 OK`** | Context Updated (Local) | Context was successfully validated and applied to a matching local connection. |
-| **`204 No Content`** | Context Dispatched (Cluster) / Preflight | Context was validated and broadcast over the cluster control topic (or connection is on another pod) OR `OPTIONS` preflight. |
-| **`400 Bad Request`** | Malformed / Missing Body | Body is not valid JSON, `req.body` is missing (middleware not mounted), `purpose` is not `'CLIENT_CONTEXT'`, or `revision` is invalid. |
+| **`200 OK`** | Context Updated | Context was successfully validated, signature verified, and applied locally or dispatched across cluster (`{"ok":true}`). |
+| **`204 No Content`** | Preflight | `OPTIONS` preflight response. |
+| **`400 Bad Request`** | Malformed Payload | Body is not valid JSON, `purpose` is not `'CLIENT_CONTEXT'`, or `revision` is invalid. |
 | **`403 Forbidden`** | Signature / Auth Mismatch | Connection token HMAC signature failed or caller's authenticated `meta` does not match the token's embedded identity. |
 | **`405 Method Not Allowed`** | Unsupported Method | Request method was not `GET`, `POST`, or `OPTIONS`. |
 | **`422 Unprocessable Entity`** | Schema Validation Failed | `clientContext` failed validation against the group's `clientContextSchema` (returns JSON error details). |
+| **`500 Internal Server Error`** | Server Misconfiguration | Node.js `req.body` is `undefined` because body parser middleware was omitted. |
 
 ---
 
@@ -120,7 +122,7 @@ app.use(authenticate) // Attaches req.user
 
 // Single universal route for both SSE stream and context updates:
 app.all('/sse', (req, res) => {
-  group.handle(req, res, {
+  return group.handle(req, res, {
     meta: { userId: req.user.id, teamId: req.user.teamId },
     topics: [`team:${req.user.teamId}`, `user:${req.user.id}`],
   })

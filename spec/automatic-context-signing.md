@@ -6,18 +6,18 @@ ReStale allows clients to update their UI query parameters dynamically (e.g., pa
 
 Because connection operations occur over standard HTTP, the server must ensure that an attacker cannot spoof or tamper with another user's `connectionId`.
 
-By requiring a **`secret`** on `SSEChannelGroup`, ReStale cryptographically binds the `connectionId` to the authenticated user's metadata (`meta`). This eliminates all manual scoping boilerplate, turning connection IDs into **tamper-proof, cryptographically trusted bearer tokens across all web frameworks and JavaScript runtimes**.
+By requiring a **`secret`** on `SSEChannelGroup`, ReStale cryptographically binds the `connectionId` to the authenticated user's metadata (`meta`). This guarantees that connection IDs are **tamper-proof, cryptographically signed tokens across all web frameworks and JavaScript runtimes**.
 
 ---
 
 ## What `secret` Solves
 
-| Operation | Before `secret` (Bare UUIDs) | With `secret` (Cryptographically Signed Tokens) |
+| Operation | Without `secret` (Bare UUIDs) | With `secret` (Cryptographically Signed Tokens) |
 | :--- | :--- | :--- |
-| **HTTP Route Handler** | Developer had to write separate `GET /sse` and `POST /sse` boilerplate and pass `scope: { userId }` manually. | **One Universal Handler:** `group.handle()` automatically handles both `GET` and `POST` across all frameworks. |
-| **`POST /sse` (Client Context)** | Developer had to manually parse body, extract `userId`, and verify `scope`. | **100% Automated:** `group.handle()` automatically verifies HMAC signatures against the authenticated session. |
-| **`revokeByConnectionId(id)`** | Developer had to pass `scope: { userId }` to verify ownership before closing. | **Single-Argument:** Connection token signature proves authenticity. Call `revokeByConnectionId(connectionId)` directly as an unforgeable bearer capability. |
-| **Security Footguns** | Forgetting `scope` emitted runtime warnings and risked spoofing. | **Zero Footguns:** Cryptographic verification is enforced automatically under the hood. |
+| **HTTP Route Handler** | Developer had to write separate `GET /sse` and `POST /sse` boilerplate. | **One Universal Handler:** `group.handle()` automatically handles both `GET` and `POST` across all frameworks. |
+| **`POST /sse` (Client Context)** | Developer had to manually parse body, extract `userId`, and verify match. | **100% Automated:** `group.handle()` automatically verifies HMAC signatures against the authenticated session. |
+| **`revokeByConnectionId(id, scope)`** | Untrusted string IDs could be forged or guessed. | **Cryptographically Verified:** Token signature is verified against the caller's scoped session (`scope`) before closing or broadcasting across the cluster. |
+| **Security Footguns** | Forgetting validation risked session hijacking and spoofing. | **Zero Footguns:** Cryptographic verification is enforced automatically under the hood. |
 
 ---
 
@@ -29,7 +29,7 @@ $$\text{Token} = \text{rawUUID} \mathbin{\Vert} \text{"."} \mathbin{\Vert} \text
 
 ```
 Wire Connection Token:
-"d290f1ee-6c54-4b01-90e6-d701748f0851.a8f9b2c3d4e5f6g7h8i9j0k1l2m3n4o5"
+"d290f1ee-6c54-4b01-90e6-d701748f0851.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 ```
 
 ### Complete End-to-End Flow with `group.handle()`
@@ -104,21 +104,21 @@ import { group } from './restale.js'
 import { authenticate } from './auth.js'
 
 const app = express()
-app.use(express.json()) // Required for body parsing
+app.use(express.json()) // Required for POST /sse body parsing
 app.use(authenticate) // Populates req.user
 
 // Single universal route: handles both GET stream and POST context updates!
 app.all('/sse', (req, res) => {
-  group.handle(req, res, {
+  return group.handle(req, res, {
     meta: { userId: req.user.id, teamId: req.user.teamId },
     topics: [`team:${req.user.teamId}`],
   })
 })
 
-// LOGOUT: Single-argument revocation (token signature is an unforgeable bearer capability)
+// LOGOUT: Revocation by connection ID with strictly typed scope
 app.post('/api/logout', (req, res) => {
   if (req.body.connectionId) {
-    group.local.revokeByConnectionId(req.body.connectionId)
+    group.local.revokeByConnectionId(req.body.connectionId, { userId: req.user.id })
   } else {
     group.local.revokeWhere({ userId: req.user.id })
   }
@@ -177,9 +177,9 @@ app.all('/sse', async (request, reply) => {
 | **Token Forgery** | Attacker invents a random token string. | Rejected: HMAC signature validation fails without server secret. |
 | **User Impersonation** | Attacker intercepts User A's token and sends it with User B's auth session. | Rejected: Signature is tied to User A's `userId`. Validating against User B's `meta` produces a signature mismatch $\rightarrow$ `403 Forbidden`. |
 | **Token Tampering** | Attacker modifies the raw UUID or embedded identity inside the token. | Rejected: Any byte modification breaks the cryptographic digest. |
-| **Unauthorized Revocation** | Attacker attempts to forge connection IDs to kick victims. | Rejected: Revoking by connection ID verifies the HMAC signature. Invalid/tampered tokens return `{ closed: false }` and log a warning without cluster propagation. |
+| **Unauthorized Revocation** | Attacker attempts to forge connection IDs to kick victims. | Rejected: Revoking by connection ID verifies the HMAC signature against the supplied `scope`. Invalid/tampered tokens return `{ closed: false }` without cluster propagation. |
 | **Payload Injection** | Client sends malformed or malicious JSON fields in `clientContext`. | Rejected: Automatically validated against `clientContextSchema` $\rightarrow$ `422 Unprocessable Entity`. |
-| **Cross-Pod Timing Attacks** | Attacker uses timing analysis to brute-force signatures. | Protected: Verification uses `crypto.subtle.verify` (constant-time evaluation). |
+| **Timing Attacks** | Attacker uses timing analysis to brute-force signatures. | Protected: Verification uses constant-time comparison via Web Crypto. |
 
 ---
 
@@ -188,4 +188,5 @@ app.all('/sse', async (request, reply) => {
 1. **Set `secret`** on `SSEChannelGroup` constructor (required).
 2. **Set `scopeBy: ['userId']`** to declare stable identity keys for HMAC binding.
 3. **`group.handle()`** provides a universal one-liner for all frameworks handling both `GET` stream initialization and `POST` context updates.
-4. **`revokeByConnectionId(connectionId)`** operates as a trusted bearer token without manual `scope`.
+4. **`revokeByConnectionId(connectionId, scope)`** verifies HMAC signatures with strictly typed scope before revoking.
+
