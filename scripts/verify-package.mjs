@@ -84,11 +84,13 @@ console.log('All public entry points imported successfully.')
   RenewEventDetail,
   ChannelClosedError,
   SchemaValidationError,
+  OnDeadlineAction,
 } from 'restale-kit'
-import type { SSEChannel } from 'restale-kit/server'
+import type { SSEChannel, InlineDataResolver, SSEChannelGroupOptions } from 'restale-kit/server'
 import type { createSSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 import type { SSEClient, AutoReconnectOptions } from 'restale-kit/client'
 import type { UseRestaleResult } from 'restale-kit/react'
+import type { TanStackQueryAdapterOptions } from 'restale-kit/tanstack-query'
 
 // Verify types are properly exported and resolved
 const _testTypes: JSONValue = 'test'
@@ -97,7 +99,12 @@ const _testWireSignal: Signal = _testSignal
 const _testRevoke: RevokeEventDetail = { reason: 'deadline' }
 const _testRenew: RenewEventDetail = { reason: 'deadline', maxAttempts: 1, retryDelayMs: 250 }
 const _testReconnect: AutoReconnectOptions = { native: true, jsBackoff: false }
-const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000 } }
+const _testDeadlineAction: OnDeadlineAction = 'reconnect'
+const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000, onDeadline: _testDeadlineAction } }
+const _testTanStackOptions: TanStackQueryAdapterOptions = { toQueryKey: (key) => key }
+const _testGroupOptions: SSEChannelGroupOptions = {
+  inlineDataResolver: (conns) => new Map(conns.map((c) => [c.connectionId, { signal: { key: ['test'] } }])),
+}
 
 declare const _client: SSEClient
 declare const _channel: SSEChannel

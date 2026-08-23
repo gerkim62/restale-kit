@@ -94,7 +94,7 @@ const clientContextSchema = z.object({
 
 const group = new SSEChannelGroup({
   clientContextSchema,
-  resolveInlineData: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload) => {
     // connections[i].meta decides authorization.
     // connections[i].clientContext decides the authorized result's page/shape.
     return new Map()

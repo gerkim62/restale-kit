@@ -1,5 +1,7 @@
 import { expectTypeOf, test } from 'vitest'
 import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index.js'
+import { tanstackQueryAdapter, type TanStackQueryAdapterOptions, type QueryClientLike } from '@/client/tanstack-query/index.js'
+import type { InvalidationHandler } from '@/client/core/index.js'
 
 test('signal type contracts', () => {
   const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
@@ -14,4 +16,19 @@ test('signal type contracts', () => {
 
   void targetSignal
   void invalidInlineData
+})
+
+test('TanStackQueryAdapterOptions and adapter return contracts', () => {
+  const options: TanStackQueryAdapterOptions = {
+    toQueryKey: (key) => ['prefix', ...key],
+  }
+  expectTypeOf(options).toEqualTypeOf<TanStackQueryAdapterOptions>()
+
+  const dummyClient: QueryClientLike = {
+    setQueryData: () => {},
+    invalidateQueries: async () => {},
+  }
+
+  const handler = tanstackQueryAdapter(dummyClient, options)
+  expectTypeOf(handler).toEqualTypeOf<InvalidationHandler>()
 })

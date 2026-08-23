@@ -7,14 +7,14 @@ export interface QueryClientLike {
   invalidateQueries(filters?: { queryKey?: QueryKey; exact?: boolean | undefined }, options?: unknown): Promise<void>
 }
 
-export interface TanstackQueryAdapterOptions {
+export interface TanStackQueryAdapterOptions {
   toQueryKey?: (key: CacheKey) => QueryKey
 }
 
 function applySignal(
   queryClient: QueryClientLike,
   signal: Signal,
-  options: TanstackQueryAdapterOptions,
+  options: TanStackQueryAdapterOptions,
 ): void {
   const queryKey = options.toQueryKey?.(signal.key) ?? signal.key
   if (isInlineDataSignal(signal)) {
@@ -27,7 +27,7 @@ function applySignal(
 
 export function tanstackQueryAdapter(
   queryClient: QueryClientLike,
-  options: TanstackQueryAdapterOptions = {},
+  options: TanStackQueryAdapterOptions = {},
 ): InvalidationHandler {
   return makeInvalidationHandler((input: Signal | Signal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {

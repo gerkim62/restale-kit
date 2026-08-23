@@ -8,6 +8,8 @@ import { ablyPubSubAdapter } from './pubsub/ably/index.js'
 import { pusherPubSubAdapter } from './pubsub/pusher/index.js'
 import { redisPubSubAdapter } from './pubsub/redis/index.js'
 
+import { SSEChannelGroup, createSSEChannel, createEventStore } from './server/core/index.js'
+
 describe('Entrypoint Re-exports', () => {
   it('correctly exports client modules', () => {
     expect(ClientCoreExport).toBeDefined()
@@ -15,6 +17,12 @@ describe('Entrypoint Re-exports', () => {
     expect(useRestale).toBeDefined()
     expect(swrAdapter).toBeDefined()
     expect(tanstackQueryAdapter).toBeDefined()
+  })
+
+  it('correctly exports server modules', () => {
+    expect(SSEChannelGroup).toBeDefined()
+    expect(createSSEChannel).toBeDefined()
+    expect(createEventStore).toBeDefined()
   })
 
   it('correctly exports pubsub modules', () => {

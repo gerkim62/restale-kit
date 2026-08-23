@@ -14,7 +14,7 @@ export type {
   EventStoreResult,
   ChannelState,
   LifetimeOptions,
-  OnDeadline,
+  OnDeadlineAction,
   FrameGuardResult,
   FrameGuardCtx,
   BeforeFrameFn,

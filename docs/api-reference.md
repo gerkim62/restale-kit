@@ -20,7 +20,7 @@ import type {
   EventStoreResult,
   ChannelState,
   LifetimeOptions,
-  OnDeadline,
+  OnDeadlineAction,
   FrameGuardResult,
   FrameGuardCtx,
   BeforeFrameFn,
@@ -93,14 +93,14 @@ interface EventStore {
   readonly clear: () => void
 }
 
-type OnDeadline =
+type OnDeadlineAction =
   | 'reconnect'
   | 'revoke'
   | { maxAttempts?: number; retryDelayMs?: number }
 
 type LifetimeOptions =
-  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
-  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadlineAction }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadlineAction }
 
 type FrameGuardResult =
   | { action: 'send' }
@@ -216,7 +216,7 @@ import type {
   ChannelSetupOptions,
   InlineDataConnection,
   InlineDataResult,
-  ResolveInlineData,
+  InlineDataResolver,
   FastifyRequestLike,
   FastifyReplyLike,
   EventStoreOptions,
@@ -303,7 +303,7 @@ class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 interface SSEChannelGroupOptions<TMeta = unknown, TClientContext = unknown> {
   metaSchema?: StandardSchemaV1<unknown, TMeta>
   clientContextSchema?: StandardSchemaV1<unknown, TClientContext>
-  resolveInlineData?: ResolveInlineData<TMeta, TClientContext>
+  inlineDataResolver?: InlineDataResolver<TMeta, TClientContext>
   onInlineDataResolverError?: (info: { topic: string; missingConnectionIds: readonly string[] }) => void
   pubsub?: PubSubAdapter
   eventStore?: EventStore
@@ -335,7 +335,7 @@ interface InlineDataResult {
   markStale?: boolean
 }
 
-type ResolveInlineData<TMeta, TClientContext> = (
+type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
 ) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
@@ -627,7 +627,7 @@ interface UseRestaleResult<TEffective = Record<string, unknown>> {
 
 ```ts
 import { tanstackQueryAdapter } from 'restale-kit/tanstack-query'
-import type { QueryClientLike, TanstackQueryAdapterOptions } from 'restale-kit/tanstack-query'
+import type { QueryClientLike, TanStackQueryAdapterOptions } from 'restale-kit/tanstack-query'
 import type { InvalidationHandler } from 'restale-kit/client'
 import type { CacheKey } from 'restale-kit'
 import type { QueryKey } from '@tanstack/react-query'
@@ -637,13 +637,13 @@ interface QueryClientLike {
   invalidateQueries(filters?: { queryKey?: QueryKey; exact?: boolean | undefined }, options?: unknown): Promise<void>
 }
 
-interface TanstackQueryAdapterOptions {
+interface TanStackQueryAdapterOptions {
   toQueryKey?: (key: CacheKey) => QueryKey
 }
 
 function tanstackQueryAdapter(
   queryClient: QueryClientLike,
-  options?: TanstackQueryAdapterOptions,
+  options?: TanStackQueryAdapterOptions,
 ): InvalidationHandler
 ```
 

@@ -87,14 +87,14 @@ export interface EventStore {
 /** The two states of an SSE channel's lifecycle. */
 export type ChannelState = 'open' | 'closed'
 
-export type OnDeadline =
+export type OnDeadlineAction =
   | 'reconnect'
   | 'revoke'
   | { maxAttempts?: number; retryDelayMs?: number }
 
 export type LifetimeOptions =
-  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadline }
-  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadline }
+  | { ttlMs: number; deadline?: never; onDeadline?: OnDeadlineAction }
+  | { deadline: number; ttlMs?: never; onDeadline?: OnDeadlineAction }
 
 export type FrameGuardResult =
   | { action: 'send' }

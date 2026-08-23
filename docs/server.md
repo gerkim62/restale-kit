@@ -150,7 +150,7 @@ const typedGroup = new SSEChannelGroup<ClientMeta>()
 |---|---|---|
 | `metaSchema` | `StandardSchemaV1` | Validates metadata on `register()`. Throws `SchemaValidationError` on failure. |
 | `clientContextSchema` | `StandardSchemaV1` | Validates untrusted client query context submitted after the stream opens. Throws `SchemaValidationError` on failure. |
-| `resolveInlineData` | `ResolveInlineData` | Resolves one exact signal and optional cache payload per local connection for `pushInlineData()`. |
+| `inlineDataResolver` | `InlineDataResolver` | Resolves one exact signal and optional cache payload per local connection for `pushInlineData()`. |
 | `onInlineDataResolverError` | `(info) => void` | Observes connections omitted from a resolver result; valid entries are still delivered. |
 | `pubsub` | `PubSubAdapter` | Distributed pub/sub adapter for multi-instance deployments. See [Pub/Sub guide](./pubsub.md). |
 | `eventBufferCapacity` | `number` | Creates a group-owned Last-Event-ID history buffer of up to `N` events. This is shared by channels created through the group and can replay on reconnect. |
@@ -173,7 +173,7 @@ await group.pushInlineData(`user:${req.user.id}`, { changedTodoId })
 
 `updateClientContext()` validates against `clientContextSchema` when configured, stores the result only for the matching connection, and propagates it across the control topic in a pub/sub deployment. Always provide `scope` from authenticated server state: connection IDs are not credentials.
 
-`pushInlineData()` requires `resolveInlineData`. It invokes that resolver once for all local connections on the topic, delivers each returned signal to its connection, then asks remote instances to resolve their own local connections. It does not add data to event replay history; use ordinary invalidation plus an event store when missed-event replay is required.
+`pushInlineData()` requires `inlineDataResolver`. It invokes that resolver once for all local connections on the topic, delivers each returned signal to its connection, then asks remote instances to resolve their own local connections. It does not add data to event replay history; use ordinary invalidation plus an event store when missed-event replay is required.
 
 ---
 

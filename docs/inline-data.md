@@ -39,7 +39,7 @@ const clientContextSchema = z.object({
 
 const group = new SSEChannelGroup<Meta, ClientContext>({
   clientContextSchema,
-  resolveInlineData: async (connections, payload) => {
+  inlineDataResolver: async (connections, payload) => {
     const change = payload as { teamId: string }
     const userIds = [...new Set(connections.map((connection) => connection.meta?.userId).filter(Boolean))]
     const todos = await db.todos.findMany({
@@ -134,7 +134,7 @@ Always scope-pin `updateClientContext` using trusted server-side identity. A con
 
 ## Resolver contract
 
-`resolveInlineData` is called once per topic per instance, not once per connection:
+`inlineDataResolver` is called once per topic per instance, not once per connection:
 
 ```ts
 type InlineDataConnection<TMeta, TClientContext> = {
@@ -149,7 +149,7 @@ type InlineDataResult = {
   markStale?: boolean
 }
 
-type ResolveInlineData<TMeta, TClientContext> = (
+type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
 ) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>

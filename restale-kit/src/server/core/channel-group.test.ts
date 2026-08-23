@@ -108,7 +108,7 @@ describe('channel-group', () => {
 
   it('delivers inline data only to the channel selected for its topic', async () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({
-      resolveInlineData: (connections) => new Map(connections.map((connection) => [
+      inlineDataResolver: (connections) => new Map(connections.map((connection) => [
         connection.connectionId,
         { signal: { key: ['todos'] }, inlineData: ['fresh'] },
       ])),
@@ -1168,7 +1168,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
     it('continues delivery to other channels on pushInlineData even when one channel throws', async () => {
       const group = new SSEChannelGroup({
-        resolveInlineData: (connections) => {
+        inlineDataResolver: (connections) => {
           const map = new Map()
           for (const conn of connections) {
             map.set(conn.connectionId, { signal: { key: ['item'] }, inlineData: { value: 123 } })
@@ -1189,6 +1189,48 @@ describe('SSEChannelGroup — channelDefaults', () => {
 
       await expect(group.pushInlineData('inline-topic', { data: 'test' })).rejects.toThrow(AggregateError)
       expect(ch2Spy).toHaveBeenCalledWith({ key: ['item'], inlineData: { value: 123 } }, undefined)
+    })
+
+    it('throws descriptive error when pushInlineData is called without configured inlineDataResolver', async () => {
+      const group = new SSEChannelGroup({})
+      const ch = createSSEChannel()
+      group.register(ch, undefined, { topics: ['no-resolver-topic'] })
+
+      await expect(group.pushInlineData('no-resolver-topic', { change: 1 })).rejects.toThrow(
+        '[SSEChannelGroup.pushInlineData] inlineDataResolver must be configured.',
+      )
+    })
+
+    it('notifies onInlineDataResolverError when inlineDataResolver omits connections but delivers to valid ones', async () => {
+      const onErrorSpy = vi.fn()
+      const group = new SSEChannelGroup({
+        inlineDataResolver: (connections) => {
+          // Return result for only the first connection, omitting others
+          const map = new Map()
+          if (connections.length > 0) {
+            map.set(connections[0].connectionId, { signal: { key: ['item', 1] }, inlineData: { name: 'Item 1' } })
+          }
+          return map
+        },
+        onInlineDataResolverError: onErrorSpy,
+      })
+
+      const ch1 = createSSEChannel()
+      const ch2 = createSSEChannel()
+      group.register(ch1, undefined, { topics: ['partial-topic'] })
+      group.register(ch2, undefined, { topics: ['partial-topic'] })
+
+      const ch1Spy = vi.spyOn(ch1, 'invalidate')
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await group.pushInlineData('partial-topic', { update: true })
+
+      expect(ch1Spy).toHaveBeenCalledWith({ key: ['item', 1], inlineData: { name: 'Item 1' } }, undefined)
+      expect(ch2Spy).not.toHaveBeenCalled()
+      expect(onErrorSpy).toHaveBeenCalledWith({
+        topic: 'partial-topic',
+        missingConnectionIds: [ch2.connectionId],
+      })
     })
 
     it('handles subscribeControl schema validation failure gracefully without throwing uncaught', async () => {
@@ -1224,7 +1266,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
       const pubsub = new MemoryPubSubAdapter()
       const group = new SSEChannelGroup({
         pubsub,
-        // No resolveInlineData configured -> will throw when inlineData is delivered
+        // No inlineDataResolver configured -> will throw when inlineData is delivered
       })
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
