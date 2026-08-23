@@ -27,9 +27,9 @@ When a connection is established, the server emits a **cryptographically signed 
 
 $$\text{Token} = \text{rawUUID} \mathbin{\Vert} \text{"."} \mathbin{\Vert} \text{HMAC-SHA256}(\text{Secret}, \text{rawUUID} + \text{CanonicalJSON}(\text{ScopedMeta}))$$
 
-```
+```text
 Wire Connection Token:
-"d290f1ee-6c54-4b01-90e6-d701748f0851.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"d290f1ee-6c54-4b01-90e6-d701748f0851.5f4dcc3b5aa765d61d8327deb882cf992b95990a9151374abd8b3a0c64c7ee2a"
 ```
 
 ### Complete End-to-End Flow with `group.handle()`

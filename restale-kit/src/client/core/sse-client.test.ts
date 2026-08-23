@@ -54,6 +54,9 @@ describe('SSEClient', () => {
     MockEventSource.instances[0]?.emitOpen(undefined, 'conn-123')
     await pending
 
+    fetchMock.mockResolvedValueOnce({ status: 200 })
+    await expect(client.updateClientContext({ page: 2 })).resolves.toEqual({ updated: true })
+
     fetchMock.mockResolvedValueOnce({ status: 204 })
     await expect(client.updateClientContext({ page: 2 })).resolves.toEqual({ updated: true })
     expect(fetchMock).toHaveBeenCalledWith('/context', {

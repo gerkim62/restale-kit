@@ -201,6 +201,13 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       }
     }
 
+    if (
+      options.eventBufferCapacity !== undefined &&
+      (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)
+    ) {
+      throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
+    }
+
     this.channelDefaults = options.channelDefaults
     this.eventStore =
       options.eventStore ??
@@ -209,13 +216,6 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         : undefined)
     this.controlTopic = options.controlTopic ?? PROTOCOL_CONSTANTS.DEFAULT_CONTROL_TOPIC
     validateTopic(this.controlTopic, 'controlTopic')
-
-    if (
-      options.eventBufferCapacity !== undefined &&
-      (!Number.isSafeInteger(options.eventBufferCapacity) || options.eventBufferCapacity < 0)
-    ) {
-      throw new RangeError('[SSEChannelGroup] eventBufferCapacity must be a non-negative safe integer.')
-    }
 
     if (options.pubsub) {
       void this.subscribeControl().catch((error: unknown) => {
@@ -533,7 +533,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         { ...channelOptions, connectionId: signedToken },
         this,
       )
-      this.register(channel, meta, rawUUID, topics === undefined ? undefined : { topics })
+      this.register(channel, meta, { rawId: rawUUID, topics })
       return
     }
 
@@ -581,7 +581,8 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       }
 
       // HMAC Verification
-      const scopedMeta = extractScopedMeta(options?.meta, this.scopeBy)
+      const meta = this.validateMeta(options?.meta)
+      const scopedMeta = extractScopedMeta(meta, this.scopeBy)
       const verification = verifyToken(this.secret, body.connectionId, scopedMeta)
       if (!verification.valid) {
         const rawRes = getUnderlyingResponse(res)
@@ -687,7 +688,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         { ...channelOptions, connectionId: signedToken },
         this,
       )
-      this.register(result.channel, meta, rawUUID, topics === undefined ? undefined : { topics })
+      this.register(result.channel, meta, { rawId: rawUUID, topics })
       return result.response
     }
 
@@ -725,7 +726,8 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       }
 
       // HMAC Verification
-      const scopedMeta = extractScopedMeta(options?.meta, this.scopeBy)
+      const meta = this.validateMeta(options?.meta)
+      const scopedMeta = extractScopedMeta(meta, this.scopeBy)
       const verification = verifyToken(this.secret, body.connectionId, scopedMeta)
       if (!verification.valid) {
         return Response.json(
@@ -789,29 +791,25 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     })
   }
 
+  /**
+   * Registers a channel with this group, assigning metadata and subscribing to initial topics.
+   */
   register(
     channel: SSEChannel,
     meta?: TMeta,
-    rawIdOrRegistrationOptions?: string | { topics?: string[] },
-    registrationOptions?: { topics?: string[] },
+    options?: { rawId?: string | undefined; topics?: string[] | undefined },
   ): void {
-    const rawId =
-      typeof rawIdOrRegistrationOptions === 'string'
-        ? rawIdOrRegistrationOptions
-        : extractRawId(channel.connectionId)
-    const options =
-      typeof rawIdOrRegistrationOptions === 'object' && rawIdOrRegistrationOptions !== null
-        ? rawIdOrRegistrationOptions
-        : registrationOptions
+    const rawId = options?.rawId ?? extractRawId(channel.connectionId)
+    const topics = options?.topics
 
-    this.validateTopics(options?.topics)
+    this.validateTopics(topics)
     const existing = this.channels.get(channel)
     if (existing) this.detachTopics(channel, existing.topics)
 
     const entry: Entry<TMeta, TClientContext> = {
       meta: this.validateMeta(meta),
       clientContext: existing?.clientContext,
-      topics: new Set(options?.topics ?? []),
+      topics: new Set(topics ?? []),
       rawConnectionId: rawId,
     }
     this.channels.set(channel, entry)

@@ -71,14 +71,15 @@ Incoming HTTP Request -> group.handle(req, [res], options)
 
 When a browser client updates its query context via `POST /sse`, it sends a `Content-Type: application/json` header, causing browsers to issue an **`OPTIONS` preflight request**.
 
-`group.handle()` handles this automatically:
+`group.handle()` handles preflight method and header negotiation automatically:
 * Responds with **`204 No Content`**.
 * Sets headers:
   * `Allow: GET, POST, OPTIONS`
   * `Access-Control-Allow-Methods: GET, POST, OPTIONS`
   * `Access-Control-Allow-Headers: Content-Type, Last-Event-ID, Cache-Control`
   * `Access-Control-Max-Age: 86400`
-* **Compatibility:** If the application already has global CORS middleware (e.g. `app.use(cors())`), the middleware intercepts the request before `group.handle()` is reached. If not, `group.handle()` ensures preflight never fails.
+* **Cross-Origin & Credentials Requirements:** `group.handle()` intentionally omits `Access-Control-Allow-Origin` so applications retain full authority over origin allowlists. Application CORS middleware (e.g. `cors({ origin: 'https://app.example.com', credentials: true })`) must supply `Access-Control-Allow-Origin` for cross-origin requests. For credentialed requests (`withCredentials: true` or cookie auth), CORS requires an explicit allowed origin rather than wildcard `*` along with `Access-Control-Allow-Credentials: true`.
+* **Compatibility:** If the application already has global CORS middleware (e.g. `app.use(cors())`), the middleware intercepts the request before `group.handle()` is reached. If not, `group.handle()` provides default method/header negotiation for same-origin and reverse-proxied setups.
 
 ---
 

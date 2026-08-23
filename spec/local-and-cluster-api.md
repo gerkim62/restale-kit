@@ -251,7 +251,7 @@ app.patch('/api/todos/:id', async (req, res) => {
 // Logout Route: Revocation by connection ID or criteria
 app.post('/api/logout', async (req, res) => {
   if (req.body.connectionId) {
-    group.local.revokeByConnectionId(req.body.connectionId, { userId: req.user.id })
+    group.local.revokeByConnectionId(req.body.connectionId, { userId: req.user.id, teamId: req.user.teamId })
   } else {
     group.local.revokeWhere({ userId: req.user.id })
   }

@@ -122,7 +122,7 @@ export type SSEChannelGroupOptions<TMeta = undefined, TClientContext = unknown> 
 | Option | Type | Default | Required? | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
 | **`secret`** | `string` | *(None)* | **YES** | Cryptographic secret for HMAC-SHA256 signing of connection tokens. Throws immediately if omitted or empty. |
-| **`scopeBy`** | `readonly (keyof TMeta & string)[]` | *(None)* | **Required when `TMeta` is typed** | Selects stable identity keys (e.g. `['userId']`) to bind in the HMAC signature. Prevents signature validation failure when dynamic session fields (timestamps, IPs) change. |
+| **`scopeBy`** | `readonly (keyof TMeta & string)[]` | *(None)* | **Required at compile time when `TMeta` has statically known string keys** | Selects stable identity keys (e.g. `['userId']`) to bind in the HMAC signature. Prevents signature validation failure when dynamic session fields (timestamps, IPs) change. |
 | **`metaSchema`** | `StandardSchemaV1` | `undefined` | No | Validates server `meta` on connection open (Zod, Valibot, ArkType). |
 | **`clientContextSchema`** | `StandardSchemaV1` | `undefined` | No | Validates untrusted client query parameters on `POST /sse`. |
 | **`inlineDataResolver`** | `InlineDataResolver` | `undefined` | Required for `pushInlineData` | Resolves custom cache payloads per connection for `pushInlineData()`. Throws if `pushInlineData` is called without it. |
@@ -279,7 +279,7 @@ export const group = new SSEChannelGroup<UserMeta, ClientCtx>({
 When `new SSEChannelGroup(options)` executes, it performs immediate startup validations:
 
 1. **`secret` Validation:** Must be provided and must be a non-empty string. If omitted or whitespace-only, throws `Error('[SSEChannelGroup] secret is required and must be a non-empty string.')`.
-2. **`scopeBy` Validation:** If `TMeta` is provided, `scopeBy` must be a non-empty array of valid property names.
+2. **`scopeBy` Validation:** When supplied, runtime checks verify that `scopeBy` is an array and reject any entry that is empty or non-string (throws `Error('[SSEChannelGroup] scopeBy must be an array of non-empty property names.')`). An empty array (`[]`) is permitted at runtime, and runtime validation does not check membership in `TMeta` (which is enforced at compile time).
 3. **`eventBufferCapacity` Validation:** If provided, must be a non-negative safe integer (`Number.isSafeInteger(n) && n >= 0`), otherwise throws `RangeError`.
 4. **`controlTopic` Validation:** Must be a non-empty, non-whitespace string, otherwise throws `Error`.
 5. **PubSub Subscription Initialization:** If `pubsub` is provided, automatically subscribes to `controlTopic` asynchronously and logs any initial broker connection failures.

@@ -81,6 +81,20 @@ describe('HMAC Token Signing & Verification', () => {
     expect(() => signToken(secret, '')).toThrow(/rawUUID/)
   })
 
+  it('throws TypeError when scopedMeta cannot be canonically serialized in signToken', () => {
+    const cyclicObj: Record<string, unknown> = {}
+    cyclicObj.self = cyclicObj
+    expect(() => signToken(secret, rawUUID, cyclicObj)).toThrow(TypeError)
+  })
+
+  it('rejects verification when scopedMeta cannot be canonically serialized in verifyToken', () => {
+    const cyclicObj: Record<string, unknown> = {}
+    cyclicObj.self = cyclicObj
+    const result = verifyToken(secret, `${rawUUID}.validHexSig`, cyclicObj)
+    expect(result.valid).toBe(false)
+    expect(result.rawId).toBe(rawUUID)
+  })
+
   it('extracts raw ID accurately', () => {
     expect(extractRawId('abc-123.def-456')).toBe('abc-123')
     expect(extractRawId('abc-123')).toBe('abc-123')

@@ -561,7 +561,7 @@ describe('SSEChannelGroup Specification Compliance', () => {
       const inlineChunk = new TextDecoder().decode((await reader.read()).value)
       expect(inlineChunk).toContain('breaking news')
 
-      // 2. Remote updateClientContext message with older revision is ignored
+      // 2. Remote updateClientContext message with revision 5 is accepted
       controlHandler!({
         kind: 'control',
         data: {
@@ -876,17 +876,7 @@ describe('SSEChannelGroup Specification Compliance', () => {
       const frame = new TextDecoder().decode((await reader.read()).value)
       const token = frame.match(/"connectionId":"([^"]+)"/)![1]
 
-      // Fetch POST with non-JSON value (e.g. BigInt or symbol)
-      const fetchPostReq = new Request('https://example.com/sse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          purpose: 'CLIENT_CONTEXT',
-          connectionId: token,
-          clientContext: undefined,
-        }),
-      })
-      // Monkey patch body to have a non-JSONValue like a function or BigInt in memory
+      // Monkey patch body to have a non-JSONValue like a function or BigInt in memory for Node path
       const invalidCtxReq = createMockNodeRequest('POST', {
         purpose: 'CLIENT_CONTEXT',
         connectionId: token,
@@ -896,6 +886,34 @@ describe('SSEChannelGroup Specification Compliance', () => {
       await group.handle(invalidCtxReq, invalidCtxRes)
       expect(invalidCtxRes.writeHead).toHaveBeenCalledWith(500, { 'Content-Type': 'application/json' })
 
+      // Fetch path with clientContextSchema returning a non-JSON value (e.g. BigInt)
+      const schemaReturningNonJson = {
+        '~standard': {
+          version: 1,
+          vendor: 'test',
+          validate: () => ({ value: BigInt(123) as any }),
+        },
+      }
+      const groupWithSchema = new SSEChannelGroup({
+        secret,
+        pubsub,
+        clientContextSchema: schemaReturningNonJson as any,
+      })
+      const fetchReq = new Request('https://example.com/sse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'CLIENT_CONTEXT',
+          connectionId: token,
+          clientContext: { page: 1 },
+        }),
+      })
+      const fetchRes = await groupWithSchema.handle(fetchReq)
+      expect(fetchRes.status).toBe(500)
+      const fetchBody = await fetchRes.json()
+      expect(fetchBody).toEqual({ error: 'clientContext must be serializable JSON with pubsub.' })
+
+      await groupWithSchema.dispose()
       await group.dispose()
     })
 

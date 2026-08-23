@@ -5,7 +5,14 @@ import { canonicalJsonSerialize } from './canonical-hash.js'
  * Computes an HMAC-SHA256 signature for a raw UUID and optional scoped meta.
  */
 function computeSignature(secret: string, rawUUID: string, scopedMeta?: Record<string, unknown>): string {
-  const scopePayload = scopedMeta !== undefined ? (canonicalJsonSerialize(scopedMeta) ?? '') : ''
+  let scopePayload = ''
+  if (scopedMeta !== undefined) {
+    const serialized = canonicalJsonSerialize(scopedMeta)
+    if (serialized === undefined) {
+      throw new TypeError('[computeSignature] Invalid scopedMeta: cannot be canonically serialized to JSON.')
+    }
+    scopePayload = serialized
+  }
   const payload = `${rawUUID}${scopePayload}`
   return crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex')
 }
@@ -56,9 +63,8 @@ export function verifyToken(
   const rawId = token.slice(0, dotIndex)
   const signature = token.slice(dotIndex + 1)
 
-  const expectedSig = computeSignature(secret, rawId, scopedMeta)
-
   try {
+    const expectedSig = computeSignature(secret, rawId, scopedMeta)
     const sigBuffer = Buffer.from(signature, 'hex')
     const expectedBuffer = Buffer.from(expectedSig, 'hex')
 
