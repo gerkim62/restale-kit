@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,26 +30,50 @@ try {
   const tarball = readdirSync(temporaryDirectory).find((file) => file.endsWith('.tgz'))
   if (!tarball) throw new Error('npm pack did not create a tarball')
 
-  const consumerNodeModules = join(temporaryDirectory, 'node_modules')
-  const restalePackageDir = join(consumerNodeModules, 'restale-kit')
-  mkdirSync(restalePackageDir, { recursive: true })
-  run('tar', ['-xzf', join(temporaryDirectory, tarball), '-C', restalePackageDir, '--strip-components=1'])
-
-  // Link peer/dev dependencies from restale-kit/node_modules for runtime and type-checking
   const sourceNodeModules = join(packageDirectory, 'node_modules')
-  for (const item of readdirSync(sourceNodeModules)) {
-    if (item === 'restale-kit' || item === '.bin' || item === '.pnpm') continue
-    try {
-      symlinkSync(join(sourceNodeModules, item), join(consumerNodeModules, item), 'junction')
-    } catch {
-      // ignore if exists
-    }
-  }
 
   writeFileSync(
     join(temporaryDirectory, 'package.json'),
     JSON.stringify({ name: 'restale-kit-consumer-smoke', private: true, type: 'module' }, null, 2) + '\n'
   )
+
+  if (existsSync(sourceNodeModules)) {
+    const consumerNodeModules = join(temporaryDirectory, 'node_modules')
+    const restalePackageDir = join(consumerNodeModules, 'restale-kit')
+    mkdirSync(restalePackageDir, { recursive: true })
+    run('tar', ['-xzf', join(temporaryDirectory, tarball), '-C', restalePackageDir, '--strip-components=1'])
+
+    // Link peer/dev dependencies from existing node_modules for instant runtime and type-checking
+    for (const item of readdirSync(sourceNodeModules)) {
+      if (item === 'restale-kit' || item === '.bin' || item === '.pnpm') continue
+      try {
+        symlinkSync(join(sourceNodeModules, item), join(consumerNodeModules, item), 'junction')
+      } catch {
+        // ignore if exists
+      }
+    }
+  } else {
+    // In CI matrix or isolated environments without local node_modules, install tarball and peer/test types via npm
+    run(
+      'npm',
+      [
+        'install',
+        '--no-audit',
+        '--no-fund',
+        join(temporaryDirectory, tarball),
+        'typescript',
+        '@types/node',
+        '@types/react',
+        '@tanstack/react-query',
+        'react',
+        'swr',
+        'ioredis',
+        'ably',
+        'pusher',
+      ],
+      { cwd: temporaryDirectory }
+    )
+  }
 
   writeFileSync(
     join(temporaryDirectory, 'imports.mjs'),
@@ -127,8 +151,22 @@ _channel.disconnect()
       include: ['types.ts'],
     }, null, 2) + '\n'
   )
-  const tscBin = join(root, 'node_modules', 'typescript-7', 'bin', 'tsc')
-  run('node', [tscBin, '--noEmit'], { cwd: temporaryDirectory })
+  const localTsc7 = join(root, 'node_modules', 'typescript-7', 'bin', 'tsc')
+  const localTsc = join(root, 'node_modules', 'typescript', 'bin', 'tsc')
+  const tempTsc = join(temporaryDirectory, 'node_modules', 'typescript', 'bin', 'tsc')
+  const tempTscBin = join(temporaryDirectory, 'node_modules', '.bin', 'tsc')
+
+  if (existsSync(localTsc7)) {
+    run('node', [localTsc7, '--noEmit'], { cwd: temporaryDirectory })
+  } else if (existsSync(localTsc)) {
+    run('node', [localTsc, '--noEmit'], { cwd: temporaryDirectory })
+  } else if (existsSync(tempTsc)) {
+    run('node', [tempTsc, '--noEmit'], { cwd: temporaryDirectory })
+  } else if (existsSync(tempTscBin)) {
+    run(tempTscBin, ['--noEmit'], { cwd: temporaryDirectory })
+  } else {
+    run('npx', ['--yes', 'typescript', '--noEmit'], { cwd: temporaryDirectory })
+  }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true })
 }
