@@ -14,7 +14,7 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts.js'
 import type { Signal } from '@/types/protocol.js'
 
 vi.mock('sse.js', async () => {
@@ -28,7 +28,7 @@ import { SSEClient } from '@/client/core/sse-client.js'
 
 /** Cast a plain function to InvalidationHandler for test use. */
 function asAdapter(fn: (signal: Signal | Signal[]) => void = vi.fn()): InvalidationHandler {
-  return makeInvalidationHandler(fn)
+  return fn
 }
 
 describe('Issue 9 — RestaleProvider does not orphan clients on repeated renders', () => {

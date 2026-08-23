@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts.js'
 import { isInlineDataSignal, type CacheKey, type Signal } from '@/types/protocol.js'
 
 export interface QueryClientLike {
@@ -29,9 +29,9 @@ export function tanstackQueryAdapter(
   queryClient: QueryClientLike,
   options: TanStackQueryAdapterOptions = {},
 ): InvalidationHandler {
-  return makeInvalidationHandler((input: Signal | Signal[]) => {
+  return (input: Signal | Signal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {
       applySignal(queryClient, signal, options)
     }
-  })
+  }
 }

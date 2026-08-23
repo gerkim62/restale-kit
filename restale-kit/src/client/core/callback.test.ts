@@ -1,22 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
-import { makeInvalidationHandler } from './client-contracts.js'
+import type { InvalidationHandler } from './client-contracts.js'
+import type { Signal } from '@/types/protocol.js'
 
-describe('makeInvalidationHandler', () => {
-  it('brands a callback and preserves its behaviour', () => {
+describe('InvalidationHandler', () => {
+  it('accepts standard callback functions', () => {
     const fn = vi.fn()
-    const adapted = makeInvalidationHandler(fn)
+    const handler: InvalidationHandler = (signal: Signal | Signal[]) => {
+      fn(signal)
+    }
 
-    expect(adapted.__restaleAdapter).toBe(true)
-
-    adapted({ key: ['api', 'test'] })
-    expect(fn).toHaveBeenCalledTimes(1)
-  })
-
-  it('throws TypeError for non-function arguments', () => {
-    // @ts-expect-error - testing invalid arguments at runtime
-    expect(() => makeInvalidationHandler('invalid-arg')).toThrow(TypeError)
-
-    // @ts-expect-error - testing invalid arguments at runtime
-    expect(() => makeInvalidationHandler(null, null)).toThrow(TypeError)
+    const testSignal: Signal = { key: ['api', 'test'] }
+    handler(testSignal)
+    expect(fn).toHaveBeenCalledWith(testSignal)
   })
 })

@@ -1,4 +1,4 @@
-import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts.js'
 import { isInlineDataSignal, type CacheKey, type JSONValue, type Signal } from '@/types/protocol.js'
 
 export type SWRKey = string | readonly unknown[]
@@ -28,11 +28,11 @@ function applySwrSignal(
 }
 
 export function swrAdapter(mutate: SWRMutator, options: SWRAdapterOptions = {}): InvalidationHandler {
-  return makeInvalidationHandler((input: Signal | Signal[]) => {
+  return (input: Signal | Signal[]) => {
     for (const signal of Array.isArray(input) ? input : [input]) {
       applySwrSignal(mutate, signal, options)
     }
-  })
+  }
 }
 
 function matchesKey(
