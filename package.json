@@ -6,15 +6,16 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "//": "oxlint and oxlint-tsgolint are pinned to exact versions because JS plugins API is in alpha and not semver-stable",
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm --filter restale-kit run build",
-    "typecheck": "node node_modules/typescript-7/bin/tsc -p restale-kit/tsconfig.json --noEmit",
-    "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix --max-warnings 0",
+    "typecheck": "tsc -p restale-kit/tsconfig.json --noEmit",
+    "lint": "oxlint -c .oxlintrc.json --deny-warnings",
+    "lint:fix": "oxlint -c .oxlintrc.json --fix --deny-warnings",
     "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.mjs",
-    "test:package": "pnpm --filter restale-kit run test:coverage && node scripts/verify-package.mjs",
-    "test:ci": "pnpm --filter restale-kit run test:coverage && node scripts/verify-package.mjs",
+    "test:package": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
+    "test:ci": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
     "dev:swr": "pnpm --filter @restale-kit-example/react-swr run dev",
     "dev:express": "pnpm --filter @restale-kit-example/express run dev",
@@ -25,10 +26,8 @@
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.7.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@7.0.2",
-    "typescript-eslint": "^8.63.0"
+    "oxlint": "1.73.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "^7.0.2"
   }
 }
