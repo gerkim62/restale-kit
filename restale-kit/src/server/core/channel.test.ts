@@ -341,6 +341,19 @@ describe('Frame Guard — beforeFrame', () => {
     expect(text).toContain('"reason":"invalid-guard-result"')
   })
 
+  it('closes channel with invalid-guard-result when beforeFrame returns non-string reason on close', async () => {
+    const channel = createSSEChannel({
+      // @ts-expect-error test runtime non-string reason
+      beforeFrame: () => ({ action: 'close', reason: 12345 }),
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const text = await readNextChunk(reader)
+    reader.releaseLock()
+    expect(text).toContain('"reason":"invalid-guard-result"')
+    expect(text).not.toContain('12345')
+  })
+
   it('ctx.signal contains the outgoing signal', () => {
     const capturedCtx: Array<{ signal: unknown; frameType: string }> = []
     const channel = createSSEChannel({

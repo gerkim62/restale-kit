@@ -102,7 +102,7 @@ app.post('/sse', async (req, res) => {
       revision,
       scope: { userId: req.user.id },
     })
-    res.status(result ? 200 : 204).end()
+    res.status(result.updated ? 200 : 204).end()
   } catch (error) {
     if (error instanceof SchemaValidationError) {
       res.status(422).json({ error: error.message })
@@ -125,9 +125,10 @@ The route needs normal JSON body parsing, for example `app.use(express.json())` 
 
 | Status | Meaning |
 |---|---|
-| `204` | Context was stored. |
-| `404` | The caller's instance did not update a matching local connection. This can happen if the client posts before the stream has registered; with pub/sub, another instance may still own and apply the update. |
-| `400` | The request body is malformed, `purpose` is not `CLIENT_CONTEXT`, or `clientContextSchema` rejected the value. |
+| `200` | Context was updated on a matching local connection. |
+| `204` | Request was accepted and dispatched to pub/sub (or no local connection matched yet). |
+| `422` | Schema validation failed on `clientContext`. |
+| `400` | The request body is malformed or `purpose` is not `CLIENT_CONTEXT`. |
 
 Always scope-pin `updateClientContext` using trusted server-side identity. A connection ID is an opaque correlation value, not an authentication credential.
 

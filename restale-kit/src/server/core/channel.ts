@@ -87,7 +87,8 @@ export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
       if (
         !result ||
         typeof result !== 'object' ||
-        (result.action !== 'send' && result.action !== 'skip' && result.action !== 'close')
+        (result.action !== 'send' && result.action !== 'skip' && result.action !== 'close') ||
+        (result.action === 'close' && 'reason' in result && result.reason !== undefined && typeof result.reason !== 'string')
       ) {
         return { action: 'close', reason: 'invalid-guard-result' }
       }
