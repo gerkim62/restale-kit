@@ -80,9 +80,9 @@ export function matchesLocalFilter<TMeta>(
  * Throws TypeError if filter is a function (predicates cannot be serialized across cluster),
  * undefined, false, null, or invalid.
  */
-export function matchesClusterFilter<TMeta>(
+export function matchesClusterFilter<TMeta = unknown>(
   meta: TMeta | undefined,
-  filter: ClusterFilter<TMeta>,
+  filter: ClusterFilter<TMeta> | Record<string, unknown>,
 ): boolean {
   if (filter === true) return true
 

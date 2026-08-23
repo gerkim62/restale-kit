@@ -25,8 +25,8 @@ function createMockNodeResponse(): ServerResponse & {
   _body?: string
 } {
   const res = new Writable({
-    write(chunk, _encoding, callback) {
-      res._body = (res._body ?? '') + chunk.toString()
+    write(chunk: unknown, _encoding: unknown, callback: () => void) {
+      res._body = (res._body ?? '') + String(chunk)
       callback()
     },
   }) as unknown as ServerResponse & {
@@ -43,7 +43,7 @@ function createMockNodeResponse(): ServerResponse & {
   res.setHeader = vi.fn((name: string, value: string) => {
     res._headers[name.toLowerCase()] = value
     return res
-  }) as any
+  })
   return res
 }
 
@@ -75,14 +75,15 @@ function createMockPubSub(): PubSubAdapter & {
   return {
     subscriptions,
     published,
-    publish: vi.fn(async (topic: string, message: PubSubMessage) => {
+    publish: vi.fn((topic: string, message: PubSubMessage) => {
       published.push({ topic, message })
+      return Promise.resolve()
     }),
-    subscribe: vi.fn(async (topic: string, callback: (msg: PubSubMessage) => void) => {
+    subscribe: vi.fn((topic: string, callback: (msg: PubSubMessage) => void) => {
       subscriptions.set(topic, callback)
-      return async () => {
+      return Promise.resolve(() => {
         subscriptions.delete(topic)
-      }
+      })
     }),
   }
 }

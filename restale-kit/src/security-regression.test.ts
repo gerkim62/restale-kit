@@ -59,7 +59,7 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Issue 1 — revokeWhere and revokeByConnectionId security contracts', () => {
-  it('revokeWhere with object criteria closes matching channel', async () => {
+  it('revokeWhere with object criteria closes matching channel', () => {
     const group = new SSEChannelGroup<{ userId: number }>({
       secret: 'sec-reg-1',
       scopeBy: ['userId'],

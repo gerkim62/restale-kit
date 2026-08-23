@@ -18,9 +18,9 @@ test('PubSubMessage discriminated union type contracts', () => {
     payload: { text: 'hello' },
   }
 
-  expectTypeOf(signalMsg).toMatchTypeOf<PubSubMessage>()
-  expectTypeOf(controlMsg).toMatchTypeOf<PubSubMessage>()
-  expectTypeOf(inlineDataMsg).toMatchTypeOf<PubSubMessage>()
+  expectTypeOf(signalMsg).toExtend<PubSubMessage>()
+  expectTypeOf(controlMsg).toExtend<PubSubMessage>()
+  expectTypeOf(inlineDataMsg).toExtend<PubSubMessage>()
 
   // Discriminated narrowing
   if (signalMsg.kind === 'signal') {
@@ -36,16 +36,17 @@ test('PubSubMessage discriminated union type contracts', () => {
 
 test('PubSubAdapter interface contracts', () => {
   const adapter: PubSubAdapter = {
-    publish: async (topic: string, message: PubSubMessage) => {
+    publish: (topic: string, message: PubSubMessage) => {
       expectTypeOf(topic).toEqualTypeOf<string>()
-      expectTypeOf(message).toMatchTypeOf<PubSubMessage>()
+      expectTypeOf(message).toExtend<PubSubMessage>()
+      return Promise.resolve()
     },
-    subscribe: async (topic: string, callback: (msg: PubSubMessage) => void) => {
+    subscribe: (topic: string, callback: (msg: PubSubMessage) => void) => {
       expectTypeOf(topic).toEqualTypeOf<string>()
       expectTypeOf(callback).toEqualTypeOf<(msg: PubSubMessage) => void>()
-      return () => {}
+      return Promise.resolve(() => {})
     },
   }
 
-  expectTypeOf(adapter).toMatchTypeOf<PubSubAdapter>()
+  expectTypeOf(adapter).toExtend<PubSubAdapter>()
 })

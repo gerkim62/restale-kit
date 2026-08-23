@@ -34,7 +34,7 @@ test('InlineDataResolver and SSEChannelGroupOptions type contracts', () => {
     expectTypeOf(connections[0].connectionId).toEqualTypeOf<string>()
     expectTypeOf(connections[0].meta).toEqualTypeOf<Meta | undefined>()
     expectTypeOf(connections[0].clientContext).toEqualTypeOf<Context | undefined>()
-    expectTypeOf(payload).toMatchTypeOf<JSONValue>()
+    expectTypeOf(payload).toEqualTypeOf<JSONValue>()
     return new Map<string, InlineDataResolverResult>([
       [connections[0].connectionId, { action: 'inlineData', signal: { key: ['todos'] }, inlineData: { ok: true } }],
       ['conn-revalidate', { action: 'revalidate', signal: { key: ['todos'] } }],
@@ -153,7 +153,7 @@ test('group.cluster.* method signatures and return types', () => {
   expectTypeOf(rwRes).toEqualTypeOf<Promise<void>>()
 
   // @ts-expect-error predicate function not allowed in ClusterFilter
-  group.cluster.revokeWhere((m) => m?.userId === '42')
+  void group.cluster.revokeWhere((m) => m?.userId === '42')
 
   // 3. group.cluster.revokeByConnectionId returns Promise<void>
   const rIdRes = group.cluster.revokeByConnectionId('conn-123', { userId: '42' })
@@ -197,9 +197,9 @@ test('LocalFilter and ClusterFilter type contracts', () => {
   const pred = (m: Meta | undefined) => m?.userId === '42'
   const obj = { userId: '42' }
 
-  expectTypeOf(pred).toMatchTypeOf<LocalFilter<Meta>>()
-  expectTypeOf(obj).toMatchTypeOf<LocalFilter<Meta>>()
-  expectTypeOf(obj).toMatchTypeOf<ClusterFilter<Meta>>()
+  expectTypeOf(pred).toExtend<LocalFilter<Meta>>()
+  expectTypeOf(obj).toExtend<LocalFilter<Meta>>()
+  expectTypeOf(obj).toExtend<ClusterFilter<Meta>>()
 
   // @ts-expect-error Predicate functions are not allowed in ClusterFilter
   const invalidClusterPred: ClusterFilter<Meta> = (m: Meta | undefined) => m?.userId === '42'

@@ -31,9 +31,9 @@ test('SSEChannel creation and instance type contracts', () => {
   expectTypeOf(channel.revoke).parameter(0).toEqualTypeOf<string | undefined>()
 
   // disconnect and close return void
-  expectTypeOf(channel.disconnect()).toEqualTypeOf<void>()
-  expectTypeOf(channel.close()).toEqualTypeOf<void>()
+  expectTypeOf(channel.disconnect).returns.toEqualTypeOf<void>()
+  expectTypeOf(channel.close).returns.toEqualTypeOf<void>()
 
   // onClose takes a callback and returns void
-  expectTypeOf(channel.onClose(() => {})).toEqualTypeOf<void>()
+  expectTypeOf(channel.onClose).returns.toEqualTypeOf<void>()
 })

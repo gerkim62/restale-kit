@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   isJSONValue,
   type EventStore,
@@ -15,10 +14,9 @@ import { type SSEChannel, type SSEChannelOptions, validateSignalPayload } from '
 import { internal_toSSEResponse } from '@/server/fetch/response.js'
 import {
   internal_attachSSE,
-  type FastifyReplyLike,
-  type FastifyRequestLike,
   type NodeRequestLike,
   type NodeResponseLike,
+  getUnderlyingRequest,
   getUnderlyingResponse,
   isFastifyReply,
 } from '@/server/node/attach.js'
@@ -125,7 +123,7 @@ interface BaseGroupOptions<TMeta, TClientContext> {
 
 export type SSEChannelGroupOptions<TMeta = undefined, TClientContext = unknown> =
   BaseGroupOptions<TMeta, TClientContext> &
-    ([TMeta] extends [undefined | void]
+    ([TMeta] extends [undefined]
       ? {
           /**
            * Optional for unauthenticated apps where TMeta is undefined.
@@ -152,6 +150,27 @@ type Entry<TMeta, TClientContext> = {
   clientContext: TClientContext | undefined
   topics: Set<string>
   rawConnectionId: string
+}
+
+function isNodeResponseLike(res: unknown): res is NodeResponseLike {
+  if (typeof res !== 'object' || res === null) return false
+  if (isFastifyReply(res)) return true
+  if ('writeHead' in res && typeof res.writeHead === 'function') return true
+  if ('send' in res && typeof res.send === 'function') return true
+  if (
+    'raw' in res &&
+    typeof res.raw === 'object' &&
+    res.raw !== null &&
+    'setHeader' in res.raw &&
+    typeof res.raw.setHeader === 'function'
+  ) {
+    return true
+  }
+  return false
+}
+
+function isFetchRequest(req: unknown): req is Request {
+  return typeof Request !== 'undefined' && req instanceof Request
 }
 
 export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
@@ -390,9 +409,13 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         }
 
         // Publish to control topic
+        const controlData = { type: 'revokeWhere', criteria: filter }
+        if (!isJSONValue(controlData)) {
+          throw new Error('[SSEChannelGroup] filter must be JSON serializable.')
+        }
         await pubsub.publish(this.controlTopic, {
           kind: 'control',
-          data: { type: 'revokeWhere', criteria: filter } as unknown as JSONValue,
+          data: controlData,
         })
       },
 
@@ -412,14 +435,19 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         // Close on current pod if present
         this.closeConnection(verification.rawId, token, scope)
 
+        const controlData = {
+          type: 'revokeByConnectionId',
+          connectionId: verification.rawId,
+          ...(scope ? { scope } : {}),
+        }
+        if (!isJSONValue(controlData)) {
+          throw new Error('[SSEChannelGroup] scope must be JSON serializable.')
+        }
+
         // Broadcast to cluster
         await pubsub.publish(this.controlTopic, {
           kind: 'control',
-          data: {
-            type: 'revokeByConnectionId',
-            connectionId: verification.rawId,
-            ...(scope ? { scope } : {}),
-          } as unknown as JSONValue,
+          data: controlData,
         })
       },
     }
@@ -442,26 +470,22 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     resOrOptions?: NodeResponseLike | ChannelSetupOptions<TMeta>,
     maybeOptions?: ChannelSetupOptions<TMeta>,
   ): Promise<Response | void> {
-    // Detect Node.js (Express / Fastify / Node http) vs Fetch API (Request)
-    const isNode =
-      resOrOptions !== undefined &&
-      (typeof (resOrOptions as any).writeHead === 'function' ||
-        typeof (resOrOptions as any).send === 'function' ||
-        isFastifyReply(resOrOptions) ||
-        ('raw' in (resOrOptions as object) && typeof (resOrOptions as { raw: { setHeader?: unknown } }).raw?.setHeader === 'function'))
-
-    if (isNode) {
-      return this.handleNode(
-        reqOrRequest as NodeRequestLike,
-        resOrOptions as NodeResponseLike,
-        maybeOptions,
-      )
+    if (isNodeResponseLike(resOrOptions)) {
+      if (!isFetchRequest(reqOrRequest)) {
+        return this.handleNode(
+          reqOrRequest,
+          resOrOptions,
+          maybeOptions,
+        )
+      }
     }
 
-    return this.handleFetch(
-      reqOrRequest as Request,
-      resOrOptions as ChannelSetupOptions<TMeta> | undefined,
-    )
+    if (isFetchRequest(reqOrRequest)) {
+      const options = isNodeResponseLike(resOrOptions) ? maybeOptions : resOrOptions
+      return this.handleFetch(reqOrRequest, options)
+    }
+
+    throw new TypeError('[SSEChannelGroup.handle] Unsupported request/response arguments.')
   }
 
   private async handleNode(
@@ -469,7 +493,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     res: NodeResponseLike,
     options?: ChannelSetupOptions<TMeta>,
   ): Promise<void> {
-    const rawReq = 'raw' in req ? req.raw : (req as IncomingMessage)
+    const rawReq = getUnderlyingRequest(req)
     const method = (rawReq.method ?? 'GET').toUpperCase()
 
     // 1. OPTIONS Preflight
@@ -515,7 +539,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
 
     // 3. POST (Context Sync)
     if (method === 'POST') {
-      const body = (req as { body?: unknown }).body
+      const body = 'body' in req ? req.body : undefined
       if (body === undefined) {
         const errorJson = JSON.stringify({
           error:
@@ -573,7 +597,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       // Client context schema validation
       let validatedContext: TClientContext
       try {
-        validatedContext = this.validateClientContext(body.clientContext as TClientContext)
+        validatedContext = this.validateClientContext(body.clientContext)
       } catch (error) {
         const rawRes = getUnderlyingResponse(res)
         rawRes.writeHead(422, { 'Content-Type': 'application/json' })
@@ -588,7 +612,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         body.connectionId,
         validatedContext,
         scopedMeta,
-        body.revision as number | undefined,
+        body.revision,
       )
 
       // Sync across cluster
@@ -599,15 +623,22 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
           rawRes.end(JSON.stringify({ error: 'clientContext must be serializable JSON with pubsub.' }))
           return
         }
+        const controlData = {
+          type: 'updateClientContext',
+          connectionId: verification.rawId,
+          clientContext: validatedContext,
+          ...(scopedMeta ? { scope: scopedMeta } : {}),
+          ...(body.revision !== undefined ? { revision: body.revision } : {}),
+        }
+        if (!isJSONValue(controlData)) {
+          const rawRes = getUnderlyingResponse(res)
+          rawRes.writeHead(500, { 'Content-Type': 'application/json' })
+          rawRes.end(JSON.stringify({ error: 'Failed to serialize control message payload.' }))
+          return
+        }
         await this.options.pubsub.publish(this.controlTopic, {
           kind: 'control',
-          data: {
-            type: 'updateClientContext',
-            connectionId: verification.rawId,
-            clientContext: validatedContext as unknown as JSONValue,
-            ...(scopedMeta ? { scope: scopedMeta } : {}),
-            ...(body.revision !== undefined ? { revision: body.revision } : {}),
-          } as unknown as JSONValue,
+          data: controlData,
         })
       }
 
@@ -706,7 +737,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       // Client context schema validation
       let validatedContext: TClientContext
       try {
-        validatedContext = this.validateClientContext(body.clientContext as TClientContext)
+        validatedContext = this.validateClientContext(body.clientContext)
       } catch (error) {
         const message = error instanceof SchemaValidationError ? error.message : 'Validation failed'
         return Response.json(
@@ -721,7 +752,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         body.connectionId,
         validatedContext,
         scopedMeta,
-        body.revision as number | undefined,
+        body.revision,
       )
 
       // Sync across cluster
@@ -729,15 +760,19 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         if (!isJSONValue(validatedContext)) {
           return Response.json({ error: 'clientContext must be serializable JSON with pubsub.' }, { status: 500 })
         }
+        const controlData = {
+          type: 'updateClientContext',
+          connectionId: verification.rawId,
+          clientContext: validatedContext,
+          ...(scopedMeta ? { scope: scopedMeta } : {}),
+          ...(body.revision !== undefined ? { revision: body.revision } : {}),
+        }
+        if (!isJSONValue(controlData)) {
+          return Response.json({ error: 'Failed to serialize control message payload.' }, { status: 500 })
+        }
         await this.options.pubsub.publish(this.controlTopic, {
           kind: 'control',
-          data: {
-            type: 'updateClientContext',
-            connectionId: verification.rawId,
-            clientContext: validatedContext as unknown as JSONValue,
-            ...(scopedMeta ? { scope: scopedMeta } : {}),
-            ...(body.revision !== undefined ? { revision: body.revision } : {}),
-          } as unknown as JSONValue,
+          data: controlData,
         })
       }
 
@@ -879,14 +914,18 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     return this.options.metaSchema ? validateStandardSchema(meta, this.options.metaSchema) : meta
   }
 
-  private validateClientContext(context: TClientContext): TClientContext {
-    return this.options.clientContextSchema
-      ? validateStandardSchema(context, this.options.clientContextSchema)
-      : context
+  private isClientContext(_value: unknown): _value is TClientContext {
+    return true
   }
 
-  private isClientContext(value: unknown): value is TClientContext {
-    return value !== undefined
+  private validateClientContext(context: unknown): TClientContext {
+    if (this.options.clientContextSchema) {
+      return validateStandardSchema(context, this.options.clientContextSchema)
+    }
+    if (this.isClientContext(context)) {
+      return context
+    }
+    throw new TypeError('[SSEChannelGroup] Invalid clientContext')
   }
 
   private validateTopics(topics: string[] | undefined): void {
@@ -929,19 +968,20 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
 
     const subscriptionPromise = startSubscription()
     this.pendingTopicSubscriptions.set(topic, subscriptionPromise)
-    void subscriptionPromise
+
+    subscriptionPromise
       .then((unsubscribe) => {
-        if (!unsubscribe) return undefined
-        if (!this.topicChannels.has(topic)) {
-          void this.executeTopicUnsubscribe(topic, unsubscribe)
-        } else {
-          this.topicUnsubscribers.set(topic, unsubscribe)
+        if (unsubscribe) {
+          if (this.topicChannels.get(topic)?.size === 0) {
+            void this.executeTopicUnsubscribe(topic, unsubscribe)
+          } else {
+            this.topicUnsubscribers.set(topic, unsubscribe)
+          }
         }
         return unsubscribe
       })
       .catch((error: unknown) => {
         console.error(`[SSEChannelGroup] Failed to subscribe to pubsub topic "${topic}":`, error)
-        return undefined
       })
       .finally(() => {
         if (this.pendingTopicSubscriptions.get(topic) === subscriptionPromise) {
@@ -998,9 +1038,11 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
           }
           if (message.kind !== 'control' || !isPlainRecord(message.data) || typeof message.data.type !== 'string') return
           if (message.data.type === 'revokeWhere' && 'criteria' in message.data) {
-            const criteria = message.data.criteria as ClusterFilter<TMeta>
-            for (const [channel, entry] of this.channels) {
-              if (matchesClusterFilter(entry.meta, criteria)) channel.revoke()
+            const criteria = message.data.criteria
+            if (criteria === true || isPlainRecord(criteria)) {
+              for (const [channel, entry] of this.channels) {
+                if (matchesClusterFilter(entry.meta, criteria)) channel.revoke()
+              }
             }
           }
           if (message.data.type === 'revokeByConnectionId' && typeof message.data.connectionId === 'string') {
@@ -1050,7 +1092,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     for (const channel of channels) {
       const entry = this.channels.get(channel)
       if (!entry) continue
-      if (scope && !matchesClusterFilter(entry.meta, scope as Partial<TMeta>)) continue
+      if (scope && !matchesClusterFilter(entry.meta, scope)) continue
       channel.revoke()
       closed = true
     }
@@ -1077,7 +1119,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     for (const channel of channels) {
       const entry = this.channels.get(channel)
       if (!entry) continue
-      if (scope && !matchesClusterFilter(entry.meta, scope as Partial<TMeta>)) continue
+      if (scope && !matchesClusterFilter(entry.meta, scope)) continue
       entry.clientContext = context
       updated = true
     }
@@ -1151,18 +1193,17 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function extractScopedMeta<TMeta>(
-  meta: TMeta | undefined,
+function extractScopedMeta(
+  meta: unknown,
   scopeBy?: readonly string[],
 ): Record<string, unknown> | undefined {
-  if (!meta || typeof meta !== 'object' || !scopeBy || scopeBy.length === 0) {
+  if (!isPlainRecord(meta) || !scopeBy || scopeBy.length === 0) {
     return undefined
   }
-  const metaRecord = meta as Record<string, unknown>
   const result: Record<string, unknown> = {}
   for (const key of scopeBy) {
-    if (Object.hasOwn(metaRecord, key) && metaRecord[key] !== undefined) {
-      result[key] = metaRecord[key]
+    if (Object.hasOwn(meta, key) && meta[key] !== undefined) {
+      result[key] = meta[key]
     }
   }
   return result

@@ -24,7 +24,7 @@ test('SSEClient constructor and instance type contracts', () => {
   expectTypeOf(client.attempt).toEqualTypeOf<number>()
   expectTypeOf(client.lastEventId).toEqualTypeOf<string | null>()
   expectTypeOf(client.connect()).toEqualTypeOf<Promise<void>>()
-  expectTypeOf(client.close()).toEqualTypeOf<void>()
+  expectTypeOf(client.close).returns.toEqualTypeOf<void>()
 
   // Event listener types
   client.addEventListener('invalidate', (e) => {

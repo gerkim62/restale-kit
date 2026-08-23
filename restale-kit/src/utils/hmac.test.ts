@@ -73,12 +73,12 @@ describe('HMAC Token Signing & Verification', () => {
   })
 
   it('throws when secret is empty or invalid in signToken', () => {
-    expect(() => signToken('', rawUUID)).toThrowError(/secret/)
-    expect(() => signToken('   ', rawUUID)).toThrowError(/secret/)
+    expect(() => signToken('', rawUUID)).toThrow(/secret/)
+    expect(() => signToken('   ', rawUUID)).toThrow(/secret/)
   })
 
   it('throws when rawUUID is empty in signToken', () => {
-    expect(() => signToken(secret, '')).toThrowError(/rawUUID/)
+    expect(() => signToken(secret, '')).toThrow(/rawUUID/)
   })
 
   it('extracts raw ID accurately', () => {
