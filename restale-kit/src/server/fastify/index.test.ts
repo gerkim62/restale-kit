@@ -120,14 +120,76 @@ describe('server/fastify integration via attachNodeResponse', () => {
       }
     })
 
-    it('Happy path: works seamlessly with async route handlers returning reply', async () => {
+    it('Happy path: works seamlessly with async route handlers (returning reply is optional)', async () => {
       app = Fastify()
       const group = new SSEChannelGroup<{ userId: string }>()
 
       app.get('/sse', async (request, reply) => {
         await new Promise((resolve) => setTimeout(resolve, 10))
         group.attachNodeResponse(request, reply, { meta: { userId: 'u-456' } })
-        return reply
+        // Note: returning `reply` is optional now since attachFastifyResponse guards against Fastify's wrapThenable
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+      const abortController = new AbortController()
+
+      const res = await fetch(`${address}/sse`, {
+        signal: abortController.signal,
+      })
+
+      expect(res.status).toBe(200)
+      const reader = res.body!.getReader()
+      try {
+        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(text).toContain('event: connected')
+
+        abortController.abort()
+        await vi.waitFor(() => {
+          expect(group.size).toBe(0)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
+    })
+
+    it('reproduces bug: async route handler without explicit return reply (delayed attach)', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+
+      app.get('/sse', async (request, reply) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        group.attachNodeResponse(request, reply, { meta: { userId: 'u-naive-delayed' } })
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+      const abortController = new AbortController()
+
+      const res = await fetch(`${address}/sse`, {
+        signal: abortController.signal,
+      })
+
+      expect(res.status).toBe(200)
+      const reader = res.body!.getReader()
+      try {
+        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(text).toContain('event: connected')
+
+        abortController.abort()
+        await vi.waitFor(() => {
+          expect(group.size).toBe(0)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
+    })
+
+    it('works with async route handler without explicit return reply (zero prior await)', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+
+      // eslint-disable-next-line typescript/require-await -- Testing async handler with zero prior await
+      app.get('/sse', async (request, reply) => {
+        group.attachNodeResponse(request, reply, { meta: { userId: 'u-naive-immediate' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -200,11 +262,83 @@ describe('server/fastify integration via attachNodeResponse', () => {
       }
     })
 
-    it('Sad path: early exit / 401 unauthorized in route handler before attach', async () => {
+    it('Test 3: regression guard, hooks (onSend, onResponse) and headers still fire for naive async handler with no return', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+      let onResponseFired = false
+      let onSendFired = false
+
+      app.addHook('onSend', (_request, reply, _payload, done) => {
+        onSendFired = true
+        reply.header('x-custom-cors', 'allowed')
+        done()
+      })
+
+      app.addHook('onResponse', (_request, _reply, done) => {
+        onResponseFired = true
+        done()
+      })
+
+      let sseChannel: any
+      app.get('/sse', async (request, reply) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        const { channel } = group.attachNodeResponse(request, reply, { meta: { userId: 'u-hooks-async' } })
+        sseChannel = channel
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+
+      const res = await fetch(`${address}/sse`)
+      expect(onSendFired).toBe(true)
+      expect(res.headers.get('x-custom-cors')).toBe('allowed')
+
+      // Server closes channel
+      sseChannel.close()
+
+      // Read response until complete
+      const reader = res.body!.getReader()
+      try {
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+
+        await vi.waitFor(() => {
+          expect(onResponseFired).toBe(true)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
+    })
+
+    it('Test 4: non-streaming routes on the same app are unaffected', async () => {
       app = Fastify()
       const group = new SSEChannelGroup<{ userId: string }>()
 
-      app.get('/sse', (request, reply) => {
+      app.get('/sse', async (request, reply) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        group.attachNodeResponse(request, reply, { meta: { userId: 'u-mix' } })
+      })
+
+      // eslint-disable-next-line typescript/require-await -- Testing normal async JSON route
+      app.get('/api/data', async () => {
+        return { ok: true }
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+
+      const jsonRes = await fetch(`${address}/api/data`)
+      expect(jsonRes.status).toBe(200)
+      const data = await jsonRes.json()
+      expect(data).toEqual({ ok: true })
+    })
+
+    it('Test 5: early exit / 401 unauthorized before attach is unaffected', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+
+      app.get('/sse', async (request, reply) => {
+        await new Promise((resolve) => setTimeout(resolve, 5))
         const auth = (request.query as Record<string, string>)?.token
         if (!auth) {
           return reply.code(401).send({ error: 'Unauthorized' })
@@ -219,6 +353,39 @@ describe('server/fastify integration via attachNodeResponse', () => {
       const body = await res.json()
       expect(body).toEqual({ error: 'Unauthorized' })
       expect(group.size).toBe(0)
+    })
+
+    it('Test 6: client disconnect cleanup still works on aborted client fetch', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+
+      app.get('/sse', async (request, reply) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        group.attachNodeResponse(request, reply, { meta: { userId: 'u-disconnect' } })
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+      const abortController = new AbortController()
+
+      const res = await fetch(`${address}/sse`, {
+        signal: abortController.signal,
+      })
+
+      expect(res.status).toBe(200)
+      const reader = res.body!.getReader()
+      try {
+        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
+        expect(text).toContain('event: connected')
+        expect(group.size).toBe(1)
+
+        abortController.abort()
+
+        await vi.waitFor(() => {
+          expect(group.size).toBe(0)
+        }, { timeout: 1000 })
+      } finally {
+        await reader.cancel().catch(() => {})
+      }
     })
 
     it('Happy path: server-side revoke closes stream cleanly and notifies client', async () => {

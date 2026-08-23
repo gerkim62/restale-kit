@@ -63,7 +63,7 @@ const server = http.createServer((req, res) => {
 
 ### Fastify
 
-`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` streams directly via Fastify's `reply.send()`, keeping the connection within Fastify's response lifecycle so CORS, headers, and lifecycle hooks (`onSend`, `onResponse`) work normally without socket hijacking.
+`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` streams directly via Fastify's `reply.send()`, keeping the connection within Fastify's response lifecycle so CORS, headers, and lifecycle hooks (`onSend`, `onResponse`) work normally without socket hijacking. It safely handles both synchronous and `async` route handlers (with or without `return reply`) with no special caller pattern required.
 
 ```ts
 import Fastify from 'fastify'
@@ -72,7 +72,9 @@ import { SSEChannelGroup } from 'restale-kit/server'
 const group = new SSEChannelGroup()
 const app = Fastify()
 
-app.get('/sse', (request, reply) => {
+// Works seamlessly with both sync and async handlers
+app.get('/sse', async (request, reply) => {
+  await authenticate(request)
   group.attachNodeResponse(request, reply, {
     meta: { userId: request.user?.id },
   })

@@ -106,6 +106,9 @@ function attachFastifyResponse(
   nodeReadable.pipe(stream)
 
   reply.send(stream)
+
+  const originalSend = reply.send.bind(reply)
+  reply.send = (payload) => (payload === undefined ? reply : originalSend(payload))
 }
 
 /**
