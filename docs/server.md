@@ -63,7 +63,7 @@ const server = http.createServer((req, res) => {
 
 ### Fastify
 
-`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` automatically calls `reply.hijack()` for you.
+`group.attachNodeResponse` accepts either Fastify's wrapped `request`/`reply` objects or the raw Node objects. When passing Fastify objects, `attachNodeResponse` streams directly via Fastify's `reply.send()`, keeping the connection within Fastify's response lifecycle so CORS, headers, and lifecycle hooks (`onSend`, `onResponse`) work normally without socket hijacking.
 
 ```ts
 import Fastify from 'fastify'

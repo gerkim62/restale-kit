@@ -50,23 +50,49 @@ describe('server/fastify integration via attachNodeResponse', () => {
     }
   })
 
-  it('automatically invokes reply.hijack() on FastifyReplyLike response object', () => {
+  it('uses reply.send(stream) on FastifyReplyLike and sets SSE headers', () => {
     const group = new SSEChannelGroup({})
     const rawReq = createMockNodeRequest('/sse')
     const rawRes = createMockNodeResponse()
-    const hijackSpy = vi.fn()
+
+    const sendSpy = vi.fn()
+    const headerSpy = vi.fn()
 
     const mockRequest = { raw: rawReq }
     const mockReply = {
       raw: rawRes,
-      hijack: hijackSpy,
+      send: sendSpy,
+      header: headerSpy,
     }
 
     const { channel } = group.attachNodeResponse(mockRequest, mockReply, {})
 
-    expect(hijackSpy).toHaveBeenCalledTimes(1)
+    expect(sendSpy).toHaveBeenCalledTimes(1)
+    expect(headerSpy).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+    expect(headerSpy).toHaveBeenCalledWith('Cache-Control', 'no-cache')
+    expect(headerSpy).toHaveBeenCalledWith('Connection', 'keep-alive')
     expect(typeof channel.connectionId).toBe('string')
     expect(channel.connectionId.length).toBeGreaterThan(0)
+    expect(channel.state).toBe('open')
+    channel.close()
+  })
+
+  it('supports objects with raw ServerResponse by falling back to native Node response streaming', () => {
+    const group = new SSEChannelGroup({})
+    const rawReq = createMockNodeRequest('/sse')
+    const rawRes = createMockNodeResponse()
+
+    const mockRequest = { raw: rawReq }
+    const mockReplyWithoutSend = { raw: rawRes }
+
+    const { channel } = group.attachNodeResponse(mockRequest, mockReplyWithoutSend, {})
+
+    expect(rawRes.writeHead).toHaveBeenCalledWith(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    })
+    expect(typeof channel.connectionId).toBe('string')
     expect(channel.state).toBe('open')
     channel.close()
   })
@@ -84,7 +110,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
     channel.close()
   })
 
-  describe('Real Fastify HTTP server integration (TDD)', () => {
+  describe('Real Fastify HTTP server integration (hijack-less)', () => {
     it('Happy path: streams SSE frames to real HTTP client and receives broadcasts', async () => {
       app = Fastify()
       const group = new SSEChannelGroup<{ userId: string }>()
@@ -101,7 +127,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
       })
 
       expect(res.status).toBe(200)
-      expect(res.headers.get('content-type')).toBe('text/event-stream')
+      expect(res.headers.get('content-type')).toContain('text/event-stream')
       expect(res.headers.get('cache-control')).toBe('no-cache')
       expect(res.headers.get('connection')).toBe('keep-alive')
 
@@ -124,7 +150,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
       expect(group.size).toBe(0)
     })
 
-    it('Happy path: works seamlessly with async route handlers', async () => {
+    it('Happy path: works seamlessly with async route handlers returning reply', async () => {
       app = Fastify()
       const group = new SSEChannelGroup<{ userId: string }>()
 
@@ -132,6 +158,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
         // Simulating async auth check
         await new Promise((resolve) => setTimeout(resolve, 10))
         group.attachNodeResponse(request, reply, { meta: { userId: 'u-456' } })
+        return reply
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -149,6 +176,49 @@ describe('server/fastify integration via attachNodeResponse', () => {
       abortController.abort()
       await new Promise((r) => setTimeout(r, 50))
       expect(group.size).toBe(0)
+    })
+
+    it('Happy path: Fastify hooks (onSend, onResponse) execute properly with reply.send()', async () => {
+      app = Fastify()
+      const group = new SSEChannelGroup<{ userId: string }>()
+      let onResponseFired = false
+      let onSendFired = false
+
+      app.addHook('onSend', (_request, reply, _payload, done) => {
+        onSendFired = true
+        reply.header('x-sse-hook', 'active')
+        done()
+      })
+
+      app.addHook('onResponse', (_request, _reply, done) => {
+        onResponseFired = true
+        done()
+      })
+
+      let sseChannel: any
+      app.get('/sse', (request, reply) => {
+        const { channel } = group.attachNodeResponse(request, reply, { meta: { userId: 'u-789' } })
+        sseChannel = channel
+      })
+
+      const address = await app.listen({ port: 0, host: '127.0.0.1' })
+
+      const res = await fetch(`${address}/sse`)
+      expect(onSendFired).toBe(true)
+      expect(res.headers.get('x-sse-hook')).toBe('active')
+
+      // Server closes channel
+      sseChannel.close()
+
+      // Read response until complete
+      const reader = res.body!.getReader()
+      while (true) {
+        const { done } = await reader.read()
+        if (done) break
+      }
+
+      await new Promise((r) => setTimeout(r, 50))
+      expect(onResponseFired).toBe(true)
     })
 
     it('Sad path: early exit / 401 unauthorized in route handler before attach', async () => {

@@ -241,9 +241,6 @@ importers:
 
   restale-kit:
     dependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
       sse.js:
         specifier: ^2.8.0
         version: 2.8.0
@@ -254,6 +251,12 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
@@ -263,6 +266,9 @@ importers:
       ably:
         specifier: ^2.3.2
         version: 2.24.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
       fastify:
         specifier: ^5.10.0
         version: 5.10.0

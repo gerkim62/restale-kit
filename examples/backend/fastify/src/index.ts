@@ -16,7 +16,7 @@ app.get('/sse', (request, reply) => {
     return reply.code(401).send({ error: 'Unauthorized: invalid or missing session identity' })
   }
   const authenticatedUserId = parsed.data
-  // Pass request/reply directly — attachNodeResponse calls reply.hijack() automatically
+  // Pass request/reply directly — attachNodeResponse streams via reply.send() preserving Fastify hooks and CORS
   group.attachNodeResponse(request, reply, {
     meta: { userId: authenticatedUserId },
   })

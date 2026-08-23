@@ -956,19 +956,20 @@ describe('SSEChannelGroup — channelDefaults', () => {
       })
     }
 
-    it('supports Fastify reply object and calls hijack() if present', () => {
+    it('supports Fastify reply object and streams via reply.send(stream)', () => {
       const group = new SSEChannelGroup<{ userId: number }>({})
       const rawReq = Object.assign(new EventEmitter(), { url: '/sse', headers: {} })
       const req = { raw: rawReq } as any
       const rawRes = createMockNodeRes()
-      const hijackSpy = vi.fn()
-      const reply = { raw: rawRes, hijack: hijackSpy } as any
+      const sendSpy = vi.fn()
+      const headerSpy = vi.fn()
+      const reply = { raw: rawRes, send: sendSpy, header: headerSpy } as any
 
       const { channel } = group.attachNodeResponse(req, reply, {
         meta: { userId: 200 },
       })
 
-      expect(hijackSpy).toHaveBeenCalled()
+      expect(sendSpy).toHaveBeenCalledTimes(1)
       expect(channel).toBeDefined()
       expect(group.size).toBe(1)
     })

@@ -355,6 +355,8 @@ interface FastifyRequestLike {
 
 interface FastifyReplyLike {
   raw: ServerResponse
+  send?: (payload: unknown) => unknown
+  header?: (name: string, value: unknown) => unknown
   hijack?: () => void
 }
 ```
