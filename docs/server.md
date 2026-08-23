@@ -244,7 +244,7 @@ The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i
 
 ### Broadcasting without metadata
 
-Channels registered without metadata (`options.meta` omitted) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels and can decide how to handle them.
+Channels registered without metadata (`meta` omitted) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels and can decide how to handle them.
 
 ---
 

@@ -1,5 +1,7 @@
+import crypto from 'node:crypto'
+
 /**
- * Generates a cryptographically strong UUID (v4) using native `crypto.randomUUID()`.
+ * Generates a cryptographically strong UUID (v4) using Node's `crypto.randomUUID()`.
  */
 export function generateUUID(): string {
   return crypto.randomUUID()
