@@ -109,15 +109,17 @@ describe('Issue 1 — revokeWhere connectionId security contract and warning', (
 
   it('updateClientContext without scope emits security warning', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let ch: ReturnType<typeof createSSEChannel> | undefined
     try {
       const group = new SSEChannelGroup<any, { page: number }>()
-      const ch = createSSEChannel()
+      ch = createSSEChannel()
       group.register(ch, undefined)
 
       const result = await group.updateClientContext(ch.connectionId, { page: 2 })
       expect(result.updated).toBe(true)
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.updateClientContext] SECURITY: scope omitted'))
     } finally {
+      ch?.close()
       warnSpy.mockRestore()
     }
   })

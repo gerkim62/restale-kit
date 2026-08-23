@@ -13,6 +13,7 @@ import { SSE_HEADERS } from '@/utils/constants.js'
 import {
   createMockNodeRequest,
   createMockNodeResponse,
+  readStreamUntil,
   closeHttpServer,
 } from '@/test-fixtures/http-test-utils.js'
 
@@ -156,11 +157,9 @@ describe('node internal_attachSSE', () => {
     expect(res.headers.get('connection')).toBe('keep-alive')
 
     const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
 
     try {
-      const firstChunk = await reader.read()
-      const text = decoder.decode(firstChunk.value)
+      const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
       expect(text).toContain(':\n\n')
       expect(text).toContain('event: connected\ndata: {"connectionId":')
 

@@ -93,6 +93,16 @@ function attachFastifyResponse(
   const nodeReadable = Readable.fromWeb(channel.stream)
   const stream = new PassThrough()
   stream.write(':\n\n')
+
+  nodeReadable.on('error', (err) => {
+    console.error('nodeReadable error during attachment ', channel.connectionId, err)
+    channel.close()
+  })
+  stream.on('error', (err) => {
+    console.error('stream error during attachment ', channel.connectionId, err)
+    channel.close()
+  })
+
   nodeReadable.pipe(stream)
 
   reply.send(stream)

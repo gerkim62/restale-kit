@@ -241,6 +241,9 @@ importers:
 
   restale-kit:
     dependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       sse.js:
         specifier: ^2.8.0
         version: 2.8.0
@@ -254,9 +257,6 @@ importers:
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
