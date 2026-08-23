@@ -12,7 +12,8 @@
   "options": {
     "typeAware": true,
     "typeCheck": true,
-    "denyWarnings": true
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
   },
   "env": {
     "builtin": true
@@ -78,6 +79,7 @@
     "no-sparse-arrays": "error",
     "no-this-before-super": "error",
     "no-unassigned-vars": "error",
+    "no-undef": "error",
     "no-unexpected-multiline": "error",
     "no-unreachable": "error",
     "no-unsafe-finally": "error",
@@ -98,7 +100,8 @@
     "@eslint-community/eslint-comments/no-aggregating-enable": "error",
     "@eslint-community/eslint-comments/no-duplicate-disable": "error",
     "@eslint-community/eslint-comments/no-unlimited-disable": "error",
-    "@eslint-community/eslint-comments/no-unused-enable": "error"
+    "@eslint-community/eslint-comments/no-unused-enable": "error",
+    "@eslint-community/eslint-comments/require-description": "error"
   },
   "overrides": [
     {
@@ -135,6 +138,7 @@
         "no-redeclare": "off",
         "no-setter-return": "off",
         "no-this-before-super": "off",
+        "no-undef": "off",
         "no-unreachable": "off",
         "no-unsafe-negation": "off",
         "no-var": "error",
@@ -149,7 +153,6 @@
         "no-throw-literal": "off",
         "prefer-promise-reject-errors": "off",
         "require-await": "off",
-        "@eslint-community/eslint-comments/require-description": "error",
         "typescript/await-thenable": "error",
         "typescript/ban-ts-comment": [
           "error",
