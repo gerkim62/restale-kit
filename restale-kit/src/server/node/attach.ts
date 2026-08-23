@@ -9,6 +9,8 @@ import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 export interface FastifyReplyLike {
   raw: ServerResponse
   hijack?: () => void
+  send?: (payload: unknown) => unknown
+  header?: (name: string, value: unknown) => unknown
 }
 
 export interface FastifyRequestLike {

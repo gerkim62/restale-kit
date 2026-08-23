@@ -55,40 +55,105 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue 1 — revokeWhere({connectionId}) unsafe pattern must be documented
+// Issue 1 — revokeWhere({connectionId}) unsafe pattern must be documented and warned
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Issue 1 — revokeWhere connectionId security contract', () => {
-  it('revokeWhere with connectionId as sole criteria closes the matching channel', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel()
-    group.register(ch, { userId: 1 })
+describe('Issue 1 — revokeWhere connectionId security contract and warning', () => {
+  it('revokeWhere with connectionId as sole criteria emits security warning and closes the matching channel', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { userId: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, { userId: 1 })
 
-    const result = await group.revokeWhere({ connectionId: ch.connectionId })
-    expect(result.localClosed).toBe(1)
-    expect(ch.state).toBe('closed')
+      const result = await group.revokeWhere({ connectionId: ch.connectionId })
+      expect(result.localClosed).toBe(1)
+      expect(ch.state).toBe('closed')
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.revokeWhere] SECURITY: criteria contains only connectionId'))
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
-  it('revokeByConnectionId with scope rejects a mismatched userId (safe path)', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel()
-    group.register(ch, { userId: 1 })
+  it('revokeWhere with connectionId alongside metadata criteria does not warn', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { userId: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, { userId: 1 })
 
-    // Scope doesn't match — should not close
-    const result = await group.revokeByConnectionId(ch.connectionId, { userId: 999 })
-    expect(result.closed).toBe(false)
-    expect(ch.state).toBe('open')
-    ch.close()
+      const result = await group.revokeWhere({ connectionId: ch.connectionId, userId: 1 })
+      expect(result.localClosed).toBe(1)
+      expect(ch.state).toBe('closed')
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
-  it('revokeByConnectionId with correct scope closes the channel (safe path)', async () => {
-    const group = new SSEChannelGroup<any, { userId: number }>()
-    const ch = createSSEChannel()
-    group.register(ch, { userId: 1 })
+  it('revokeByConnectionId without scope emits security warning', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { userId: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, { userId: 1 })
 
-    const result = await group.revokeByConnectionId(ch.connectionId, { userId: 1 })
-    expect(result.closed).toBe(true)
-    expect(ch.state).toBe('closed')
+      const result = await group.revokeByConnectionId(ch.connectionId)
+      expect(result.closed).toBe(true)
+      expect(ch.state).toBe('closed')
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.revokeByConnectionId] SECURITY: scope omitted'))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('updateClientContext without scope emits security warning', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { page: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, undefined)
+
+      const result = await group.updateClientContext(ch.connectionId, { page: 2 })
+      expect(result.updated).toBe(true)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.updateClientContext] SECURITY: scope omitted'))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('revokeByConnectionId with scope rejects a mismatched userId (safe path, no warning)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { userId: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, { userId: 1 })
+
+      // Scope doesn't match — should not close
+      const result = await group.revokeByConnectionId(ch.connectionId, { userId: 999 })
+      expect(result.closed).toBe(false)
+      expect(ch.state).toBe('open')
+      expect(warnSpy).not.toHaveBeenCalled()
+      ch.close()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('revokeByConnectionId with correct scope closes the channel (safe path, no warning)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const group = new SSEChannelGroup<any, { userId: number }>()
+      const ch = createSSEChannel()
+      group.register(ch, { userId: 1 })
+
+      const result = await group.revokeByConnectionId(ch.connectionId, { userId: 1 })
+      expect(result.closed).toBe(true)
+      expect(ch.state).toBe('closed')
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 

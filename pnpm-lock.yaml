@@ -263,6 +263,9 @@ importers:
       ably:
         specifier: ^2.3.2
         version: 2.24.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      fastify:
+        specifier: ^5.10.0
+        version: 5.10.0
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1
