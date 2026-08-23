@@ -304,7 +304,7 @@ describe('Frame Guard — beforeFrame', () => {
     expect(text).toContain('"reason":"revoked"')
   })
 
-  it('treats error thrown in beforeFrame as action: close', async () => {
+  it('treats error thrown in beforeFrame as action: close with guard-error reason', async () => {
     const channel = createSSEChannel({
       beforeFrame: () => {
         throw new Error('Guard exploded')
@@ -314,7 +314,44 @@ describe('Frame Guard — beforeFrame', () => {
     expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
     const text = await readNextChunk(reader)
     reader.releaseLock()
-    expect(text).toContain('"reason":"revoked"')
+    expect(text).toContain('"reason":"guard-error"')
+  })
+
+  it('closes channel with invalid-guard-result when beforeFrame returns invalid or non-object result', async () => {
+    const channel = createSSEChannel({
+      // @ts-expect-error test runtime invalid guard return value
+      beforeFrame: () => undefined,
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const text = await readNextChunk(reader)
+    reader.releaseLock()
+    expect(text).toContain('"reason":"invalid-guard-result"')
+  })
+
+  it('closes channel with invalid-guard-result when beforeFrame returns unknown action', async () => {
+    const channel = createSSEChannel({
+      // @ts-expect-error test runtime invalid action
+      beforeFrame: () => ({ action: 'invalid-action' }),
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const text = await readNextChunk(reader)
+    reader.releaseLock()
+    expect(text).toContain('"reason":"invalid-guard-result"')
+  })
+
+  it('closes channel with invalid-guard-result when beforeFrame returns non-string reason on close', async () => {
+    const channel = createSSEChannel({
+      // @ts-expect-error test runtime non-string reason
+      beforeFrame: () => ({ action: 'close', reason: 12345 }),
+    })
+    const reader = channel.stream.getReader()
+    expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+    const text = await readNextChunk(reader)
+    reader.releaseLock()
+    expect(text).toContain('"reason":"invalid-guard-result"')
+    expect(text).not.toContain('12345')
   })
 
   it('ctx.signal contains the outgoing signal', () => {

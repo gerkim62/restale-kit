@@ -57,6 +57,7 @@ const group = new SSEChannelGroup<Meta, ClientContext>({
           : b.createdAt.localeCompare(a.createdAt))
 
       return [connection.connectionId, {
+        action: 'inlineData',
         signal: {
           key: ['todos', { page, pageSize, userId: connection.meta?.userId }],
         },
@@ -98,16 +99,16 @@ app.post('/sse', async (req, res) => {
 
   try {
     const result = await group.updateClientContext(connectionId, clientContext, {
-      scope: { userId: req.user.id },
       revision,
+      scope: { userId: req.user.id },
     })
-    res.status(result.updated ? 204 : 404).end()
+    res.status(result.updated ? 200 : 204).end()
   } catch (error) {
     if (error instanceof SchemaValidationError) {
-      res.status(400).end()
+      res.status(422).json({ error: error.message })
       return
     }
-    throw error
+    res.status(400).end()
   }
 })
 
@@ -124,17 +125,16 @@ The route needs normal JSON body parsing, for example `app.use(express.json())` 
 
 | Status | Meaning |
 |---|---|
-| `204` | Context was stored. |
-| `404` | The caller's instance did not update a matching local connection. This can happen if the client posts before the stream has registered; with pub/sub, another instance may still own and apply the update. |
-| `400` | The request body is malformed, `purpose` is not `CLIENT_CONTEXT`, or `clientContextSchema` rejected the value. |
+| `200` | Context was updated on a matching local connection. |
+| `204` | Request was accepted and dispatched to pub/sub (or no local connection matched yet). |
+| `422` | Schema validation failed on `clientContext`. |
+| `400` | The request body is malformed or `purpose` is not `CLIENT_CONTEXT`. |
 
 Always scope-pin `updateClientContext` using trusted server-side identity. A connection ID is an opaque correlation value, not an authentication credential.
 
 ---
 
-## Resolver contract
-
-`inlineDataResolver` is called once per topic per instance, not once per connection:
+## Server contract
 
 ```ts
 type InlineDataConnection<TMeta, TClientContext> = {
@@ -143,21 +143,32 @@ type InlineDataConnection<TMeta, TClientContext> = {
   readonly clientContext: TClientContext | undefined
 }
 
-type InlineDataResult = {
-  signal: RevalidateSignal
-  inlineData?: JSONValue
-  markStale?: boolean
-}
+type InlineDataResolverResult =
+  | {
+      action: 'inlineData'
+      signal: RevalidateSignal
+      inlineData: JSONValue
+      markStale?: boolean
+    }
+  | {
+      action: 'revalidate'
+      signal: RevalidateSignal
+    }
+  | {
+      action: 'skip'
+    }
 
 type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
-) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
+) => Map<string, InlineDataResolverResult> | Promise<Map<string, InlineDataResolverResult>>
 ```
 
 - Return an entry for every supplied connection. `clientContext` may be `undefined`; handle that case deliberately.
-- Include `inlineData` to write data into that connection's cache. Omit it to send a normal invalidation for that connection.
-- Set `markStale: true` on the result if you want the client to mark the entry stale after writing inline data.
+- Return `{ action: 'inlineData', signal, inlineData }` to write data directly into that connection's cache.
+- Return `{ action: 'revalidate', signal }` to send a cache invalidation signal for that connection.
+- Return `{ action: 'skip' }` when a connection is unaffected by the mutation to explicitly omit sending any frame without triggering an error.
+- Set `markStale: true` on an `'inlineData'` result if you want the client to mark the entry stale after writing inline data.
 - A missing map entry does not prevent delivery to valid entries. ReStale calls `onInlineDataResolverError` with the omitted connection IDs.
 - If the resolver throws, no local connection receives data for that invocation and `pushInlineData` rejects.
 - `pushInlineData(topic, payload)` validates both arguments, requires a configured resolver, delivers locally first, then publishes to other instances when a pub/sub adapter is configured.

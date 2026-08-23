@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from 'vitest'
 import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index.js'
-import type { InlineDataResolver, SSEChannelGroupOptions } from '@/server/core/index.js'
+import type { InlineDataResolver, InlineDataResolverResult, SSEChannelGroupOptions } from '@/server/core/index.js'
 
 test('signal type contracts', () => {
   const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
@@ -25,8 +25,10 @@ test('InlineDataResolver and SSEChannelGroupOptions type contracts', () => {
     expectTypeOf(connections[0].meta).toEqualTypeOf<Meta | undefined>()
     expectTypeOf(connections[0].clientContext).toEqualTypeOf<Context | undefined>()
     void payload
-    return new Map([
-      [connections[0].connectionId, { signal: { key: ['todos'] }, inlineData: { ok: true } }],
+    return new Map<string, InlineDataResolverResult>([
+      [connections[0].connectionId, { action: 'inlineData', signal: { key: ['todos'] }, inlineData: { ok: true } }],
+      ['conn-revalidate', { action: 'revalidate', signal: { key: ['todos'] } }],
+      ['conn-skip', { action: 'skip' }],
     ])
   }
 

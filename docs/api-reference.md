@@ -215,7 +215,7 @@ import type {
   SSEChannelGroupOptions,
   ChannelSetupOptions,
   InlineDataConnection,
-  InlineDataResult,
+  InlineDataResolverResult,
   InlineDataResolver,
   FastifyRequestLike,
   FastifyReplyLike,
@@ -329,16 +329,25 @@ interface InlineDataConnection<TMeta, TClientContext> {
   readonly clientContext: TClientContext | undefined
 }
 
-interface InlineDataResult {
-  signal: RevalidateSignal
-  inlineData?: JSONValue
-  markStale?: boolean
-}
+type InlineDataResolverResult =
+  | {
+      action: 'inlineData'
+      signal: RevalidateSignal
+      inlineData: JSONValue
+      markStale?: boolean
+    }
+  | {
+      action: 'revalidate'
+      signal: RevalidateSignal
+    }
+  | {
+      action: 'skip'
+    }
 
 type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
-) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
+) => Map<string, InlineDataResolverResult> | Promise<Map<string, InlineDataResolverResult>>
 
 interface FastifyRequestLike {
   raw: IncomingMessage
