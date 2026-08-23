@@ -38,6 +38,10 @@ describe('pubsub-utils', () => {
     expect(isSignalPayload({ key: ['a'], exact: 'not-a-bool' })).toBe(false)
     expect(isSignalPayload({ key: ['a'], inlineData: Symbol('bad') })).toBe(false)
     expect(isSignalPayload({ key: ['a'], inlineData: 1, exact: true })).toBe(false)
+    expect(isSignalPayload({ key: ['a'], target: 'swr' })).toBe(false)
+    expect(isSignalPayload({ key: ['a'], markStale: true })).toBe(false)
+    expect(isSignalPayload({ key: ['a'], inlineData: 1, extraField: 'unsupported' })).toBe(false)
+    expect(isSignalPayload({ key: ['a'], exact: true, extraField: 'unsupported' })).toBe(false)
   })
 
   it('isEnvelope validates origin string and payload property', () => {

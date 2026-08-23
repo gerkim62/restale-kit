@@ -1,6 +1,6 @@
 # Getting Started
 
-> **What it does:** After a DB write on the server, call `group.broadcastToAll(...)` (or `group.publish(...)`). Every connected browser client automatically refetches its stale queries. No polling, no websockets.
+> **What it does:** After a DB write on the server, call `group.broadcastToAll(...)` to notify all connected clients, or `group.publish(topic, ...)` to deliver only to channels subscribed to that topic. Connected browser clients automatically refetch their stale queries. No polling, no websockets.
 
 ---
 

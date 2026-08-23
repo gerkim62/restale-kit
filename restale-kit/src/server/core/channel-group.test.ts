@@ -1262,6 +1262,61 @@ describe('SSEChannelGroup — channelDefaults', () => {
       consoleSpy.mockRestore()
     })
 
+    it('rejects pubsub updateClientContext control messages with negative or fractional revisions', async () => {
+      const pubsub = new MemoryPubSubAdapter()
+      const group = new SSEChannelGroup({ pubsub })
+      const ch = createSSEChannel()
+      group.register(ch)
+
+      // Set baseline context with valid revision 1
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 1 },
+          revision: 1,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with negative revision (-1) -> must be rejected
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 2 },
+          revision: -1,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with fractional revision (2.5) -> must be rejected
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 3 },
+          revision: 2.5,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 1 })
+
+      // Publish control message with valid safe integer revision (2) -> must be accepted
+      await pubsub.publish(group.controlTopic, {
+        kind: 'control',
+        data: {
+          type: 'updateClientContext',
+          connectionId: ch.connectionId,
+          clientContext: { page: 4 },
+          revision: 2,
+        },
+      })
+      expect(group.getClientContext(ch.connectionId)).toEqual({ page: 4 })
+    })
+
     it('catches and logs errors during pubsub inlineData delivery', async () => {
       const pubsub = new MemoryPubSubAdapter()
       const group = new SSEChannelGroup({

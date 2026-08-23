@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,11 +43,28 @@ try {
     mkdirSync(restalePackageDir, { recursive: true })
     run('tar', ['-xzf', join(temporaryDirectory, tarball), '-C', restalePackageDir, '--strip-components=1'])
 
-    // Link peer/dev dependencies from existing node_modules for instant runtime and type-checking
-    for (const item of readdirSync(sourceNodeModules)) {
-      if (item === 'restale-kit' || item === '.bin' || item === '.pnpm') continue
+    // Read declared dependencies and peer dependencies from package manifest
+    const manifest = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8'))
+    const requiredPackages = new Set([
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+      'typescript',
+      '@types/node',
+      '@types/react',
+    ])
+
+    // Link only explicitly declared dependencies and designated peer-dependency fixtures
+    for (const pkgName of requiredPackages) {
+      if (pkgName === 'restale-kit' || pkgName === '.bin' || pkgName === '.pnpm') continue
+      const sourcePkgPath = join(sourceNodeModules, pkgName)
+      if (!existsSync(sourcePkgPath)) continue
+      const destPkgPath = join(consumerNodeModules, pkgName)
+      if (pkgName.startsWith('@')) {
+        const [scope] = pkgName.split('/')
+        mkdirSync(join(consumerNodeModules, scope), { recursive: true })
+      }
       try {
-        symlinkSync(join(sourceNodeModules, item), join(consumerNodeModules, item), 'junction')
+        symlinkSync(sourcePkgPath, destPkgPath, 'junction')
       } catch {
         // ignore if exists
       }

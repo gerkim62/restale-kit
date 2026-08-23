@@ -445,6 +445,9 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
             this.closeConnection(message.data.connectionId, readScope(message.data))
           }
           if (message.data.type === 'updateClientContext' && typeof message.data.connectionId === 'string' && 'clientContext' in message.data) {
+            if ('revision' in message.data && (typeof message.data.revision !== 'number' || !Number.isSafeInteger(message.data.revision) || message.data.revision < 0)) {
+              return
+            }
             const raw = message.data.clientContext
             if (this.isClientContext(raw)) {
               const scope = readScope(message.data)

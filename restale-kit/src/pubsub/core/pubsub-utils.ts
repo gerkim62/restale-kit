@@ -7,11 +7,18 @@ export function isObject(val: unknown): val is Record<string, unknown> {
 
 function isValidSignal(value: unknown): value is Signal {
   if (!isObject(value) || !isCacheKey(value.key)) return false
+  const keys = Object.keys(value)
   if ('inlineData' in value) {
-    return isJSONValue(value.inlineData) && !('exact' in value) &&
+    if (keys.some((key) => key !== 'key' && key !== 'inlineData' && key !== 'markStale')) {
+      return false
+    }
+    return isJSONValue(value.inlineData) &&
       (!('markStale' in value) || typeof value.markStale === 'boolean')
   }
-  return !('markStale' in value) && (!('exact' in value) || typeof value.exact === 'boolean')
+  if (keys.some((key) => key !== 'key' && key !== 'exact')) {
+    return false
+  }
+  return !('exact' in value) || typeof value.exact === 'boolean'
 }
 
 export function isSignalPayload(val: unknown): val is Signal | Signal[] {
