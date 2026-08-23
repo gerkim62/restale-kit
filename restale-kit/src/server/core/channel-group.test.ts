@@ -110,7 +110,7 @@ describe('channel-group', () => {
     const group = new SSEChannelGroup<TestMeta, { page: number }>({
       inlineDataResolver: (connections) => new Map(connections.map((connection) => [
         connection.connectionId,
-        { signal: { key: ['todos'] }, inlineData: ['fresh'] },
+        { action: 'inlineData', signal: { key: ['todos'] }, inlineData: ['fresh'] },
       ])),
     })
     const selected = createSSEChannel()
@@ -1171,7 +1171,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
         inlineDataResolver: (connections) => {
           const map = new Map()
           for (const conn of connections) {
-            map.set(conn.connectionId, { signal: { key: ['item'] }, inlineData: { value: 123 } })
+            map.set(conn.connectionId, { action: 'inlineData', signal: { key: ['item'] }, inlineData: { value: 123 } })
           }
           return map
         },
@@ -1208,7 +1208,7 @@ describe('SSEChannelGroup — channelDefaults', () => {
           // Return result for only the first connection, omitting others
           const map = new Map()
           if (connections.length > 0) {
-            map.set(connections[0].connectionId, { signal: { key: ['item', 1] }, inlineData: { name: 'Item 1' } })
+            map.set(connections[0].connectionId, { action: 'inlineData', signal: { key: ['item', 1] }, inlineData: { name: 'Item 1' } })
           }
           return map
         },
@@ -1231,6 +1231,74 @@ describe('SSEChannelGroup — channelDefaults', () => {
         topic: 'partial-topic',
         missingConnectionIds: [ch2.connectionId],
       })
+    })
+
+    it('supports explicit action: skip without triggering onInlineDataResolverError', async () => {
+      const onErrorSpy = vi.fn()
+      const group = new SSEChannelGroup({
+        inlineDataResolver: (connections) => {
+          const map = new Map()
+          if (connections.length >= 2) {
+            map.set(connections[0].connectionId, { action: 'inlineData', signal: { key: ['item', 1] }, inlineData: { name: 'Item 1' } })
+            map.set(connections[1].connectionId, { action: 'skip' })
+          }
+          return map
+        },
+        onInlineDataResolverError: onErrorSpy,
+      })
+
+      const ch1 = createSSEChannel()
+      const ch2 = createSSEChannel()
+      group.register(ch1, undefined, { topics: ['skip-topic'] })
+      group.register(ch2, undefined, { topics: ['skip-topic'] })
+
+      const ch1Spy = vi.spyOn(ch1, 'invalidate')
+      const ch2Spy = vi.spyOn(ch2, 'invalidate')
+
+      await group.pushInlineData('skip-topic', { update: true })
+
+      expect(ch1Spy).toHaveBeenCalledWith({ key: ['item', 1], inlineData: { name: 'Item 1' } }, undefined)
+      expect(ch2Spy).not.toHaveBeenCalled()
+      expect(onErrorSpy).not.toHaveBeenCalled()
+    })
+
+    it('supports action: revalidate in inlineDataResolver', async () => {
+      const group = new SSEChannelGroup({
+        inlineDataResolver: (connections) => {
+          const map = new Map()
+          for (const conn of connections) {
+            map.set(conn.connectionId, { action: 'revalidate', signal: { key: ['refetch-only'] } })
+          }
+          return map
+        },
+      })
+
+      const ch = createSSEChannel()
+      group.register(ch, undefined, { topics: ['reval-topic'] })
+      const chSpy = vi.spyOn(ch, 'invalidate')
+
+      await group.pushInlineData('reval-topic', { changed: true })
+
+      expect(chSpy).toHaveBeenCalledWith({ key: ['refetch-only'] }, undefined)
+    })
+
+    it('throws AggregateError when inlineDataResolver returns invalid action', async () => {
+      const group = new SSEChannelGroup({
+        inlineDataResolver: (connections) => {
+          const map = new Map<string, any>()
+          for (const conn of connections) {
+            map.set(conn.connectionId, { action: 'unknown_action' })
+          }
+          return map
+        },
+      })
+
+      const ch = createSSEChannel()
+      group.register(ch, undefined, { topics: ['invalid-action-topic'] })
+
+      await expect(group.pushInlineData('invalid-action-topic', { changed: true })).rejects.toThrow(
+        AggregateError,
+      )
     })
 
     it('handles subscribeControl schema validation failure gracefully without throwing uncaught', async () => {

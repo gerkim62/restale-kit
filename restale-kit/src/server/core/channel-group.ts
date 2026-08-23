@@ -34,20 +34,25 @@ export interface InlineDataConnection<TMeta, TClientContext> {
  * kept separate to preserve the client-context API; it is converted to a universal
  * InlineDataSignal immediately before delivery.
  */
-export interface InlineDataResult {
-  /**
-   * The target cache key signal. If `inlineData` is omitted, the entire signal is delivered as a universal signal.
-   * If `inlineData` is provided, the key (and optional markStale) is combined with inlineData into an InlineDataSignal.
-   */
-  signal: RevalidateSignal
-  inlineData?: JSONValue
-  markStale?: boolean
-}
+export type InlineDataResolverResult =
+  | {
+      action: 'inlineData'
+      signal: RevalidateSignal
+      inlineData: JSONValue
+      markStale?: boolean
+    }
+  | {
+      action: 'revalidate'
+      signal: RevalidateSignal
+    }
+  | {
+      action: 'skip'
+    }
 
 export type InlineDataResolver<TMeta, TClientContext> = (
   connections: ReadonlyArray<InlineDataConnection<TMeta, TClientContext>>,
   payload: JSONValue,
-) => Map<string, InlineDataResult> | Promise<Map<string, InlineDataResult>>
+) => Map<string, InlineDataResolverResult> | Promise<Map<string, InlineDataResolverResult>>
 
 export interface SSEChannelGroupOptions<TMeta = unknown, TClientContext = unknown> {
   metaSchema?: StandardSchemaV1<unknown, TMeta>
@@ -477,16 +482,25 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
   }
 
   private updateLocalClientContext(
-    connectionId: string, context: TClientContext, scope?: Record<string, JSONValue>, revision?: number,
+    connectionId: string,
+    context: TClientContext,
+    scope?: Record<string, JSONValue>,
+    revision?: number,
   ): boolean {
-    const latest = this.clientContextRevisions.get(connectionId)
-    if (revision !== undefined && latest !== undefined && revision <= latest) return false
-    let updated = false
-    for (const channel of this.connectionIndex.get(connectionId) ?? []) {
-      const entry = this.channels.get(channel)
-      if (entry && (!scope || isScopeMatch(entry.meta, scope))) { entry.clientContext = context; updated = true }
+    const latestRevision = this.clientContextRevisions.get(connectionId)
+    if (revision !== undefined && latestRevision !== undefined && revision <= latestRevision) {
+      return false
     }
-    if (updated && revision !== undefined) this.clientContextRevisions.set(connectionId, revision)
+    let updated = false
+    for (const channel of Array.from(this.connectionIndex.get(connectionId) ?? [])) {
+      const entry = this.channels.get(channel)
+      if (!entry || (scope && !isScopeMatch(entry.meta, scope))) continue
+      entry.clientContext = context
+      updated = true
+    }
+    if (updated && revision !== undefined) {
+      this.clientContextRevisions.set(connectionId, revision)
+    }
     return updated
   }
 
@@ -494,12 +508,14 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     const resolver = this.options.inlineDataResolver
     if (!resolver) throw new Error('[SSEChannelGroup.pushInlineData] inlineDataResolver must be configured.')
     const channels = Array.from(this.topicChannels.get(topic) ?? [])
-    const connections = channels.map((channel) => {
+    const connections: InlineDataConnection<TMeta, TClientContext>[] = channels.map((channel) => {
       const entry = this.channels.get(channel)
       return { connectionId: channel.connectionId, meta: entry?.meta, clientContext: entry?.clientContext }
     })
     const resolved = await resolver(connections, payload)
-    const missingConnectionIds = connections.filter((connection) => !resolved.has(connection.connectionId)).map((connection) => connection.connectionId)
+    const missingConnectionIds = connections
+      .filter((connection) => !resolved.has(connection.connectionId))
+      .map((connection) => connection.connectionId)
     if (missingConnectionIds.length) {
       console.warn(
         `[SSEChannelGroup] inlineDataResolver returned no result for ${String(missingConnectionIds.length)} connection(s) on topic "${topic}". Missing IDs: ${missingConnectionIds.join(', ')}`
@@ -509,15 +525,20 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
     const errors: unknown[] = []
     for (const channel of channels) {
       const result = resolved.get(channel.connectionId)
-      if (!result) continue
-      const signal: Signal = result.inlineData === undefined
-        ? result.signal
-        : {
+      if (!result || result.action === 'skip') continue
+      try {
+        let signal: Signal
+        if (result.action === 'inlineData') {
+          signal = {
             key: result.signal.key,
             inlineData: result.inlineData,
-            ...(result.markStale ?? result.signal.markStale ? { markStale: true } : {}),
+            ...(result.markStale ? { markStale: true } : {}),
           }
-      try {
+        } else if (result.action === 'revalidate') {
+          signal = result.signal
+        } else {
+          throw new Error(`[SSEChannelGroup] Invalid action in inlineDataResolver result for connection "${channel.connectionId}": ${String((result as { action?: unknown }).action)}`)
+        }
         this.deliver(channel, signal)
       } catch (error) {
         errors.push(error)

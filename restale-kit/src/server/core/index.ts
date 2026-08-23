@@ -6,7 +6,7 @@ export type {
   SSEChannelGroupOptions,
   ChannelSetupOptions,
   InlineDataConnection,
-  InlineDataResult,
+  InlineDataResolverResult,
   InlineDataResolver,
 } from './channel-group.js'
 export type { FastifyRequestLike, FastifyReplyLike } from '../node/attach.js'

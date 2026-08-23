@@ -338,7 +338,7 @@ The guard function must be synchronous and can return one of three results:
 | `{ action: 'skip' }` | Frame is silently dropped; connection stays open. Useful for rate-limiting or sampling. |
 | `{ action: 'close', reason?: string }` | Send a terminal `revoke` frame with the supplied reason, then close the connection. No auto-reconnect. |
 
-Errors thrown in `beforeFrame` are treated as `{ action: 'close' }`.
+Errors thrown in `beforeFrame` are treated as `{ action: 'close', reason: 'guard-error' }`. Returning an invalid or unrecognized result closes the connection with reason `'invalid-guard-result'`.
 
 ### Distributing defaults via `channelDefaults`
 
