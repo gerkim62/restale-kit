@@ -3,7 +3,10 @@ import {
   isCacheKey,
   type Signal,
 } from '@/types/protocol.js'
-import { isObject } from '@/pubsub/core/pubsub-utils.js'
+
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val)
+}
 
 /** Validates the signal shape used by SSE invalidate frames. */
 export function validatePayload(data: unknown): Signal | Signal[] {

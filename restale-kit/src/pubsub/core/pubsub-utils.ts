@@ -21,7 +21,7 @@ function isValidSignal(value: unknown): value is Signal {
   return !('exact' in value) || typeof value.exact === 'boolean'
 }
 
-export function isSignalPayload(val: unknown): val is Signal | Signal[] {
+function isSignalPayload(val: unknown): val is Signal | Signal[] {
   return Array.isArray(val) ? val.length > 0 && val.every(isValidSignal) : isValidSignal(val)
 }
 
