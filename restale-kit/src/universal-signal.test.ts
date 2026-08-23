@@ -26,7 +26,7 @@ describe('signal protocol', () => {
   })
 
   it('broadcasts the same signal to every registered channel', async () => {
-    const group = new SSEChannelGroup()
+    const group = new SSEChannelGroup({ secret: 'test-secret' })
     const first = createSSEChannel()
     const second = createSSEChannel()
     const firstReader = first.stream.getReader()
@@ -37,7 +37,7 @@ describe('signal protocol', () => {
 
     group.register(first)
     group.register(second)
-    group.broadcastToAll({ key: ['todos'] })
+    group.local.broadcast({ key: ['todos'] }, true)
     const decoder = new TextDecoder()
     expect(decoder.decode((await firstReader.read()).value)).toContain('"key":["todos"]')
     expect(decoder.decode((await secondReader.read()).value)).toContain('"key":["todos"]')

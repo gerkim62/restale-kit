@@ -58,104 +58,57 @@ function makeMockRedisClient(): { client: RedisClient; messageListeners: Array<(
 // Issue 1 — revokeWhere({connectionId}) unsafe pattern must be documented and warned
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Issue 1 — revokeWhere connectionId security contract and warning', () => {
-  it('revokeWhere with connectionId as sole criteria emits security warning and closes the matching channel', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const group = new SSEChannelGroup<any, { userId: number }>()
-      const ch = createSSEChannel()
-      group.register(ch, { userId: 1 })
+describe('Issue 1 — revokeWhere and revokeByConnectionId security contracts', () => {
+  it('revokeWhere with object criteria closes matching channel', async () => {
+    const group = new SSEChannelGroup<{ userId: number }>({
+      secret: 'sec-reg-1',
+      scopeBy: ['userId'],
+    })
+    const ch = createSSEChannel()
+    group.register(ch, { userId: 1 })
 
-      const result = await group.revokeWhere({ connectionId: ch.connectionId })
-      expect(result.localClosed).toBe(1)
-      expect(ch.state).toBe('closed')
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.revokeWhere] SECURITY: criteria contains only connectionId'))
-    } finally {
-      warnSpy.mockRestore()
-    }
+    const result = group.local.revokeWhere({ userId: 1 })
+    expect(result.revoked).toBe(1)
+    expect(ch.state).toBe('closed')
   })
 
-  it('revokeWhere with connectionId alongside metadata criteria does not warn', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const group = new SSEChannelGroup<any, { userId: number }>()
-      const ch = createSSEChannel()
-      group.register(ch, { userId: 1 })
+  it('revokeByConnectionId with matching scope closes the channel', async () => {
+    const group = new SSEChannelGroup<{ userId: number }>({
+      secret: 'sec-reg-2',
+      scopeBy: ['userId'],
+    })
+    const req = new Request('https://example.com/sse')
+    const res = await group.handle(req, { meta: { userId: 1 } })
+    const reader = res.body!.getReader()
+    const { value } = await reader.read()
+    const text = new TextDecoder().decode(value)
+    const match = text.match(/"connectionId":"([^"]+)"/)
+    const token = match![1]
 
-      const result = await group.revokeWhere({ connectionId: ch.connectionId, userId: 1 })
-      expect(result.localClosed).toBe(1)
-      expect(ch.state).toBe('closed')
-      expect(warnSpy).not.toHaveBeenCalled()
-    } finally {
-      warnSpy.mockRestore()
-    }
+    // With matching scope
+    const result = group.local.revokeByConnectionId(token, { userId: 1 })
+    expect(result.closed).toBe(true)
+    expect(group.local.size).toBe(0)
   })
 
-  it('revokeByConnectionId without scope emits security warning', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const group = new SSEChannelGroup<any, { userId: number }>()
-      const ch = createSSEChannel()
-      group.register(ch, { userId: 1 })
+  it('revokeByConnectionId with mismatched scope rejects without closing channel', async () => {
+    const group = new SSEChannelGroup<{ userId: number }>({
+      secret: 'sec-reg-3',
+      scopeBy: ['userId'],
+    })
+    const req = new Request('https://example.com/sse')
+    const res = await group.handle(req, { meta: { userId: 1 } })
+    const reader = res.body!.getReader()
+    const { value } = await reader.read()
+    const text = new TextDecoder().decode(value)
+    const match = text.match(/"connectionId":"([^"]+)"/)
+    const token = match![1]
 
-      const result = await group.revokeByConnectionId(ch.connectionId)
-      expect(result.closed).toBe(true)
-      expect(ch.state).toBe('closed')
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.revokeByConnectionId] SECURITY: scope omitted'))
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
-
-  it('updateClientContext without scope emits security warning', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let ch: ReturnType<typeof createSSEChannel> | undefined
-    try {
-      const group = new SSEChannelGroup<any, { page: number }>()
-      ch = createSSEChannel()
-      group.register(ch, undefined)
-
-      const result = await group.updateClientContext(ch.connectionId, { page: 2 })
-      expect(result.updated).toBe(true)
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SSEChannelGroup.updateClientContext] SECURITY: scope omitted'))
-    } finally {
-      ch?.close()
-      warnSpy.mockRestore()
-    }
-  })
-
-  it('revokeByConnectionId with scope rejects a mismatched userId (safe path, no warning)', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const group = new SSEChannelGroup<any, { userId: number }>()
-      const ch = createSSEChannel()
-      group.register(ch, { userId: 1 })
-
-      // Scope doesn't match — should not close
-      const result = await group.revokeByConnectionId(ch.connectionId, { userId: 999 })
-      expect(result.closed).toBe(false)
-      expect(ch.state).toBe('open')
-      expect(warnSpy).not.toHaveBeenCalled()
-      ch.close()
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
-
-  it('revokeByConnectionId with correct scope closes the channel (safe path, no warning)', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const group = new SSEChannelGroup<any, { userId: number }>()
-      const ch = createSSEChannel()
-      group.register(ch, { userId: 1 })
-
-      const result = await group.revokeByConnectionId(ch.connectionId, { userId: 1 })
-      expect(result.closed).toBe(true)
-      expect(ch.state).toBe('closed')
-      expect(warnSpy).not.toHaveBeenCalled()
-    } finally {
-      warnSpy.mockRestore()
-    }
+    // Scope doesn't match
+    const result = group.local.revokeByConnectionId(token, { userId: 999 })
+    expect(result.closed).toBe(false)
+    expect(group.local.size).toBe(1)
+    await group.dispose()
   })
 })
 
@@ -166,31 +119,19 @@ describe('Issue 1 — revokeWhere connectionId security contract and warning', (
 describe('Issue 2 — no double-recording with shared eventStore', () => {
   it('broadcast records each signal exactly once in the shared eventStore', () => {
     const store = createEventStore()
-    const group = new SSEChannelGroup<any, { userId: number }>({ eventStore: store })
+    const group = new SSEChannelGroup<{ userId: number }>({
+      secret: 'sec-reg-4',
+      scopeBy: ['userId'],
+      eventStore: store,
+    })
     const ch = createSSEChannel({ eventStore: store })
     group.register(ch, { userId: 1 })
 
-    group.broadcastToAll({ key: ['todos'] })
+    group.local.broadcast({ key: ['todos'] }, true)
 
     // Exactly one record — not two
     const r1 = store.add({ key: ['probe'] }) // id '2'
     expect(r1.id).toBe('2') // if double-recorded it would be '3'
-    ch.close()
-  })
-
-  it('publish records each signal exactly once in the shared eventStore', async () => {
-    const store = createEventStore()
-    const group = new SSEChannelGroup<any, { userId: number }>({
-      eventStore: store,
-    })
-    const ch = createSSEChannel({ eventStore: store })
-    group.register(ch, { userId: 1 }, { topics: ['updates'] })
-
-    await group.publish('updates', { key: ['products'] })
-
-    // Exactly one record — probe lands on id '2'
-    const probe = store.add({ key: ['probe'] })
-    expect(probe.id).toBe('2')
     ch.close()
   })
 
@@ -207,24 +148,20 @@ describe('Issue 2 — no double-recording with shared eventStore', () => {
   })
 
   it('channel with its own eventBufferCapacity does NOT record into the group store (no cross-contamination)', () => {
-    // Pre-fix: the group would record into its own store (id '1'), then channel.invalidate()
-    // with a customId would call eventStore.add() again on the shared store — but here the
-    // channel has its OWN private store (via eventBufferCapacity), not the group's store.
-    // Verify the group store only ever sees what the group itself recorded.
     const groupStore = createEventStore()
-    const group = new SSEChannelGroup<any, undefined>({ eventStore: groupStore })
+    const group = new SSEChannelGroup({
+      secret: 'sec-reg-5',
+      eventStore: groupStore,
+    })
     const ch = createSSEChannel({ eventBufferCapacity: 10 })
     group.register(ch, undefined)
 
-    group.broadcastToAll({ key: ['data'] })
+    group.local.broadcast({ key: ['data'] }, true)
 
     // Group store: exactly 1 event (id '1')
     const probe = groupStore.add({ key: ['probe'] })
     expect(probe.id).toBe('2') // broadcast-signal='1', probe='2'
 
-    // The channel's internal store (not accessible directly) should have recorded
-    // its own copy. We verify indirectly: the returned eventId from invalidate()
-    // on a fresh channel with its own store starts at '1' — not influenced by group's counter.
     const soloStore = createEventStore()
     const soloChannel = createSSEChannel({ eventStore: soloStore })
     soloChannel.invalidate({ key: ['x'] })
@@ -380,29 +317,29 @@ describe('Issue 5 — Redis adapter rejects duplicate topic subscription', () =>
 
 describe('Issue 6 — SSEChannelGroup validates controlTopic at construction', () => {
   it('throws when controlTopic is an empty string', () => {
-    expect(() => new SSEChannelGroup({ controlTopic: '' })).toThrow(
+    expect(() => new SSEChannelGroup({ secret: 'sec-reg', controlTopic: '' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('throws when controlTopic is whitespace only', () => {
-    expect(() => new SSEChannelGroup({ controlTopic: '   ' })).toThrow(
+    expect(() => new SSEChannelGroup({ secret: 'sec-reg', controlTopic: '   ' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('throws when controlTopic is a tab character only', () => {
-    expect(() => new SSEChannelGroup({ controlTopic: '\t' })).toThrow(
+    expect(() => new SSEChannelGroup({ secret: 'sec-reg', controlTopic: '\t' })).toThrow(
       /controlTopic must be a non-empty/i
     )
   })
 
   it('accepts a valid custom controlTopic', () => {
-    expect(() => new SSEChannelGroup({ controlTopic: '__my_control__' })).not.toThrow()
+    expect(() => new SSEChannelGroup({ secret: 'sec-reg', controlTopic: '__my_control__' })).not.toThrow()
   })
 
   it('uses the default controlTopic when none is provided', () => {
-    const group = new SSEChannelGroup()
+    const group = new SSEChannelGroup({ secret: 'sec-reg' })
     expect(group.controlTopic).toBe('__restale_control__')
   })
 })

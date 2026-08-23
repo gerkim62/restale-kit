@@ -31,12 +31,18 @@ interface TestMeta {
 }
 
 describe('SSEChannelGroup — review fixes', () => {
-  beforeEach(() => { vi.useFakeTimers() })
-  afterEach(() => { vi.useRealTimers() })
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
 
-  it('attachNodeResponse throws SchemaValidationError BEFORE writing HTTP headers when meta is invalid', () => {
+  it('handle (Node) throws SchemaValidationError BEFORE writing HTTP headers when meta is invalid', async () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-1',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
@@ -44,18 +50,19 @@ describe('SSEChannelGroup — review fixes', () => {
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    expect(() => {
-      group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
-    }).toThrow(SchemaValidationError)
+    await expect(async () => {
+      await group.handle(req, res, { meta: { userId: 'u1' } })
+    }).rejects.toThrow(SchemaValidationError)
 
-    // The critical assertion: writeHead must NOT have been called because
-    // validation should happen before the transport side-effect.
     expect(res.writeHead).not.toHaveBeenCalled()
+    expect(group.local.size).toBe(0)
   })
 
-  it('attachNodeResponse does NOT register the channel when meta validation fails', () => {
+  it('handle (Node) does NOT register the channel when meta validation fails', async () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-2',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
@@ -63,33 +70,36 @@ describe('SSEChannelGroup — review fixes', () => {
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    expect(() => {
-      group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
-    }).toThrow(SchemaValidationError)
+    await expect(async () => {
+      await group.handle(req, res, { meta: { userId: 'u1' } })
+    }).rejects.toThrow(SchemaValidationError)
 
-    expect(group.size).toBe(0)
+    expect(group.local.size).toBe(0)
   })
 
-  it('createFetchResponse throws SchemaValidationError BEFORE creating a Response when meta is invalid', () => {
+  it('handle (Fetch) throws SchemaValidationError BEFORE creating a Response when meta is invalid', async () => {
     const metaSchema = createInvalidSchema('bad meta')
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-3',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
 
     const request = new Request('http://localhost/sse')
 
-    expect(() => {
-      group.createFetchResponse(request, { meta: { userId: 'u1' } })
-    }).toThrow(SchemaValidationError)
+    await expect(async () => {
+      await group.handle(request, { meta: { userId: 'u1' } })
+    }).rejects.toThrow(SchemaValidationError)
 
-    // No channel should be registered
-    expect(group.size).toBe(0)
+    expect(group.local.size).toBe(0)
   })
 
-  it('attachNodeResponse succeeds and registers channel when meta passes validation', () => {
+  it('handle (Node) succeeds and registers channel when meta passes validation', async () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-4',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
@@ -97,91 +107,101 @@ describe('SSEChannelGroup — review fixes', () => {
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    const result = group.attachNodeResponse(req, res, { meta: { userId: 'u1' } })
+    await group.handle(req, res, { meta: { userId: 'u1' } })
 
-    expect(result.channel).toBeDefined()
-    expect(result.channel.state).toBe('open')
-    expect(group.size).toBe(1)
-    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-      'Content-Type': 'text/event-stream',
-    }))
+    expect(group.local.size).toBe(1)
+    expect(res.writeHead).toHaveBeenCalledWith(
+      200,
+      expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+      }),
+    )
   })
 
-  it('createFetchResponse succeeds and registers channel when meta passes validation', () => {
+  it('handle (Fetch) succeeds and registers channel when meta passes validation', async () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-5',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
 
     const request = new Request('http://localhost/sse')
-    const result = group.createFetchResponse(request, { meta: { userId: 'u1' } })
+    const response = await group.handle(request, { meta: { userId: 'u1' } })
 
-    expect(result.response).toBeInstanceOf(Response)
-    expect(result.channel).toBeDefined()
-    expect(group.size).toBe(1)
+    expect(response).toBeInstanceOf(Response)
+    expect(group.local.size).toBe(1)
   })
 
-  it('attachNodeResponse works without metaSchema (no validation, backward compat)', () => {
+  it('handle (Node) works without metaSchema', async () => {
     const group = new SSEChannelGroup({
+      secret: 'sec-6',
       channelDefaults: {},
     })
 
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    const result = group.attachNodeResponse(req, res, {})
+    await group.handle(req, res, {})
 
-    expect(result.channel.state).toBe('open')
-    expect(group.size).toBe(1)
+    expect(group.local.size).toBe(1)
   })
 
-  it('attachNodeResponse passes topics through to registration', () => {
+  it('handle passes topics through to registration', async () => {
     const group = new SSEChannelGroup({
+      secret: 'sec-7',
       channelDefaults: {},
     })
 
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    group.attachNodeResponse(req, res, {
+    await group.handle(req, res, {
       topics: ['user:123', 'global'],
     })
 
-    expect(group.size).toBe(1)
+    expect(group.local.size).toBe(1)
   })
 
-  it('attachNodeResponse auto-deregisters on channel close', () => {
+  it('handle (Node) auto-deregisters on channel close', async () => {
     const group = new SSEChannelGroup({
+      secret: 'sec-8',
       channelDefaults: {},
     })
 
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    group.attachNodeResponse(req, res, {})
-    expect(group.size).toBe(1)
+    await group.handle(req, res, {})
+    expect(group.local.size).toBe(1)
 
     // Simulate client disconnect
     req.emit('close')
-    expect(group.size).toBe(0)
+    expect(group.local.size).toBe(0)
   })
 
   it('register() still validates meta via metaSchema', () => {
     const metaSchema = createInvalidSchema('registration meta invalid')
-    const group = new SSEChannelGroup<TestMeta>({ metaSchema })
+    const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-9',
+      scopeBy: ['userId'],
+      metaSchema,
+    })
     const channel = createSSEChannel({})
 
     expect(() => {
       group.register(channel, { userId: 'u1' })
     }).toThrow(SchemaValidationError)
 
-    expect(group.size).toBe(0)
+    expect(group.local.size).toBe(0)
   })
 
-  it('register() stores validated meta that broadcast predicate can match', () => {
+  it('register() stores validated meta that broadcast filter can match', async () => {
     const metaSchema = createValidSchema<TestMeta>()
     const group = new SSEChannelGroup<TestMeta>({
+      secret: 'sec-10',
+      scopeBy: ['userId'],
       channelDefaults: {},
       metaSchema,
     })
@@ -189,11 +209,11 @@ describe('SSEChannelGroup — review fixes', () => {
     const req = createMockRequest('/sse')
     const res = createMockResponse()
 
-    group.attachNodeResponse(req, res, { meta: { userId: 'alice', role: 'admin' } })
+    await group.handle(req, res, { meta: { userId: 'alice', role: 'admin' } })
 
     const spy = vi.fn()
     const seenMetas: TestMeta[] = []
-    group.broadcast({ key: ['test'] }, (meta) => {
+    group.local.broadcast({ key: ['test'] }, (meta) => {
       if (meta === undefined) return false
       seenMetas.push(meta)
       spy()
@@ -202,58 +222,5 @@ describe('SSEChannelGroup — review fixes', () => {
 
     expect(spy).toHaveBeenCalledTimes(1)
     expect(seenMetas).toEqual([{ userId: 'alice', role: 'admin' }])
-  })
-
-  it('meta validation failure in attachNodeResponse does not leave a half-attached stream', () => {
-    const metaSchema = createInvalidSchema('reject')
-    const group = new SSEChannelGroup<TestMeta>({
-      channelDefaults: {},
-      metaSchema,
-    })
-
-    const req = createMockRequest('/sse')
-    const res = createMockResponse()
-
-    try {
-      group.attachNodeResponse(req, res, { meta: { userId: 'bad' } })
-    } catch {
-      // expected
-    }
-
-    // No headers written, no channel leaked
-    expect(res.writeHead).not.toHaveBeenCalled()
-    expect(group.size).toBe(0)
-
-    // A subsequent valid attachNodeResponse must work cleanly
-    const metaSchemaGood = createValidSchema<TestMeta>()
-    const group2 = new SSEChannelGroup<TestMeta>({
-      channelDefaults: {},
-      metaSchema: metaSchemaGood,
-    })
-    const req2 = createMockRequest('/sse')
-    const res2 = createMockResponse()
-    const result = group2.attachNodeResponse(req2, res2, { meta: { userId: 'good' } })
-    expect(result.channel.state).toBe('open')
-    expect(group2.size).toBe(1)
-  })
-
-  it('meta validation failure in createFetchResponse does not leave a half-created Response', () => {
-    const metaSchema = createInvalidSchema('reject')
-    const group = new SSEChannelGroup<TestMeta>({
-      channelDefaults: {},
-      metaSchema,
-    })
-
-    const request = new Request('http://localhost/sse')
-
-    let threw = false
-    try {
-      group.createFetchResponse(request, { meta: { userId: 'bad' } })
-    } catch {
-      threw = true
-    }
-
-    expect(threw).toBe(true)
-    expect(group.size).toBe(0)
   })
 })

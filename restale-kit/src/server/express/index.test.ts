@@ -2,15 +2,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { Server } from 'node:http'
 import express from 'express'
 import { SSEChannelGroup } from '../core/index.js'
-import { SSE_HEADERS } from '@/utils/constants.js'
 import {
-  createMockNodeRequest,
-  createMockNodeResponse,
   readStreamUntil,
   closeHttpServer,
 } from '@/test-fixtures/http-test-utils.js'
 
-describe('server/express integration via attachNodeResponse', () => {
+describe('server/express integration via group.handle', () => {
   let server: Server | undefined
 
   afterEach(async () => {
@@ -18,30 +15,16 @@ describe('server/express integration via attachNodeResponse', () => {
     server = undefined
   })
 
-  it('attaches SSE response with auto-generated connection ID on mock Express response', () => {
-    const group = new SSEChannelGroup({})
-    const req = createMockNodeRequest('/sse')
-    const res = createMockNodeResponse()
-
-    const { channel } = group.attachNodeResponse(req, res, {})
-    try {
-      expect(channel.connectionId).toBeDefined()
-      expect(typeof channel.connectionId).toBe('string')
-      expect(channel.connectionId.length).toBeGreaterThan(0)
-      expect(res.writeHead).toHaveBeenCalledWith(200, SSE_HEADERS)
-      expect(group.size).toBe(1)
-    } finally {
-      channel.close()
-    }
-  })
-
   describe('Real Express HTTP server integration', () => {
     it('streams SSE frames to real Express client with exact headers and receives broadcasts', async () => {
       const app = express()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'express-secret-1234',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', (req, res) => {
-        group.attachNodeResponse(req, res, { meta: { userId: 'express-user-1' } })
+        return group.handle(req, res, { meta: { userId: 'express-user-1' } })
       })
 
       const port = await new Promise<number>((resolve) => {
@@ -69,15 +52,18 @@ describe('server/express integration via attachNodeResponse', () => {
         expect(initialText).toContain('event: connected\ndata: {"connectionId":')
 
         // Broadcast invalidation signal
-        group.broadcastToAll({ key: ['posts', 1] })
+        group.local.broadcast({ key: ['posts', 1] }, true)
 
         const broadcastText = await readStreamUntil(reader, (t) => t.includes('event: invalidate'))
         expect(broadcastText).toContain('event: invalidate\ndata: {"key":["posts",1]}\n\n')
 
         abortController.abort()
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
+        await vi.waitFor(
+          () => {
+            expect(group.local.size).toBe(0)
+          },
+          { timeout: 1000 },
+        )
       } finally {
         await reader.cancel().catch(() => {})
       }
@@ -85,10 +71,13 @@ describe('server/express integration via attachNodeResponse', () => {
 
     it('handles client abort and server-side revoke cleanly in Express', async () => {
       const app = express()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'express-secret-5678',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', (req, res) => {
-        group.attachNodeResponse(req, res, { meta: { userId: 'express-revoke-user' } })
+        return group.handle(req, res, { meta: { userId: 'express-revoke-user' } })
       })
 
       const port = await new Promise<number>((resolve) => {
@@ -104,14 +93,14 @@ describe('server/express integration via attachNodeResponse', () => {
         const initialText = await readStreamUntil(reader, (t) => t.includes('event: connected'))
         expect(initialText).toContain('event: connected')
 
-        await group.revokeWhere({ userId: 'express-revoke-user' })
+        group.local.revokeWhere({ userId: 'express-revoke-user' })
 
         const revokeText = await readStreamUntil(reader, (t) => t.includes('event: revoke'))
         expect(revokeText).toContain('event: revoke')
 
         const finalChunk = await reader.read()
         expect(finalChunk.done).toBe(true)
-        expect(group.size).toBe(0)
+        expect(group.local.size).toBe(0)
       } finally {
         await reader.cancel().catch(() => {})
       }

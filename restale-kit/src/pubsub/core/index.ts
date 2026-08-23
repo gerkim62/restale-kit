@@ -1,5 +1,7 @@
 import type { PubSubMessage } from '@/types/protocol.js'
 
+export type { PubSubMessage } from '@/types/protocol.js'
+
 export type PubSubEncryptionOptions =
   | { encrypt?: false; encryptionKey?: never }
   | { encrypt?: true; encryptionKey: string }

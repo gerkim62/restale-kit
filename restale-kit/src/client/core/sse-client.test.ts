@@ -1966,5 +1966,32 @@ describe('Connection ID lifecycle', () => {
     instance.emitCustomEvent('connected', JSON.stringify({ connectionId: 'stale-conn' }))
     expect(client.connectionId).toBeUndefined()
   })
+
+  it('parses Retry-After header from xhr.getAllResponseHeaders on reconnect error', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = new SSEClient('/sse', {
+        reconnect: { retryAfter: 'respect', baseDelayMs: 10, jitter: false },
+      })
+      const pending = client.connect()
+      pending.catch(() => {})
+
+      const instance = MockEventSource.instances[0] as any
+      instance.xhr = {
+        getAllResponseHeaders: () => 'content-type: text/event-stream\r\nretry-after: 2\r\n',
+      }
+
+      instance.emitError(Object.assign(new Event('error'), { responseCode: 429 }))
+
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(MockEventSource.instances).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(MockEventSource.instances).toHaveLength(2)
+
+      client.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 

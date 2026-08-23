@@ -23,6 +23,7 @@ import { FRAME_GUARD_DEFAULTS, PROTOCOL_CONSTANTS } from '@/utils/constants.js'
 import { generateUUID } from '@/utils/id.js'
 
 export interface SSEChannelOptions {
+  connectionId?: string
   keepaliveIntervalMs?: number
   retryIntervalMs?: number
   lastEventId?: string
@@ -51,7 +52,7 @@ export interface SSEChannel {
 export function createSSEChannel(options: SSEChannelOptions = {}): SSEChannel {
   validateChannelOptions(options)
   const keepaliveIntervalMs = options.keepaliveIntervalMs ?? PROTOCOL_CONSTANTS.DEFAULT_KEEPALIVE_INTERVAL_MS
-  const connectionId = generateUUID()
+  const connectionId = options.connectionId ?? generateUUID()
   const isResume = options.lastEventId !== undefined
   const ownsEventStore = options.eventStore === undefined
   const capacity = options.eventBufferCapacity ?? (options.eventStore === undefined && options.lifetime ? 50 : undefined)
