@@ -242,26 +242,9 @@ group.broadcast(
 
 The predicate receives `TMeta` directly — when `TMeta` includes `undefined` (i.e. metadata was omitted on registration), the predicate receives `undefined` and must handle it explicitly.
 
-### `broadcastByKey(signal)` — automatic key-based matching
-
-`broadcastByKey` compares the signal key with each channel's registered metadata treated as a key. It uses the same positional prefix/exact and object-subset matching as cache-key matching; it does **not** search for metadata fields anywhere inside a longer signal key.
-
-```ts
-// Register metadata in the same key shape that broadcastByKey should match:
-group.attachNodeResponse(req, res, {
-  meta: ['todos', { userId: '42' }],
-})
-
-// This matches the metadata above.
-group.broadcastByKey({ key: ['todos', { userId: '42' }] })
-```
-
-#### How Key Matching Works
-The signal's `key` is compared position-by-position with each channel's registered metadata. Plain-object metadata is treated as a one-element key (`[{ userId: '42' }]`); array metadata is used as-is. For example, metadata `['todos', { userId: '42' }]` receives a signal with `key: ['todos', { userId: '42' }]`. If your metadata is only `{ userId: '42' }`, use the matching signal key `[{ userId: '42' }]`, or use `broadcast(signal, predicate)` when cache-key and routing-key shapes differ.
-
 ### Broadcasting without metadata
 
-Channels registered without metadata (`group.register(channel)`, no `meta` argument) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels. They are **excluded** from `broadcastByKey` because `undefined` is not a valid JSON value and cannot participate in key-based matching.
+Channels registered without metadata (`meta` omitted) have `undefined` metadata. They are included in `broadcastToAll` and in `broadcast` calls — the predicate receives `undefined` for those channels and can decide how to handle them.
 
 ---
 

@@ -193,25 +193,6 @@ describe('channel-group', () => {
     expect(spyNo).not.toHaveBeenCalled()
   })
 
-  it('broadcastByKey silently skips channels with undefined meta (not a JSON value)', () => {
-    // undefined is not a valid JSONValue, so isJSONValue(meta) returns false and
-    // the channel is excluded from key-based matching — this is correct behaviour.
-    const group = new SSEChannelGroup<{ userId: number } | undefined>()
-    const chWithMeta = createSSEChannel({})
-    const chNoMeta = createSSEChannel({})
-
-    const spyWith = vi.spyOn(chWithMeta, 'invalidate')
-    const spyNo = vi.spyOn(chNoMeta, 'invalidate')
-
-    group.register(chWithMeta, { userId: 7 })
-    group.register(chNoMeta) // undefined meta
-
-    group.broadcastByKey({ key: [{ userId: 7 }] })
-
-    expect(spyWith).toHaveBeenCalled()
-    expect(spyNo).not.toHaveBeenCalled()
-  })
-
   it('omitting meta sets metadata to undefined — revokeWhere cannot match it by criteria', async () => {
     // Omitting meta stores undefined internally. Because undefined is not a valid JSONValue,
     // channelMatchesCriteria returns false for any criteria — revokeWhere cannot revoke
@@ -714,56 +695,6 @@ describe('channel-group', () => {
     ch.close()
     // Should be deregistered exactly once, not double-deregistered
     expect(group.size).toBe(0)
-  })
-
-  // --- broadcastByKey ---
-
-  it('broadcastByKey delivers to channels whose metadata matches the signal key', () => {
-    const group = new SSEChannelGroup<{ userId: number }>()
-    const ch1 = createSSEChannel({})
-    const ch2 = createSSEChannel({})
-
-    const spy1 = vi.spyOn(ch1, 'invalidate')
-    const spy2 = vi.spyOn(ch2, 'invalidate')
-
-    // metadata is { userId: 1 } — treated as [{ userId: 1 }] for key matching
-    group.register(ch1, { userId: 1 })
-    group.register(ch2, { userId: 2 })
-
-    // signal key [{ userId: 1 }] should match only ch1
-    group.broadcastByKey({ key: [{ userId: 1 }] })
-
-    expect(spy1).toHaveBeenCalledWith({ key: [{ userId: 1 }] }, undefined)
-    expect(spy2).not.toHaveBeenCalled()
-  })
-
-  it('broadcastByKey delivers to all channels when key matches all metadata', () => {
-    const group = new SSEChannelGroup<{ role: string }>()
-    const ch1 = createSSEChannel({})
-    const ch2 = createSSEChannel({})
-
-    const spy1 = vi.spyOn(ch1, 'invalidate')
-    const spy2 = vi.spyOn(ch2, 'invalidate')
-
-    group.register(ch1, { role: 'admin' })
-    group.register(ch2, { role: 'user' })
-
-    // empty key prefix matches every channel
-    group.broadcastByKey({ key: [] })
-
-    expect(spy1).toHaveBeenCalled()
-    expect(spy2).toHaveBeenCalled()
-  })
-
-  it('broadcastByKey delivers nothing when no metadata matches', () => {
-    const group = new SSEChannelGroup<{ userId: number }>()
-    const ch = createSSEChannel({})
-    const spy = vi.spyOn(ch, 'invalidate')
-
-    group.register(ch, { userId: 5 })
-
-    group.broadcastByKey({ key: [{ userId: 99 }] })
-    expect(spy).not.toHaveBeenCalled()
   })
 
   it('revokeByConnectionId enforces scope checks', async () => {
@@ -1494,26 +1425,6 @@ describe('SSEChannelGroup — channelDefaults', () => {
         expect.any(Error),
       )
       consoleSpy.mockRestore()
-    })
-
-    it('handles key matching with mismatched array/object types and varying array lengths in broadcastByKey', () => {
-      const group = new SSEChannelGroup<any>()
-      const chArray = createSSEChannel({})
-      const chObject = createSSEChannel({})
-      const spyArray = vi.spyOn(chArray, 'invalidate')
-      const spyObject = vi.spyOn(chObject, 'invalidate')
-
-      group.register(chArray, ['todos', 'list', 'extra'])
-      group.register(chObject, { key: 'not-an-array' })
-
-      // Array vs non-array mismatch & prefix length mismatch
-      group.broadcastByKey({ key: ['todos', 'list'], exact: true })
-      expect(spyArray).not.toHaveBeenCalled()
-      expect(spyObject).not.toHaveBeenCalled()
-
-      // Prefix match on array
-      group.broadcastByKey({ key: ['todos', 'list'], exact: false })
-      expect(spyArray).toHaveBeenCalledTimes(1)
     })
   })
 })

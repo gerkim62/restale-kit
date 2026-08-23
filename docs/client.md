@@ -57,7 +57,7 @@ The provider opens a single SSE connection on mount and closes it when unmounted
 <RestaleProvider
   // Required
   url="/api/sse"
-  // An InvalidationHandler returned by tanstackQueryAdapter, swrAdapter, or makeInvalidationHandler
+  // An invalidation callback, or an adapter returned by tanstackQueryAdapter / swrAdapter
   onInvalidate={onInvalidate}
 
   // Revocation & Errors (optional)

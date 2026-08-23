@@ -130,7 +130,7 @@ describe('ablyPubSubAdapter', () => {
     expect(errorHandler).toHaveBeenCalledWith(expect.any(Error))
   })
 
-  it('handles client connection error events, legacy native echo signals, and error handler callback throws', async () => {
+  it('handles client connection error events, native echo signals, and error handler callback throws', async () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const connListeners: Record<string, (err: unknown) => void> = {}
 
@@ -155,9 +155,9 @@ describe('ablyPubSubAdapter', () => {
       expect.any(Error)
     )
 
-    // Legacy signal payload unwrapping with throwing listener
+    // PubSubMessage unwrapping with throwing listener
     const listener = channelListeners[0]
-    listener({ data: { key: ['legacy-signal'] } })
+    listener({ data: { kind: 'signal', data: { key: ['test-signal'] } } })
 
     consoleSpy.mockRestore()
   })
@@ -185,7 +185,7 @@ describe('ablyPubSubAdapter', () => {
     expect(channel.unsubscribe).toHaveBeenCalled()
   })
 
-  it('normalizes un-enveloped raw signal payload when native echo suppression is active', async () => {
+  it('ignores invalid / non-PubSubMessage payload when native echo suppression is active', async () => {
     const { client, channelListeners } = createMockAblyClient(false)
     const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encrypt: false })
     const callback = vi.fn()
@@ -195,7 +195,7 @@ describe('ablyPubSubAdapter', () => {
     const listener = channelListeners[0]
     listener({ data: { key: ['raw-signal-key'] } })
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['raw-signal-key'] } })
+    expect(callback).not.toHaveBeenCalled()
   })
 
   const validKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
@@ -265,7 +265,7 @@ describe('ablyPubSubAdapter', () => {
     expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['todos'] } })
   })
 
-  it('decrypts encrypted raw signal payload under native echo suppression mode', async () => {
+  it('ignores non-PubSubMessage decrypted payload under native echo suppression mode', async () => {
     const { client, channelListeners } = createMockAblyClient(false)
     const adapter = ablyPubSubAdapter(client, { useNativeEchoSuppression: true, encryptionKey: validKey })
     const callback = vi.fn()
@@ -277,7 +277,7 @@ describe('ablyPubSubAdapter', () => {
     const listener = channelListeners[0]
     listener({ data: encrypted })
 
-    expect(callback).toHaveBeenCalledWith({ kind: 'signal', data: { key: ['raw-todos'] } })
+    expect(callback).not.toHaveBeenCalled()
   })
 
   it('throttles decryption failure warnings and drops messages on key mismatch', async () => {

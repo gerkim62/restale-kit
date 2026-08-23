@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, act, waitFor, screen, cleanup } from '@testing-library/react'
 import { MockEventSource } from '@/test-fixtures/event-source.js'
-import { makeInvalidationHandler, type InvalidationHandler } from '@/client/core/client-contracts.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts.js'
 import type { Signal } from '@/types/protocol.js'
 import { SSEClient } from '@/client/core/sse-client.js'
 
@@ -18,7 +18,7 @@ import { useRestale } from './useRestale.js'
 
 /** Helper to wrap a mock function as an InvalidationHandler */
 function asAdapter(fn: (signal: Signal | Signal[]) => void = vi.fn()): InvalidationHandler {
-  return makeInvalidationHandler(fn)
+  return fn
 }
 
 describe('RestaleProvider & useRestale', () => {

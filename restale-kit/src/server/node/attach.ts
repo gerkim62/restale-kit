@@ -26,14 +26,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Type guard for Fastify reply objects.
- * Fastify wraps the native ServerResponse in a reply object where `reply.raw` is the ServerResponse,
- * and exposes `send` on the reply wrapper.
+ * Fastify wraps the native ServerResponse in a reply object where `reply.raw` is the ServerResponse.
  */
-export function isFastifyReply(res: unknown): res is FastifyReplyLike & { send: (payload: unknown) => unknown } {
+export function isFastifyReply(res: unknown): res is FastifyReplyLike {
   if (!isRecord(res)) return false
   const raw = res['raw']
-  const send = res['send']
-  return isRecord(raw) && typeof send === 'function'
+  return isRecord(raw)
 }
 
 /**
@@ -43,10 +41,6 @@ export function isFastifyRequest(req: unknown): req is FastifyRequestLike {
   if (!isRecord(req)) return false
   const raw = req['raw']
   return isRecord(raw)
-}
-
-function isFastifyResponseWrapper(res: NodeResponseLike): res is FastifyReplyLike {
-  return 'raw' in res && typeof res.raw === 'object' && res.raw !== null
 }
 
 /**
@@ -63,7 +57,7 @@ export function getUnderlyingRequest(req: NodeRequestLike): IncomingMessage {
  * Extracts the underlying ServerResponse from either a raw Node response or Fastify reply.
  */
 export function getUnderlyingResponse(res: NodeResponseLike): ServerResponse {
-  if (isFastifyResponseWrapper(res)) {
+  if (isFastifyReply(res)) {
     return res.raw
   }
   return res
@@ -74,7 +68,7 @@ export function getUnderlyingResponse(res: NodeResponseLike): ServerResponse {
  * Sets headers via `reply.header()`, keeping the stream within Fastify's lifecycle hooks and CORS.
  */
 function attachFastifyResponse(
-  reply: FastifyReplyLike & { send: (payload: unknown) => unknown },
+  reply: FastifyReplyLike,
   channel: SSEChannel,
   headers: Record<string, string>
 ): void {
@@ -105,10 +99,11 @@ function attachFastifyResponse(
 
   nodeReadable.pipe(stream)
 
-  reply.send(stream)
-
-  const originalSend = reply.send.bind(reply)
-  reply.send = (payload) => (payload === undefined ? reply : originalSend(payload))
+  if (typeof reply.send === 'function') {
+    reply.send(stream)
+    const originalSend = reply.send.bind(reply)
+    reply.send = (payload) => (payload === undefined ? reply : originalSend(payload))
+  }
 }
 
 /**
@@ -164,7 +159,7 @@ export function internal_attachSSE(
     channel.disconnect()
   })
 
-  if (isFastifyReply(res)) {
+  if (isFastifyReply(res) && typeof res.send === 'function') {
     attachFastifyResponse(res, channel, headers)
   } else {
     attachNativeNodeResponse(getUnderlyingResponse(res), channel, headers)

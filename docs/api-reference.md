@@ -34,10 +34,6 @@ import {
   isInlineDataSignal,
   isJSONValue,
   isCacheKey,
-  validateStandardSchema,
-  canonicalJsonSerialize,
-  computeContextHash,
-  sha256,
 } from 'restale-kit'
 ```
 
@@ -185,10 +181,6 @@ namespace StandardSchemaV1 {
 - `isInlineDataSignal(signal: Signal): signal is InlineDataSignal`: Narrows a signal to the `InlineDataSignal` arm.
 - `isJSONValue(value: unknown): value is JSONValue`: Checks if a value is JSON-serializable.
 - `isCacheKey(value: unknown): value is CacheKey`: Checks if a value is a JSON-safe cache key array.
-- `validateStandardSchema<T>(value: unknown, schema: StandardSchemaV1<unknown, T>): T`: Synchronously validates input against a Standard Schema v1 object. Throws `SchemaValidationError` on validation failure or if the schema returns a Promise.
-- `canonicalJsonSerialize(value: unknown): string | undefined`: Serializes a value into canonical JSON with sorted keys, returning `undefined` for `undefined` or cyclic references.
-- `computeContextHash(context: unknown): Promise<string | undefined>`: Computes a deterministic SHA-256 hash for client context tracking.
-- `sha256(message: string): Promise<string>`: Computes a SHA-256 hex digest using Web Crypto or Node crypto.
 
 ### Errors
 
@@ -264,10 +256,6 @@ class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   broadcastToAll(
     signal: Signal | Signal[],
-  ): void
-
-  broadcastByKey(
-    signal: RevalidateSignal,
   ): void
 
   publish(
@@ -417,7 +405,7 @@ import type { SSEChannel, SSEChannelOptions } from 'restale-kit/testing'
 ## `restale-kit/client`
 
 ```ts
-import { SSEClient, makeInvalidationHandler } from 'restale-kit/client'
+import { SSEClient } from 'restale-kit/client'
 import type {
   ClientOptions,
   ReconnectOptions,
@@ -522,13 +510,7 @@ interface SSEClientEventMap {
   retriesexhausted: CustomEvent<{ attempts: number; maxRetries: number }>
 }
 
-type InvalidationHandler = ((signal: Signal | Signal[]) => void) & {
-  readonly __restaleAdapter: true
-}
-
-function makeInvalidationHandler(
-  fn: (signal: Signal | Signal[]) => void,
-): InvalidationHandler
+type InvalidationHandler = (signal: Signal | Signal[]) => void
 ```
 
 ---

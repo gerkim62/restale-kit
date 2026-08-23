@@ -1,5 +1,5 @@
 import type { PubSubMessage } from '@/types/protocol.js'
-import { isEnvelope, isPubSubMessage, isSignalPayload, isObject } from './pubsub-utils.js'
+import { isEnvelope, isPubSubMessage, isObject } from './pubsub-utils.js'
 import crypto from 'node:crypto'
 
 export class PubSubDecryptionError extends Error {
@@ -151,7 +151,6 @@ export function wrapEnvelope(
  * Unwraps raw pub/sub message payload.
  *
  * - Returns `null` if the message is malformed or self-echoed from `localOriginId`.
- * - Unwraps and normalizes legacy signal payloads into a `PubSubMessage<T>`.
  */
 export function unwrapEnvelope(
   rawData: unknown,
@@ -183,9 +182,6 @@ export function unwrapEnvelope(
 
   if (isPubSubMessage(payload)) {
     return payload
-  }
-  if (isSignalPayload(payload)) {
-    return { kind: 'signal', data: payload }
   }
   return null
 }

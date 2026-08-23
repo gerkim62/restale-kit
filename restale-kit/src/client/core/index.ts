@@ -1,6 +1,5 @@
 // Client public API
 export { SSEClient } from './sse-client.js'
-export { makeInvalidationHandler } from './client-contracts.js'
 export type {
   AutoReconnectOptions,
   ConnectionStatus,

@@ -1,27 +1,16 @@
+import crypto from 'node:crypto'
+
 /**
- * Generates a cryptographically strong UUID (v4) with secure fallback for legacy environments
- * lacking native `crypto.randomUUID()`.
+ * Generates a cryptographically strong UUID (v4) using Node's `crypto.randomUUID()`.
  */
 export function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  const getRandomByte = typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function'
-    ? () => crypto.getRandomValues(new Uint8Array(1))[0] ?? 0
-    : () => Math.floor(Math.random() * 256)
-
-  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) =>
-    (
-      Number(c) ^
-      (getRandomByte() & (15 >> (Number(c) / 4)))
-    ).toString(16)
-  )
+  return crypto.randomUUID()
 }
 
 /**
  * Generates a collision-resistant instance ID for pub/sub self-echo suppression.
  */
 export function generateInstanceId(): string {
-  return generateUUID()
+  return crypto.randomUUID()
 }
 

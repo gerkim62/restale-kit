@@ -2,20 +2,8 @@ import type { RevokeEventDetail, RenewEventDetail, Signal } from '@/types/protoc
 
 export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
 
-/** A callback produced by an adapter factory. */
-export type InvalidationHandler = ((signal: Signal | Signal[]) => void) & {
-  readonly __restaleAdapter: true
-}
-/** Brands a callback without attaching target-specific metadata. */
-export function makeInvalidationHandler(
-  fn: (signal: Signal | Signal[]) => void,
-): InvalidationHandler {
-  if (typeof fn !== 'function') {
-    throw new TypeError('Expected an adapter callback function')
-  }
-
-  return Object.assign(fn, { __restaleAdapter: true as const })
-}
+/** A callback for receiving query invalidation signals. */
+export type InvalidationHandler = (signal: Signal | Signal[]) => void
 
 export type ConnectionStatus =
   | { status: 'connecting' }

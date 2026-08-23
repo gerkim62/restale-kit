@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   isJSONValue,
-  isCacheKey,
   type EventStore,
   type JSONValue,
   type RevalidateSignal,
@@ -175,10 +174,6 @@ export class SSEChannelGroup<TMeta = unknown, TClientContext = unknown> {
 
   broadcastToAll(signal: Signal | Signal[]): void {
     this.broadcastRaw(signal, () => true)
-  }
-
-  broadcastByKey(signal: RevalidateSignal): void {
-    this.broadcastRaw(signal, (meta) => isMetaMatchedByKey(meta, signal.key, signal.exact === true))
   }
 
   async publish(
@@ -600,12 +595,6 @@ function matchesCriteria(connectionId: string, meta: unknown, criteria: JSONValu
   if (!isRecord(criteria)) return matchesJson(meta, criteria, false)
   if (!isRecord(meta)) return false
   return Object.entries(criteria).every(([key, value]) => key === 'connectionId' || matchesJson(meta[key], value, false))
-}
-
-function isMetaMatchedByKey(meta: unknown, key: JSONValue[], exact: boolean): boolean {
-  const metaKey: JSONValue[] = isCacheKey(meta) ? meta : isJSONValue(meta) ? [meta] : []
-  if (exact ? metaKey.length !== key.length : metaKey.length < key.length) return false
-  return key.every((part, index) => matchesJson(metaKey[index], part, exact))
 }
 
 function matchesJson(actual: unknown, expected: JSONValue, exact: boolean): boolean {

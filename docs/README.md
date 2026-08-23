@@ -22,10 +22,10 @@
 ## Quick orientation
 
 ```text
-restale-kit                → Core types, type guards, Standard Schema validator, hash utilities, errors
+restale-kit                → Core types, type guards, errors
 restale-kit/server         → SSEChannelGroup, createSSEChannel, createEventStore
 restale-kit/testing        → createSSEChannel (standalone direct channel helper)
-restale-kit/client         → SSEClient (vanilla JS), makeInvalidationHandler
+restale-kit/client         → SSEClient (vanilla JS)
 restale-kit/react          → RestaleProvider, useRestale
 restale-kit/tanstack-query → tanstackQueryAdapter
 restale-kit/swr            → swrAdapter
