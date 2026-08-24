@@ -144,6 +144,7 @@ const _testDeadlineAction: OnDeadlineAction = 'reconnect'
 const _testDirectChannel: SSEChannelOptions = { lifetime: { ttlMs: 60000, onDeadline: _testDeadlineAction } }
 const _testTanStackOptions: TanStackQueryAdapterOptions = { toQueryKey: (key) => key }
 const _testGroupOptions: SSEChannelGroupOptions = {
+  secret: 'test-secret',
   inlineDataResolver: (conns) => new Map(conns.map((c) => [c.connectionId, { action: 'inlineData', signal: { key: ['test'] }, inlineData: { ok: true } }])),
 }
 

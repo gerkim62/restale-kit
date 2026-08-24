@@ -1,17 +1,39 @@
 import { expectTypeOf, test } from 'vitest'
-import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index.js'
+import type { EventStore, SSEChannel, SSEChannelOptions } from '@/server/core/index.js'
+import { createSSEChannel } from '@/server/core/index.js'
+import type { ChannelState, LifetimeOptions } from '@/types/index.js'
 
-test('signal type contracts', () => {
-  const revalidate: RevalidateSignal = { key: ['todos'], exact: true }
-  const inlineData: InlineDataSignal = { key: ['todos'], inlineData: { id: 1 }, markStale: false }
-  expectTypeOf(revalidate).toExtend<Signal>()
-  expectTypeOf(inlineData).toExtend<Signal>()
+test('SSEChannel creation and instance type contracts', () => {
+  const lifetime: LifetimeOptions = { ttlMs: 30_000, onDeadline: 'reconnect' }
+  const eventStore = {} as EventStore
 
-  // @ts-expect-error target routing is intentionally absent
-  const targetSignal: Signal = { target: 'swr', key: ['todos'] }
-  // @ts-expect-error inline-data signals cannot specify exact matching
-  const invalidInlineData: InlineDataSignal = { key: ['todos'], inlineData: 1, exact: true }
+  const options: SSEChannelOptions = {
+    connectionId: 'conn-abc-123',
+    lifetime,
+    eventStore,
+    keepaliveIntervalMs: 15_000,
+    retryIntervalMs: 3_000,
+    guardKeepalive: true,
+    beforeFrame: () => ({ action: 'send' }),
+  }
 
-  void targetSignal
-  void invalidInlineData
+  const channel: SSEChannel = createSSEChannel(options)
+
+  expectTypeOf(channel.connectionId).toEqualTypeOf<string>()
+  expectTypeOf(channel.state).toEqualTypeOf<ChannelState>()
+  expectTypeOf(channel.stream).toEqualTypeOf<ReadableStream<Uint8Array>>()
+
+  // invalidate accepts Signal or Signal[] and optional customId, returns string id
+  expectTypeOf(channel.invalidate({ key: ['items'] })).toEqualTypeOf<string>()
+  expectTypeOf(channel.invalidate([{ key: ['items'] }, { key: ['users'] }], 'evt-1')).toEqualTypeOf<string>()
+
+  // revoke accepts optional reason string
+  expectTypeOf(channel.revoke).parameter(0).toEqualTypeOf<string | undefined>()
+
+  // disconnect and close return void
+  expectTypeOf(channel.disconnect).returns.toEqualTypeOf<void>()
+  expectTypeOf(channel.close).returns.toEqualTypeOf<void>()
+
+  // onClose takes a callback and returns void
+  expectTypeOf(channel.onClose).returns.toEqualTypeOf<void>()
 })

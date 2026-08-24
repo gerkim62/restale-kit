@@ -206,7 +206,7 @@ export class SSEClient extends EventTarget {
       }),
       credentials: this.withCredentials ? 'include' : 'same-origin',
     })
-    if (response.status === 204) return { updated: true }
+    if (response.status === 200 || response.status === 204) return { updated: true }
     if (response.status === 404) return { updated: false }
     throw new Error(`[SSEClient.updateClientContext] Request failed with status ${String(response.status)}.`)
   }

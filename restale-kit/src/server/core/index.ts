@@ -9,8 +9,9 @@ export type {
   InlineDataResolverResult,
   InlineDataResolver,
 } from './channel-group.js'
-export type { FastifyRequestLike, FastifyReplyLike } from '../node/attach.js'
+export type { FastifyRequestLike, FastifyReplyLike, NodeRequestLike, NodeResponseLike } from '../node/attach.js'
 export { createEventStore } from './event-store.js'
 export type { EventStoreOptions } from './event-store.js'
 export type { EventStore, EventRecord, EventStoreResult } from '../../types/protocol.js'
 export type { ChannelDefaults } from './merge-channel-defaults.js'
+export type { LocalFilter, ClusterFilter } from '@/utils/filter.js'

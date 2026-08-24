@@ -6,7 +6,7 @@ import { SSEClient } from '@/client/core/sse-client.js'
 describe('Code review fixes verification', () => {
   describe('SSEChannelGroup fixes', () => {
     it('dispose() closes all open channels registered in the group', async () => {
-      const group = new SSEChannelGroup()
+      const group = new SSEChannelGroup({ secret: 'sec-rev-1' })
       const ch1 = createSSEChannel({})
       const ch2 = createSSEChannel({})
       const closeSpy1 = vi.spyOn(ch1, 'close')
@@ -14,7 +14,7 @@ describe('Code review fixes verification', () => {
 
       group.register(ch1)
       group.register(ch2)
-      expect(group.size).toBe(2)
+      expect(group.local.size).toBe(2)
 
       await group.dispose()
 
@@ -36,7 +36,7 @@ describe('Code review fixes verification', () => {
         }),
       }
 
-      const group = new SSEChannelGroup({ pubsub: mockPubsub })
+      const group = new SSEChannelGroup({ secret: 'sec-rev-2', pubsub: mockPubsub })
       const ch = createSSEChannel({})
       group.register(ch, undefined, { topics: ['chat'] })
 
@@ -70,7 +70,7 @@ describe('Code review fixes verification', () => {
         }),
       }
 
-      const group = new SSEChannelGroup({ pubsub: mockPubsub })
+      const group = new SSEChannelGroup({ secret: 'sec-rev-3', pubsub: mockPubsub })
       const ch1 = createSSEChannel({})
       group.register(ch1, undefined, { topics: ['chat'] })
 

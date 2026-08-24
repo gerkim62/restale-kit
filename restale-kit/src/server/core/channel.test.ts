@@ -722,6 +722,15 @@ describe('Frame Guard — additional spec coverage (FT-04 through FT-07)', () =>
         RangeError
       )
     })
+
+    it('throws ChannelClosedError when invalidate fails due to cancelled stream controller', async () => {
+      const channel = createSSEChannel({})
+      const reader = channel.stream.getReader()
+      await reader.cancel()
+
+      expect(() => channel.invalidate({ key: ['items'] })).toThrow(ChannelClosedError)
+      expect(channel.state).toBe('closed')
+    })
   })
 })
 

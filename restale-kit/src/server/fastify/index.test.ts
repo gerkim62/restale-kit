@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { EventEmitter } from 'node:events'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { SSEChannelGroup } from '../core/index.js'
 import {
@@ -7,7 +8,7 @@ import {
   readStreamUntil,
 } from '@/test-fixtures/http-test-utils.js'
 
-describe('server/fastify integration via attachNodeResponse', () => {
+describe('server/fastify integration via group.handle', () => {
   let app: FastifyInstance | undefined
 
   afterEach(async () => {
@@ -17,8 +18,8 @@ describe('server/fastify integration via attachNodeResponse', () => {
     }
   })
 
-  it('uses reply.send(stream) on FastifyReplyLike and sets SSE headers', () => {
-    const group = new SSEChannelGroup({})
+  it('uses reply.send(stream) on FastifyReplyLike and sets SSE headers', async () => {
+    const group = new SSEChannelGroup({ secret: 'fastify-secret-1' })
     const rawReq = createMockNodeRequest('/sse')
     const rawRes = createMockNodeResponse()
 
@@ -32,58 +33,26 @@ describe('server/fastify integration via attachNodeResponse', () => {
       header: headerSpy,
     }
 
-    const { channel } = group.attachNodeResponse(mockRequest, mockReply, {})
+    await group.handle(mockRequest, mockReply, {})
 
     expect(sendSpy).toHaveBeenCalledTimes(1)
     expect(headerSpy).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
     expect(headerSpy).toHaveBeenCalledWith('Cache-Control', 'no-cache')
     expect(headerSpy).toHaveBeenCalledWith('Connection', 'keep-alive')
-    expect(typeof channel.connectionId).toBe('string')
-    expect(channel.connectionId.length).toBeGreaterThan(0)
-    expect(channel.state).toBe('open')
-    channel.close()
-  })
-
-  it('supports objects with raw ServerResponse by falling back to native Node response streaming', () => {
-    const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse')
-    const rawRes = createMockNodeResponse()
-
-    const mockRequest = { raw: rawReq }
-    const mockReplyWithoutSend = { raw: rawRes }
-
-    const { channel } = group.attachNodeResponse(mockRequest, mockReplyWithoutSend, {})
-
-    expect(rawRes.writeHead).toHaveBeenCalledWith(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    })
-    expect(typeof channel.connectionId).toBe('string')
-    expect(channel.state).toBe('open')
-    channel.close()
-  })
-
-  it('works directly with raw IncomingMessage and ServerResponse', () => {
-    const group = new SSEChannelGroup({})
-    const rawReq = createMockNodeRequest('/sse')
-    const rawRes = createMockNodeResponse()
-
-    const { channel } = group.attachNodeResponse(rawReq, rawRes, {})
-
-    expect(typeof channel.connectionId).toBe('string')
-    expect(channel.connectionId.length).toBeGreaterThan(0)
-    expect(channel.state).toBe('open')
-    channel.close()
+    expect(group.local.size).toBe(1)
+    await group.dispose()
   })
 
   describe('Real Fastify HTTP server integration (hijack-less)', () => {
     it('Happy path: streams SSE frames to real HTTP client and receives broadcasts', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-2',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', (request, reply) => {
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-123' } })
+        return group.handle(request, reply, { meta: { userId: 'u-123' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -106,28 +75,33 @@ describe('server/fastify integration via attachNodeResponse', () => {
         expect(initialText).toContain('event: connected\ndata: {"connectionId":')
 
         // Broadcast an invalidation signal
-        group.broadcastToAll({ key: ['todos'] })
+        group.local.broadcast({ key: ['todos'] }, true)
 
         const broadcastText = await readStreamUntil(reader, (t) => t.includes('event: invalidate'))
         expect(broadcastText).toContain('event: invalidate\ndata: {"key":["todos"]}\n\n')
 
         abortController.abort()
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
+        await vi.waitFor(
+          () => {
+            expect(group.local.size).toBe(0)
+          },
+          { timeout: 1000 },
+        )
       } finally {
         await reader.cancel().catch(() => {})
       }
     })
 
-    it('Happy path: works seamlessly with async route handlers (returning reply is optional)', async () => {
+    it('Happy path: works seamlessly with async route handlers', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-3',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', async (request, reply) => {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-456' } })
-        // Note: returning `reply` is optional now since attachFastifyResponse guards against Fastify's wrapThenable
+        return group.handle(request, reply, { meta: { userId: 'u-456' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -144,71 +118,12 @@ describe('server/fastify integration via attachNodeResponse', () => {
         expect(text).toContain('event: connected')
 
         abortController.abort()
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
-      } finally {
-        await reader.cancel().catch(() => {})
-      }
-    })
-
-    it('reproduces bug: async route handler without explicit return reply (delayed attach)', async () => {
-      app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
-
-      app.get('/sse', async (request, reply) => {
-        await new Promise((resolve) => setTimeout(resolve, 10))
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-naive-delayed' } })
-      })
-
-      const address = await app.listen({ port: 0, host: '127.0.0.1' })
-      const abortController = new AbortController()
-
-      const res = await fetch(`${address}/sse`, {
-        signal: abortController.signal,
-      })
-
-      expect(res.status).toBe(200)
-      const reader = res.body!.getReader()
-      try {
-        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
-        expect(text).toContain('event: connected')
-
-        abortController.abort()
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
-      } finally {
-        await reader.cancel().catch(() => {})
-      }
-    })
-
-    it('works with async route handler without explicit return reply (zero prior await)', async () => {
-      app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
-
-      // eslint-disable-next-line typescript/require-await -- Testing async handler with zero prior await
-      app.get('/sse', async (request, reply) => {
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-naive-immediate' } })
-      })
-
-      const address = await app.listen({ port: 0, host: '127.0.0.1' })
-      const abortController = new AbortController()
-
-      const res = await fetch(`${address}/sse`, {
-        signal: abortController.signal,
-      })
-
-      expect(res.status).toBe(200)
-      const reader = res.body!.getReader()
-      try {
-        const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
-        expect(text).toContain('event: connected')
-
-        abortController.abort()
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
+        await vi.waitFor(
+          () => {
+            expect(group.local.size).toBe(0)
+          },
+          { timeout: 1000 },
+        )
       } finally {
         await reader.cancel().catch(() => {})
       }
@@ -216,7 +131,10 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
     it('Happy path: Fastify hooks (onSend, onResponse) execute properly with reply.send()', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-4',
+        scopeBy: ['userId'],
+      })
       let onResponseFired = false
       let onSendFired = false
 
@@ -231,10 +149,8 @@ describe('server/fastify integration via attachNodeResponse', () => {
         done()
       })
 
-      let sseChannel: any
       app.get('/sse', (request, reply) => {
-        const { channel } = group.attachNodeResponse(request, reply, { meta: { userId: 'u-789' } })
-        sseChannel = channel
+        return group.handle(request, reply, { meta: { userId: 'u-789' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -243,8 +159,8 @@ describe('server/fastify integration via attachNodeResponse', () => {
       expect(onSendFired).toBe(true)
       expect(res.headers.get('x-sse-hook')).toBe('active')
 
-      // Server closes channel
-      sseChannel.close()
+      // Server revokes user channel to close stream
+      group.local.revokeWhere({ userId: 'u-789' })
 
       // Read response until complete
       const reader = res.body!.getReader()
@@ -254,58 +170,12 @@ describe('server/fastify integration via attachNodeResponse', () => {
           if (done) break
         }
 
-        await vi.waitFor(() => {
-          expect(onResponseFired).toBe(true)
-        }, { timeout: 1000 })
-      } finally {
-        await reader.cancel().catch(() => {})
-      }
-    })
-
-    it('Test 3: regression guard, hooks (onSend, onResponse) and headers still fire for naive async handler with no return', async () => {
-      app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
-      let onResponseFired = false
-      let onSendFired = false
-
-      app.addHook('onSend', (_request, reply, _payload, done) => {
-        onSendFired = true
-        reply.header('x-custom-cors', 'allowed')
-        done()
-      })
-
-      app.addHook('onResponse', (_request, _reply, done) => {
-        onResponseFired = true
-        done()
-      })
-
-      let sseChannel: any
-      app.get('/sse', async (request, reply) => {
-        await new Promise((resolve) => setTimeout(resolve, 10))
-        const { channel } = group.attachNodeResponse(request, reply, { meta: { userId: 'u-hooks-async' } })
-        sseChannel = channel
-      })
-
-      const address = await app.listen({ port: 0, host: '127.0.0.1' })
-
-      const res = await fetch(`${address}/sse`)
-      expect(onSendFired).toBe(true)
-      expect(res.headers.get('x-custom-cors')).toBe('allowed')
-
-      // Server closes channel
-      sseChannel.close()
-
-      // Read response until complete
-      const reader = res.body!.getReader()
-      try {
-        while (true) {
-          const { done } = await reader.read()
-          if (done) break
-        }
-
-        await vi.waitFor(() => {
-          expect(onResponseFired).toBe(true)
-        }, { timeout: 1000 })
+        await vi.waitFor(
+          () => {
+            expect(onResponseFired).toBe(true)
+          },
+          { timeout: 1000 },
+        )
       } finally {
         await reader.cancel().catch(() => {})
       }
@@ -313,14 +183,17 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
     it('Test 4: non-streaming routes on the same app are unaffected', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-5',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', async (request, reply) => {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-mix' } })
+        return group.handle(request, reply, { meta: { userId: 'u-mix' } })
       })
 
-      // eslint-disable-next-line typescript/require-await -- Testing normal async JSON route
+      // eslint-disable-next-line typescript/require-await
       app.get('/api/data', async () => {
         return { ok: true }
       })
@@ -335,7 +208,10 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
     it('Test 5: early exit / 401 unauthorized before attach is unaffected', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-6',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', async (request, reply) => {
         await new Promise((resolve) => setTimeout(resolve, 5))
@@ -343,7 +219,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
         if (!auth) {
           return reply.code(401).send({ error: 'Unauthorized' })
         }
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-999' } })
+        return group.handle(request, reply, { meta: { userId: 'u-999' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -352,16 +228,19 @@ describe('server/fastify integration via attachNodeResponse', () => {
       expect(res.status).toBe(401)
       const body = await res.json()
       expect(body).toEqual({ error: 'Unauthorized' })
-      expect(group.size).toBe(0)
+      expect(group.local.size).toBe(0)
     })
 
     it('Test 6: client disconnect cleanup still works on aborted client fetch', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-7',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', async (request, reply) => {
         await new Promise((resolve) => setTimeout(resolve, 10))
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-disconnect' } })
+        return group.handle(request, reply, { meta: { userId: 'u-disconnect' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -376,13 +255,16 @@ describe('server/fastify integration via attachNodeResponse', () => {
       try {
         const text = await readStreamUntil(reader, (t) => t.includes('event: connected'))
         expect(text).toContain('event: connected')
-        expect(group.size).toBe(1)
+        expect(group.local.size).toBe(1)
 
         abortController.abort()
 
-        await vi.waitFor(() => {
-          expect(group.size).toBe(0)
-        }, { timeout: 1000 })
+        await vi.waitFor(
+          () => {
+            expect(group.local.size).toBe(0)
+          },
+          { timeout: 1000 },
+        )
       } finally {
         await reader.cancel().catch(() => {})
       }
@@ -390,10 +272,13 @@ describe('server/fastify integration via attachNodeResponse', () => {
 
     it('Happy path: server-side revoke closes stream cleanly and notifies client', async () => {
       app = Fastify()
-      const group = new SSEChannelGroup<{ userId: string }>()
+      const group = new SSEChannelGroup<{ userId: string }>({
+        secret: 'fastify-secret-8',
+        scopeBy: ['userId'],
+      })
 
       app.get('/sse', (request, reply) => {
-        group.attachNodeResponse(request, reply, { meta: { userId: 'u-revoked' } })
+        return group.handle(request, reply, { meta: { userId: 'u-revoked' } })
       })
 
       const address = await app.listen({ port: 0, host: '127.0.0.1' })
@@ -406,7 +291,7 @@ describe('server/fastify integration via attachNodeResponse', () => {
         expect(initialText).toContain('event: connected')
 
         // Server revokes user connection
-        await group.revokeWhere({ userId: 'u-revoked' })
+        group.local.revokeWhere({ userId: 'u-revoked' })
 
         // Read until revoke frame is received
         const revokeText = await readStreamUntil(reader, (t) => t.includes('event: revoke'))
@@ -415,10 +300,28 @@ describe('server/fastify integration via attachNodeResponse', () => {
         // Stream should be closed by server
         const chunk3 = await reader.read()
         expect(chunk3.done).toBe(true)
-        expect(group.size).toBe(0)
+        expect(group.local.size).toBe(0)
       } finally {
         await reader.cancel().catch(() => {})
       }
+    })
+
+    it('handles Fastify reply with raw.setHeader fallback when header() is missing', async () => {
+      const group = new SSEChannelGroup({ secret: 'sec-fastify-raw' })
+      const setHeaderSpy = vi.fn()
+      const req = { raw: Object.assign(new EventEmitter(), { method: 'GET', headers: {} }) }
+      const reply = {
+        raw: {
+          setHeader: setHeaderSpy,
+          writeHead: vi.fn(),
+          end: vi.fn(),
+        },
+        send: vi.fn(),
+      }
+
+      await group.handle(req as any, reply as any)
+      expect(setHeaderSpy).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+      await group.dispose()
     })
   })
 })
