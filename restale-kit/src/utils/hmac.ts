@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { canonicalJsonSerialize } from './canonical-hash.js'
+import { canonicalJsonSerialize } from './canonical-hash'
 
 /**
  * Computes an HMAC-SHA256 signature for a raw UUID and optional scoped meta.

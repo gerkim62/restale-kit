@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { internal_attachSSE } from '@/server/node/attach.js'
-import { internal_toSSEResponse } from '@/server/fetch/response.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import { SSEChannelGroup } from '@/server/core/channel-group.js'
+import { internal_attachSSE } from '@/server/node/attach'
+import { internal_toSSEResponse } from '@/server/fetch/response'
+import { createEventStore } from '@/server/core/event-store'
+import { SSEChannelGroup } from '@/server/core/channel-group'
 
 const decoder = new TextDecoder()
 

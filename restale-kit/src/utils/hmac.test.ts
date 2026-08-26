@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractRawId, signToken, verifyToken } from './hmac.js'
+import { extractRawId, signToken, verifyToken } from './hmac'
 
 describe('HMAC Token Signing & Verification', () => {
   const secret = 'super-secret-key-12345'

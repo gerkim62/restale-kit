@@ -1,12 +1,12 @@
-import type { PubSubMessage } from '@/types/protocol.js'
+import type { PubSubMessage } from '@/types/protocol'
 
-export type { PubSubMessage } from '@/types/protocol.js'
+export type { PubSubMessage } from '@/types/protocol'
 
 export type PubSubEncryptionOptions =
   | { encrypt?: false; encryptionKey?: never }
   | { encrypt?: true; encryptionKey: string }
 
-export { PubSubDecryptionError } from './envelope.js'
+export { PubSubDecryptionError } from './envelope'
 
 /** A broker-agnostic adapter for universal protocol messages. */
 export interface PubSubAdapter {

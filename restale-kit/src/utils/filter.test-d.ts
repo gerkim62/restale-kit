@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from 'vitest'
-import type { ClusterFilter, LocalFilter } from '@/utils/filter.js'
-import { deepSubsetMatch, matchesClusterFilter, matchesLocalFilter } from '@/utils/filter.js'
+import type { ClusterFilter, LocalFilter } from '@/utils/filter'
+import { deepSubsetMatch, matchesClusterFilter, matchesLocalFilter } from '@/utils/filter'
 
 test('Filter function signatures and return types', () => {
   interface UserMeta {

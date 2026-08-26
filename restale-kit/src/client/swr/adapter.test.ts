@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { swrAdapter, type SWRMutator } from './adapter.js'
-import type { CacheKey } from '@/types/protocol.js'
+import { swrAdapter, type SWRMutator } from './adapter'
+import type { CacheKey } from '@/types/protocol'
 
 function toCacheKey(key: CacheKey): string {
   const resource = key[0]

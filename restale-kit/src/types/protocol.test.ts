@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJSONValue, isCacheKey, isInlineDataSignal } from './protocol.js'
+import { isJSONValue, isCacheKey, isInlineDataSignal } from './protocol'
 
 describe('signal protocol', () => {
   it('accepts JSON-compatible cache keys', () => {

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel, validateSignalPayload } from './channel.js'
-import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
-import { createEventStore } from './event-store.js'
-import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
+import { createSSEChannel, validateSignalPayload } from './channel'
+import { ChannelClosedError, SchemaValidationError } from '@/types/errors'
+import { createEventStore } from './event-store'
+import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas'
 
 const decoder = new TextDecoder()
 

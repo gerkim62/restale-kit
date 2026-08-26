@@ -19,18 +19,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ─── server ───────────────────────────────────────────────────────────────────
-import { SSEChannelGroup } from '@/server/core/channel-group.js'
-import { createSSEChannel } from '@/server/core/channel.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import { formatInvalidateFrame } from '@/server/core/framing.js'
-import { extractLastEventId } from '@/server/transport-utils.js'
+import { SSEChannelGroup } from '@/server/core/channel-group'
+import { createSSEChannel } from '@/server/core/channel'
+import { createEventStore } from '@/server/core/event-store'
+import { formatInvalidateFrame } from '@/server/core/framing'
+import { extractLastEventId } from '@/server/transport-utils'
 
 // ─── pubsub ───────────────────────────────────────────────────────────────────
-import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index.js'
-import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub.js'
+import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index'
+import { MemoryPubSubAdapter } from '@/test-fixtures/pubsub'
 
 // ─── client ───────────────────────────────────────────────────────────────────
-import { validatePayload } from '@/client/core/validation.js'
+import { validatePayload } from '@/client/core/validation'
 
 const decoder = new TextDecoder()
 

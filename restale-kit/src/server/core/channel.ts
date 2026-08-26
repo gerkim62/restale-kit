@@ -8,9 +8,9 @@ import {
   type FrameGuardResult,
   type LifetimeOptions,
   type Signal,
-} from '@/types/protocol.js'
-import { ChannelClosedError } from '@/types/errors.js'
-import { createEventStore } from '@/server/core/event-store.js'
+} from '@/types/protocol'
+import { ChannelClosedError } from '@/types/errors'
+import { createEventStore } from '@/server/core/event-store'
 import {
   formatConnectedFrame,
   formatInvalidateFrame,
@@ -18,9 +18,9 @@ import {
   formatRenewFrame,
   formatRetryFrame,
   formatRevokeFrame,
-} from '@/server/core/framing.js'
-import { FRAME_GUARD_DEFAULTS, PROTOCOL_CONSTANTS } from '@/utils/constants.js'
-import { generateUUID } from '@/utils/id.js'
+} from '@/server/core/framing'
+import { FRAME_GUARD_DEFAULTS, PROTOCOL_CONSTANTS } from '@/utils/constants'
+import { generateUUID } from '@/utils/id'
 
 export interface SSEChannelOptions {
   connectionId?: string

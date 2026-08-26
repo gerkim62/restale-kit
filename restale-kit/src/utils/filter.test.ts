@@ -5,7 +5,7 @@ import {
   matchesLocalFilter,
   type ClusterFilter,
   type LocalFilter,
-} from './filter.js'
+} from './filter'
 
 describe('Universal Filtering & Deep Subset Matching', () => {
   describe('deepSubsetMatch', () => {

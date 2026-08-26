@@ -1,2 +1,2 @@
-export { swrAdapter } from './adapter.js'
-export type { SWRAdapterOptions, SWRMutator, SWRKey } from './adapter.js'
+export { swrAdapter } from './adapter'
+export type { SWRAdapterOptions, SWRMutator, SWRKey } from './adapter'

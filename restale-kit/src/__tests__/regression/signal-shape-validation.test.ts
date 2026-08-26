@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { validatePayload } from '@/client/core/validation.js'
-import { validateSignalPayload } from '@/server/core/channel.js'
+import { validatePayload } from '@/client/core/validation'
+import { validateSignalPayload } from '@/server/core/channel'
 
 interface ValidationFixture {
   description: string

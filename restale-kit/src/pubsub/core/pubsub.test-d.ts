@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from 'vitest'
-import type { JSONValue, Signal } from '@/types/index.js'
-import type { PubSubAdapter, PubSubMessage } from '@/pubsub/core/index.js'
+import type { JSONValue, Signal } from '@/types/index'
+import type { PubSubAdapter, PubSubMessage } from '@/pubsub/core/index'
 
 test('PubSubMessage discriminated union type contracts', () => {
   const signalMsg: PubSubMessage = {

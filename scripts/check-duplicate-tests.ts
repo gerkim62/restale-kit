@@ -18,7 +18,7 @@ if (files.length === 0) {
   process.exit(1)
 }
 
-const hashMap = new Map()
+const hashMap = new Map<string, string>()
 let hasDuplicates = false
 
 for (const file of files) {
@@ -29,7 +29,7 @@ for (const file of files) {
 
   if (hashMap.has(hash)) {
     console.error(
-      `Error: Duplicate test file detected: "${file}" is byte-identical to "${hashMap.get(hash)}" (hash: ${hash})`
+      `Error: Duplicate test file detected: "${file}" is byte-identical to "${hashMap.get(hash) ?? ''}" (hash: ${hash})`
     )
     hasDuplicates = true
   } else {
@@ -42,5 +42,5 @@ if (hasDuplicates) {
 }
 
 console.log(
-  `[check-duplicate-tests] Passed: Verified ${files.length} unique test files in src/__tests__/regression/`
+  `[check-duplicate-tests] Passed: Verified ${String(files.length)} unique test files in src/__tests__/regression/`
 )

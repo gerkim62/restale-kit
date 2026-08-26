@@ -7,8 +7,13 @@ const SNIPPETS_DIR = path.join(ROOT_DIR, 'snippets')
 
 const isCheck = process.argv.includes('--check')
 
-function getAllMarkdownFiles(dir) {
-  const results = []
+interface SnippetChange {
+  snippetName: string
+  filePath: string
+}
+
+function getAllMarkdownFiles(dir: string): string[] {
+  const results: string[] = []
   if (!fs.existsSync(dir)) return results
   const list = fs.readdirSync(dir)
   for (const file of list) {
@@ -23,7 +28,7 @@ function getAllMarkdownFiles(dir) {
   return results
 }
 
-function findSnippetFile(name) {
+function findSnippetFile(name: string): string | null {
   const tsPath = path.join(SNIPPETS_DIR, `${name}.ts`)
   if (fs.existsSync(tsPath)) return tsPath
   const tsxPath = path.join(SNIPPETS_DIR, `${name}.tsx`)
@@ -33,16 +38,20 @@ function findSnippetFile(name) {
   return null
 }
 
-function processMarkdownFile(filePath) {
+function processMarkdownFile(filePath: string): {
+  modified: string
+  hasErrors: boolean
+  changes: SnippetChange[]
+} {
   const content = fs.readFileSync(filePath, 'utf-8')
   let modified = content
   let hasErrors = false
-  const changes = []
+  const changes: SnippetChange[] = []
 
   // Pattern: <!-- snippet:start name -->...<!-- snippet:end -->
   const snippetRegex = /<!--\s*snippet:start\s+([a-zA-Z0-9_-]+)\s*-->([\s\S]*?)<!--\s*snippet:end\s*-->/g
 
-  modified = content.replace(snippetRegex, (_match, snippetName) => {
+  modified = content.replace(snippetRegex, (_match, snippetName: string) => {
     const snippetPath = findSnippetFile(snippetName)
     if (!snippetPath) {
       console.error(`[sync-snippets] ERROR: Unknown snippet "${snippetName}" referenced in ${filePath}`)
@@ -77,28 +86,28 @@ function main() {
       totalChanges += changes.length
       const relFile = path.relative(ROOT_DIR, file)
       if (isCheck) {
-        console.error(`[sync-snippets] DRIFT DETECTED in ${relFile}: ${changes.map(c => c.snippetName).join(', ')}`)
+        console.error(`[sync-snippets] DRIFT DETECTED in ${relFile}: ${changes.map((c) => c.snippetName).join(', ')}`)
       } else {
         fs.writeFileSync(file, modified, 'utf-8')
-        console.log(`[sync-snippets] Synced ${changes.length} snippet(s) in ${relFile}`)
+        console.log(`[sync-snippets] Synced ${String(changes.length)} snippet(s) in ${relFile}`)
       }
     }
   }
 
   if (totalErrors > 0) {
-    console.error(`[sync-snippets] FAILED: Encountered ${totalErrors} error(s).`)
+    console.error(`[sync-snippets] FAILED: Encountered ${String(totalErrors)} error(s).`)
     process.exit(1)
   }
 
   if (isCheck && totalChanges > 0) {
-    console.error(`[sync-snippets] FAILED: ${totalChanges} snippet block(s) are out of sync with /snippets/. Run "node scripts/sync-snippets.mjs" to update.`)
+    console.error(`[sync-snippets] FAILED: ${String(totalChanges)} snippet block(s) are out of sync with /snippets/. Run "node scripts/sync-snippets.ts" to update.`)
     process.exit(1)
   }
 
   if (isCheck) {
     console.log(`[sync-snippets] OK: All snippet blocks match /snippets/*.ts source files.`)
   } else {
-    console.log(`[sync-snippets] Completed. ${totalChanges} snippet block(s) updated.`)
+    console.log(`[sync-snippets] Completed. ${String(totalChanges)} snippet block(s) updated.`)
   }
 }
 

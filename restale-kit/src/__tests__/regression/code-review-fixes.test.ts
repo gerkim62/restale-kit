@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { SSEChannelGroup } from '@/server/core/channel-group.js'
-import { createSSEChannel } from '@/server/core/channel.js'
-import { SSEClient } from '@/client/core/sse-client.js'
+import { SSEChannelGroup } from '@/server/core/channel-group'
+import { createSSEChannel } from '@/server/core/channel'
+import { SSEClient } from '@/client/core/sse-client'
 
 describe('Code review fixes verification', () => {
   describe('SSEChannelGroup fixes', () => {

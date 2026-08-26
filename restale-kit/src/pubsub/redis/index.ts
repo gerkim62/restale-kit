@@ -1,8 +1,8 @@
-import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
-import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
-import { generateInstanceId } from '@/utils/id.js'
-import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index'
+import type { PubSubMessage } from '@/types/protocol'
+import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils'
+import { generateInstanceId } from '@/utils/id'
+import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope'
 
 /**
  * Minimal structural interface for a Redis client (compatible with ioredis and node-redis).

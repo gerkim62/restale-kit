@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateUUID, generateInstanceId } from './id.js'
+import { generateUUID, generateInstanceId } from './id'
 
 describe('id utils', () => {
   it('generates a valid UUID string using native crypto.randomUUID', () => {

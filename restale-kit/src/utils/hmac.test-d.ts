@@ -1,5 +1,5 @@
 import { expectTypeOf, test } from 'vitest'
-import { extractRawId, signToken, verifyToken } from '@/utils/hmac.js'
+import { extractRawId, signToken, verifyToken } from '@/utils/hmac'
 
 test('HMAC signing and verification function signatures', () => {
   const secret = 'super-secret'

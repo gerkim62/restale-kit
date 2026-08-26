@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { validatePayload } from '@/client/core/validation.js'
-import { validateSignalPayload, createSSEChannel } from '@/server/core/channel.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import type { Signal } from '@/types/protocol.js'
+import { validatePayload } from '@/client/core/validation'
+import { validateSignalPayload, createSSEChannel } from '@/server/core/channel'
+import { createEventStore } from '@/server/core/event-store'
+import type { Signal } from '@/types/protocol'
 
 describe('Batch signal semantics', () => {
   describe('All-or-nothing validation atomicity', () => {

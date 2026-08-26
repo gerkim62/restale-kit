@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { formatInvalidateFrame, formatRevokeFrame, formatRenewFrame } from '@/server/core/framing.js'
-import { SSEClient } from '@/client/core/sse-client.js'
-import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { Signal, RevalidateSignal, InlineDataSignal } from '@/types/protocol.js'
+import { formatInvalidateFrame, formatRevokeFrame, formatRenewFrame } from '@/server/core/framing'
+import { SSEClient } from '@/client/core/sse-client'
+import { MockEventSource } from '@/test-fixtures/event-source'
+import type { Signal, RevalidateSignal, InlineDataSignal } from '@/types/protocol'
 
 vi.mock('sse.js', async () => {
-  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source')
   return { SSE }
 })
 

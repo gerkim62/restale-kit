@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createSSEChannel } from '@/server/core/channel.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import { ChannelClosedError } from '@/types/errors.js'
-import type { FrameGuardCtx, Signal } from '@/types/protocol.js'
+import { createSSEChannel } from '@/server/core/channel'
+import { createEventStore } from '@/server/core/event-store'
+import { ChannelClosedError } from '@/types/errors'
+import type { FrameGuardCtx, Signal } from '@/types/protocol'
 
 describe('Frame guard (beforeFrame) regression tests', () => {
   beforeEach(() => {

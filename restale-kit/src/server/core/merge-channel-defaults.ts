@@ -1,5 +1,5 @@
-import type { LifetimeOptions, OnDeadlineAction } from '@/types/protocol.js'
-import type { SSEChannelOptions } from '@/server/core/channel.js'
+import type { LifetimeOptions, OnDeadlineAction } from '@/types/protocol'
+import type { SSEChannelOptions } from '@/server/core/channel'
 
 /** Group-level defaults that may safely be shared by channel connections. */
 export interface ChannelDefaults {

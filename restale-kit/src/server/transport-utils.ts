@@ -1,4 +1,4 @@
-import { PROTOCOL_CONSTANTS, SSE_HEADERS } from '@/utils/constants.js'
+import { PROTOCOL_CONSTANTS, SSE_HEADERS } from '@/utils/constants'
 
 const MAX_LAST_EVENT_ID_LENGTH = 512
 

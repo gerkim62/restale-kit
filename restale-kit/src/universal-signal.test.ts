@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { tanstackQueryAdapter, type QueryClientLike } from './client/tanstack-query/adapter.js'
-import { swrAdapter, type SWRMutator } from './client/swr/adapter.js'
-import { validatePayload } from './client/core/validation.js'
-import { createSSEChannel } from './server/core/channel.js'
-import { SSEChannelGroup } from './server/core/channel-group.js'
-import { SSEClient } from './client/core/sse-client.js'
+import { tanstackQueryAdapter, type QueryClientLike } from './client/tanstack-query/adapter'
+import { swrAdapter, type SWRMutator } from './client/swr/adapter'
+import { validatePayload } from './client/core/validation'
+import { createSSEChannel } from './server/core/channel'
+import { SSEChannelGroup } from './server/core/channel-group'
+import { SSEClient } from './client/core/sse-client'
 
 describe('signal protocol', () => {
   it('serialises signals without targets and validates both arms', async () => {

@@ -3,18 +3,18 @@
 import React, { useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, act, waitFor, screen, cleanup } from '@testing-library/react'
-import { MockEventSource } from '@/test-fixtures/event-source.js'
-import type { InvalidationHandler } from '@/client/core/client-contracts.js'
-import type { Signal } from '@/types/protocol.js'
-import { SSEClient } from '@/client/core/sse-client.js'
+import { MockEventSource } from '@/test-fixtures/event-source'
+import type { InvalidationHandler } from '@/client/core/client-contracts'
+import type { Signal } from '@/types/protocol'
+import { SSEClient } from '@/client/core/sse-client'
 
 vi.mock('sse.js', async () => {
-  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source')
   return { SSE }
 })
 
-import { RestaleProvider } from './RestaleProvider.js'
-import { useRestale } from './useRestale.js'
+import { RestaleProvider } from './RestaleProvider'
+import { useRestale } from './useRestale'
 
 /** Helper to wrap a mock function as an InvalidationHandler */
 function asAdapter(fn: (signal: Signal | Signal[]) => void = vi.fn()): InvalidationHandler {

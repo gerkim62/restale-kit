@@ -1,5 +1,5 @@
-import type { InvalidationHandler } from '@/client/core/client-contracts.js'
-import { isInlineDataSignal, type CacheKey, type JSONValue, type Signal } from '@/types/protocol.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts'
+import { isInlineDataSignal, type CacheKey, type JSONValue, type Signal } from '@/types/protocol'
 
 export type SWRKey = string | readonly unknown[]
 

@@ -110,15 +110,6 @@
   "overrides": [
     {
       "files": [
-        "scripts/**/*.mjs"
-      ],
-      "globals": {
-        "console": "readonly",
-        "process": "readonly"
-      }
-    },
-    {
-      "files": [
         "**/*.ts",
         "**/*.tsx"
       ],
@@ -281,6 +272,15 @@
         "typescript/no-unnecessary-condition": "off",
         "typescript/unbound-method": "off",
         "typescript/no-invalid-void-type": "off"
+      }
+    },
+    {
+      "files": [
+        "scripts/**/*.{ts,tsx}"
+      ],
+      "globals": {
+        "console": "readonly",
+        "process": "readonly"
       }
     }
   ]

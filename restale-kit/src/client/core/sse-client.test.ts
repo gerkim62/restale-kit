@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { MockEventSource } from '@/test-fixtures/event-source.js'
-import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
+import { MockEventSource } from '@/test-fixtures/event-source'
+import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas'
 
 vi.mock('sse.js', async () => {
-  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source')
   return { SSE }
 })
 
-import { SSEClient } from './sse-client.js'
+import { SSEClient } from './sse-client'
 
 describe('SSEClient', () => {
   beforeEach(() => {

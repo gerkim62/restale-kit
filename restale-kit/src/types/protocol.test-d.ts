@@ -1,5 +1,5 @@
 import { expectTypeOf, test } from 'vitest'
-import type { InlineDataSignal, LifetimeOptions, OnDeadlineAction, RevalidateSignal, Signal } from '@/types/index.js'
+import type { InlineDataSignal, LifetimeOptions, OnDeadlineAction, RevalidateSignal, Signal } from '@/types/index'
 
 test('signal protocol types preserve the signal distinction', () => {
   const revalidate: RevalidateSignal = { key: ['todos'], exact: true }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isObject, isPubSubMessage, isEnvelope } from './pubsub-utils.js'
+import { isObject, isPubSubMessage, isEnvelope } from './pubsub-utils'
 
 describe('pubsub-utils', () => {
   it('isObject checks plain object status correctly', () => {

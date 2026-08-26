@@ -1,8 +1,14 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { stdin, stdout } from 'node:process'
 
-const backends = [
+interface OptionItem {
+  name: string
+  packageName: string
+  port: number
+}
+
+const backends: OptionItem[] = [
   { name: 'Express', packageName: '@restale-kit-example/express', port: 3000 },
   { name: 'Hono', packageName: '@restale-kit-example/hono', port: 3001 },
   { name: 'Fastify', packageName: '@restale-kit-example/fastify', port: 3002 },
@@ -10,25 +16,25 @@ const backends = [
   { name: 'Fetch (Web Standard)', packageName: '@restale-kit-example/fetch', port: 3004 },
 ]
 
-const frontends = [
+const frontends: OptionItem[] = [
   { name: 'React Query', packageName: '@restale-kit-example/react-query', port: 5173 },
   { name: 'React SWR', packageName: '@restale-kit-example/react-swr', port: 5174 },
   { name: 'Vanilla JS', packageName: '@restale-kit-example/vanilla', port: 5175 },
 ]
 
-const fullstack = [
+const fullstack: OptionItem[] = [
   { name: 'Next.js 16 App Router + Redis Flagship Reference', packageName: '@restale-kit-example/full-stack-reference', port: 3000 },
 ]
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const children = []
+const children: ChildProcess[] = []
 
-function select(options, answer) {
+function select(options: OptionItem[], answer: string): OptionItem | undefined {
   const index = Number(answer) - 1
   return options[index] ?? options.find((option) => option.name.toLowerCase() === answer.toLowerCase())
 }
 
-function start(args, env = {}) {
+function start(args: string[], env: NodeJS.ProcessEnv = {}) {
   const child = spawn(pnpm, args, { stdio: 'inherit', env: { ...process.env, ...env } })
   children.push(child)
   child.once('exit', (code) => {
@@ -46,8 +52,8 @@ function stop(code = 0) {
 }
 
 const prompt = createInterface({ input: stdin, output: stdout })
-const answers = []
-const waiting = []
+const answers: string[] = []
+const waiting: ((value: string) => void)[] = []
 
 prompt.on('line', (answer) => {
   const resolve = waiting.shift()
@@ -55,9 +61,12 @@ prompt.on('line', (answer) => {
   else answers.push(answer)
 })
 
-function question(message) {
+function question(message: string): Promise<string> {
   stdout.write(message)
-  if (answers.length) return Promise.resolve(answers.shift())
+  if (answers.length) {
+    const next = answers.shift()
+    if (next !== undefined) return Promise.resolve(next)
+  }
   return new Promise((resolve) => waiting.push(resolve))
 }
 
@@ -70,10 +79,10 @@ if (modeAnswer.trim() === '2') {
   const app = fullstack[0]
   start(['--filter', app.packageName, 'run', 'dev'])
   console.log(`\nStarting ${app.name}...`)
-  console.log(`Open http://localhost:${app.port}\n`)
+  console.log(`Open http://localhost:${String(app.port)}\n`)
 } else {
   const backendAnswer = await question(
-    `Backend:\n${backends.map((item, index) => `${index + 1}. ${item.name}`).join('\n')}\n> `,
+    `Backend:\n${backends.map((item, index) => `${String(index + 1)}. ${item.name}`).join('\n')}\n> `,
   )
   const backend = select(backends, backendAnswer.trim())
 
@@ -84,7 +93,7 @@ if (modeAnswer.trim() === '2') {
   }
 
   const frontendAnswer = await question(
-    `Frontend:\n${frontends.map((item, index) => `${index + 1}. ${item.name}`).join('\n')}\n> `,
+    `Frontend:\n${frontends.map((item, index) => `${String(index + 1)}. ${item.name}`).join('\n')}\n> `,
   )
   prompt.close()
   const frontend = select(frontends, frontendAnswer.trim())
@@ -100,8 +109,12 @@ if (modeAnswer.trim() === '2') {
   })
 
   console.log(`\n${backend.name} + ${frontend.name} is starting.`)
-  console.log(`Open http://localhost:${frontend.port}\n`)
+  console.log(`Open http://localhost:${String(frontend.port)}\n`)
 }
 
-process.once('SIGINT', () => stop())
-process.once('SIGTERM', () => stop())
+process.once('SIGINT', () => {
+  stop()
+})
+process.once('SIGTERM', () => {
+  stop()
+})

@@ -4,14 +4,14 @@ import {
   type JSONValue,
   type RevalidateSignal,
   type Signal,
-} from '@/types/protocol.js'
-import { ChannelClosedError, SchemaValidationError } from '@/types/errors.js'
-import type { StandardSchemaV1 } from '@/types/standard-schema.js'
-import { validateStandardSchema } from '@/types/standard-schema.js'
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import { type SSEChannel, type SSEChannelOptions, validateSignalPayload } from '@/server/core/channel.js'
-import { internal_toSSEResponse } from '@/server/fetch/response.js'
+} from '@/types/protocol'
+import { ChannelClosedError, SchemaValidationError } from '@/types/errors'
+import type { StandardSchemaV1 } from '@/types/standard-schema'
+import { validateStandardSchema } from '@/types/standard-schema'
+import type { PubSubAdapter } from '@/pubsub/core/index'
+import { createEventStore } from '@/server/core/event-store'
+import { type SSEChannel, type SSEChannelOptions, validateSignalPayload } from '@/server/core/channel'
+import { internal_toSSEResponse } from '@/server/fetch/response'
 import {
   internal_attachSSE,
   type NodeRequestLike,
@@ -19,17 +19,17 @@ import {
   getUnderlyingRequest,
   getUnderlyingResponse,
   isFastifyReply,
-} from '@/server/node/attach.js'
-import type { ChannelDefaults } from '@/server/core/merge-channel-defaults.js'
-import { PROTOCOL_CONSTANTS } from '@/utils/constants.js'
-import { extractRawId, signToken, verifyToken } from '@/utils/hmac.js'
+} from '@/server/node/attach'
+import type { ChannelDefaults } from '@/server/core/merge-channel-defaults'
+import { PROTOCOL_CONSTANTS } from '@/utils/constants'
+import { extractRawId, signToken, verifyToken } from '@/utils/hmac'
 import {
   matchesClusterFilter,
   matchesLocalFilter,
   type ClusterFilter,
   type LocalFilter,
-} from '@/utils/filter.js'
-import { generateUUID } from '@/utils/id.js'
+} from '@/utils/filter'
+import { generateUUID } from '@/utils/id'
 
 export interface ChannelSetupOptions<TMeta = unknown> extends SSEChannelOptions {
   topics?: string[]

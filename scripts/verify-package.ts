@@ -7,7 +7,7 @@
  * can be imported at runtime and typechecked with strict TypeScript settings (`Node16` resolution).
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, type ExecFileSyncOptions } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -18,11 +18,15 @@ const root = resolve(scriptDir, '..')
 const packageDirectory = join(root, 'restale-kit')
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'restale-kit-package-'))
 
-function run(command, arguments_, options = {}) {
+function run(command: string, arguments_: string[], options: ExecFileSyncOptions = {}) {
   execFileSync(command, arguments_, {
     stdio: 'inherit',
     ...options,
   })
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
 try {
@@ -44,10 +48,18 @@ try {
     run('tar', ['-xzf', join(temporaryDirectory, tarball), '-C', restalePackageDir, '--strip-components=1'])
 
     // Read declared dependencies and peer dependencies from package manifest
-    const manifest = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8'))
+    const rawManifest: unknown = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8'))
+    const manifestDeps: string[] = []
+    if (isPlainRecord(rawManifest)) {
+      if (isPlainRecord(rawManifest['dependencies'])) {
+        manifestDeps.push(...Object.keys(rawManifest['dependencies']))
+      }
+      if (isPlainRecord(rawManifest['peerDependencies'])) {
+        manifestDeps.push(...Object.keys(rawManifest['peerDependencies']))
+      }
+    }
     const requiredPackages = new Set([
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.keys(manifest.peerDependencies ?? {}),
+      ...manifestDeps,
       'typescript',
       '@types/node',
       '@types/react',
@@ -156,18 +168,22 @@ _channel.disconnect()
   )
   writeFileSync(
     join(temporaryDirectory, 'tsconfig.json'),
-    JSON.stringify({
-      compilerOptions: {
-        target: 'ES2022',
-        module: 'Node16',
-        moduleResolution: 'Node16',
-        types: ['node'],
-        skipLibCheck: false,
-        strict: true,
-        noEmit: true,
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'Node16',
+          moduleResolution: 'Node16',
+          types: ['node'],
+          skipLibCheck: false,
+          strict: true,
+          noEmit: true,
+        },
+        include: ['types.ts'],
       },
-      include: ['types.ts'],
-    }, null, 2) + '\n'
+      null,
+      2
+    ) + '\n'
   )
   const localTsc7 = join(root, 'node_modules', 'typescript-7', 'bin', 'tsc')
   const localTsc = join(root, 'node_modules', 'typescript', 'bin', 'tsc')

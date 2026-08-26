@@ -6,8 +6,14 @@ const ROOT_DIR = process.cwd()
 const DOCS_DIR = path.join(ROOT_DIR, 'docs')
 const DOCTEST_DIR = path.join(ROOT_DIR, 'restale-kit', 'src', '__tests__', 'doctest')
 
-function getAllMarkdownFiles(dir) {
-  const results = []
+interface DoctestCase {
+  testName: string
+  code: string
+  index: number
+}
+
+function getAllMarkdownFiles(dir: string): string[] {
+  const results: string[] = []
   if (!fs.existsSync(dir)) return results
   const list = fs.readdirSync(dir)
   for (const file of list) {
@@ -22,17 +28,17 @@ function getAllMarkdownFiles(dir) {
   return results
 }
 
-function extractDoctests(filePath) {
+function extractDoctests(filePath: string): DoctestCase[] {
   const content = fs.readFileSync(filePath, 'utf-8')
   // Match ```ts doctest ... ``` or ```typescript doctest ... ```
   const doctestRegex = /```(?:ts|typescript)\s+doctest(?::([a-zA-Z0-9_-]+))?\s*\n([\s\S]*?)```/g
-  const tests = []
-  let match
+  const tests: DoctestCase[] = []
+  let match: RegExpExecArray | null
   let index = 0
 
   while ((match = doctestRegex.exec(content)) !== null) {
     index++
-    const testName = match[1] || `snippet_${index}`
+    const testName = match[1] || `snippet_${String(index)}`
     const code = match[2]
     tests.push({ testName, code, index })
   }
@@ -40,7 +46,7 @@ function extractDoctests(filePath) {
   return tests
 }
 
-function generateTestFile(relPath, tests) {
+function generateTestFile(relPath: string, tests: DoctestCase[]): string {
   const safeName = relPath.replace(/[^a-zA-Z0-9]/g, '_')
   const testFilePath = path.join(DOCTEST_DIR, `${safeName}.test.ts`)
 
@@ -49,8 +55,8 @@ function generateTestFile(relPath, tests) {
 
   for (const t of tests) {
     const lines = t.code.split('\n')
-    const importLines = []
-    const bodyLines = []
+    const importLines: string[] = []
+    const bodyLines: string[] = []
 
     for (const line of lines) {
       if (/^\s*import\s+/.test(line) || /^\s*export\s+/.test(line)) {
@@ -78,7 +84,7 @@ function generateTestFile(relPath, tests) {
 function main() {
   const mdFiles = getAllMarkdownFiles(DOCS_DIR)
   let totalTests = 0
-  const generatedFiles = []
+  const generatedFiles: string[] = []
 
   if (fs.existsSync(DOCTEST_DIR)) {
     fs.rmSync(DOCTEST_DIR, { recursive: true, force: true })
@@ -96,18 +102,18 @@ function main() {
   }
 
   if (totalTests === 0) {
-    console.log('[doctest] No doctest fences (```ts doctest) found in docs. Checked ' + mdFiles.length + ' markdown files.')
+    console.log('[doctest] No doctest fences (```ts doctest) found in docs. Checked ' + String(mdFiles.length) + ' markdown files.')
     return
   }
 
-  console.log(`[doctest] Running ${totalTests} doctest spec(s) across ${generatedFiles.length} doc files...`)
+  console.log(`[doctest] Running ${String(totalTests)} doctest spec(s) across ${String(generatedFiles.length)} doc files...`)
 
   try {
     execSync(`pnpm --filter restale-kit exec vitest run src/__tests__/doctest`, {
       cwd: ROOT_DIR,
       stdio: 'inherit',
     })
-    console.log(`[doctest] OK: All ${totalTests} doctest specs passed.`)
+    console.log(`[doctest] OK: All ${String(totalTests)} doctest specs passed.`)
   } catch {
     console.error(`[doctest] FAILED: Some doctests failed.`)
     process.exit(1)

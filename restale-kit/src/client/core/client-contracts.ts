@@ -1,6 +1,6 @@
-import type { RevokeEventDetail, RenewEventDetail, Signal } from '@/types/protocol.js'
+import type { RevokeEventDetail, RenewEventDetail, Signal } from '@/types/protocol'
 
-export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol.js'
+export type { RevokeEventDetail, RenewEventDetail } from '@/types/protocol'
 
 /** A callback for receiving query invalidation signals. */
 export type InvalidationHandler = (signal: Signal | Signal[]) => void

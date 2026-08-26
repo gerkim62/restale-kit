@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable, PassThrough } from 'node:stream'
-import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
-import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
-import type { SSEChannelGroup } from '@/server/core/channel-group.js'
-import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
+import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel'
+import { createSSEChannel } from '@/server/core/channel'
+import { buildSSEHeaders, extractLastEventId } from '@/server/transport-utils'
+import type { SSEChannelGroup } from '@/server/core/channel-group'
+import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults'
 
 export interface FastifyReplyLike {
   raw: ServerResponse

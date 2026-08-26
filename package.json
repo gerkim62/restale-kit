@@ -10,17 +10,17 @@
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm --filter restale-kit run build",
-    "typecheck": "tsc -p restale-kit/tsconfig.json --noEmit",
+    "typecheck": "tsc -p restale-kit/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "lint": "oxlint -c .oxlintrc.json --deny-warnings",
     "lint:fix": "oxlint -c .oxlintrc.json --fix --deny-warnings",
-    "docs:generate": "node scripts/generate-api-report.mjs && node scripts/generate-api-reference.mjs && node scripts/sync-snippets.mjs && node scripts/generate-coverage-matrix.mjs",
-    "docs:check": "node scripts/generate-api-report.mjs --check && node scripts/generate-api-reference.mjs --check && node scripts/sync-snippets.mjs --check && node scripts/generate-coverage-matrix.mjs --check && node scripts/check-doc-coverage.mjs",
-    "docs:test": "node scripts/doctest.mjs",
+    "docs:generate": "node scripts/generate-api-report.ts && node scripts/generate-api-reference.ts && node scripts/sync-snippets.ts && node scripts/generate-coverage-matrix.ts",
+    "docs:check": "node scripts/generate-api-report.ts --check && node scripts/generate-api-reference.ts --check && node scripts/sync-snippets.ts --check && node scripts/generate-coverage-matrix.ts --check && node scripts/check-doc-coverage.ts",
+    "docs:test": "node scripts/doctest.ts",
     "snippets:typecheck": "pnpm --filter @restale-kit/snippets run typecheck",
     "examples:build": "pnpm -r --filter \"./examples/**\" build",
-    "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.mjs && pnpm run snippets:typecheck && pnpm run docs:check && pnpm run docs:test && pnpm run examples:build",
-    "test:package": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
-    "test:ci": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
+    "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.ts && pnpm run snippets:typecheck && pnpm run docs:check && pnpm run docs:test && pnpm run examples:build",
+    "test:package": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.ts",
+    "test:ci": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.ts",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
     "dev:swr": "pnpm --filter @restale-kit-example/react-swr run dev",
     "dev:express": "pnpm --filter @restale-kit-example/express run dev",
@@ -30,10 +30,11 @@
     "dev:fetch": "pnpm --filter @restale-kit-example/fetch run dev",
     "dev:vanilla": "pnpm --filter @restale-kit-example/vanilla run dev",
     "dev:flagship": "pnpm --filter @restale-kit-example/full-stack-reference run dev",
-    "example": "node scripts/run-example.mjs"
+    "example": "node scripts/run-example.ts"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
+    "@types/node": "^26.3.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "^7.0.2"

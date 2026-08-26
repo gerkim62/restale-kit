@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractLastEventId, buildSSEHeaders } from './transport-utils.js'
+import { extractLastEventId, buildSSEHeaders } from './transport-utils'
 
 describe('transport-utils', () => {
   describe('extractLastEventId', () => {

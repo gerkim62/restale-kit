@@ -1,5 +1,5 @@
-export { ChannelClosedError, SchemaValidationError } from './errors.js'
-export type { StandardSchemaV1 } from './standard-schema.js'
+export { ChannelClosedError, SchemaValidationError } from './errors'
+export type { StandardSchemaV1 } from './standard-schema'
 export type {
   JSONValue,
   CacheKey,
@@ -19,5 +19,5 @@ export type {
   BeforeFrameFn,
   RevokeEventDetail,
   RenewEventDetail,
-} from './protocol.js'
-export { isInlineDataSignal, isJSONValue, isCacheKey } from './protocol.js'
+} from './protocol'
+export { isInlineDataSignal, isJSONValue, isCacheKey } from './protocol'

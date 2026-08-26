@@ -7,8 +7,8 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { SSEClient, isBlankUrl } from '@/client/core/sse-client.js'
-import { canonicalJsonSerialize } from '@/utils/canonical-hash.js'
+import { SSEClient, isBlankUrl } from '@/client/core/sse-client'
+import { canonicalJsonSerialize } from '@/utils/canonical-hash'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -18,8 +18,8 @@ import type {
   InvalidationHandler,
   AutoReconnectOptions,
   ReconnectOptions,
-} from '@/client/core/client-contracts.js'
-import type { Signal } from '@/types/protocol.js'
+} from '@/client/core/client-contracts'
+import type { Signal } from '@/types/protocol'
 
 export type ConnectionSnapshot = ConnectionStatus & {
   readonly connectionId?: string

@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { SSEChannelGroup } from './channel-group.js'
-import { createSSEChannel } from './channel.js'
-import { SchemaValidationError } from '@/types/errors.js'
-import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
+import { SSEChannelGroup } from './channel-group'
+import { createSSEChannel } from './channel'
+import { SchemaValidationError } from '@/types/errors'
+import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas'
 
 function createMockRequest(url: string = '/sse'): IncomingMessage {
   return Object.assign(new EventEmitter(), {

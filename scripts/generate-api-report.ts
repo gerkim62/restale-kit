@@ -4,7 +4,63 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 
-function getTsCompiler() {
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+interface TsSymbol {
+  getName(): string
+  getFlags(): number
+  valueDeclaration?: unknown
+  declarations?: unknown[]
+}
+
+interface TsType {
+  readonly _brand?: 'TsType'
+}
+
+interface TsSourceFile {
+  readonly _brand?: 'TsSourceFile'
+}
+
+interface TsTypeChecker {
+  getSymbolAtLocation(node: TsSourceFile): TsSymbol | undefined
+  getExportsOfModule(symbol: TsSymbol): TsSymbol[]
+  getTypeOfSymbolAtLocation(symbol: TsSymbol, location: unknown): TsType
+  getPropertiesOfType(type: TsType): TsSymbol[]
+}
+
+interface TsProgram {
+  getTypeChecker(): TsTypeChecker
+  getSourceFile(fileName: string): TsSourceFile | undefined
+}
+
+interface TsCompilerApi {
+  createProgram(rootNames: string[], options: Record<string, unknown>): TsProgram
+  ScriptTarget: { ES2022: number }
+  ModuleKind: { NodeNext: number }
+  ModuleResolutionKind: { NodeNext: number }
+  SymbolFlags: {
+    Class: number
+    Function: number
+    Interface: number
+    TypeAlias: number
+    Variable: number
+  }
+}
+
+function isTsCompilerApi(v: unknown): v is TsCompilerApi {
+  if (!isPlainRecord(v)) return false
+  return (
+    typeof v['createProgram'] === 'function' &&
+    isPlainRecord(v['ScriptTarget']) &&
+    isPlainRecord(v['ModuleKind']) &&
+    isPlainRecord(v['ModuleResolutionKind']) &&
+    isPlainRecord(v['SymbolFlags'])
+  )
+}
+
+function getTsCompiler(): TsCompilerApi {
   const ROOT_DIR = process.cwd()
   const pnpmDir = path.join(ROOT_DIR, 'node_modules', '.pnpm')
   if (fs.existsSync(pnpmDir)) {
@@ -13,8 +69,10 @@ function getTsCompiler() {
         const candidate = path.join(pnpmDir, dir, 'node_modules', 'typescript', 'lib', 'typescript.js')
         if (fs.existsSync(candidate)) {
           try {
-            const mod = require(candidate)
-            if (typeof mod.createProgram === 'function') return mod
+            const mod: unknown = require(candidate)
+            if (isTsCompilerApi(mod)) {
+              return mod
+            }
           } catch {
             // try next candidate
           }
@@ -23,8 +81,10 @@ function getTsCompiler() {
     }
   }
   try {
-    const mod = require('typescript')
-    if (typeof mod.createProgram === 'function') return mod
+    const mod: unknown = require('typescript')
+    if (isTsCompilerApi(mod)) {
+      return mod
+    }
   } catch {
     // try fallback
   }
@@ -40,13 +100,50 @@ const INVENTORY_PATH = path.join(ROOT_DIR, 'docs', 'api-inventory.json')
 
 const isCheck = process.argv.includes('--check')
 
-function getExportEntrypoints() {
-  const pkgJson = JSON.parse(fs.readFileSync(PKG_JSON_PATH, 'utf-8'))
-  const exportsMap = pkgJson.exports || {}
-  const entrypoints = []
+interface EntrypointInfo {
+  subpath: string
+  exportName: string
+  typesFile: string
+}
+
+interface MemberInfo {
+  name: string
+  members?: string[] | undefined
+}
+
+interface SymbolInfo {
+  name: string
+  kind: string
+  members?: MemberInfo[] | undefined
+}
+
+interface FlatSymbolInfo {
+  name: string
+  entrypoint: string
+  kind: string
+}
+
+interface InventoryOutput {
+  generatedAt: string
+  entrypoints: Record<string, { subpath: string; symbols: SymbolInfo[] }>
+  allSymbols: FlatSymbolInfo[]
+}
+
+function getExportEntrypoints(): EntrypointInfo[] {
+  const rawPkg: unknown = JSON.parse(fs.readFileSync(PKG_JSON_PATH, 'utf-8'))
+  const entrypoints: EntrypointInfo[] = []
+
+  if (!isPlainRecord(rawPkg)) return entrypoints
+  const exportsMap = rawPkg['exports']
+  if (!isPlainRecord(exportsMap)) return entrypoints
 
   for (const [subpath, config] of Object.entries(exportsMap)) {
-    const typesPath = typeof config === 'string' ? config : config.types
+    let typesPath: string | undefined
+    if (typeof config === 'string') {
+      typesPath = config
+    } else if (isPlainRecord(config) && typeof config['types'] === 'string') {
+      typesPath = config['types']
+    }
     if (typesPath) {
       const fullTypesPath = path.resolve(PKG_DIR, typesPath)
       entrypoints.push({
@@ -60,9 +157,9 @@ function getExportEntrypoints() {
   return entrypoints
 }
 
-function analyzeSymbols() {
+function analyzeSymbols(): InventoryOutput {
   const entrypoints = getExportEntrypoints()
-  const fileNames = entrypoints.map(e => e.typesFile).filter(f => fs.existsSync(f))
+  const fileNames = entrypoints.map((e) => e.typesFile).filter((f) => fs.existsSync(f))
 
   if (fileNames.length === 0) {
     throw new Error('No .d.ts files found. Run "pnpm --filter restale-kit build" first.')
@@ -76,14 +173,14 @@ function analyzeSymbols() {
   })
 
   const checker = program.getTypeChecker()
-  const inventory = {
+  const inventory: InventoryOutput = {
     generatedAt: new Date().toISOString(),
     entrypoints: {},
     allSymbols: [],
   }
 
   for (const entry of entrypoints) {
-    const symbols = []
+    const symbols: SymbolInfo[] = []
     const sourceFile = program.getSourceFile(entry.typesFile)
 
     if (sourceFile) {
@@ -101,20 +198,29 @@ function analyzeSymbols() {
           else if (flags & ts.SymbolFlags.TypeAlias) kind = 'type'
           else if (flags & ts.SymbolFlags.Variable) kind = 'constant'
 
-          const members = []
+          const members: MemberInfo[] = []
 
           // If class or interface, walk public members
-          const decl = exp.valueDeclaration || exp.declarations?.[0]
+          const decl = exp.valueDeclaration ?? exp.declarations?.[0]
           if (decl) {
             const type = checker.getTypeOfSymbolAtLocation(exp, decl)
             const typeProps = checker.getPropertiesOfType(type)
 
             for (const prop of typeProps) {
               const propName = prop.getName()
-              if (propName.startsWith('_') || propName.startsWith('private')) continue
+              if (
+                propName.startsWith('_') ||
+                propName.startsWith('private') ||
+                propName === 'prototype' ||
+                propName === 'captureStackTrace' ||
+                propName === 'prepareStackTrace' ||
+                propName === 'stackTraceLimit'
+              ) {
+                continue
+              }
 
-              const subMembers = []
-              const propDecl = prop.valueDeclaration || prop.declarations?.[0]
+              const subMembers: string[] = []
+              const propDecl = prop.valueDeclaration ?? prop.declarations?.[0]
               if (propDecl) {
                 const propType = checker.getTypeOfSymbolAtLocation(prop, propDecl)
                 const nestedProps = checker.getPropertiesOfType(propType)
@@ -181,25 +287,27 @@ function main() {
 
   if (isCheck) {
     if (!fs.existsSync(INVENTORY_PATH)) {
-      console.error(`[generate-api-report] FAILED: ${path.relative(ROOT_DIR, INVENTORY_PATH)} does not exist. Run "node scripts/generate-api-report.mjs"`)
+      console.error(`[generate-api-report] FAILED: ${path.relative(ROOT_DIR, INVENTORY_PATH)} does not exist. Run "node scripts/generate-api-report.ts"`)
       process.exit(1)
     }
     const current = fs.readFileSync(INVENTORY_PATH, 'utf-8')
-    // Compare ignoring generatedAt timestamp
-    const currentObj = JSON.parse(current)
-    const newObj = JSON.parse(inventoryJson)
-    delete currentObj.generatedAt
-    delete newObj.generatedAt
+    const rawCurrent: unknown = JSON.parse(current)
+    const rawNew: unknown = JSON.parse(inventoryJson)
 
-    if (JSON.stringify(currentObj) !== JSON.stringify(newObj)) {
-      console.error(`[generate-api-report] FAILED: API surface drift detected in docs/api-inventory.json. Run "node scripts/generate-api-report.mjs"`)
-      process.exit(1)
+    if (isPlainRecord(rawCurrent) && isPlainRecord(rawNew)) {
+      delete rawCurrent['generatedAt']
+      delete rawNew['generatedAt']
+
+      if (JSON.stringify(rawCurrent) !== JSON.stringify(rawNew)) {
+        console.error(`[generate-api-report] FAILED: API surface drift detected in docs/api-inventory.json. Run "node scripts/generate-api-report.ts"`)
+        process.exit(1)
+      }
     }
     console.log('[generate-api-report] OK: API inventory matches current package exports.')
   } else {
     fs.mkdirSync(path.dirname(INVENTORY_PATH), { recursive: true })
     fs.writeFileSync(INVENTORY_PATH, inventoryJson, 'utf-8')
-    console.log(`[generate-api-report] Generated ${path.relative(ROOT_DIR, INVENTORY_PATH)} with ${inventory.allSymbols.length} indexed symbols.`)
+    console.log(`[generate-api-report] Generated ${path.relative(ROOT_DIR, INVENTORY_PATH)} with ${String(inventory.allSymbols.length)} indexed symbols.`)
   }
 }
 

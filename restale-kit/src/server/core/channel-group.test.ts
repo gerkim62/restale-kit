@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { SSEChannelGroup } from './channel-group.js'
-import { createSSEChannel } from './channel.js'
-import type { PubSubAdapter, PubSubMessage } from '@/pubsub/core/index.js'
-import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas.js'
-import { extractRawId, verifyToken } from '@/utils/hmac.js'
-import { createEventStore } from './event-store.js'
+import { SSEChannelGroup } from './channel-group'
+import { createSSEChannel } from './channel'
+import type { PubSubAdapter, PubSubMessage } from '@/pubsub/core/index'
+import { createValidSchema, createInvalidSchema } from '@/test-fixtures/schemas'
+import { extractRawId, verifyToken } from '@/utils/hmac'
+import { createEventStore } from './event-store'
 
 function createMockNodeRequest(method = 'GET', body?: unknown, headers: Record<string, string> = {}): IncomingMessage {
   const req = Object.assign(new EventEmitter(), {

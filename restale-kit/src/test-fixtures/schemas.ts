@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from '@/types/standard-schema.js'
+import type { StandardSchemaV1 } from '@/types/standard-schema'
 
 export function createValidSchema<T = unknown>(transformer?: (val: unknown) => T): StandardSchemaV1<unknown, T> {
   return {

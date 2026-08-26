@@ -1,5 +1,5 @@
-import type { PubSubMessage, Signal } from '@/types/protocol.js'
-import { isJSONValue, isCacheKey } from '@/types/protocol.js'
+import type { PubSubMessage, Signal } from '@/types/protocol'
+import { isJSONValue, isCacheKey } from '@/types/protocol'
 
 export function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)

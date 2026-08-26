@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { pusherPubSubAdapter, type PusherClient, type PusherWebhook } from './index.js'
-import { wrapEnvelope } from '@/pubsub/core/envelope.js'
+import { pusherPubSubAdapter, type PusherClient, type PusherWebhook } from './index'
+import { wrapEnvelope } from '@/pubsub/core/envelope'
 
 
 function createMockPusherClient(validWebhook = true, events: any[] = []): PusherClient {

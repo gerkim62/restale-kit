@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest'
-import type { RestaleProviderProps } from './RestaleProvider.js'
-import { useRestale } from './useRestale.js'
-import type { UseRestaleResult, ConnectionSnapshot } from './useRestale.js'
+import type { RestaleProviderProps } from './RestaleProvider'
+import { useRestale } from './useRestale'
+import type { UseRestaleResult, ConnectionSnapshot } from './useRestale'
 
 describe('useRestale type inference', () => {
   it('infers Record<string, unknown> as effective context when called with no arguments', () => {

@@ -1,15 +1,15 @@
-import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import { PubSubDecryptionError } from '@/pubsub/core/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
-import { isPubSubMessage, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
-import { generateInstanceId } from '@/utils/id.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index'
+import { PubSubDecryptionError } from '@/pubsub/core/index'
+import type { PubSubMessage } from '@/types/protocol'
+import { isPubSubMessage, createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils'
+import { generateInstanceId } from '@/utils/id'
 import {
   wrapEnvelope,
   unwrapEnvelope,
   validateEncryptionOptions,
   encryptPayload,
   decryptPayload
-} from '@/pubsub/core/envelope.js'
+} from '@/pubsub/core/envelope'
 
 /**
  * Minimal structural interface for an Ably Channel.

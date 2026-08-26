@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { validateStandardSchema } from './standard-schema.js'
-import { SchemaValidationError } from './errors.js'
-import { createValidSchema, createInvalidSchema, createAsyncSchema } from '@/test-fixtures/schemas.js'
+import { validateStandardSchema } from './standard-schema'
+import { SchemaValidationError } from './errors'
+import { createValidSchema, createInvalidSchema, createAsyncSchema } from '@/test-fixtures/schemas'
 
 describe('validateStandardSchema', () => {
   it('returns output on successful validation', () => {

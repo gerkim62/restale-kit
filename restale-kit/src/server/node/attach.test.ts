@@ -7,15 +7,15 @@ import {
   isFastifyRequest,
   getUnderlyingRequest,
   getUnderlyingResponse,
-} from './attach.js'
-import { createEventStore } from '@/server/core/event-store.js'
-import { SSE_HEADERS } from '@/utils/constants.js'
+} from './attach'
+import { createEventStore } from '@/server/core/event-store'
+import { SSE_HEADERS } from '@/utils/constants'
 import {
   createMockNodeRequest,
   createMockNodeResponse,
   readStreamUntil,
   closeHttpServer,
-} from '@/test-fixtures/http-test-utils.js'
+} from '@/test-fixtures/http-test-utils'
 
 describe('node/attach type guards & underlying helpers', () => {
   it('isFastifyReply accurately distinguishes Fastify from Node and Express', () => {

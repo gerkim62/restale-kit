@@ -2,7 +2,7 @@ import {
   isJSONValue,
   isCacheKey,
   type Signal,
-} from '@/types/protocol.js'
+} from '@/types/protocol'
 
 function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)

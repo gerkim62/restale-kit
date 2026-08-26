@@ -1,6 +1,6 @@
 import { useContext, useEffect, useId } from 'react'
-import { RestaleContext, type ConnectionSnapshot } from './RestaleProvider.js'
-import { canonicalJsonSerialize } from '@/utils/canonical-hash.js'
+import { RestaleContext, type ConnectionSnapshot } from './RestaleProvider'
+import { canonicalJsonSerialize } from '@/utils/canonical-hash'
 
 export type { ConnectionSnapshot }
 

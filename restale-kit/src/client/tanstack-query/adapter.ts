@@ -1,6 +1,6 @@
 import type { QueryKey } from '@tanstack/react-query'
-import type { InvalidationHandler } from '@/client/core/client-contracts.js'
-import { isInlineDataSignal, type CacheKey, type Signal } from '@/types/protocol.js'
+import type { InvalidationHandler } from '@/client/core/client-contracts'
+import { isInlineDataSignal, type CacheKey, type Signal } from '@/types/protocol'
 
 export interface QueryClientLike {
   setQueryData(queryKey: QueryKey, data: unknown): void

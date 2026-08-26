@@ -1,13 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { MockEventSource } from '@/test-fixtures/event-source.js'
+import { MockEventSource } from '@/test-fixtures/event-source'
 
 vi.mock('sse.js', async () => {
-  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source.js')
+  const { MockEventSource: SSE } = await import('@/test-fixtures/event-source')
   return { SSE }
 })
 
-import { SSEClient } from './sse-client.js'
-import { SSE_EVENTS } from '@/utils/constants.js'
+import { SSEClient } from './sse-client'
+import { SSE_EVENTS } from '@/utils/constants'
 
 describe('retriesexhausted event', () => {
   beforeEach(() => {

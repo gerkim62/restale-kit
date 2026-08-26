@@ -1,26 +1,16 @@
 {
-  "generatedAt": "2026-08-24T16:10:48.167Z",
+  "generatedAt": "2026-08-26T17:59:06.816Z",
   "entrypoints": {
     "restale-kit": {
       "subpath": ".",
       "symbols": [
         {
           "name": "ChannelClosedError",
-          "kind": "symbol",
-          "members": [
-            {
-              "name": "prototype"
-            }
-          ]
+          "kind": "symbol"
         },
         {
           "name": "SchemaValidationError",
-          "kind": "symbol",
-          "members": [
-            {
-              "name": "prototype"
-            }
-          ]
+          "kind": "symbol"
         },
         {
           "name": "StandardSchemaV1",
@@ -129,12 +119,7 @@
         },
         {
           "name": "SSEChannelGroup",
-          "kind": "symbol",
-          "members": [
-            {
-              "name": "prototype"
-            }
-          ]
+          "kind": "symbol"
         },
         {
           "name": "SSEChannelGroupOptions",
@@ -228,12 +213,7 @@
       "symbols": [
         {
           "name": "SSEClient",
-          "kind": "symbol",
-          "members": [
-            {
-              "name": "prototype"
-            }
-          ]
+          "kind": "symbol"
         },
         {
           "name": "AutoReconnectOptions",
@@ -397,12 +377,7 @@
         },
         {
           "name": "PubSubDecryptionError",
-          "kind": "symbol",
-          "members": [
-            {
-              "name": "prototype"
-            }
-          ]
+          "kind": "symbol"
         },
         {
           "name": "PubSubAdapter",
@@ -465,19 +440,9 @@
       "kind": "symbol"
     },
     {
-      "name": "ChannelClosedError.prototype",
-      "entrypoint": "restale-kit",
-      "kind": "class-member"
-    },
-    {
       "name": "SchemaValidationError",
       "entrypoint": "restale-kit",
       "kind": "symbol"
-    },
-    {
-      "name": "SchemaValidationError.prototype",
-      "entrypoint": "restale-kit",
-      "kind": "class-member"
     },
     {
       "name": "StandardSchemaV1",
@@ -610,11 +575,6 @@
       "kind": "symbol"
     },
     {
-      "name": "SSEChannelGroup.prototype",
-      "entrypoint": "restale-kit/server",
-      "kind": "class-member"
-    },
-    {
       "name": "SSEChannelGroupOptions",
       "entrypoint": "restale-kit/server",
       "kind": "symbol"
@@ -718,11 +678,6 @@
       "name": "SSEClient",
       "entrypoint": "restale-kit/client",
       "kind": "symbol"
-    },
-    {
-      "name": "SSEClient.prototype",
-      "entrypoint": "restale-kit/client",
-      "kind": "class-member"
     },
     {
       "name": "AutoReconnectOptions",
@@ -903,11 +858,6 @@
       "name": "PubSubDecryptionError",
       "entrypoint": "restale-kit/pubsub",
       "kind": "symbol"
-    },
-    {
-      "name": "PubSubDecryptionError.prototype",
-      "entrypoint": "restale-kit/pubsub",
-      "kind": "class-member"
     },
     {
       "name": "PubSubAdapter",

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { SSEChannelGroup } from '../core/index.js'
+import { SSEChannelGroup } from '../core/index'
 import {
   createMockNodeRequest,
   createMockNodeResponse,
   readStreamUntil,
-} from '@/test-fixtures/http-test-utils.js'
+} from '@/test-fixtures/http-test-utils'
 
 describe('server/fastify integration via group.handle', () => {
   let app: FastifyInstance | undefined

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createEventStore } from './event-store.js'
+import { createEventStore } from './event-store'
 
 describe('event-store', () => {
   it('generates auto-incrementing integer string IDs by default', () => {

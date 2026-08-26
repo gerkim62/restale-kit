@@ -1,4 +1,4 @@
-import type { EventRecord, EventStore, EventStoreResult, Signal } from '@/types/protocol.js'
+import type { EventRecord, EventStore, EventStoreResult, Signal } from '@/types/protocol'
 export interface EventStoreOptions {
   capacity?: number
   idGenerator?: () => string

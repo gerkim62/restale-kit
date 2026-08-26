@@ -1,9 +1,9 @@
-import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index.js'
-import type { PubSubMessage } from '@/types/protocol.js'
-import { generateInstanceId } from '@/utils/id.js'
-import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope.js'
-import { PUBSUB_EVENTS } from '@/utils/constants.js'
-import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils.js'
+import type { PubSubAdapter, PubSubEncryptionOptions } from '@/pubsub/core/index'
+import type { PubSubMessage } from '@/types/protocol'
+import { generateInstanceId } from '@/utils/id'
+import { wrapEnvelope, unwrapEnvelope, validateEncryptionOptions } from '@/pubsub/core/envelope'
+import { PUBSUB_EVENTS } from '@/utils/constants'
+import { createDecryptionErrorHandler } from '@/pubsub/core/pubsub-utils'
 
 /**
  * Minimal structural interface for the Pusher Webhook parsed result.

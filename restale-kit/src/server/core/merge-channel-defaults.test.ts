@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { mergeChannelDefaults } from './merge-channel-defaults.js'
-import type { ChannelDefaults } from './merge-channel-defaults.js'
-import type { SSEChannelOptions } from './channel.js'
+import { mergeChannelDefaults } from './merge-channel-defaults'
+import type { ChannelDefaults } from './merge-channel-defaults'
+import type { SSEChannelOptions } from './channel'
 
 // Helper: build a minimal channel options object that satisfies the type
 function opts(

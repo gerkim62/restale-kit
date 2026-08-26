@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SSEChannelGroup } from '../core/index.js'
+import { SSEChannelGroup } from '../core/index'
 
 describe('server/hono integration via group.handle', () => {
   it('creates an SSE response with signed connection ID', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tanstackQueryAdapter, type QueryClientLike } from './adapter.js'
+import { tanstackQueryAdapter, type QueryClientLike } from './adapter'
 
 describe('tanstackQueryAdapter', () => {
   it('can trust pushed inlineData without marking it stale', () => {

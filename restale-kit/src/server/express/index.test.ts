@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { Server } from 'node:http'
 import express from 'express'
-import { SSEChannelGroup } from '../core/index.js'
+import { SSEChannelGroup } from '../core/index'
 import {
   readStreamUntil,
   closeHttpServer,
-} from '@/test-fixtures/http-test-utils.js'
+} from '@/test-fixtures/http-test-utils'
 
 describe('server/express integration via group.handle', () => {
   let server: Server | undefined

@@ -1,5 +1,5 @@
-import type { SignalPayload } from '@/types/protocol.js'
-import { SSE_EVENTS } from '@/utils/constants.js'
+import type { SignalPayload } from '@/types/protocol'
+import { SSE_EVENTS } from '@/utils/constants'
 
 /**
  * Payload carried in a `renew` SSE frame.

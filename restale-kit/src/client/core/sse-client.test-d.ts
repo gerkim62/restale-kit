@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from 'vitest'
-import { SSEClient } from '@/client/core/index.js'
-import type { ClientOptions, ConnectionStatus } from '@/client/core/index.js'
+import { SSEClient } from '@/client/core/index'
+import type { ClientOptions, ConnectionStatus } from '@/client/core/index'
 
 test('SSEClient constructor and instance type contracts', () => {
   const options: ClientOptions = {

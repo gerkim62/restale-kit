@@ -6,7 +6,7 @@ import {
   encryptPayload,
   decryptPayload,
   PubSubDecryptionError
-} from './envelope.js'
+} from './envelope'
 
 const validHexKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 const wrongHexKey = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210'

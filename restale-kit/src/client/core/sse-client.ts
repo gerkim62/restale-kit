@@ -1,4 +1,4 @@
-import { isJSONValue, type Signal } from '@/types/protocol.js'
+import { isJSONValue, type Signal } from '@/types/protocol'
 import type {
   ConnectionStatus,
   ClientOptions,
@@ -7,10 +7,10 @@ import type {
   RenewEventDetail,
   RejectedConnectionResponse,
   HttpStatusMatcher,
-} from '@/client/core/client-contracts.js'
-import { validatePayload } from '@/client/core/validation.js'
-import { calculateBackoff } from '@/client/core/backoff.js'
-import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants.js'
+} from '@/client/core/client-contracts'
+import { validatePayload } from '@/client/core/validation'
+import { calculateBackoff } from '@/client/core/backoff'
+import { PROTOCOL_CONSTANTS, SSE_EVENTS, FRAME_GUARD_DEFAULTS } from '@/utils/constants'
 import { SSE, type SSEvent } from 'sse.js'
 
 /** Returns true if url is not a string or contains only whitespace / zero-width / BOM characters. */
@@ -873,7 +873,7 @@ export class SSEClient extends EventTarget {
     try {
       const raw = es.xhr?.getAllResponseHeaders()
       if (!raw) return {}
-      return raw.trim().split(/\r?\n/).reduce<Record<string, string[]>>((headers, line) => {
+      return raw.trim().split(/\r?\n/).reduce((headers: Record<string, string[]>, line: string) => {
         const separator = line.indexOf(':')
         if (separator < 0) return headers
         const name = line.slice(0, separator).trim().toLowerCase()

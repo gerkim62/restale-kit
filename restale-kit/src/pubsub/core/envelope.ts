@@ -1,5 +1,5 @@
-import type { PubSubMessage } from '@/types/protocol.js'
-import { isEnvelope, isPubSubMessage, isObject } from './pubsub-utils.js'
+import type { PubSubMessage } from '@/types/protocol'
+import { isEnvelope, isPubSubMessage, isObject } from './pubsub-utils'
 import crypto from 'node:crypto'
 
 export class PubSubDecryptionError extends Error {

@@ -8,14 +8,16 @@ const MATRIX_OUTPUT_PATH = path.join(DOCS_DIR, 'coverage-matrix.md')
 
 const isCheck = process.argv.includes('--check')
 
-const AXES = {
+type AxisKey = 'server' | 'client' | 'pubsub' | 'auth'
+
+const AXES: Record<AxisKey, string[]> = {
   server: ['express', 'fastify', 'hono', 'node', 'fetch'],
   client: ['tanstack-query', 'swr', 'vanilla'],
   pubsub: ['none', 'redis', 'ably', 'pusher'],
   auth: ['unscoped', 'scoped'],
 }
 
-const AXIS_LABELS = {
+const AXIS_LABELS: Record<AxisKey, Record<string, string>> = {
   server: {
     express: 'Express',
     fastify: 'Fastify',
@@ -40,25 +42,49 @@ const AXIS_LABELS = {
   },
 }
 
-function collectExampleManifests() {
-  const manifests = []
+interface CoverageSource {
+  name: string
+  path: string
+  coverage: Partial<Record<AxisKey, string>>
+  type: 'example' | 'recipe'
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function collectExampleManifests(): CoverageSource[] {
+  const manifests: CoverageSource[] = []
   if (!fs.existsSync(EXAMPLES_DIR)) return manifests
 
-  function walk(dir) {
+  function walk(dir: string) {
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name)
       if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== 'dist') {
         const pkgJsonPath = path.join(fullPath, 'package.json')
         if (fs.existsSync(pkgJsonPath)) {
-          const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'))
-          if (pkg.restale?.coverage) {
-            manifests.push({
-              name: pkg.name || path.basename(fullPath),
-              path: path.relative(ROOT_DIR, fullPath),
-              coverage: pkg.restale.coverage,
-              type: 'example',
-            })
+          const rawPkg: unknown = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'))
+          if (isPlainRecord(rawPkg)) {
+            const restale = rawPkg['restale']
+            if (isPlainRecord(restale)) {
+              const rawCoverage = restale['coverage']
+              if (isPlainRecord(rawCoverage)) {
+                const coverage: Partial<Record<AxisKey, string>> = {}
+                for (const [k, v] of Object.entries(rawCoverage)) {
+                  if (typeof v === 'string' && (k === 'server' || k === 'client' || k === 'pubsub' || k === 'auth')) {
+                    coverage[k] = v
+                  }
+                }
+                const name = typeof rawPkg['name'] === 'string' ? rawPkg['name'] : path.basename(fullPath)
+                manifests.push({
+                  name,
+                  path: path.relative(ROOT_DIR, fullPath),
+                  coverage,
+                  type: 'example',
+                })
+              }
+            }
           }
         }
         walk(fullPath)
@@ -70,9 +96,9 @@ function collectExampleManifests() {
   return manifests
 }
 
-function collectRecipeCoverage() {
+function collectRecipeCoverage(): CoverageSource[] {
   const recipesDir = path.join(DOCS_DIR, 'recipes')
-  const recipes = []
+  const recipes: CoverageSource[] = []
   if (!fs.existsSync(recipesDir)) return recipes
 
   const files = fs.readdirSync(recipesDir)
@@ -82,7 +108,7 @@ function collectRecipeCoverage() {
       const relPath = path.relative(ROOT_DIR, path.join(recipesDir, file))
 
       // Derive coverage from recipe names or frontmatter
-      const coverage = {}
+      const coverage: Partial<Record<AxisKey, string>> = {}
       if (name.startsWith('server-')) coverage.server = name.replace('server-', '')
       if (name.startsWith('client-')) coverage.client = name.replace('client-', '')
       if (name.startsWith('pubsub-')) coverage.pubsub = name.replace('pubsub-', '')
@@ -108,8 +134,26 @@ function collectRecipeCoverage() {
   return recipes
 }
 
-function generatePairwiseCoverage(sources) {
-  const pairs = [
+interface TableRow {
+  val1: string
+  cells: Record<string, string>
+}
+
+interface TableData {
+  axis1: AxisKey
+  axis2: AxisKey
+  rows: TableRow[]
+}
+
+interface CoverageStats {
+  matrixResults: TableData[]
+  totalCombinations: number
+  coveredCombinations: number
+  emptyCells: string[]
+}
+
+function generatePairwiseCoverage(sources: CoverageSource[]): CoverageStats {
+  const pairs: [AxisKey, AxisKey][] = [
     ['server', 'client'],
     ['server', 'pubsub'],
     ['server', 'auth'],
@@ -118,28 +162,29 @@ function generatePairwiseCoverage(sources) {
     ['pubsub', 'auth'],
   ]
 
-  const matrixResults = []
+  const matrixResults: TableData[] = []
   let totalCombinations = 0
   let coveredCombinations = 0
-  const emptyCells = []
+  const emptyCells: string[] = []
 
   for (const [axis1, axis2] of pairs) {
-    const table = {
+    const table: TableData = {
       axis1,
       axis2,
       rows: [],
     }
 
     for (const val1 of AXES[axis1]) {
-      const row = { val1, cells: {} }
+      const row: TableRow = { val1, cells: {} }
       for (const val2 of AXES[axis2]) {
         totalCombinations++
         const matching = sources.filter((s) => {
           const c = s.coverage
-          // Must explicitly match both if both are defined on source, or match at least the tested pair
-          return (c[axis1] === val1 && c[axis2] === val2) ||
-                 (c[axis1] === val1 && !c[axis2] && s.type === 'recipe') ||
-                 (c[axis2] === val2 && !c[axis1] && s.type === 'recipe')
+          return (
+            (c[axis1] === val1 && c[axis2] === val2) ||
+            (c[axis1] === val1 && !c[axis2] && s.type === 'recipe') ||
+            (c[axis2] === val2 && !c[axis1] && s.type === 'recipe')
+          )
         })
 
         if (matching.length > 0) {
@@ -164,13 +209,16 @@ function generatePairwiseCoverage(sources) {
   return { matrixResults, totalCombinations, coveredCombinations, emptyCells }
 }
 
-function buildMarkdown(sources, { matrixResults, totalCombinations, coveredCombinations, emptyCells }) {
+function buildMarkdown(
+  sources: CoverageSource[],
+  { matrixResults, totalCombinations, coveredCombinations, emptyCells }: CoverageStats
+): string {
   const percentage = Math.round((coveredCombinations / totalCombinations) * 100)
   let md = `# Pairwise Usage Coverage Matrix
 
-> **Automated verification artifact:** Generated by \`scripts/generate-coverage-matrix.mjs\` from example manifests in \`/examples/**/package.json\` and recipes in \`/docs/recipes/\`.
+> **Automated verification artifact:** Generated by \`scripts/generate-coverage-matrix.ts\` from example manifests in \`/examples/**/package.json\` and recipes in \`/docs/recipes/\`.
 >
-> **Pairwise coverage:** ${coveredCombinations}/${totalCombinations} combinations (${percentage}%)
+> **Pairwise coverage:** ${String(coveredCombinations)}/${String(totalCombinations)} combinations (${String(percentage)}%)
 
 ---
 
@@ -182,7 +230,7 @@ ${sources
   .map((s) => {
     const href = s.type === 'recipe' ? `./recipes/${path.basename(s.path)}` : `../${s.path}`
     return `| \`${s.name}\` | [${s.path}](${href}) | ${Object.entries(s.coverage)
-      .map(([k, v]) => `**${k}**: \`${v}\``)
+      .map(([k, v]) => `**${k}**: \`${v ?? ''}\``)
       .join(', ')} |`
   })
   .join('\n')}
@@ -231,23 +279,23 @@ function main() {
 
   if (isCheck) {
     if (!fs.existsSync(MATRIX_OUTPUT_PATH)) {
-      console.error(`[coverage-matrix] FAILED: ${path.relative(ROOT_DIR, MATRIX_OUTPUT_PATH)} does not exist. Run "node scripts/generate-coverage-matrix.mjs"`)
+      console.error(`[coverage-matrix] FAILED: ${path.relative(ROOT_DIR, MATRIX_OUTPUT_PATH)} does not exist. Run "node scripts/generate-coverage-matrix.ts"`)
       process.exit(1)
     }
     const current = fs.readFileSync(MATRIX_OUTPUT_PATH, 'utf-8')
     if (current.trim() !== markdown.trim()) {
-      console.error(`[coverage-matrix] FAILED: Drift detected in docs/coverage-matrix.md. Run "node scripts/generate-coverage-matrix.mjs"`)
+      console.error(`[coverage-matrix] FAILED: Drift detected in docs/coverage-matrix.md. Run "node scripts/generate-coverage-matrix.ts"`)
       process.exit(1)
     }
     if (stats.emptyCells.length > 0) {
-      console.error(`[coverage-matrix] FAILED: ${stats.emptyCells.length} uncovered pairwise combination(s):\n${stats.emptyCells.join('\n')}`)
+      console.error(`[coverage-matrix] FAILED: ${String(stats.emptyCells.length)} uncovered pairwise combination(s):\n${stats.emptyCells.join('\n')}`)
       process.exit(1)
     }
-    console.log(`[coverage-matrix] OK: Pairwise matrix is 100% covered (${stats.coveredCombinations}/${stats.totalCombinations}).`)
+    console.log(`[coverage-matrix] OK: Pairwise matrix is 100% covered (${String(stats.coveredCombinations)}/${String(stats.totalCombinations)}).`)
   } else {
     fs.mkdirSync(path.dirname(MATRIX_OUTPUT_PATH), { recursive: true })
     fs.writeFileSync(MATRIX_OUTPUT_PATH, markdown, 'utf-8')
-    console.log(`[coverage-matrix] Generated ${path.relative(ROOT_DIR, MATRIX_OUTPUT_PATH)} (${stats.coveredCombinations}/${stats.totalCombinations} covered).`)
+    console.log(`[coverage-matrix] Generated ${path.relative(ROOT_DIR, MATRIX_OUTPUT_PATH)} (${String(stats.coveredCombinations)}/${String(stats.totalCombinations)} covered).`)
   }
 }
 

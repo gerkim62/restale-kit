@@ -8,9 +8,28 @@ const MATRIX_PATH = path.join(DOCS_DIR, 'coverage-matrix.md')
 const CHECKLIST_PATH = path.join(DOCS_DIR, 'guide-checklist.json')
 const GUIDE_DIR = path.join(DOCS_DIR, 'guide')
 
-function getAllDocText() {
+interface ChecklistItem {
+  id: string
+  title: string
+  file: string
+}
+
+interface SymbolItem {
+  name: string
+  kind: string
+}
+
+interface EntrypointData {
+  symbols: SymbolItem[]
+}
+
+interface ApiInventory {
+  entrypoints: Record<string, EntrypointData>
+}
+
+function getAllDocText(): string {
   let combined = ''
-  function walk(dir) {
+  function walk(dir: string) {
     if (!fs.existsSync(dir)) return
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     for (const entry of entries) {
@@ -26,14 +45,55 @@ function getAllDocText() {
   return combined
 }
 
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function isChecklistItem(val: unknown): val is ChecklistItem {
+  return (
+    isPlainRecord(val) &&
+    typeof val['id'] === 'string' &&
+    typeof val['title'] === 'string' &&
+    typeof val['file'] === 'string'
+  )
+}
+
+function parseInventory(raw: unknown): ApiInventory {
+  if (!isPlainRecord(raw) || !('entrypoints' in raw)) {
+    return { entrypoints: {} }
+  }
+  const rawEntrypoints = raw['entrypoints']
+  if (!isPlainRecord(rawEntrypoints)) {
+    return { entrypoints: {} }
+  }
+  const entrypoints: Record<string, EntrypointData> = {}
+  for (const [key, value] of Object.entries(rawEntrypoints)) {
+    if (isPlainRecord(value) && Array.isArray(value['symbols'])) {
+      const symbols: SymbolItem[] = []
+      for (const s of value['symbols']) {
+        if (
+          isPlainRecord(s) &&
+          typeof s['name'] === 'string' &&
+          typeof s['kind'] === 'string'
+        ) {
+          symbols.push({ name: s['name'], kind: s['kind'] })
+        }
+      }
+      entrypoints[key] = { symbols }
+    }
+  }
+  return { entrypoints }
+}
+
 function checkGuideChecklist() {
   console.log('[check-doc-coverage] 1/4 Checking guide existence checklist...')
   if (!fs.existsSync(CHECKLIST_PATH)) {
     throw new Error(`Guide checklist not found at ${CHECKLIST_PATH}`)
   }
 
-  const checklist = JSON.parse(fs.readFileSync(CHECKLIST_PATH, 'utf-8'))
-  const missing = []
+  const raw: unknown = JSON.parse(fs.readFileSync(CHECKLIST_PATH, 'utf-8'))
+  const checklist = Array.isArray(raw) ? raw.filter(isChecklistItem) : []
+  const missing: string[] = []
 
   for (const item of checklist) {
     const expectedFile = path.join(GUIDE_DIR, item.file)
@@ -43,15 +103,15 @@ function checkGuideChecklist() {
   }
 
   if (missing.length > 0) {
-    throw new Error(`Guide checklist validation failed (${missing.length} missing guide pages):\n${missing.join('\n')}`)
+    throw new Error(`Guide checklist validation failed (${String(missing.length)} missing guide pages):\n${missing.join('\n')}`)
   }
-  console.log(`  ✓ All ${checklist.length} required guide pages exist under docs/guide/.`)
+  console.log(`  ✓ All ${String(checklist.length)} required guide pages exist under docs/guide/.`)
 }
 
 function checkCoverageMatrix() {
   console.log('[check-doc-coverage] 2/4 Checking coverage matrix completeness...')
   if (!fs.existsSync(MATRIX_PATH)) {
-    throw new Error(`Coverage matrix not found at ${MATRIX_PATH}. Run "node scripts/generate-coverage-matrix.mjs"`)
+    throw new Error(`Coverage matrix not found at ${MATRIX_PATH}. Run "node scripts/generate-coverage-matrix.ts"`)
   }
 
   const matrixContent = fs.readFileSync(MATRIX_PATH, 'utf-8')
@@ -64,12 +124,13 @@ function checkCoverageMatrix() {
 function checkSymbolCoverage() {
   console.log('[check-doc-coverage] 3/4 Checking exported symbol coverage...')
   if (!fs.existsSync(INVENTORY_PATH)) {
-    throw new Error(`API inventory not found at ${INVENTORY_PATH}. Run "node scripts/generate-api-report.mjs"`)
+    throw new Error(`API inventory not found at ${INVENTORY_PATH}. Run "node scripts/generate-api-report.ts"`)
   }
 
-  const inventory = JSON.parse(fs.readFileSync(INVENTORY_PATH, 'utf-8'))
+  const rawInventory: unknown = JSON.parse(fs.readFileSync(INVENTORY_PATH, 'utf-8'))
+  const inventory = parseInventory(rawInventory)
   const docText = getAllDocText()
-  const unmentionedSymbols = []
+  const unmentionedSymbols: string[] = []
 
   // Top-level exported symbols
   for (const [entrypoint, data] of Object.entries(inventory.entrypoints)) {
@@ -88,7 +149,7 @@ function checkSymbolCoverage() {
 
   if (unmentionedSymbols.length > 0) {
     throw new Error(
-      `Symbol coverage gate failed! ${unmentionedSymbols.length} exported symbol(s) have 0 mentions across /docs:\n` +
+      `Symbol coverage gate failed! ${String(unmentionedSymbols.length)} exported symbol(s) have 0 mentions across /docs:\n` +
         unmentionedSymbols.map((s) => `  - ${s}`).join('\n'),
     )
   }
@@ -110,7 +171,7 @@ function checkClassMemberCoverage() {
     'cluster.revokeByConnectionId',
   ]
 
-  const missing = []
+  const missing: string[] = []
   for (const member of keyMembers) {
     const searchString = member.includes('.') ? member : `.${member}`
     if (!docText.includes(searchString)) {
@@ -119,7 +180,7 @@ function checkClassMemberCoverage() {
   }
 
   if (missing.length > 0) {
-    throw new Error(`Class member coverage gate failed! The following group methods are not documented:\n${missing.map(m => `  - ${m}`).join('\n')}`)
+    throw new Error(`Class member coverage gate failed! The following group methods are not documented:\n${missing.map((m) => `  - ${m}`).join('\n')}`)
   }
   console.log('  ✓ All critical SSEChannelGroup public methods and sub-namespaces are documented.')
 }
@@ -133,7 +194,7 @@ function main() {
     checkClassMemberCoverage()
     console.log('\n✅ PASS: Documentation verification complete. 0 Gaps found across all 4 gates.')
   } catch (error) {
-    console.error(`\n❌ FAILED: ${error.message}`)
+    console.error(`\n❌ FAILED: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(1)
   }
 }

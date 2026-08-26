@@ -1,5 +1,5 @@
 import { expectTypeOf, test } from 'vitest'
-import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index.js'
+import type { InlineDataSignal, RevalidateSignal, Signal } from '@/types/index'
 
 test('signal type contracts', () => {
   const revalidate: RevalidateSignal = { key: ['todos'], exact: true }

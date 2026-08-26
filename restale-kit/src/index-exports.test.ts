@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { SSEClient as ClientCoreExport } from './client/core/index.js'
-import { RestaleProvider, useRestale } from './client/react/index.js'
-import { swrAdapter } from './client/swr/index.js'
-import { tanstackQueryAdapter } from './client/tanstack-query/index.js'
-import { PubSubDecryptionError } from './pubsub/core/index.js'
-import { ablyPubSubAdapter } from './pubsub/ably/index.js'
-import { pusherPubSubAdapter } from './pubsub/pusher/index.js'
-import { redisPubSubAdapter } from './pubsub/redis/index.js'
+import { SSEClient as ClientCoreExport } from './client/core/index'
+import { RestaleProvider, useRestale } from './client/react/index'
+import { swrAdapter } from './client/swr/index'
+import { tanstackQueryAdapter } from './client/tanstack-query/index'
+import { PubSubDecryptionError } from './pubsub/core/index'
+import { ablyPubSubAdapter } from './pubsub/ably/index'
+import { pusherPubSubAdapter } from './pubsub/pusher/index'
+import { redisPubSubAdapter } from './pubsub/redis/index'
 
-import { SSEChannelGroup, createSSEChannel, createEventStore } from './server/core/index.js'
+import { SSEChannelGroup, createSSEChannel, createEventStore } from './server/core/index'
 
 describe('Entrypoint Re-exports', () => {
   it('correctly exports client modules', () => {

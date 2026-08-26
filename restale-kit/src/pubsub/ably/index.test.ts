@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from './index.js'
-import { wrapEnvelope, encryptPayload } from '@/pubsub/core/envelope.js'
+import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from './index'
+import { wrapEnvelope, encryptPayload } from '@/pubsub/core/envelope'
 
 
 function createMockAblyClient(echoMessages = true): {

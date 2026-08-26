@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tanstackQueryAdapter, type QueryClientLike } from '@/client/tanstack-query/adapter.js'
-import { swrAdapter, type SWRMutator, type SWRKey } from '@/client/swr/adapter.js'
-import type { Signal } from '@/types/protocol.js'
+import { tanstackQueryAdapter, type QueryClientLike } from '@/client/tanstack-query/adapter'
+import { swrAdapter, type SWRMutator, type SWRKey } from '@/client/swr/adapter'
+import type { Signal } from '@/types/protocol'
 
 describe('Cross-adapter behavioral parity', () => {
   it('exercises identical semantics across TanStack Query and SWR for the same signal batch', () => {

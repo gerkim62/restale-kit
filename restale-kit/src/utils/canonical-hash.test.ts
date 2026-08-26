@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { canonicalJsonSerialize, computeContextHash, sha256 } from '@/utils/canonical-hash.js'
+import { canonicalJsonSerialize, computeContextHash, sha256 } from '@/utils/canonical-hash'
 
 describe('canonicalJsonSerialize, sha256, and computeContextHash', () => {
   it('computes valid SHA-256 for standard test vectors', async () => {

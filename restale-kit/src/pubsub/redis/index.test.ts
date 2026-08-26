@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { redisPubSubAdapter, type RedisClient } from './index.js'
-import { wrapEnvelope } from '@/pubsub/core/envelope.js'
+import { redisPubSubAdapter, type RedisClient } from './index'
+import { wrapEnvelope } from '@/pubsub/core/envelope'
 
 
 function createMockRedisClient(): { client: RedisClient; listeners: Record<string, (...args: any[]) => void> } {

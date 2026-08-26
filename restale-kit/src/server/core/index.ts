@@ -1,17 +1,17 @@
 // Server public API
-export { createSSEChannel } from './channel.js'
-export type { SSEChannel, SSEChannelOptions } from './channel.js'
-export { SSEChannelGroup } from './channel-group.js'
+export { createSSEChannel } from './channel'
+export type { SSEChannel, SSEChannelOptions } from './channel'
+export { SSEChannelGroup } from './channel-group'
 export type {
   SSEChannelGroupOptions,
   ChannelSetupOptions,
   InlineDataConnection,
   InlineDataResolverResult,
   InlineDataResolver,
-} from './channel-group.js'
-export type { FastifyRequestLike, FastifyReplyLike, NodeRequestLike, NodeResponseLike } from '../node/attach.js'
-export { createEventStore } from './event-store.js'
-export type { EventStoreOptions } from './event-store.js'
-export type { EventStore, EventRecord, EventStoreResult } from '../../types/protocol.js'
-export type { ChannelDefaults } from './merge-channel-defaults.js'
-export type { LocalFilter, ClusterFilter } from '@/utils/filter.js'
+} from './channel-group'
+export type { FastifyRequestLike, FastifyReplyLike, NodeRequestLike, NodeResponseLike } from '../node/attach'
+export { createEventStore } from './event-store'
+export type { EventStoreOptions } from './event-store'
+export type { EventStore, EventRecord, EventStoreResult } from '../../types/protocol'
+export type { ChannelDefaults } from './merge-channel-defaults'
+export type { LocalFilter, ClusterFilter } from '@/utils/filter'

@@ -1,5 +1,5 @@
-import type { PubSubMessage } from '@/types/protocol.js'
-import type { PubSubAdapter } from '@/pubsub/core/index.js'
+import type { PubSubMessage } from '@/types/protocol'
+import type { PubSubAdapter } from '@/pubsub/core/index'
 
 export class MemoryPubSubAdapter implements PubSubAdapter {
   private subscriptions = new Map<string, Set<(message: PubSubMessage) => void>>()

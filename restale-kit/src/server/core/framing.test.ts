@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame, formatRenewFrame } from './framing.js'
+import { formatInvalidateFrame, formatKeepalive, formatRevokeFrame, formatRetryFrame, formatRenewFrame } from './framing'
 
 const decoder = new TextDecoder()
 

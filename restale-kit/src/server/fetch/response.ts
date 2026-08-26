@@ -1,8 +1,8 @@
-import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
-import { createSSEChannel } from '@/server/core/channel.js'
-import { buildFetchSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
-import type { SSEChannelGroup } from '@/server/core/channel-group.js'
-import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
+import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel'
+import { createSSEChannel } from '@/server/core/channel'
+import { buildFetchSSEHeaders, extractLastEventId } from '@/server/transport-utils'
+import type { SSEChannelGroup } from '@/server/core/channel-group'
+import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults'
 
 /**
  * @internal

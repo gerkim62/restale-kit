@@ -1,15 +1,15 @@
 import { expectTypeOf, test } from 'vitest'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { InlineDataSignal, JSONValue, RevalidateSignal, Signal } from '@/types/index.js'
+import type { InlineDataSignal, JSONValue, RevalidateSignal, Signal } from '@/types/index'
 import type {
   ChannelSetupOptions,
   InlineDataConnection,
   InlineDataResolver,
   InlineDataResolverResult,
   SSEChannelGroupOptions,
-} from '@/server/core/index.js'
-import { SSEChannelGroup } from '@/server/core/index.js'
-import type { ClusterFilter, LocalFilter } from '@/utils/filter.js'
+} from '@/server/core/index'
+import { SSEChannelGroup } from '@/server/core/index'
+import type { ClusterFilter, LocalFilter } from '@/utils/filter'
 
 test('signal type contracts', () => {
   const revalidate: RevalidateSignal = { key: ['todos'], exact: true }

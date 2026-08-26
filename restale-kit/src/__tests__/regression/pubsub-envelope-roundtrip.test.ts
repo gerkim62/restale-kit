@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index.js'
-import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from '@/pubsub/ably/index.js'
-import { pusherPubSubAdapter, type PusherClient } from '@/pubsub/pusher/index.js'
-import type { PubSubMessage, Signal } from '@/types/protocol.js'
+import { redisPubSubAdapter, type RedisClient } from '@/pubsub/redis/index'
+import { ablyPubSubAdapter, type AblyClient, type AblyChannel } from '@/pubsub/ably/index'
+import { pusherPubSubAdapter, type PusherClient } from '@/pubsub/pusher/index'
+import type { PubSubMessage, Signal } from '@/types/protocol'
 
 function createMockRedisClient(): {
   client: RedisClient

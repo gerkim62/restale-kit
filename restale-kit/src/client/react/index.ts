@@ -1,7 +1,7 @@
-export { RestaleProvider } from './RestaleProvider.js'
-export type { RestaleProviderProps, ConnectionSnapshot } from './RestaleProvider.js'
-export { useRestale } from './useRestale.js'
-export type { UseRestaleOptions, UseRestaleResult } from './useRestale.js'
+export { RestaleProvider } from './RestaleProvider'
+export type { RestaleProviderProps, ConnectionSnapshot } from './RestaleProvider'
+export { useRestale } from './useRestale'
+export type { UseRestaleOptions, UseRestaleResult } from './useRestale'
 
 // Re-export client contract types for convenience
 export type {
@@ -10,4 +10,4 @@ export type {
   RenewEventDetail,
   RejectedConnectionResponse,
   InvalidationHandler,
-} from '../core/client-contracts.js'
+} from '../core/client-contracts'

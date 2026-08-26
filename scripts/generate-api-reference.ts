@@ -8,7 +8,24 @@ const INVENTORY_PATH = path.join(DOCS_DIR, 'api-inventory.json')
 
 const isCheck = process.argv.includes('--check')
 
-const ENTRYPOINTS = [
+interface EntrypointConfig {
+  subpath: string
+  title: string
+  file: string
+  pkgName: string
+}
+
+interface SymbolData {
+  name: string
+  kind: string
+  members?: { name: string; members?: string[] }[]
+}
+
+interface InventoryFile {
+  entrypoints: Record<string, { symbols: SymbolData[] }>
+}
+
+const ENTRYPOINTS: EntrypointConfig[] = [
   { subpath: '', title: 'Core Types Reference (`restale-kit`)', file: 'core.md', pkgName: 'restale-kit' },
   { subpath: 'server', title: 'Server API Reference (`restale-kit/server`)', file: 'server.md', pkgName: 'restale-kit/server' },
   { subpath: 'client', title: 'Client Core API Reference (`restale-kit/client`)', file: 'client.md', pkgName: 'restale-kit/client' },
@@ -22,12 +39,61 @@ const ENTRYPOINTS = [
   { subpath: 'testing', title: 'Testing Utilities Reference (`restale-kit/testing`)', file: 'testing.md', pkgName: 'restale-kit/testing' },
 ]
 
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function parseInventoryFile(raw: unknown): InventoryFile {
+  if (!isPlainRecord(raw) || !('entrypoints' in raw)) {
+    return { entrypoints: {} }
+  }
+  const rawEntrypoints = raw['entrypoints']
+  if (!isPlainRecord(rawEntrypoints)) {
+    return { entrypoints: {} }
+  }
+  const entrypoints: Record<string, { symbols: SymbolData[] }> = {}
+  for (const [key, value] of Object.entries(rawEntrypoints)) {
+    if (isPlainRecord(value) && Array.isArray(value['symbols'])) {
+      const symbols: SymbolData[] = []
+      for (const s of value['symbols']) {
+        if (isPlainRecord(s) && typeof s['name'] === 'string' && typeof s['kind'] === 'string') {
+          const members: { name: string; members?: string[] }[] = []
+          if (Array.isArray(s['members'])) {
+            for (const m of s['members']) {
+              if (isPlainRecord(m) && typeof m['name'] === 'string') {
+                const subMembers: string[] = []
+                if (Array.isArray(m['members'])) {
+                  for (const sm of m['members']) {
+                    if (typeof sm === 'string') subMembers.push(sm)
+                  }
+                }
+                members.push({
+                  name: m['name'],
+                  members: subMembers.length > 0 ? subMembers : undefined,
+                })
+              }
+            }
+          }
+          symbols.push({
+            name: s['name'],
+            kind: s['kind'],
+            members: members.length > 0 ? members : undefined,
+          })
+        }
+      }
+      entrypoints[key] = { symbols }
+    }
+  }
+  return { entrypoints }
+}
+
 function generateFallbackReference() {
   if (!fs.existsSync(INVENTORY_PATH)) {
-    throw new Error(`API inventory not found at ${INVENTORY_PATH}. Run "node scripts/generate-api-report.mjs" first.`)
+    throw new Error(`API inventory not found at ${INVENTORY_PATH}. Run "node scripts/generate-api-report.ts" first.`)
   }
 
-  const inventory = JSON.parse(fs.readFileSync(INVENTORY_PATH, 'utf-8'))
+  const raw: unknown = JSON.parse(fs.readFileSync(INVENTORY_PATH, 'utf-8'))
+  const inventory = parseInventoryFile(raw)
   fs.mkdirSync(REF_DIR, { recursive: true })
 
   for (const entry of ENTRYPOINTS) {
@@ -102,11 +168,11 @@ function checkReferenceFreshness() {
   for (const entry of ENTRYPOINTS) {
     const filePath = path.join(REF_DIR, entry.file)
     if (!fs.existsSync(filePath)) {
-      console.error(`[generate-api-reference] FAILED: Missing reference page ${entry.file}. Run "node scripts/generate-api-reference.mjs"`)
+      console.error(`[generate-api-reference] FAILED: Missing reference page ${entry.file}. Run "node scripts/generate-api-reference.ts"`)
       process.exit(1)
     }
   }
-  console.log(`[generate-api-reference] OK: All ${ENTRYPOINTS.length} entrypoint reference pages exist and are up to date.`)
+  console.log(`[generate-api-reference] OK: All ${String(ENTRYPOINTS.length)} entrypoint reference pages exist and are up to date.`)
 }
 
 function main() {

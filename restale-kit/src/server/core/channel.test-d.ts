@@ -1,7 +1,7 @@
 import { expectTypeOf, test } from 'vitest'
-import type { EventStore, SSEChannel, SSEChannelOptions } from '@/server/core/index.js'
-import { createSSEChannel } from '@/server/core/index.js'
-import type { ChannelState, LifetimeOptions } from '@/types/index.js'
+import type { EventStore, SSEChannel, SSEChannelOptions } from '@/server/core/index'
+import { createSSEChannel } from '@/server/core/index'
+import type { ChannelState, LifetimeOptions } from '@/types/index'
 
 test('SSEChannel creation and instance type contracts', () => {
   const lifetime: LifetimeOptions = { ttlMs: 30_000, onDeadline: 'reconnect' }

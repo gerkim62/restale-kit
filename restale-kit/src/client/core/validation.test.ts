@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { validatePayload } from './validation.js'
+import { validatePayload } from './validation'
 
 describe('client validatePayload', () => {
 

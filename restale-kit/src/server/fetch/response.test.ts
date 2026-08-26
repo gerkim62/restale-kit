@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { internal_toSSEResponse } from './response.js'
+import { internal_toSSEResponse } from './response'
 
 describe('fetch internal_toSSEResponse', () => {
   it('creates an SSE response with auto-generated connection ID', () => {

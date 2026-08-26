@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const version = process.argv[2]
-if (!version) throw new Error('Usage: node scripts/extract-changelog.mjs <version>')
+if (!version) throw new Error('Usage: node scripts/extract-changelog.ts <version>')
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const changelog = readFileSync(resolve(scriptDir, '../restale-kit/CHANGELOG.md'), 'utf8')
