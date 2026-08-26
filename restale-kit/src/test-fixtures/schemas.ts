@@ -1,19 +1,21 @@
 import type { StandardSchemaV1 } from '@/types/standard-schema.js'
 
-export function createValidSchema<T = any>(transformer?: (val: unknown) => T): StandardSchemaV1<unknown, T> {
+export function createValidSchema<T = unknown>(transformer?: (val: unknown) => T): StandardSchemaV1<unknown, T> {
   return {
     '~standard': {
       version: 1,
-      vendor: 'test',
+      vendor: 'test-fixture',
       validate(value: unknown) {
-        const valueResult = transformer ? transformer(value) : (value as T)
-        return { value: valueResult }
+        return { value: transformer ? transformer(value) : (value as T) }
       },
     },
   }
 }
 
-export function createInvalidSchema<T = any>(message = 'Invalid schema payload', path?: Array<string | number | { key: string | number }>): StandardSchemaV1<unknown, T> {
+export function createInvalidSchema<T = never>(
+  message = 'Invalid schema payload',
+  path?: Array<string | number | { key: string | number }>
+): StandardSchemaV1<unknown, T> {
   return {
     '~standard': {
       version: 1,

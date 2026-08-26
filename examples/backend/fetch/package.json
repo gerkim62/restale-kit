@@ -1,0 +1,28 @@
+{
+  "name": "@restale-kit-example/fetch",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "restale-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "~6.0.2"
+  },
+  "restale": {
+    "coverage": {
+      "server": "fetch",
+      "auth": "unscoped",
+      "pubsub": "none"
+    }
+  }
+}

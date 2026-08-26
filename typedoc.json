@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "restale-kit/src/server/core/index.ts",
+    "restale-kit/src/client/core/index.ts",
+    "restale-kit/src/client/react/index.ts",
+    "restale-kit/src/client/swr/index.ts",
+    "restale-kit/src/client/tanstack-query/index.ts",
+    "restale-kit/src/pubsub/core/index.ts",
+    "restale-kit/src/pubsub/redis/index.ts",
+    "restale-kit/src/pubsub/ably/index.ts",
+    "restale-kit/src/pubsub/pusher/index.ts",
+    "restale-kit/src/testing/index.ts"
+  ],
+  "out": "docs/reference",
+  "plugin": ["typedoc-plugin-markdown"],
+  "readme": "none",
+  "githubPages": false,
+  "hideBreadcrumbs": true,
+  "hidePageHeader": true,
+  "outputFileStrategy": "modules",
+  "skipErrorChecking": true
+}

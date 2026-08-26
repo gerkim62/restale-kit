@@ -1,0 +1,28 @@
+{
+  "name": "@restale-kit/snippets",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "restale-kit": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^19.0.0",
+    "swr": "^2.4.0",
+    "ioredis": "^5.4.1",
+    "ably": "^2.3.2",
+    "pusher": "^5.2.0",
+    "express": "^5.2.1",
+    "fastify": "^5.10.0",
+    "hono": "^4.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}

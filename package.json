@@ -13,7 +13,12 @@
     "typecheck": "tsc -p restale-kit/tsconfig.json --noEmit",
     "lint": "oxlint -c .oxlintrc.json --deny-warnings",
     "lint:fix": "oxlint -c .oxlintrc.json --fix --deny-warnings",
-    "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.mjs",
+    "docs:generate": "node scripts/generate-api-report.mjs && node scripts/generate-api-reference.mjs && node scripts/sync-snippets.mjs && node scripts/generate-coverage-matrix.mjs",
+    "docs:check": "node scripts/generate-api-report.mjs --check && node scripts/generate-api-reference.mjs --check && node scripts/sync-snippets.mjs --check && node scripts/generate-coverage-matrix.mjs --check && node scripts/check-doc-coverage.mjs",
+    "docs:test": "node scripts/doctest.mjs",
+    "snippets:typecheck": "pnpm --filter @restale-kit/snippets run typecheck",
+    "examples:build": "pnpm -r --filter \"./examples/**\" build",
+    "validate": "pnpm run typecheck && pnpm run lint && node scripts/check-duplicate-tests.mjs && pnpm run snippets:typecheck && pnpm run docs:check && pnpm run docs:test && pnpm run examples:build",
     "test:package": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
     "test:ci": "pnpm --filter restale-kit run test:coverage && pnpm run build && node scripts/verify-package.mjs",
     "dev:client": "pnpm --filter @restale-kit-example/react-query run dev",
@@ -22,6 +27,9 @@
     "dev:hono": "pnpm --filter @restale-kit-example/hono run dev",
     "dev:fastify": "pnpm --filter @restale-kit-example/fastify run dev",
     "dev:node": "pnpm --filter @restale-kit-example/node run dev",
+    "dev:fetch": "pnpm --filter @restale-kit-example/fetch run dev",
+    "dev:vanilla": "pnpm --filter @restale-kit-example/vanilla run dev",
+    "dev:flagship": "pnpm --filter @restale-kit-example/full-stack-reference run dev",
     "example": "node scripts/run-example.mjs"
   },
   "devDependencies": {

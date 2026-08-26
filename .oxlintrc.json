@@ -21,6 +21,8 @@
   "ignorePatterns": [
     "examples",
     "examples/**",
+    "snippets",
+    "snippets/**",
     "dist",
     "dist/**",
     "node_modules",
@@ -28,7 +30,9 @@
     "coverage",
     "coverage/**",
     "vitest.config.ts",
+    "restale-kit/src/__tests__/doctest/**",
     "**/examples/**",
+    "**/snippets/**",
     "**/dist/**",
     "**/node_modules/**",
     "**/coverage/**",

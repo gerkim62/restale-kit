@@ -11,19 +11,21 @@ import {
 } from '@restale-kit-example/shared'
 
 const app = new Hono()
-const group = new SSEChannelGroup<ClientMeta>()
+const group = new SSEChannelGroup<ClientMeta>({
+  secret: 'dev-secret-key-for-hono-example',
+  scopeBy: ['userId'],
+})
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
+  group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 
 app.use('*', cors())
 
-app.get('/sse', (c) => {
+app.get('/sse', async (c) => {
   const userId = UserIdSchema.parse(c.req.query('userId'))
-  const { response } = group.createFetchResponse(c.req.raw, {
+  return group.handle(c.req.raw, {
     meta: { userId },
   })
-  return response
 })
 
 app.get('/todos', (c) => c.json(todos.getTodos(UserIdSchema.parse(c.req.query('userId')))))

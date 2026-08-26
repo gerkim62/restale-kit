@@ -23,6 +23,9 @@ jobs:
       - run: pnpm run validate
       - run: pnpm --filter restale-kit run test:coverage
       - run: pnpm run build
+      - run: pnpm run docs:check
+      - run: pnpm run docs:test
+      - run: pnpm run examples:build
       - run: cd restale-kit && npm pack --dry-run
       - uses: actions/upload-artifact@v4
         with:

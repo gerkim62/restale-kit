@@ -16,5 +16,12 @@
     "@types/node": "^22.0.0",
     "typescript": "~5.9.2",
     "tsx": "^4.23.0"
+  },
+  "restale": {
+    "coverage": {
+      "server": "fastify",
+      "auth": "scoped",
+      "pubsub": "none"
+    }
   }
 }

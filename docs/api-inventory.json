@@ -1,0 +1,958 @@
+{
+  "generatedAt": "2026-08-24T16:10:48.167Z",
+  "entrypoints": {
+    "restale-kit": {
+      "subpath": ".",
+      "symbols": [
+        {
+          "name": "ChannelClosedError",
+          "kind": "symbol",
+          "members": [
+            {
+              "name": "prototype"
+            }
+          ]
+        },
+        {
+          "name": "SchemaValidationError",
+          "kind": "symbol",
+          "members": [
+            {
+              "name": "prototype"
+            }
+          ]
+        },
+        {
+          "name": "StandardSchemaV1",
+          "kind": "symbol"
+        },
+        {
+          "name": "JSONValue",
+          "kind": "symbol"
+        },
+        {
+          "name": "CacheKey",
+          "kind": "symbol"
+        },
+        {
+          "name": "RevalidateSignal",
+          "kind": "symbol"
+        },
+        {
+          "name": "InlineDataSignal",
+          "kind": "symbol"
+        },
+        {
+          "name": "Signal",
+          "kind": "symbol"
+        },
+        {
+          "name": "PubSubMessage",
+          "kind": "symbol"
+        },
+        {
+          "name": "SignalPayload",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventRecord",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventStore",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventStoreResult",
+          "kind": "symbol"
+        },
+        {
+          "name": "ChannelState",
+          "kind": "symbol"
+        },
+        {
+          "name": "LifetimeOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "OnDeadlineAction",
+          "kind": "symbol"
+        },
+        {
+          "name": "FrameGuardResult",
+          "kind": "symbol"
+        },
+        {
+          "name": "FrameGuardCtx",
+          "kind": "symbol"
+        },
+        {
+          "name": "BeforeFrameFn",
+          "kind": "symbol"
+        },
+        {
+          "name": "RevokeEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "RenewEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "isInlineDataSignal",
+          "kind": "symbol"
+        },
+        {
+          "name": "isJSONValue",
+          "kind": "symbol"
+        },
+        {
+          "name": "isCacheKey",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/server": {
+      "subpath": "./server",
+      "symbols": [
+        {
+          "name": "createSSEChannel",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEChannel",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEChannelOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEChannelGroup",
+          "kind": "symbol",
+          "members": [
+            {
+              "name": "prototype"
+            }
+          ]
+        },
+        {
+          "name": "SSEChannelGroupOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "ChannelSetupOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "InlineDataConnection",
+          "kind": "symbol"
+        },
+        {
+          "name": "InlineDataResolverResult",
+          "kind": "symbol"
+        },
+        {
+          "name": "InlineDataResolver",
+          "kind": "symbol"
+        },
+        {
+          "name": "FastifyRequestLike",
+          "kind": "symbol"
+        },
+        {
+          "name": "FastifyReplyLike",
+          "kind": "symbol"
+        },
+        {
+          "name": "NodeRequestLike",
+          "kind": "symbol"
+        },
+        {
+          "name": "NodeResponseLike",
+          "kind": "symbol"
+        },
+        {
+          "name": "createEventStore",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventStoreOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventStore",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventRecord",
+          "kind": "symbol"
+        },
+        {
+          "name": "EventStoreResult",
+          "kind": "symbol"
+        },
+        {
+          "name": "ChannelDefaults",
+          "kind": "symbol"
+        },
+        {
+          "name": "LocalFilter",
+          "kind": "symbol"
+        },
+        {
+          "name": "ClusterFilter",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/testing": {
+      "subpath": "./testing",
+      "symbols": [
+        {
+          "name": "createSSEChannel",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEChannel",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEChannelOptions",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/client": {
+      "subpath": "./client",
+      "symbols": [
+        {
+          "name": "SSEClient",
+          "kind": "symbol",
+          "members": [
+            {
+              "name": "prototype"
+            }
+          ]
+        },
+        {
+          "name": "AutoReconnectOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "ConnectionStatus",
+          "kind": "symbol"
+        },
+        {
+          "name": "ClientOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "ReconnectOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "HttpStatusMatcher",
+          "kind": "symbol"
+        },
+        {
+          "name": "RejectedConnectionResponse",
+          "kind": "symbol"
+        },
+        {
+          "name": "SSEClientEventMap",
+          "kind": "symbol"
+        },
+        {
+          "name": "InvalidationHandler",
+          "kind": "symbol"
+        },
+        {
+          "name": "RevokeEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "RenewEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "Signal",
+          "kind": "symbol"
+        },
+        {
+          "name": "SignalPayload",
+          "kind": "symbol"
+        },
+        {
+          "name": "RevalidateSignal",
+          "kind": "symbol"
+        },
+        {
+          "name": "InlineDataSignal",
+          "kind": "symbol"
+        },
+        {
+          "name": "CacheKey",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/react": {
+      "subpath": "./react",
+      "symbols": [
+        {
+          "name": "RestaleProvider",
+          "kind": "symbol"
+        },
+        {
+          "name": "RestaleProviderProps",
+          "kind": "symbol"
+        },
+        {
+          "name": "ConnectionSnapshot",
+          "kind": "symbol"
+        },
+        {
+          "name": "useRestale",
+          "kind": "symbol"
+        },
+        {
+          "name": "UseRestaleOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "UseRestaleResult",
+          "kind": "symbol"
+        },
+        {
+          "name": "ConnectionStatus",
+          "kind": "symbol"
+        },
+        {
+          "name": "RevokeEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "RenewEventDetail",
+          "kind": "symbol"
+        },
+        {
+          "name": "RejectedConnectionResponse",
+          "kind": "symbol"
+        },
+        {
+          "name": "InvalidationHandler",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/swr": {
+      "subpath": "./swr",
+      "symbols": [
+        {
+          "name": "swrAdapter",
+          "kind": "symbol"
+        },
+        {
+          "name": "SWRAdapterOptions",
+          "kind": "symbol"
+        },
+        {
+          "name": "SWRMutator",
+          "kind": "symbol"
+        },
+        {
+          "name": "SWRKey",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/tanstack-query": {
+      "subpath": "./tanstack-query",
+      "symbols": [
+        {
+          "name": "tanstackQueryAdapter",
+          "kind": "symbol"
+        },
+        {
+          "name": "QueryClientLike",
+          "kind": "symbol"
+        },
+        {
+          "name": "TanStackQueryAdapterOptions",
+          "kind": "symbol"
+        }
+      ]
+    },
+    "restale-kit/pubsub": {
+      "subpath": "./pubsub",
+      "symbols": [
+        {
+          "name": "PubSubMessage",
+          "kind": "symbol"
+        },
+        {
+          "name": "PubSubEncryptionOptions",
+          "kind": "type"
+        },
+        {
+          "name": "PubSubDecryptionError",
+          "kind": "symbol",
+          "members": [
+            {
+              "name": "prototype"
+            }
+          ]
+        },
+        {
+          "name": "PubSubAdapter",
+          "kind": "interface"
+        }
+      ]
+    },
+    "restale-kit/redis": {
+      "subpath": "./redis",
+      "symbols": [
+        {
+          "name": "redisPubSubAdapter",
+          "kind": "function"
+        },
+        {
+          "name": "RedisClient",
+          "kind": "interface"
+        }
+      ]
+    },
+    "restale-kit/ably": {
+      "subpath": "./ably",
+      "symbols": [
+        {
+          "name": "ablyPubSubAdapter",
+          "kind": "function"
+        },
+        {
+          "name": "AblyChannel",
+          "kind": "interface"
+        },
+        {
+          "name": "AblyClient",
+          "kind": "interface"
+        }
+      ]
+    },
+    "restale-kit/pusher": {
+      "subpath": "./pusher",
+      "symbols": [
+        {
+          "name": "pusherPubSubAdapter",
+          "kind": "function"
+        },
+        {
+          "name": "PusherWebhook",
+          "kind": "interface"
+        },
+        {
+          "name": "PusherClient",
+          "kind": "interface"
+        }
+      ]
+    }
+  },
+  "allSymbols": [
+    {
+      "name": "ChannelClosedError",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "ChannelClosedError.prototype",
+      "entrypoint": "restale-kit",
+      "kind": "class-member"
+    },
+    {
+      "name": "SchemaValidationError",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "SchemaValidationError.prototype",
+      "entrypoint": "restale-kit",
+      "kind": "class-member"
+    },
+    {
+      "name": "StandardSchemaV1",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "JSONValue",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "CacheKey",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "RevalidateSignal",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "InlineDataSignal",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "Signal",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "PubSubMessage",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "SignalPayload",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventRecord",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventStore",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventStoreResult",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "ChannelState",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "LifetimeOptions",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "OnDeadlineAction",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "FrameGuardResult",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "FrameGuardCtx",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "BeforeFrameFn",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "RevokeEventDetail",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "RenewEventDetail",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "isInlineDataSignal",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "isJSONValue",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "isCacheKey",
+      "entrypoint": "restale-kit",
+      "kind": "symbol"
+    },
+    {
+      "name": "createSSEChannel",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannel",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannelOptions",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannelGroup",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannelGroup.prototype",
+      "entrypoint": "restale-kit/server",
+      "kind": "class-member"
+    },
+    {
+      "name": "SSEChannelGroupOptions",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "ChannelSetupOptions",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "InlineDataConnection",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "InlineDataResolverResult",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "InlineDataResolver",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "FastifyRequestLike",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "FastifyReplyLike",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "NodeRequestLike",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "NodeResponseLike",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "createEventStore",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventStoreOptions",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventStore",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventRecord",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "EventStoreResult",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "ChannelDefaults",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "LocalFilter",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "ClusterFilter",
+      "entrypoint": "restale-kit/server",
+      "kind": "symbol"
+    },
+    {
+      "name": "createSSEChannel",
+      "entrypoint": "restale-kit/testing",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannel",
+      "entrypoint": "restale-kit/testing",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEChannelOptions",
+      "entrypoint": "restale-kit/testing",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEClient",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEClient.prototype",
+      "entrypoint": "restale-kit/client",
+      "kind": "class-member"
+    },
+    {
+      "name": "AutoReconnectOptions",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "ConnectionStatus",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "ClientOptions",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "ReconnectOptions",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "HttpStatusMatcher",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "RejectedConnectionResponse",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "SSEClientEventMap",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "InvalidationHandler",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "RevokeEventDetail",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "RenewEventDetail",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "Signal",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "SignalPayload",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "RevalidateSignal",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "InlineDataSignal",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "CacheKey",
+      "entrypoint": "restale-kit/client",
+      "kind": "symbol"
+    },
+    {
+      "name": "RestaleProvider",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "RestaleProviderProps",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "ConnectionSnapshot",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "useRestale",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "UseRestaleOptions",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "UseRestaleResult",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "ConnectionStatus",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "RevokeEventDetail",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "RenewEventDetail",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "RejectedConnectionResponse",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "InvalidationHandler",
+      "entrypoint": "restale-kit/react",
+      "kind": "symbol"
+    },
+    {
+      "name": "swrAdapter",
+      "entrypoint": "restale-kit/swr",
+      "kind": "symbol"
+    },
+    {
+      "name": "SWRAdapterOptions",
+      "entrypoint": "restale-kit/swr",
+      "kind": "symbol"
+    },
+    {
+      "name": "SWRMutator",
+      "entrypoint": "restale-kit/swr",
+      "kind": "symbol"
+    },
+    {
+      "name": "SWRKey",
+      "entrypoint": "restale-kit/swr",
+      "kind": "symbol"
+    },
+    {
+      "name": "tanstackQueryAdapter",
+      "entrypoint": "restale-kit/tanstack-query",
+      "kind": "symbol"
+    },
+    {
+      "name": "QueryClientLike",
+      "entrypoint": "restale-kit/tanstack-query",
+      "kind": "symbol"
+    },
+    {
+      "name": "TanStackQueryAdapterOptions",
+      "entrypoint": "restale-kit/tanstack-query",
+      "kind": "symbol"
+    },
+    {
+      "name": "PubSubMessage",
+      "entrypoint": "restale-kit/pubsub",
+      "kind": "symbol"
+    },
+    {
+      "name": "PubSubEncryptionOptions",
+      "entrypoint": "restale-kit/pubsub",
+      "kind": "type"
+    },
+    {
+      "name": "PubSubDecryptionError",
+      "entrypoint": "restale-kit/pubsub",
+      "kind": "symbol"
+    },
+    {
+      "name": "PubSubDecryptionError.prototype",
+      "entrypoint": "restale-kit/pubsub",
+      "kind": "class-member"
+    },
+    {
+      "name": "PubSubAdapter",
+      "entrypoint": "restale-kit/pubsub",
+      "kind": "interface"
+    },
+    {
+      "name": "redisPubSubAdapter",
+      "entrypoint": "restale-kit/redis",
+      "kind": "function"
+    },
+    {
+      "name": "RedisClient",
+      "entrypoint": "restale-kit/redis",
+      "kind": "interface"
+    },
+    {
+      "name": "ablyPubSubAdapter",
+      "entrypoint": "restale-kit/ably",
+      "kind": "function"
+    },
+    {
+      "name": "AblyChannel",
+      "entrypoint": "restale-kit/ably",
+      "kind": "interface"
+    },
+    {
+      "name": "AblyClient",
+      "entrypoint": "restale-kit/ably",
+      "kind": "interface"
+    },
+    {
+      "name": "pusherPubSubAdapter",
+      "entrypoint": "restale-kit/pusher",
+      "kind": "function"
+    },
+    {
+      "name": "PusherWebhook",
+      "entrypoint": "restale-kit/pusher",
+      "kind": "interface"
+    },
+    {
+      "name": "PusherClient",
+      "entrypoint": "restale-kit/pusher",
+      "kind": "interface"
+    }
+  ]
+}

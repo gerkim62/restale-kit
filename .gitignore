@@ -18,6 +18,7 @@ build/
 temp/
 tmp/
 coverage/
+*.tsbuildinfo
 audit/
 fixes/
 audit

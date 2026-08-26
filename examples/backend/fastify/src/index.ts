@@ -4,20 +4,22 @@ import { createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
 import type { ClientMeta } from '@restale-kit-example/shared'
 
 const app = Fastify()
-const group = new SSEChannelGroup<ClientMeta>()
+const group = new SSEChannelGroup<ClientMeta>({
+  secret: 'dev-secret-key-for-fastify-example',
+  scopeBy: ['userId'],
+})
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
+  group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 const userId = (query: unknown) => (query as { userId: string }).userId
 
-app.get('/sse', (request, reply) => {
+app.get('/sse', async (request, reply) => {
   const parsed = UserIdSchema.safeParse((request.query as Record<string, unknown>)?.userId)
   if (!parsed.success) {
     return reply.code(401).send({ error: 'Unauthorized: invalid or missing session identity' })
   }
   const authenticatedUserId = parsed.data
-  // Pass request/reply directly — attachNodeResponse streams via reply.send() preserving Fastify hooks and CORS
-  group.attachNodeResponse(request, reply, {
+  await group.handle(request, reply, {
     meta: { userId: authenticatedUserId },
   })
 })

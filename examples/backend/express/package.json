@@ -20,5 +20,12 @@
     "@types/node": "^22.0.0",
     "@types/express": "^5.0.0",
     "typescript": "~6.0.2"
+  },
+  "restale": {
+    "coverage": {
+      "server": "express",
+      "auth": "scoped",
+      "pubsub": "none"
+    }
   }
 }

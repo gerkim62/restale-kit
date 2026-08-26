@@ -1,0 +1,34 @@
+{
+  "name": "@restale-kit-example/full-stack-reference",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "16.3.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "restale-kit": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "restale": {
+    "coverage": {
+      "server": "fetch",
+      "client": "tanstack-query",
+      "pubsub": "redis",
+      "auth": "scoped"
+    }
+  }
+}

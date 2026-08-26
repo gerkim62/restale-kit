@@ -9,16 +9,19 @@ import {
 } from '@restale-kit-example/shared'
 
 const app = express()
-const group = new SSEChannelGroup<ClientMeta>()
+const group = new SSEChannelGroup<ClientMeta>({
+  secret: 'dev-secret-key-for-express-example',
+  scopeBy: ['userId'],
+})
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
+  group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 
 app.use(express.json())
 
-app.get('/sse', (req, res) => {
+app.get('/sse', async (req, res) => {
   const userId = UserIdSchema.parse(req.query.userId)
-  group.attachNodeResponse(req, res, {
+  await group.handle(req, res, {
     meta: { userId },
   })
 })

@@ -3,9 +3,12 @@ import { SSEChannelGroup } from 'restale-kit/server'
 import { createTodoApi, UserIdSchema } from '@restale-kit-example/shared'
 import type { ClientMeta } from '@restale-kit-example/shared'
 
-const group = new SSEChannelGroup<ClientMeta>()
+const group = new SSEChannelGroup<ClientMeta>({
+  secret: 'dev-secret-key-for-node-example',
+  scopeBy: ['userId'],
+})
 const todos = createTodoApi((userId) => {
-  group.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
+  group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
 
 function getAuthenticatedUserId(req: IncomingMessage): string | null {
@@ -32,7 +35,7 @@ createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/sse') {
       const authUserId = getAuthenticatedUserId(req) ?? (UserIdSchema.safeParse(queryUserId).success ? queryUserId : 'ada')
-      group.attachNodeResponse(req, res, {
+      await group.handle(req, res, {
         meta: { userId: authUserId },
       })
       return

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "getting-started",
+    "title": "Getting Started",
+    "file": "getting-started.md",
+    "description": "Installation, quickstart, prerequisites, and end-to-end setup"
+  },
+  {
+    "id": "concepts",
+    "title": "Core Concepts",
+    "file": "concepts.md",
+    "description": "Channels, groups, topics, signals vs. inline data, and lifecycle"
+  },
+  {
+    "id": "security-model",
+    "title": "Security Model",
+    "file": "security-model.md",
+    "description": "Secret, scopeBy, HMAC token design, threat model, and boundaries"
+  },
+  {
+    "id": "validation",
+    "title": "Validation",
+    "file": "validation.md",
+    "description": "metaSchema, clientContextSchema, and Standard Schema integration"
+  },
+  {
+    "id": "inline-data",
+    "title": "Inline Data Resolution",
+    "file": "inline-data.md",
+    "description": "Resolver contract, payload distribution, and error handling"
+  },
+  {
+    "id": "pubsub",
+    "title": "Pub/Sub Architecture",
+    "file": "pubsub.md",
+    "description": "Distributed brokers, control topic, event replay, and cluster vs local semantics"
+  },
+  {
+    "id": "nextjs",
+    "title": "Next.js & Serverless",
+    "file": "nextjs.md",
+    "description": "App Router, Route Handlers, HMR singletons, and serverless lifecycle"
+  }
+]

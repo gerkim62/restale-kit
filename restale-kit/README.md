@@ -5,14 +5,19 @@ ReStale Kit delivers cache invalidation over Server-Sent Events using one librar
 ```ts
 import { SSEChannelGroup } from 'restale-kit/server'
 
-const group = new SSEChannelGroup()
-
-group.broadcastToAll({ key: ['todos'] })
-group.broadcastToAll({
-  key: ['todos', 1],
-  inlineData: { id: 1, title: 'Updated' },
-  markStale: true,
+const group = new SSEChannelGroup({
+  secret: process.env.RESTALE_SECRET || 'secret-key-at-least-32-chars-long',
 })
+
+group.local.broadcast({ key: ['todos'] }, () => true)
+group.local.broadcast(
+  {
+    key: ['todos', 1],
+    inlineData: { id: 1, title: 'Updated' },
+    markStale: true,
+  },
+  () => true,
+)
 ```
 
 ## Wire protocol
@@ -67,3 +72,13 @@ For SWR, use `swrAdapter(mutate, options)`. Its optional `toKey` maps a universa
 Clients connect directly to the SSE endpoint without requiring custom connection ID query parameters. Upon connection, the server automatically assigns a unique connection ID and delivers it via an initial `connected` SSE event frame (`{"connectionId":"..."}`).
 
 `Last-Event-ID` replay, keepalives, renew frames, client context synchronization, and server-side revocation remain supported.
+
+---
+
+## Documentation
+
+- [Getting Started Guide](../docs/guide/getting-started.md)
+- [Framework Integration Recipes](../docs/recipes/server-express.md)
+- [API Reference](../docs/reference/README.md)
+- [Pairwise Usage Coverage Matrix](../docs/coverage-matrix.md)
+

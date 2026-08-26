@@ -1,9 +1,10 @@
 packages:
   - 'restale-kit'
+  - 'snippets'
   - 'examples/shared'
   - 'examples/backend/*'
   - 'examples/frontend/*'
-  - 'examples/vercel-redis'
+  - 'examples/full-stack-reference'
 
 allowBuilds:
   esbuild: true

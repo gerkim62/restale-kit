@@ -16,8 +16,8 @@ import {
  */
 export interface AblyChannel {
   publish(name: string, data: unknown): unknown
-  subscribe(listener: (message: { data: unknown }) => void): unknown
-  unsubscribe(listener: (message: { data: unknown }) => void): unknown
+  subscribe(...args: unknown[]): unknown
+  unsubscribe(...args: unknown[]): unknown
   on?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
   off?(event: string, listener: (stateChange: { reason?: unknown }) => void): unknown
 }
@@ -30,7 +30,7 @@ export interface AblyClient {
     echoMessages?: boolean
   }
   connection?: {
-    on(event: 'error', listener: (err: unknown) => void): unknown
+    on?(...args: unknown[]): unknown
   }
   channels: {
     get(name: string): AblyChannel
