@@ -237,12 +237,18 @@ export function RestaleProvider<
   )
 
   const snapshotRef = useRef<ConnectionSnapshot>(CLOSED_UNMOUNT)
+  const lastClientRef = useRef<SSEClient | null>(null)
   const lastStatusRef = useRef<ConnectionStatus | null>(null)
   const lastCidRef = useRef<string | undefined>(undefined)
 
   const getSnapshot = useCallback((): ConnectionSnapshot => {
     if (!client) return CLOSED_UNMOUNT
-    if (client.status !== lastStatusRef.current || client.connectionId !== lastCidRef.current) {
+    if (
+      client !== lastClientRef.current ||
+      client.status !== lastStatusRef.current ||
+      client.connectionId !== lastCidRef.current
+    ) {
+      lastClientRef.current = client
       lastStatusRef.current = client.status
       lastCidRef.current = client.connectionId
       snapshotRef.current = {
@@ -337,9 +343,14 @@ export function RestaleProvider<
   const serializedContext = canonicalJsonSerialize(effectiveContext)
 
   // Context Synchronization to Server
-  const contextSyncStateRef = useRef({
+  const contextSyncStateRef = useRef<{
+    wasOpen: boolean
+    lastSerialized?: string | undefined
+    disabled: boolean
+    revision: number
+  }>({
     wasOpen: false,
-    lastSerialized: undefined as string | undefined,
+    lastSerialized: undefined,
     disabled: false,
     revision: 0,
   })

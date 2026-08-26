@@ -170,7 +170,11 @@ function isNodeResponseLike(res: unknown): res is NodeResponseLike {
 }
 
 function isFetchRequest(req: unknown): req is Request {
-  return typeof Request !== 'undefined' && req instanceof Request
+  if (typeof Request !== 'undefined' && req instanceof Request) return true
+  if (isPlainRecord(req)) {
+    return 'headers' in req && 'method' in req && 'url' in req && (typeof req.json === 'function' || typeof req.text === 'function')
+  }
+  return false
 }
 
 export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
@@ -193,7 +197,7 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
       throw new Error('[SSEChannelGroup] secret is required and must be a non-empty string.')
     }
     this.secret = options.secret
-    this.scopeBy = (options as { scopeBy?: readonly string[] }).scopeBy
+    this.scopeBy = 'scopeBy' in options ? options.scopeBy : undefined
 
     if (this.scopeBy !== undefined) {
       if (!Array.isArray(this.scopeBy) || this.scopeBy.some((k) => typeof k !== 'string' || !k.trim())) {
@@ -332,8 +336,10 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
             } else if (result.action === 'revalidate') {
               signal = result.signal
             } else {
+              const invalidResult: unknown = result
+              const actionDesc = isPlainRecord(invalidResult) ? String(invalidResult['action']) : String(invalidResult)
               throw new Error(
-                `[SSEChannelGroup] Invalid action in inlineDataResolver result for connection "${channel.connectionId}": ${String((result as { action?: unknown }).action)}`,
+                `[SSEChannelGroup] Invalid action in inlineDataResolver result for connection "${channel.connectionId}": ${actionDesc}`,
               )
             }
             this.deliver(channel, signal)
@@ -882,6 +888,10 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
     this.topicUnsubscribers.clear()
     this.pendingTopicSubscriptions.clear()
     this.pendingTopicUnsubscriptions.clear()
+    this.channels.clear()
+    this.topicChannels.clear()
+    this.connectionIndex.clear()
+    this.clientContextRevisions.clear()
   }
 
   private indexChannel(key: string, channel: SSEChannel): void {
@@ -1168,8 +1178,10 @@ export class SSEChannelGroup<TMeta = undefined, TClientContext = unknown> {
         } else if (result.action === 'revalidate') {
           signal = result.signal
         } else {
+          const invalidResult: unknown = result
+          const actionDesc = isPlainRecord(invalidResult) ? String(invalidResult['action']) : String(invalidResult)
           throw new Error(
-            `[SSEChannelGroup] Invalid action in inlineDataResolver result for connection "${channel.connectionId}": ${String((result as { action?: unknown }).action)}`,
+            `[SSEChannelGroup] Invalid action in inlineDataResolver result for connection "${channel.connectionId}": ${actionDesc}`,
           )
         }
         this.deliver(channel, signal)

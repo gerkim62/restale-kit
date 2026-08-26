@@ -8,7 +8,12 @@ export async function PATCH(
 ): Promise<Response> {
   const { id } = await params
   const userId = request.nextUrl.searchParams.get('userId') || 'user_1'
-  const body = (await request.json()) as { text?: string; completed?: boolean }
+  const rawBody: unknown = await request.json()
+  const body: { text?: string; completed?: boolean } = {}
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    if ('text' in rawBody && typeof rawBody.text === 'string') body.text = rawBody.text
+    if ('completed' in rawBody && typeof rawBody.completed === 'boolean') body.completed = rawBody.completed
+  }
   const updated = updateTodo(userId, id, body)
 
   if (!updated) {

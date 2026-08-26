@@ -15,7 +15,7 @@ const group = new SSEChannelGroup<UserMeta>({
 
 // SSE Endpoint: clients connect via EventSource / SSEClient
 app.get('/api/sse', async (req, res) => {
-  const userId = (req.query.userId as string) || 'anonymous'
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : 'anonymous'
   await group.handle(req, res, {
     meta: { userId },
   })
@@ -23,7 +23,7 @@ app.get('/api/sse', async (req, res) => {
 
 // Context sync endpoint: client reports active query keys
 app.post('/api/sse', async (req, res) => {
-  const userId = (req.query.userId as string) || 'anonymous'
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : 'anonymous'
   await group.handle(req, res, {
     meta: { userId },
   })
@@ -31,7 +31,9 @@ app.post('/api/sse', async (req, res) => {
 
 // Mutation endpoint: invalidates cache after database write
 app.post('/api/todos', async (req, res) => {
-  const { userId, text } = req.body as { userId: string; text: string }
+  const body = req.body
+  const userId = typeof body?.userId === 'string' ? body.userId : 'anonymous'
+  const text = typeof body?.text === 'string' ? body.text : ''
   // ... save todo to database ...
 
   // Targeted invalidation for this user's queries

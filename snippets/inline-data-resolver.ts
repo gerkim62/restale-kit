@@ -9,17 +9,27 @@ interface ClientContext {
   activeWorkspaceId: string
 }
 
+interface TodoPayload {
+  id: string
+  workspaceId: string
+  title: string
+}
+
+function isTodoPayload(val: unknown): val is TodoPayload {
+  return typeof val === 'object' && val !== null && 'id' in val && 'workspaceId' in val && 'title' in val
+}
+
 const customResolver: InlineDataResolver<UserMeta, ClientContext> = (connections, payload) => {
   const map = new Map()
-  const todo = payload as { id: string; workspaceId: string; title: string }
+  if (!isTodoPayload(payload)) return map
 
   for (const conn of connections) {
     // Only send inline data to clients actively viewing this workspace
-    if (conn.clientContext?.activeWorkspaceId === todo.workspaceId) {
+    if (conn.clientContext?.activeWorkspaceId === payload.workspaceId) {
       map.set(conn.connectionId, {
         action: 'inlineData',
-        signal: { key: ['todos', { id: todo.id }] },
-        inlineData: todo,
+        signal: { key: ['todos', { id: payload.id }] },
+        inlineData: payload,
         markStale: false,
       })
     } else {

@@ -11,10 +11,10 @@ const group = new SSEChannelGroup<ClientMeta>({
 const todos = createTodoApi((userId) => {
   group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)
 })
-const userId = (query: unknown) => (query as { userId: string }).userId
 
-app.get('/sse', async (request, reply) => {
-  const parsed = UserIdSchema.safeParse((request.query as Record<string, unknown>)?.userId)
+app.get<{ Querystring: { userId?: string } }>('/sse', async (request, reply) => {
+  const queryUserId = request.query.userId
+  const parsed = UserIdSchema.safeParse(queryUserId)
   if (!parsed.success) {
     return reply.code(401).send({ error: 'Unauthorized: invalid or missing session identity' })
   }
@@ -24,22 +24,27 @@ app.get('/sse', async (request, reply) => {
   })
 })
 
-app.get('/todos', (request) => todos.getTodos(userId(request.query)))
-
-app.post('/todos', (request, reply) => {
-  const { text } = request.body as { text: string }
-  return reply.code(201).send(todos.create(userId(request.query), text))
+app.get<{ Querystring: { userId?: string } }>('/todos', (request) => {
+  const uid = request.query.userId || 'ada'
+  return todos.getTodos(uid)
 })
 
-app.patch('/todos/:id', (request, reply) => {
-  const { id } = request.params as { id: string }
-  const todo = todos.update(userId(request.query), id, request.body as { text?: string; completed?: boolean })
+app.post<{ Querystring: { userId?: string }; Body: { text: string } }>('/todos', (request, reply) => {
+  const uid = request.query.userId || 'ada'
+  return reply.code(201).send(todos.create(uid, request.body.text))
+})
+
+app.patch<{ Querystring: { userId?: string }; Params: { id: string }; Body: { text?: string; completed?: boolean } }>('/todos/:id', (request, reply) => {
+  const uid = request.query.userId || 'ada'
+  const { id } = request.params
+  const todo = todos.update(uid, id, request.body)
   return todo ?? reply.code(404).send({ error: 'Todo not found' })
 })
 
-app.delete('/todos/:id', (request, reply) => {
-  const { id } = request.params as { id: string }
-  return todos.delete(userId(request.query), id) ? reply.code(204).send() : reply.code(404).send({ error: 'Todo not found' })
+app.delete<{ Querystring: { userId?: string }; Params: { id: string } }>('/todos/:id', (request, reply) => {
+  const uid = request.query.userId || 'ada'
+  const { id } = request.params
+  return todos.delete(uid, id) ? reply.code(204).send() : reply.code(404).send({ error: 'Todo not found' })
 })
 
 await app.listen({ port: 3002 })

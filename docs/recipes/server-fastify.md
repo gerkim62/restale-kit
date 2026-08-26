@@ -23,22 +23,22 @@ const group = new SSEChannelGroup<UserMeta>({
 })
 
 // Fastify integration: pass request and reply directly
-app.get('/api/sse', async (request, reply) => {
-  const userId = (request.query as { userId?: string })?.userId || 'anonymous'
+app.get<{ Querystring: { userId?: string } }>('/api/sse', async (request, reply) => {
+  const userId = request.query.userId || 'anonymous'
   await group.handle(request, reply, {
     meta: { userId },
   })
 })
 
-app.post('/api/sse', async (request, reply) => {
-  const userId = (request.query as { userId?: string })?.userId || 'anonymous'
+app.post<{ Querystring: { userId?: string } }>('/api/sse', async (request, reply) => {
+  const userId = request.query.userId || 'anonymous'
   await group.handle(request, reply, {
     meta: { userId },
   })
 })
 
-app.post('/api/todos', async (request, reply) => {
-  const { userId, text } = request.body as { userId: string; text: string }
+app.post<{ Body: { userId: string; text: string } }>('/api/todos', async (request, reply) => {
+  const { userId, text } = request.body
   // ... perform database write ...
 
   group.local.broadcast(

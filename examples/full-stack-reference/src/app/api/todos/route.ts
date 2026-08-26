@@ -10,11 +10,14 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 export async function POST(request: NextRequest): Promise<Response> {
   const userId = request.nextUrl.searchParams.get('userId') || 'user_1'
-  const body = (await request.json()) as { text?: string }
-  if (!body.text || typeof body.text !== 'string') {
+  const body: unknown = await request.json()
+  const text = typeof body === 'object' && body !== null && 'text' in body && typeof body.text === 'string'
+    ? body.text
+    : undefined
+  if (!text) {
     return NextResponse.json({ error: 'Text is required' }, { status: 400 })
   }
-  const todo = createTodo(userId, body.text)
+  const todo = createTodo(userId, text)
 
   // Broadcast invalidation signal to cluster or local connections for this user
   group.local.broadcast({ key: ['todos', { userId }] }, (meta) => meta?.userId === userId)

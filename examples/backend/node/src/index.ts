@@ -20,7 +20,7 @@ function getAuthenticatedUserId(req: IncomingMessage): string | null {
 async function readJson<T>(req: IncomingMessage): Promise<T> {
   let body = ''
   for await (const chunk of req) body += chunk
-  return JSON.parse(body) as T
+  return JSON.parse(body)
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -31,7 +31,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', 'http://localhost:3003')
-    const queryUserId = url.searchParams.get('userId') as string
+    const queryUserId = url.searchParams.get('userId') ?? 'ada'
 
     if (req.method === 'GET' && url.pathname === '/sse') {
       const authUserId = getAuthenticatedUserId(req) ?? (UserIdSchema.safeParse(queryUserId).success ? queryUserId : 'ada')

@@ -23,14 +23,12 @@ const client = new SSEClient('/api/sse?userId=user_123', {
 })
 
 // Listen to lifecycle events
-client.addEventListener('statuschange', (event: Event) => {
-  const customEvent = event as CustomEvent<ConnectionStatus>
-  console.log('Connection status changed to:', customEvent.detail.status)
+client.addEventListener('statuschange', (event) => {
+  console.log('Connection status changed to:', event.detail.status)
 })
 
-client.addEventListener('revoke', (event: Event) => {
-  const customEvent = event as CustomEvent<{ reason?: string }>
-  console.warn('Connection permanently revoked:', customEvent.detail?.reason)
+client.addEventListener('revoke', (event) => {
+  console.warn('Connection permanently revoked:', event.detail?.reason)
 })
 
 // Open connection

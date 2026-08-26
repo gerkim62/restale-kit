@@ -123,6 +123,10 @@ function attachNativeNodeResponse(
 
   // @ts-expect-error Node typings vs DOM ReadableStream typings compatibility
   const nodeReadable = Readable.fromWeb(channel.stream)
+  nodeReadable.on('error', (err) => {
+    console.error('nodeReadable error during native attachment', channel.connectionId, err)
+    channel.close()
+  })
   nodeReadable.pipe(res)
 }
 
@@ -140,6 +144,7 @@ export function internal_attachSSE(
   group?: Pick<SSEChannelGroup, 'channelDefaults' | 'eventStore'>
 ): SSEChannel {
   const actualReq = getUnderlyingRequest(req)
+  const actualRes = getUnderlyingResponse(res)
   const lastEventId = options.lastEventId ?? extractLastEventId((name) => actualReq.headers[name])
 
   const { eventStore: optionEventStore, ...restOptions } = options
@@ -155,14 +160,21 @@ export function internal_attachSSE(
   const headers = buildSSEHeaders()
 
   // Wire up disconnect detection
-  actualReq.on('close', () => {
-    channel.disconnect()
-  })
+  if (actualReq && typeof actualReq.on === 'function') {
+    actualReq.on('close', () => {
+      channel.disconnect()
+    })
+  }
+  if (actualRes && typeof actualRes.on === 'function') {
+    actualRes.on('close', () => {
+      channel.disconnect()
+    })
+  }
 
   if (isFastifyReply(res) && typeof res.send === 'function') {
     attachFastifyResponse(res, channel, headers)
   } else {
-    attachNativeNodeResponse(getUnderlyingResponse(res), channel, headers)
+    attachNativeNodeResponse(actualRes, channel, headers)
   }
 
   return channel

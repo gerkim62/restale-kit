@@ -27,8 +27,18 @@ export const group = new SSEChannelGroup<UserMeta>({
   pubsub: redisPubSubAdapter(redis),
 })
 
-// App Router Route Handler (GET and POST /api/sse)
-export async function handleNextSse(request: Request, userId: string): Promise<Response> {
+// App Router Route Handlers (app/api/sse/route.ts)
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const userId = url.searchParams.get('userId') || 'anonymous'
+  return group.handle(request, {
+    meta: { userId },
+  })
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const userId = url.searchParams.get('userId') || 'anonymous'
   return group.handle(request, {
     meta: { userId },
   })

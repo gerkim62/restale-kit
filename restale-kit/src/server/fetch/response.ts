@@ -1,6 +1,6 @@
 import type { SSEChannelTransportOptions, SSEChannel } from '@/server/core/channel.js'
 import { createSSEChannel } from '@/server/core/channel.js'
-import { buildSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
+import { buildFetchSSEHeaders, extractLastEventId } from '@/server/transport-utils.js'
 import type { SSEChannelGroup } from '@/server/core/channel-group.js'
 import { mergeChannelDefaults } from '@/server/core/merge-channel-defaults.js'
 
@@ -30,16 +30,24 @@ export function internal_toSSEResponse(
   const channelOptions = mergeChannelDefaults(baseOptions, group?.channelDefaults)
   const channel = createSSEChannel(channelOptions)
 
-  const headers = buildSSEHeaders()
+  const headers = buildFetchSSEHeaders()
 
   const response = new Response(channel.stream, {
     headers,
   })
 
   // Wire up disconnect detection via the request's AbortSignal
-  request.signal.addEventListener('abort', () => {
+  if (request.signal.aborted) {
     channel.disconnect()
-  })
+  } else {
+    const onAbort = () => {
+      channel.disconnect()
+    }
+    request.signal.addEventListener('abort', onAbort, { once: true })
+    channel.onClose(() => {
+      request.signal.removeEventListener('abort', onAbort)
+    })
+  }
 
   return { response, channel }
 }

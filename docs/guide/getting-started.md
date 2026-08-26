@@ -57,7 +57,7 @@ const group = new SSEChannelGroup<UserMeta>({
 
 // SSE Endpoint: clients connect via EventSource / SSEClient
 app.get('/api/sse', async (req, res) => {
-  const userId = (req.query.userId as string) || 'anonymous'
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : 'anonymous'
   await group.handle(req, res, {
     meta: { userId },
   })
@@ -65,7 +65,7 @@ app.get('/api/sse', async (req, res) => {
 
 // Context sync endpoint: client reports active query keys
 app.post('/api/sse', async (req, res) => {
-  const userId = (req.query.userId as string) || 'anonymous'
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : 'anonymous'
   await group.handle(req, res, {
     meta: { userId },
   })
@@ -73,7 +73,9 @@ app.post('/api/sse', async (req, res) => {
 
 // Mutation endpoint: invalidates cache after database write
 app.post('/api/todos', async (req, res) => {
-  const { userId, text } = req.body as { userId: string; text: string }
+  const body = req.body
+  const userId = typeof body?.userId === 'string' ? body.userId : 'anonymous'
+  const text = typeof body?.text === 'string' ? body.text : ''
   // ... save todo to database ...
 
   // Targeted invalidation for this user's queries
@@ -111,14 +113,22 @@ export function App() {
   )
 }
 
+interface TodoItem {
+  id: string
+  text: string
+}
+
 function TodoList() {
   const { isConnected, connection } = useRestale()
 
-  const { data: todos } = useQuery({
+  const { data: todos } = useQuery<TodoItem[]>({
     queryKey: ['todos', { userId: 'user_123' }],
     queryFn: async () => {
       const res = await fetch('/api/todos?userId=user_123')
-      return (await res.json()) as Array<{ id: string; text: string }>
+      const items: unknown = await res.json()
+      return Array.isArray(items)
+        ? items.filter((item): item is TodoItem => Boolean(item && typeof item === 'object' && 'id' in item && 'text' in item))
+        : []
     },
   })
 

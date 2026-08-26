@@ -26,14 +26,22 @@ export function App() {
   )
 }
 
+interface TodoItem {
+  id: string
+  text: string
+}
+
 function TodoList() {
   const { isConnected, connection } = useRestale()
 
-  const { data: todos } = useQuery({
+  const { data: todos } = useQuery<TodoItem[]>({
     queryKey: ['todos', { userId: 'user_123' }],
     queryFn: async () => {
       const res = await fetch('/api/todos?userId=user_123')
-      return (await res.json()) as Array<{ id: string; text: string }>
+      const items: unknown = await res.json()
+      return Array.isArray(items)
+        ? items.filter((item): item is TodoItem => Boolean(item && typeof item === 'object' && 'id' in item && 'text' in item))
+        : []
     },
   })
 

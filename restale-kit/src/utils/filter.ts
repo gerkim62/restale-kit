@@ -56,7 +56,7 @@ export function matchesLocalFilter<TMeta>(
 ): boolean {
   if (filter === true) return true
 
-  if ((filter as unknown) === false || filter === undefined || filter === null) {
+  if (typeof filter === 'boolean' || filter === undefined || filter === null) {
     throw new TypeError(
       '[matchesLocalFilter] filter is required and must be true, a predicate function, or a criteria object. Omitting the filter or passing false is strictly disallowed.',
     )
@@ -92,7 +92,7 @@ export function matchesClusterFilter<TMeta = unknown>(
     )
   }
 
-  if ((filter as unknown) === false || filter === undefined || filter === null) {
+  if (typeof filter === 'boolean' || filter === undefined || filter === null) {
     throw new TypeError(
       '[matchesClusterFilter] filter is required and must be true or a criteria object. Omitting the filter or passing false is strictly disallowed.',
     )

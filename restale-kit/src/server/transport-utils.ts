@@ -11,7 +11,12 @@ export function extractLastEventId(
   return value
 }
 
-/** Standard headers for every SSE response. */
+/** Standard headers for every Node SSE response. */
 export function buildSSEHeaders(): Record<string, string> {
+  return { ...SSE_HEADERS }
+}
+
+/** Standard headers for Web Fetch SSE responses. */
+export function buildFetchSSEHeaders(): Record<string, string> {
   return { ...SSE_HEADERS }
 }

@@ -1,12 +1,13 @@
-import { SSEClient, type ConnectionStatus, type Signal } from 'restale-kit/client'
+import { SSEClient, type Signal } from 'restale-kit/client'
 
-const statusEl = document.getElementById('status')!
-const signalsListEl = document.getElementById('signals-list')!
+const statusEl = document.getElementById('status')
+const signalsListEl = document.getElementById('signals-list')
 
 let hasReceivedSignals = false
 
 const client = new SSEClient('http://localhost:3000/sse?userId=ada', {
   callback: (signal: Signal | Signal[]) => {
+    if (!signalsListEl) return
     if (!hasReceivedSignals) {
       signalsListEl.innerHTML = ''
       hasReceivedSignals = true
@@ -20,9 +21,9 @@ const client = new SSEClient('http://localhost:3000/sse?userId=ada', {
   },
 })
 
-client.addEventListener('statuschange', (event: Event) => {
-  const customEvent = event as CustomEvent<ConnectionStatus>
-  const status = customEvent.detail.status
+client.addEventListener('statuschange', (event) => {
+  if (!statusEl) return
+  const status = event.detail.status
   statusEl.textContent = status
   statusEl.className = `status ${status}`
 })
